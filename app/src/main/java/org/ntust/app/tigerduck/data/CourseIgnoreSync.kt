@@ -12,12 +12,15 @@ import org.ntust.app.tigerduck.notification.AssignmentNotificationScheduler
 import org.ntust.app.tigerduck.push.BackendSyncResult
 import org.ntust.app.tigerduck.push.CourseOverrideResult
 import org.ntust.app.tigerduck.push.PushApiClient
+import org.ntust.app.tigerduck.push.PushApiException
+import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /** Sends one course's setting; see [PushApiClient.patchCourseIgnore]. */
 internal fun interface CourseIgnoreSender {
-    suspend fun send(moodleId: String, ignore: Boolean?, moodleCourseId: Int?): Boolean
+    suspend fun send(moodleId: String, ignore: Boolean?, moodleCourseId: Int?): Boolean?
 }
 
 /**
@@ -38,6 +41,9 @@ internal fun interface CourseIgnoreEffects {
  * then it keeps this device's value through a sync. It is held, not sent,
  * while cloud, course or assignment sync is off or an assignments re-enable
  * conflict is open, so one made offline still reaches the backend later.
+ * One the backend refuses [MAX_ATTEMPTS] times is parked, as the iOS outbox
+ * parks it: it keeps its value, but only [retryPending]'s first run in a
+ * process sends it again.
  *
  * Work started for one account carries [currentGeneration] and drops its writes
  * once the user data is wiped at sign-out.
@@ -82,6 +88,9 @@ class CourseIgnoreSync internal constructor(
     // process can be that old.
     private val touchedAt = HashMap<String, Long>()
 
+    // Whether this process has given the parked changes their one more try.
+    private val parkedRequeued = AtomicBoolean(false)
+
     /** Taken before fetching a snapshot that is then passed in here. */
     fun currentGeneration(): Int = dataCache.userDataGeneration
 
@@ -114,13 +123,31 @@ class CourseIgnoreSync internal constructor(
         send(change, generation)
     }
 
-    /** Sends every change still waiting, oldest first. One that fails waits for the next sync. */
+    /**
+     * Sends every change still waiting, oldest first, but a parked one. One
+     * that fails waits for the next sync. The first run in a process gives
+     * each parked change one more try, as every full sync on iOS does: here a
+     * full sync runs before every pull and hourly in the background, so
+     * trying a parked change at each would send a refused one without end.
+     */
     suspend fun retryPending() {
         if (!sends()) return
         val generation = currentGeneration()
+        if (parkedRequeued.compareAndSet(false, true)) requeueParked(generation)
         dataCache.loadPendingCourseIgnores()
+            .filterNot { it.isParked }
             .sortedBy { it.changedAtMs }
             .forEach { send(it, generation) }
+    }
+
+    /** Leaves each parked change one attempt, as `SyncOutbox.requeueParked` on iOS does. */
+    private suspend fun requeueParked(generation: Int) = mutex.withLock {
+        val pending = dataCache.loadPendingCourseIgnores()
+        if (pending.none { it.isParked }) return@withLock
+        dataCache.savePendingCourseIgnores(
+            pending.map { if (it.isParked) it.copy(attempts = MAX_ATTEMPTS - 1) else it },
+            generation,
+        )
     }
 
     /**
@@ -231,9 +258,10 @@ class CourseIgnoreSync internal constructor(
         val moodleId = change.moodleId ?: return@withLock
         // Gone from the file: confirmed already, replaced by a later change,
         // or wiped with the account that made it. Sending it would undo
-        // whatever replaced it.
+        // whatever replaced it. A parked one waits for its one more try.
         val current = mutex.withLock {
-            generation == currentGeneration() && change in dataCache.loadPendingCourseIgnores()
+            generation == currentGeneration() &&
+                dataCache.loadPendingCourseIgnores().any { it.isSameChange(change) && !it.isParked }
         }
         if (!current) return@withLock
         val stored = try {
@@ -242,17 +270,29 @@ class CourseIgnoreSync internal constructor(
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "course ignore PATCH failed: ${change.key}", e)
-            false
+            if (refuses(e)) false else null
         }
-        if (stored) settle(change, generation)
+        when (stored) {
+            true -> settle(change, generation)
+            false -> countRefusal(change, generation)
+            null -> Unit
+        }
     }
 
     private suspend fun settle(change: PendingCourseIgnore, generation: Int) = mutex.withLock {
         val pending = dataCache.loadPendingCourseIgnores()
-        if (change !in pending) return@withLock
-        if (dataCache.savePendingCourseIgnores(pending - change, generation)) {
+        if (pending.none { it.isSameChange(change) }) return@withLock
+        if (dataCache.savePendingCourseIgnores(pending.filterNot { it.isSameChange(change) }, generation)) {
             change.key?.let { touchedAt[it] = clock() }
         }
+    }
+
+    private suspend fun countRefusal(change: PendingCourseIgnore, generation: Int) = mutex.withLock {
+        val pending = dataCache.loadPendingCourseIgnores()
+        val stored = pending.find { it.isSameChange(change) } ?: return@withLock
+        val counted = stored.copy(attempts = stored.attempts + 1)
+        if (counted.isParked) Log.w(TAG, "course ignore parked after $MAX_ATTEMPTS refusals: ${change.key}")
+        dataCache.savePendingCourseIgnores(pending.map { if (it === stored) counted else it }, generation)
     }
 
     /**
@@ -318,11 +358,17 @@ class CourseIgnoreSync internal constructor(
     private fun List<PendingCourseIgnore>.with(change: PendingCourseIgnore) =
         filterNot { it.key == change.key } + change
 
+    private val PendingCourseIgnore.isParked: Boolean
+        get() = attempts >= MAX_ATTEMPTS
+
     internal companion object {
         private const val TAG = "CourseIgnoreSync"
 
         /** The re-enable conflict category course ignores are part of. */
         private const val REENABLE_CATEGORY = "assignments"
+
+        /** Refusals before a change is parked, as on the iOS outbox. */
+        const val MAX_ATTEMPTS = 5
 
         /**
          * Whether changes go out and a full sync applies the backend's set:
@@ -333,5 +379,16 @@ class CourseIgnoreSync internal constructor(
         fun syncsCourseIgnores(prefs: AppPreferences): Boolean =
             prefs.cloudSyncEnabled && prefs.syncAssignments && prefs.syncCourses &&
                 REENABLE_CATEGORY !in prefs.pendingConflictCategories
+
+        /**
+         * Whether a failed PATCH says the backend refused the change, as the
+         * iOS outbox's `keepsWithoutAttempt` decides: no network, a session to
+         * renew and a server that is down or busy say nothing about it.
+         */
+        fun refuses(e: Exception): Boolean {
+            if (e is IOException) return false
+            val code = (e as? PushApiException)?.statusCode ?: return true
+            return code != 401 && code != 408 && code != 429 && code !in 500..599
+        }
     }
 }

@@ -25,7 +25,12 @@ data class PendingCourseIgnore(
     val ignore: Boolean,
     /** When the user made the change; tells it from a later one for the same course. */
     val changedAtMs: Long,
+    /** How many times the backend refused it; see CourseIgnoreSync, which parks it after five. */
+    val attempts: Int = 0,
 ) {
+    /** Whether [other] is this change, however many times either was refused. */
+    fun isSameChange(other: PendingCourseIgnore): Boolean = copy(attempts = 0) == other.copy(attempts = 0)
+
     /** The [CourseIgnores] key, or null for a row too damaged to send. */
     val key: String?
         get() {

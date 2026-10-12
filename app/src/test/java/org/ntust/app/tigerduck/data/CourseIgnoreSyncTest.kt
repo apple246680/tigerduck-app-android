@@ -8,6 +8,7 @@ import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -16,6 +17,7 @@ import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.push.BackendSyncResult
 import org.ntust.app.tigerduck.push.CourseOverrideResult
+import org.ntust.app.tigerduck.push.PushApiException
 import org.ntust.app.tigerduck.push.ServerCourse
 import org.ntust.app.tigerduck.shared.Course
 import org.robolectric.RobolectricTestRunner
@@ -33,7 +35,7 @@ class CourseIgnoreSyncTest {
     private lateinit var sync: CourseIgnoreSync
 
     private val sent = mutableListOf<Sent>()
-    private var answer: suspend (Sent) -> Boolean = { true }
+    private var answer: suspend (Sent) -> Boolean? = { true }
     private var sends = true
     private var now = 1_000L
     private var effects = 0
@@ -42,18 +44,21 @@ class CourseIgnoreSyncTest {
     fun setUp() {
         val context = RuntimeEnvironment.getApplication()
         cache = DataCache(context, AcademicCalendarStore(context, OkHttpClient(), AppPreferences(context)))
-        sync = CourseIgnoreSync(
-            dataCache = cache,
-            sender = CourseIgnoreSender { moodleId, ignore, moodleCourseId ->
-                val request = Sent(moodleId, ignore, moodleCourseId)
-                sent += request
-                answer(request)
-            },
-            effects = CourseIgnoreEffects { effects++ },
-            sends = { sends },
-            clock = { now },
-        )
+        sync = newProcess()
     }
+
+    /** What a new process builds over the same files. */
+    private fun newProcess() = CourseIgnoreSync(
+        dataCache = cache,
+        sender = CourseIgnoreSender { moodleId, ignore, moodleCourseId ->
+            val request = Sent(moodleId, ignore, moodleCourseId)
+            sent += request
+            answer(request)
+        },
+        effects = CourseIgnoreEffects { effects++ },
+        sends = { sends },
+        clock = { now },
+    )
 
     private suspend fun setIgnored(courseNo: String, ignore: Boolean = true) =
         sync.setIgnored("1141", courseNo, "1141$courseNo", null, ignore)
@@ -372,6 +377,51 @@ class CourseIgnoreSyncTest {
         assertEquals(synced, CourseIgnoreSync.syncsCourseIgnores(prefs))
         prefs.syncCourses = false
         assertFalse(CourseIgnoreSync.syncsCourseIgnores(prefs))
+    }
+
+    @Test
+    fun `a change the backend keeps refusing is parked out of the retries, and keeps its value`() = runTest {
+        answer = { throw PushApiException("not found", 404) }
+        setIgnored("AAA")
+        repeat(CourseIgnoreSync.MAX_ATTEMPTS - 1) { sync.retryPending() }
+        assertEquals(CourseIgnoreSync.MAX_ATTEMPTS, sent.size)
+
+        sync.retryPending()
+        assertEquals("a parked change went out again", CourseIgnoreSync.MAX_ATTEMPTS, sent.size)
+        assertEquals(listOf("1141:AAA" to true), waiting())
+
+        sync.applySnapshot(snapshot(fetchedAtMs = 5_000, "AAA" to false), sync.currentGeneration())
+        assertEquals(setOf("1141:AAA"), cache.loadIgnoredCourses())
+    }
+
+    @Test
+    fun `the next process tries a parked change once more`() = runTest {
+        answer = { false }
+        setIgnored("AAA")
+        repeat(CourseIgnoreSync.MAX_ATTEMPTS - 1) { sync.retryPending() }
+
+        val next = newProcess()
+        next.retryPending()
+        next.retryPending()
+        assertEquals(CourseIgnoreSync.MAX_ATTEMPTS + 1, sent.size)
+
+        answer = { true }
+        newProcess().retryPending()
+        assertEquals(CourseIgnoreSync.MAX_ATTEMPTS + 2, sent.size)
+        assertEquals(emptyList<Any>(), waiting())
+    }
+
+    @Test
+    fun `no network, a session to renew or a server that is down is not a refusal`() = runTest {
+        answer = { throw java.io.IOException("offline") }
+        setIgnored("AAA")
+        repeat(CourseIgnoreSync.MAX_ATTEMPTS + 1) { sync.retryPending() }
+
+        assertEquals(CourseIgnoreSync.MAX_ATTEMPTS + 2, sent.size)
+        assertFalse(CourseIgnoreSync.refuses(PushApiException("unauthorized", 401)))
+        assertFalse(CourseIgnoreSync.refuses(PushApiException("unavailable", 503)))
+        assertTrue(CourseIgnoreSync.refuses(PushApiException("not found", 404)))
+        assertTrue(CourseIgnoreSync.refuses(IllegalStateException("bad body")))
     }
 
     @Test
