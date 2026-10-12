@@ -265,6 +265,7 @@ class HomeBackendSync @Inject constructor(
     }
 
     private suspend fun syncAssignmentOverrides(state: HomeSyncState, result: BackendSyncResult) {
+        if (AssignmentOverrideReconciler.isHeldForReenable(prefs.pendingConflictCategories)) return
         val localIgnored = dataCache.loadIgnoredAssignments()
         val localMarked = dataCache.loadMarkedCompletedAssignments()
 

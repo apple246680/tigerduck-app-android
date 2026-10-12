@@ -50,6 +50,9 @@ object AssignmentOverrideReconciler {
     // localization change and not this refactor's business.
     private const val KIND_ASSIGNMENT = "作業"
 
+    /** The re-enable conflict category these overrides belong to. */
+    private const val REENABLE_CATEGORY = "assignments"
+
     /**
      * What this device should end up with, plus anything the user has to
      * decide. [ignored] and [completed] are safe to write immediately; the
@@ -197,6 +200,15 @@ object AssignmentOverrideReconciler {
         localIgnored.associateWith { STATUS_IGNORED } +
             localCompleted.associateWith { STATUS_COMPLETED } +
             (serverIgnored + serverCompleted - localIgnored - localCompleted).associateWith { STATUS_NONE }
+
+    /**
+     * Whether a full sync leaves this device's overrides as they are: from
+     * turning the Assignments sync back on until the re-enable check finds
+     * no difference or the user's answer to it has been applied. Taking the
+     * server's set in that window would answer for the user.
+     */
+    fun isHeldForReenable(pendingConflictCategories: Set<String>): Boolean =
+        REENABLE_CATEGORY in pendingConflictCategories
 
     private fun statusOf(id: String, ignored: Set<String>, completed: Set<String>): String = when (id) {
         in ignored -> STATUS_IGNORED

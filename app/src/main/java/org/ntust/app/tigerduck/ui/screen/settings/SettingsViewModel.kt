@@ -299,7 +299,11 @@ class SettingsViewModel @Inject constructor(
         val conflict = _reenableConflict.value ?: return
         Log.i(TAG, "[reenable] resolve: keepLocal=$keepLocal categories=${conflict.categories}")
         _reenableConflict.value = null
-        prefs.pendingConflictCategories = emptySet()
+        // Full syncs leave assignment marks alone while "assignments" is
+        // pending (AssignmentOverrideReconciler.isHeldForReenable), so it is
+        // let go only once this has sent or taken them, however it ends.
+        val holdsMarks = "assignments" in conflict.categories
+        prefs.pendingConflictCategories = if (holdsMarks) setOf("assignments") else emptySet()
         viewModelScope.launch {
             if (keepLocal) {
                 if ("courses" in conflict.categories) {
@@ -332,10 +336,12 @@ class SettingsViewModel @Inject constructor(
                     }
                 }
                 if ("assignments" in conflict.categories) {
+                    val localIgnored = dataCache.loadIgnoredAssignments()
+                    val localCompleted = dataCache.loadMarkedCompletedAssignments()
                     val server = runCatching { syncApiClient.fetchFullSync() }.getOrNull()
                     val statuses = AssignmentOverrideReconciler.keepLocal(
-                        localIgnored = dataCache.loadIgnoredAssignments(),
-                        localCompleted = dataCache.loadMarkedCompletedAssignments(),
+                        localIgnored = localIgnored,
+                        localCompleted = localCompleted,
                         serverIgnored = server?.ignoredIds.orEmpty(),
                         serverCompleted = server?.completedIds.orEmpty(),
                     )
@@ -412,6 +418,8 @@ class SettingsViewModel @Inject constructor(
                     }
                 }
             }
+        }.invokeOnCompletion {
+            if (holdsMarks) prefs.pendingConflictCategories = prefs.pendingConflictCategories - "assignments"
         }
     }
 

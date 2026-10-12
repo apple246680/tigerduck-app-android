@@ -291,4 +291,18 @@ class AssignmentOverrideReconcilerTest {
         )
         assertEquals(mapOf("1" to STATUS_IGNORED, "2" to STATUS_COMPLETED), sent)
     }
+
+    @Test
+    fun `overrides are held while the assignments re-enable conflict waits for the user`() {
+        assertTrue(AssignmentOverrideReconciler.isHeldForReenable(setOf("assignments")))
+        assertTrue(AssignmentOverrideReconciler.isHeldForReenable(setOf("courses", "assignments")))
+    }
+
+    @Test
+    fun `overrides are not held for another category's re-enable conflict`() {
+        assertFalse(AssignmentOverrideReconciler.isHeldForReenable(emptySet()))
+        assertFalse(
+            AssignmentOverrideReconciler.isHeldForReenable(setOf("courses", "course_colors", "course_names"))
+        )
+    }
 }
