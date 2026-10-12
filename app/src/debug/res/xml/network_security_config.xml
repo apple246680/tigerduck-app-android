@@ -26,14 +26,17 @@
               | openssl dgst -sha256 -binary | openssl enc -base64
     -->
 
-    <!-- *.ntust.edu.tw wildcard leaf + TWCA Secure SSL intermediate.
-         Leaf cert expires 2027-02-18; pins expire six months later, so the
-         intermediate carries them through the leaf's renewal. -->
+    <!-- *.ntust.edu.tw wildcard leaf + TWCA Secure SSL intermediate, plus the
+         TWCA SSL intermediate (TWCA CYBER Root CA) that NTUST's newer
+         certificates, such as cardsystem's, come from, so a renewal through
+         either keeps working. Leaf cert expires 2027-02-18; pins expire six
+         months later, so the intermediates carry them through its renewal. -->
     <domain-config cleartextTrafficPermitted="false">
         <domain includeSubdomains="true">ntust.edu.tw</domain>
         <pin-set expiration="2027-08-18">
             <pin digest="SHA-256">Nz3wUtBXZ+2HPXuSyx4enXs62i/PH4MKtayV9N4X0PE=</pin>
             <pin digest="SHA-256">9VZ7Yd685RTXsE6rL/puuMbnejYaXwaZasGL7c+Uolc=</pin>
+            <pin digest="SHA-256">BxOmElsPeD54MBOb5h+TPNJnBlsAk6spRc/wLnko0cc=</pin>
         </pin-set>
     </domain-config>
 
