@@ -19,7 +19,9 @@ import javax.xml.parsers.DocumentBuilderFactory
  */
 class NetworkSecurityConfigTest {
 
-    private data class PinSet(val domains: List<String>, val expiration: LocalDate, val pins: Set<String>)
+    private data class Domain(val name: String, val includeSubdomains: Boolean)
+
+    private data class PinSet(val domains: List<Domain>, val expiration: LocalDate, val pins: Set<String>)
 
     private fun Element.children(tag: String): List<Element> =
         (0 until childNodes.length).map { childNodes.item(it) }
@@ -31,7 +33,10 @@ class NetworkSecurityConfigTest {
             .getElementsByTagName("pin-set")
         return (0 until pinSets.length).map { pinSets.item(it) as Element }.map { pinSet ->
             PinSet(
-                domains = (pinSet.parentNode as Element).children("domain").map { it.textContent.trim() },
+                domains = (pinSet.parentNode as Element).children("domain").map {
+                    // An absent includeSubdomains means false, as the platform reads it.
+                    Domain(it.textContent.trim(), it.getAttribute("includeSubdomains").toBoolean())
+                },
                 expiration = LocalDate.parse(pinSet.getAttribute("expiration")),
                 pins = pinSet.children("pin").map { it.textContent.trim() }.toSet(),
             )
@@ -46,7 +51,7 @@ class NetworkSecurityConfigTest {
         assertTrue(release.isNotEmpty())
         release.forEach { set ->
             assertTrue(
-                "The ${set.domains} pins expire on ${set.expiration}; rotate them in both apps",
+                "The ${set.domains.map { it.name }} pins expire on ${set.expiration}; rotate them in both apps",
                 set.expiration >= deadline,
             )
         }
