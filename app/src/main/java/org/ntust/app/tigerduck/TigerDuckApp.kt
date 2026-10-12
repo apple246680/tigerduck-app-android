@@ -7,6 +7,7 @@ import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
+import org.ntust.app.tigerduck.academic.AcademicCalendarStore
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.data.DataMigration
 import org.ntust.app.tigerduck.data.cache.DataCache
@@ -46,6 +47,9 @@ class TigerDuckApp : Application(), Configuration.Provider {
 
     @Inject
     lateinit var wearBridge: WearScheduleBridge
+
+    @Inject
+    lateinit var academicCalendar: AcademicCalendarStore
 
     @Inject
     lateinit var analyticsLogger: AnalyticsLogger
@@ -129,6 +133,11 @@ class TigerDuckApp : Application(), Configuration.Provider {
         // Mirror language changes to the watch so its UI follows the phone.
         appScope.launch {
             appPreferences.appLanguageChanged.collect { wearBridge.publish() }
+        }
+        // The watch hides classes on the quiet days it was last sent, so a new
+        // holiday list or a flipped "Still have class?" switch needs a publish.
+        appScope.launch {
+            academicCalendar.changes.collect { wearBridge.publish() }
         }
         // Switching language recreates the Activities but not the process, so
         // without this the channel names in system Settings would stay in the

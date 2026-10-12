@@ -7,8 +7,12 @@ import com.google.gson.Gson
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -55,6 +59,19 @@ class AcademicCalendarStore @Inject constructor(
         MutableStateFlow(loadFromDisk())
     }
     val calendar: StateFlow<AcademicCalendar> get() = _calendar.asStateFlow()
+
+    private val _changes = MutableSharedFlow<Unit>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    /**
+     * Emits when a refresh changes the calendar or the user's holiday opt-ins
+     * change, for the paired watch: it keeps the quiet days it was last sent
+     * and cannot ask this store. Separate from [calendar], whose collectors
+     * would load the cached payload on every process start.
+     */
+    val changes: SharedFlow<Unit> = _changes.asSharedFlow()
 
     /**
      * Holidays this user asked to keep hearing about.
@@ -107,11 +124,15 @@ class AcademicCalendarStore @Inject constructor(
                             val parsed = AcademicCalendar.from(
                                 gson.fromJson(body, AcademicCalendarDto::class.java)
                             )
+                            // Read before the write below: a first read loads
+                            // the payload from disk and would see the new one.
+                            val previous = _calendar.value
                             prefs.edit()
                                 .putString(KEY_PAYLOAD, body)
                                 .putString(KEY_ETAG, response.header("ETag"))
                                 .apply()
                             _calendar.value = parsed
+                            if (parsed != previous) _changes.tryEmit(Unit)
                             true
                         }
                         else -> false
@@ -138,12 +159,15 @@ class AcademicCalendarStore @Inject constructor(
         val next = if (notify) current + holidayId else current - holidayId
         if (next == current) return false
         appPreferences.holidayNotifyOverrides = next
+        _changes.tryEmit(Unit)
         return true
     }
 
     /** Replace the local set from a cloud-sync snapshot. */
     fun applySyncedOverrides(ids: Set<Int>) {
+        val changed = ids != appPreferences.holidayNotifyOverrides
         appPreferences.holidayNotifyOverrides = ids
+        if (changed) _changes.tryEmit(Unit)
     }
 
     private fun loadFromDisk(): AcademicCalendar {
