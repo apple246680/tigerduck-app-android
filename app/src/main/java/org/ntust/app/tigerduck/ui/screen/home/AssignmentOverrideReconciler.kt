@@ -36,7 +36,7 @@ object AssignmentOverrideReconciler {
     /** No override recorded. Also what the server reports for an unknown id. */
     const val STATUS_NONE = "none"
 
-    /** 已忽略 — hidden from the main list, notifications become safety nets. */
+    /** Ignored: hidden from the main list, and no longer reminded. */
     const val STATUS_IGNORED = "ignored"
 
     /** 標示為完成 — user says done, distinct from Moodle's own isCompleted. */

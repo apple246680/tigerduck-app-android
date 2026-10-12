@@ -27,10 +27,9 @@ class AssignmentNotificationReceiver : BroadcastReceiver() {
         val title = intent.getStringExtra(EXTRA_TITLE) ?: return
         val courseName = intent.getStringExtra(EXTRA_COURSE_NAME) ?: ""
         val assignmentId = intent.getStringExtra(EXTRA_ASSIGNMENT_ID) ?: return
-        // Pre-safety-net intents (still pending from before the feature
-        // shipped) won't carry the EXTRA_KIND value — treat their absence as
-        // a regular reminder so they keep firing the original body.
-        val kind = intent.getIntExtra(EXTRA_KIND, KIND_REGULAR)
+        // Armed by an older version for homework the user had ignored or
+        // marked done, which gets no reminder now. Alarms outlive an update.
+        if (intent.getIntExtra(EXTRA_KIND, 0) == LEGACY_KIND_SAFETY_NET) return
         val offset = AssignmentReminderOffset.fromRawValue(intent.getStringExtra(EXTRA_OFFSET))
 
         // Every path that turns reminders off cancels the alarms already
@@ -46,7 +45,7 @@ class AssignmentNotificationReceiver : BroadcastReceiver() {
         }
 
         notificationChannels.ensureRegistered()
-        post(context, title, courseName, assignmentId, kind, offset)
+        post(context, title, courseName, assignmentId, offset)
     }
 
     companion object {
@@ -55,12 +54,8 @@ class AssignmentNotificationReceiver : BroadcastReceiver() {
         const val EXTRA_COURSE_NAME = "course_name"
         const val EXTRA_ASSIGNMENT_ID = "assignment_id"
 
-        // Distinguishes the regular "homework due in 1h" reminder from the
-        // safety-net reminder shown for assignments the user has ignored or
-        // marked-as-done but never actually submitted on Moodle.
-        const val EXTRA_KIND = "kind"
-        const val KIND_REGULAR = 0
-        const val KIND_SAFETY_NET = 1
+        private const val EXTRA_KIND = "kind"
+        private const val LEGACY_KIND_SAFETY_NET = 1
 
         // rawValue of the AssignmentReminderOffset that produced this
         // reminder; null on legacy single-shot intents pending from before
@@ -77,16 +72,12 @@ class AssignmentNotificationReceiver : BroadcastReceiver() {
             title: String,
             courseName: String,
             assignmentId: String,
-            kind: Int,
             offset: AssignmentReminderOffset?,
         ) {
             val notificationManager =
                 context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-            val (titleText, bodyText) = if (kind == KIND_SAFETY_NET) {
-                context.getString(R.string.notification_assignment_safety_net_title) to
-                    context.getString(R.string.notification_assignment_safety_net_body, courseName, title)
-            } else if (offset != null) {
+            val (titleText, bodyText) = if (offset != null) {
                 // Per-offset wording (mirrors iOS). `notification_assignment_reminder_title`
                 // takes the course name; the body templates take (course, title).
                 context.getString(R.string.notification_assignment_reminder_title, courseName) to

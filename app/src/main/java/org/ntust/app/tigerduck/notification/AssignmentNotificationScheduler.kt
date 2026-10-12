@@ -29,13 +29,9 @@ class AssignmentNotificationScheduler @Inject constructor(
     /**
      * Schedule a reminder for each (upcoming assignment × enabled offset).
      *
-     * Assignments whose id appears in [safetyNetIds] are still scheduled but
-     * with `EXTRA_KIND = KIND_SAFETY_NET`, so the receiver posts a different
-     * body warning the user that they ignored / marked-done a homework they
-     * haven't actually submitted. Safety-net reminders only fire once per
-     * assignment — at the closest enabled offset before the deadline — so a
-     * user with many enabled offsets doesn't get spammed with five "you
-     * still haven't submitted" alerts for the same dismissed item.
+     * [assignments] are the ones that may still remind the user, which is
+     * what [org.ntust.app.tigerduck.data.cache.DataCache.loadOutstandingAssignments]
+     * returns: an assignment ignored or marked done gets no reminder at all.
      *
      * Soft cap of 60 pending alarms matches the iOS scheduler so power-users
      * with many courses don't drift toward Android's 500-alarm budget. The
@@ -46,7 +42,6 @@ class AssignmentNotificationScheduler @Inject constructor(
      */
     fun scheduleAll(
         assignments: List<Assignment>,
-        safetyNetIds: Set<String> = emptySet(),
         offsets: Set<AssignmentReminderOffset> = AssignmentReminderOffset.DEFAULTS,
     ): Unit = synchronized(schedulerLock) {
         cancelAllTracked()
@@ -59,29 +54,14 @@ class AssignmentNotificationScheduler @Inject constructor(
             val triggerTime: Long,
             val title: String,
             val courseName: String,
-            val isSafetyNet: Boolean,
         )
 
         val pending = mutableListOf<Pending>()
         for (assignment in assignments) {
             if (assignment.isCompleted) continue
-            val isSafetyNet = assignment.assignmentId in safetyNetIds
-            val applicable = if (isSafetyNet) {
-                // Surface a safety-net only at the closest-to-deadline still-
-                // future offset (largest triggerTime), not all of them — see
-                // KDoc rationale. `maxByOrNull` picks the latest fire time =
-                // smallest remaining gap to the deadline.
-                offsets
-                    .map { it to assignment.dueDate.time - it.milliseconds }
-                    .filter { it.second > now }
-                    .maxByOrNull { it.second }
-                    ?.let { listOf(it) }
-                    ?: emptyList()
-            } else {
-                offsets
-                    .map { it to assignment.dueDate.time - it.milliseconds }
-                    .filter { it.second > now }
-            }
+            val applicable = offsets
+                .map { it to assignment.dueDate.time - it.milliseconds }
+                .filter { it.second > now }
             for ((offset, triggerTime) in applicable) {
                 pending.add(
                     Pending(
@@ -90,7 +70,6 @@ class AssignmentNotificationScheduler @Inject constructor(
                         triggerTime = triggerTime,
                         title = assignment.title,
                         courseName = assignment.courseName,
-                        isSafetyNet = isSafetyNet,
                     )
                 )
             }
@@ -130,17 +109,11 @@ class AssignmentNotificationScheduler @Inject constructor(
 
         for (item in capped) {
             val key = trackerKey(item.assignmentId, item.offset)
-            val kind = if (item.isSafetyNet) {
-                AssignmentNotificationReceiver.KIND_SAFETY_NET
-            } else {
-                AssignmentNotificationReceiver.KIND_REGULAR
-            }
 
             val intent = Intent(context, AssignmentNotificationReceiver::class.java).apply {
                 putExtra(AssignmentNotificationReceiver.EXTRA_TITLE, item.title)
                 putExtra(AssignmentNotificationReceiver.EXTRA_COURSE_NAME, item.courseName)
                 putExtra(AssignmentNotificationReceiver.EXTRA_ASSIGNMENT_ID, item.assignmentId)
-                putExtra(AssignmentNotificationReceiver.EXTRA_KIND, kind)
                 putExtra(AssignmentNotificationReceiver.EXTRA_OFFSET, item.offset.rawValue)
             }
 

@@ -1038,10 +1038,10 @@ class NotificationSettingsSync internal constructor(
             override fun cancelAll() = scheduler.cancelAllTracked()
 
             override suspend fun rescheduleFromCache() {
-                val assignments = dataCache.loadAssignments().filter { !it.isCompleted }
-                val safetyNetIds =
-                    dataCache.loadIgnoredAssignments() + dataCache.loadMarkedCompletedAssignments()
-                scheduler.scheduleAll(assignments, safetyNetIds, appPreferences.notifyAssignmentOffsets)
+                scheduler.scheduleAll(
+                    dataCache.loadOutstandingAssignments(),
+                    appPreferences.notifyAssignmentOffsets,
+                )
             }
         },
         cloudSyncEnabled = { appPreferences.cloudSyncEnabled },

@@ -441,14 +441,8 @@ class BackgroundSyncWorker @AssistedInject constructor(
                 }
 
             if (prefs.notifyAssignments) {
-                // Hand the scheduler both the full non-completed list and the
-                // dismissed set; it routes ignored/marked ids to the safety-
-                // net reminder body instead of dropping them.
-                val ignored = dataCache.loadIgnoredAssignments()
-                val marked = dataCache.loadMarkedCompletedAssignments()
                 notificationScheduler.scheduleAll(
-                    merged.filter { !it.isCompleted },
-                    ignored + marked,
+                    dataCache.loadOutstandingAssignments(),
                     prefs.notifyAssignmentOffsets,
                 )
             }

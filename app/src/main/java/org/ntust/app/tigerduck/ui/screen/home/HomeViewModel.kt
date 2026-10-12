@@ -42,6 +42,7 @@ import org.ntust.app.tigerduck.notification.SyncSource
 import org.ntust.app.tigerduck.push.SyncApiClient
 import org.ntust.app.tigerduck.data.CourseColorStore
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
+import org.ntust.app.tigerduck.data.OutstandingAssignments
 import org.ntust.app.tigerduck.data.RefreshPolicy
 import org.ntust.app.tigerduck.data.RefreshTriggers
 import org.ntust.app.tigerduck.data.cache.DataCache
@@ -774,10 +775,6 @@ class HomeViewModel @Inject constructor(
         _todayCourses.value = courses.filter { it.schedule.containsKey(todayIndex) }
         _allAssignments.value = assignments.sortedBy { it.dueDate }
 
-        // Schedule notifications for upcoming assignments. Items the user has
-        // ignored or marked-done still get scheduled, but as safety-net
-        // reminders — they fire at the same lead time as regular alerts but
-        // call out that the homework was dismissed without being submitted.
         if (prefs.notifyAssignments) {
             rescheduleAssignmentNotifications(assignments)
         }
@@ -786,16 +783,14 @@ class HomeViewModel @Inject constructor(
         liveActivityManager.refresh()
     }
 
-    /**
-     * Re-arm every assignment alarm against the current ignored/marked sets.
-     * The scheduler decides REGULAR vs SAFETY_NET per id; we just hand it the
-     * full list of non-completed assignments and the union of dismissed ids.
-     */
+    /** Re-arm every assignment alarm against the current ignored and marked-done sets. */
     private fun rescheduleAssignmentNotifications(assignments: List<Assignment>) {
-        val safetyNetIds = _ignoredAssignmentIds.value + _markedCompletedIds.value
         notificationScheduler.scheduleAll(
-            assignments.filter { !it.isCompleted },
-            safetyNetIds,
+            OutstandingAssignments.of(
+                assignments,
+                ignoredIds = _ignoredAssignmentIds.value,
+                markedCompletedIds = _markedCompletedIds.value,
+            ),
             prefs.notifyAssignmentOffsets,
         )
     }
