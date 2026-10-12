@@ -172,6 +172,8 @@ class BackgroundSyncWorker @AssistedInject constructor(
                 dataCache.replaceIgnoredAssignments(result.ignoredIds)
                 dataCache.replaceMarkedCompletedAssignments(result.completedIds)
             }
+            val marksChanged = !isFirstTimeMigration &&
+                (result.ignoredIds != localIgnored || result.completedIds != localMarked)
             courseIgnoreSync.applySnapshot(result)
 
             if (prefs.syncCourseColors && result.courseOverrides.isNotEmpty()) {
@@ -197,6 +199,15 @@ class BackgroundSyncWorker @AssistedInject constructor(
                         Log.w(TAG, "notification settings pull failed", e)
                     }
             }.await()
+            // Homework ignored or marked done on another device takes its
+            // reminders here with it, whether or not this run fetches
+            // assignments and arms them again.
+            if (marksChanged && prefs.notifyAssignments) {
+                notificationScheduler.scheduleAll(
+                    dataCache.loadOutstandingAssignments(),
+                    prefs.notifyAssignmentOffsets,
+                )
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
