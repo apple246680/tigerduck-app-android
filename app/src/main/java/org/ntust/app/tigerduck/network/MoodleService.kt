@@ -352,10 +352,7 @@ class MoodleService @Inject constructor(
     private fun callGetAssignments(token: String, courseIds: List<Int>): MoodleAssignmentsEnvelope {
         val url =
             "$webserviceUrl?moodlewsrestformat=json&wsfunction=mod_assign_get_assignments&wstoken=$token"
-        val form = FormBody.Builder().apply {
-            courseIds.forEachIndexed { i, id -> add("courseids[$i]", id.toString()) }
-        }.build()
-        val req = Request.Builder().url(url).post(form).build()
+        val req = Request.Builder().url(url).post(assignmentsForm(courseIds)).build()
         val body = client.newCall(req).execute().use { response ->
             if (!response.isSuccessful) throw MoodleWebserviceError.HttpStatus(response.code)
             response.body.string()
@@ -413,6 +410,16 @@ class MoodleService @Inject constructor(
 
     companion object {
         private val decodeGson = Gson()
+
+        /**
+         * The `mod_assign_get_assignments` form for [courseIds]. It asks only
+         * for the courses where the user can submit, so Moodle leaves out a
+         * course they are a TA in, whose assignments they grade (issue #160).
+         */
+        internal fun assignmentsForm(courseIds: List<Int>): FormBody = FormBody.Builder().apply {
+            courseIds.forEachIndexed { i, id -> add("courseids[$i]", id.toString()) }
+            add("capabilities[0]", "mod/assign:submit")
+        }.build()
 
         /**
          * The assignments [cached] records as submitted, by Moodle assignment
