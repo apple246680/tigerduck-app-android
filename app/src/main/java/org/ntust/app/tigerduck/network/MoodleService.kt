@@ -159,8 +159,8 @@ class MoodleService @Inject constructor(
      * dropped courses are excluded), else fall back to semesterCode filtering
      * on first launch when the roster cache is still empty.
      *
-     * Null when no course of this term was left to ask about, which the
-     * callers answer by keeping the assignments they have, as iOS does. Any
+     * Null when no course was left to ask about, which the callers answer
+     * by keeping the assignments they have, as iOS does. Any
      * list is Moodle's answer, and an empty one replaces them like any
      * other: see [requestAssignments], which throws for everything else.
      */

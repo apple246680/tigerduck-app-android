@@ -667,8 +667,8 @@ class HomeViewModel @Inject constructor(
      * portal + Moodle enrolled-courses) run in parallel, then per-course
      * detail lookups run in parallel while assignments are fetched alongside.
      * Returns (null, null) for any piece that failed so the caller can fall
-     * back to cached data cleanly, and null assignments when Moodle had no
-     * course of this term to ask about.
+     * back to cached data cleanly, and null assignments when there was no
+     * course to ask Moodle about.
      */
     private suspend fun fetchCoursesAndAssignments(
         studentId: String,

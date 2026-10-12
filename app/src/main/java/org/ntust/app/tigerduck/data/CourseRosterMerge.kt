@@ -138,9 +138,9 @@ object CourseRosterMerge {
      * [org.ntust.app.tigerduck.network.MoodleService.fetchAssignments].
      *
      * And a submission [cached] already records is kept, see
-     * [preserveConfirmedSubmissions]. The calendar's refresh used to apply
-     * only the first rule, so one failed status call there marked a
-     * submitted assignment as outstanding for every screen.
+     * [preserveConfirmedSubmissions]. The calendar's refresh once kept the
+     * cache on an empty answer but not this, so one failed status call there
+     * marked a submitted assignment as outstanding for every screen.
      */
     fun assignmentsToStore(
         remote: List<Assignment>?,

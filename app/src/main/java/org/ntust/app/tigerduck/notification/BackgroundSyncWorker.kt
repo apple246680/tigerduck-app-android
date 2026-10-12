@@ -427,8 +427,8 @@ class BackgroundSyncWorker @AssistedInject constructor(
     private suspend fun syncAssignments(): Boolean {
         return try {
             val enrolled = moodleService.fetchEnrolledCourses()
-            // Null, which keeps the cache, when no course of this term was
-            // left to ask about; an empty answer empties it, and the
+            // Null, which keeps the cache, when no course was left to ask
+            // about; an empty answer empties it, and the
             // reminders below go with it — see assignmentsToStore.
             val merged = CourseRosterMerge.assignmentsToStore(
                 remote = moodleService.fetchAssignments(enrolled),
