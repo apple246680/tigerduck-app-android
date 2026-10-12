@@ -5,7 +5,12 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.ntust.app.tigerduck.academic.AcademicCalendar
+import org.ntust.app.tigerduck.academic.Holiday
+import org.ntust.app.tigerduck.academic.QuietDays
+import org.ntust.app.tigerduck.academic.SemesterTerm
 import org.ntust.app.tigerduck.shared.Course
+import java.time.LocalDate
 import java.util.Calendar
 import java.util.GregorianCalendar
 import java.util.TimeZone
@@ -89,6 +94,49 @@ class ClassTableSelectionTest {
             listOf("MON"),
             ClassTableSelection.coursesOn(listOf(monday, tuesday), weekday = 1).map { it.courseNo },
         )
+    }
+
+    // --- todayCourses ------------------------------------------------------
+
+    private val autumnTerm = AcademicCalendar(
+        revision = 1L,
+        terms = listOf(
+            SemesterTerm("1151", LocalDate.parse("2026-09-07"), LocalDate.parse("2026-12-25")),
+        ),
+        holidays = listOf(
+            Holiday(1, "教師節", "Teachers' Day", LocalDate.parse("2026-09-28"), LocalDate.parse("2026-09-28")),
+        ),
+    )
+
+    private val timetable = listOf(
+        course("LATE", mapOf(1 to listOf("10"))),
+        course("TUE", mapOf(2 to listOf("1"))),
+        course("EARLY", mapOf(1 to listOf("2"))),
+    )
+
+    private fun carousel(today: String, optedIn: Set<Int> = emptySet()): List<String> =
+        ClassTableSelection.todayCourses(
+            timetable, LocalDate.parse(today), QuietDays(autumnTerm, optedIn),
+        ).map { it.courseNo }
+
+    @Test
+    fun `the carousel lists today's classes in the order they are taught`() {
+        assertEquals(listOf("EARLY", "LATE"), carousel("2026-10-05"))
+    }
+
+    @Test
+    fun `the carousel lists no class on a holiday the user has not opted back into`() {
+        assertEquals(emptyList<String>(), carousel("2026-09-28"))
+    }
+
+    @Test
+    fun `the carousel lists a holiday's classes once the user opts back in`() {
+        assertEquals(listOf("EARLY", "LATE"), carousel("2026-09-28", optedIn = setOf(1)))
+    }
+
+    @Test
+    fun `the carousel lists no class outside the term`() {
+        assertEquals(emptyList<String>(), carousel("2027-01-04"))
     }
 
     // --- timeRange ---------------------------------------------------------

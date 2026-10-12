@@ -8,7 +8,9 @@
 package org.ntust.app.tigerduck.ui.screen.classtable
 
 import org.ntust.app.tigerduck.AppConstants
+import org.ntust.app.tigerduck.academic.QuietDays
 import org.ntust.app.tigerduck.shared.Course
+import java.time.LocalDate
 import java.util.Calendar
 
 object ClassTableSelection {
@@ -44,6 +46,15 @@ object ClassTableSelection {
                 ?.let { AppConstants.Periods.chronologicalOrder.indexOf(it) }
                 ?: Int.MAX_VALUE
         }
+
+    /**
+     * The today carousel's courses: [coursesOn] for [today], or none on a
+     * quiet day, which hides the carousel as a day without classes does. The
+     * timetable is filled weeks before 開學, and no class meets on a holiday
+     * the user has not opted back into.
+     */
+    fun todayCourses(courses: List<Course>, today: LocalDate, quietDays: QuietDays): List<Course> =
+        if (today in quietDays) emptyList() else coursesOn(courses, today.dayOfWeek.value)
 
     /**
      * "09:10 - 12:00" for the tapped day, spanning the course's first to last
