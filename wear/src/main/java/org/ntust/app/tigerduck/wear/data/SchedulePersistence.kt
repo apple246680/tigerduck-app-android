@@ -1,25 +1,27 @@
 package org.ntust.app.tigerduck.wear.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import org.ntust.app.tigerduck.shared.Course
+import org.ntust.app.tigerduck.shared.QuietDays
 import java.io.ByteArrayInputStream
+import java.time.LocalDate
 import java.util.zip.GZIPInputStream
 
 private val Context.scheduleDataStore by preferencesDataStore(name = "wear_schedule")
 
 class SchedulePersistence(private val context: Context) {
-
-    private val gson = Gson()
 
     /**
      * Tiny SharedPreferences shadow for values that need a *synchronous*
@@ -52,15 +54,14 @@ class SchedulePersistence(private val context: Context) {
         loggedIn: Boolean,
         languageTag: String?,
         disableScreenCaptureProtection: Boolean,
+        quietDays: List<String>?,
     ) {
         val coursesJson = decompress(coursesGzipped)
         context.scheduleDataStore.edit { prefs ->
-            prefs[KEY_COURSES_JSON] = coursesJson
-            prefs[KEY_ACCENT_HEX] = accentHex
-            prefs[KEY_SYNCED_AT] = syncedAtMs
-            prefs[KEY_LOGGED_IN] = loggedIn
-            if (languageTag != null) prefs[KEY_LANGUAGE] = languageTag
-            prefs[KEY_DISABLE_SCREEN_CAPTURE_PROTECTION] = disableScreenCaptureProtection
+            writeSnapshot(
+                prefs, coursesJson, accentHex, syncedAtMs, loggedIn, languageTag,
+                disableScreenCaptureProtection, quietDays,
+            )
         }
         if (languageTag != null) {
             bootstrapPrefs.edit().putString(BOOTSTRAP_KEY_LANGUAGE, languageTag).apply()
@@ -89,43 +90,6 @@ class SchedulePersistence(private val context: Context) {
         context.scheduleDataStore.data.map { prefs ->
             prefs[KEY_QR_PADDING_DP] ?: DEFAULT_QR_PADDING_DP
         }
-
-    private fun readSnapshot(prefs: Preferences): WatchSnapshot {
-        val json = prefs[KEY_COURSES_JSON]
-        val courses: List<Course> = if (json.isNullOrBlank()) emptyList() else parseCourses(json)
-        return WatchSnapshot(
-            courses = courses,
-            accentHex = prefs[KEY_ACCENT_HEX] ?: DEFAULT_ACCENT,
-            // Distinguish "key absent" (never synced) from "key present, value 0".
-            // Preferences DataStore returns null for unset keys via the indexed accessor.
-            syncedAtMs = prefs[KEY_SYNCED_AT],
-            loggedIn = prefs[KEY_LOGGED_IN] ?: false,
-            languageTag = prefs[KEY_LANGUAGE],
-        )
-    }
-
-    private fun parseCourses(json: String): List<Course> {
-        // v1.4.0 phone shipped without a keep rule for CourseDto, so its
-        // wire JSON used R8-obfuscated keys (e.g. `{"a":"..."}`). v1.4.1
-        // wear expects `"courseNo"` etc. — if the DataStore snapshot was
-        // written by v1.4.0, Gson populates CourseWire with null Strings
-        // and `toCourse()` NPEs through Course's non-null constructor.
-        // The watch's launch-time sync request will replace this snapshot
-        // shortly, so dropping it on the floor is the safest fallback.
-        // Sentinel requires the trailing `:` so a value that happens to
-        // contain the substring `courseNo` cannot fake an object key.
-        // Parse is also try/caught: a truncated or otherwise malformed
-        // payload that still contains the token must not bubble an
-        // exception up through the snapshot flow.
-        if (!json.contains(COURSE_NO_TOKEN)) return emptyList()
-        return try {
-            val type = object : TypeToken<List<CourseWire>>() {}.type
-            val wire: List<CourseWire> = gson.fromJson(json, type) ?: emptyList()
-            wire.map { it.toCourse() }
-        } catch (_: Exception) {
-            emptyList()
-        }
-    }
 
     private fun decompress(gz: ByteArray): String =
         GZIPInputStream(ByteArrayInputStream(gz)).bufferedReader().use { it.readText() }
@@ -198,7 +162,72 @@ class SchedulePersistence(private val context: Context) {
             androidx.datastore.preferences.core.intPreferencesKey("qr_padding_dp")
         private val KEY_DISABLE_SCREEN_CAPTURE_PROTECTION =
             booleanPreferencesKey("disable_screen_capture_protection")
+        private val KEY_QUIET_DAYS = stringSetPreferencesKey("quiet_days")
         private const val BOOTSTRAP_KEY_LANGUAGE = "language_tag"
+
+        private val gson = Gson()
+
+        /** Stores one schedule payload; [write] decompresses the courses first. */
+        internal fun writeSnapshot(
+            prefs: MutablePreferences,
+            coursesJson: String,
+            accentHex: String,
+            syncedAtMs: Long,
+            loggedIn: Boolean,
+            languageTag: String?,
+            disableScreenCaptureProtection: Boolean,
+            quietDays: List<String>?,
+        ) {
+            prefs[KEY_COURSES_JSON] = coursesJson
+            prefs[KEY_ACCENT_HEX] = accentHex
+            prefs[KEY_SYNCED_AT] = syncedAtMs
+            prefs[KEY_LOGGED_IN] = loggedIn
+            if (languageTag != null) prefs[KEY_LANGUAGE] = languageTag
+            prefs[KEY_DISABLE_SCREEN_CAPTURE_PROTECTION] = disableScreenCaptureProtection
+            // Replaced on every write, not kept like the language tag: a phone
+            // that predates quiet days sends none, and the watch must then show
+            // every class rather than the days an earlier phone sent.
+            prefs[KEY_QUIET_DAYS] = quietDays.orEmpty().toSet()
+        }
+
+        internal fun readSnapshot(prefs: Preferences): WatchSnapshot {
+            val json = prefs[KEY_COURSES_JSON]
+            val courses: List<Course> = if (json.isNullOrBlank()) emptyList() else parseCourses(json)
+            return WatchSnapshot(
+                courses = courses,
+                accentHex = prefs[KEY_ACCENT_HEX] ?: DEFAULT_ACCENT,
+                // Distinguish "key absent" (never synced) from "key present, value 0".
+                // Preferences DataStore returns null for unset keys via the indexed accessor.
+                syncedAtMs = prefs[KEY_SYNCED_AT],
+                loggedIn = prefs[KEY_LOGGED_IN] ?: false,
+                languageTag = prefs[KEY_LANGUAGE],
+                // Absent from a snapshot an older watch build stored.
+                quietDays = QuietDays.decode(prefs[KEY_QUIET_DAYS]),
+            )
+        }
+
+        private fun parseCourses(json: String): List<Course> {
+            // v1.4.0 phone shipped without a keep rule for CourseDto, so its
+            // wire JSON used R8-obfuscated keys (e.g. `{"a":"..."}`). v1.4.1
+            // wear expects `"courseNo"` etc. — if the DataStore snapshot was
+            // written by v1.4.0, Gson populates CourseWire with null Strings
+            // and `toCourse()` NPEs through Course's non-null constructor.
+            // The watch's launch-time sync request will replace this snapshot
+            // shortly, so dropping it on the floor is the safest fallback.
+            // Sentinel requires the trailing `:` so a value that happens to
+            // contain the substring `courseNo` cannot fake an object key.
+            // Parse is also try/caught: a truncated or otherwise malformed
+            // payload that still contains the token must not bubble an
+            // exception up through the snapshot flow.
+            if (!json.contains(COURSE_NO_TOKEN)) return emptyList()
+            return try {
+                val type = object : TypeToken<List<CourseWire>>() {}.type
+                val wire: List<CourseWire> = gson.fromJson(json, type) ?: emptyList()
+                wire.map { it.toCourse() }
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
     }
 }
 
@@ -208,4 +237,6 @@ data class WatchSnapshot(
     val syncedAtMs: Long?,
     val loggedIn: Boolean,
     val languageTag: String?,
+    /** Days the phone says no class meets for this user; empty from an older phone. */
+    val quietDays: Set<LocalDate>,
 )

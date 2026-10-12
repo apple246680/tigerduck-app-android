@@ -45,9 +45,13 @@ class DataLayerListener : WearableListenerService() {
         // false in that case, which matches the safe "protection on" path.
         val disableScreenCaptureProtection =
             map.getBoolean(WearProtocol.Schedule.KEY_DISABLE_SCREEN_CAPTURE_PROTECTION)
+        // Null from a phone that predates the key: no quiet days.
+        val quietDays: List<String>? = map.getStringArrayList(WearProtocol.Schedule.KEY_QUIET_DAYS)
         try {
-            SchedulePersistenceHolder.get(this@DataLayerListener)
-                .write(courses, accent, syncedAt, loggedIn, language, disableScreenCaptureProtection)
+            SchedulePersistenceHolder.get(this@DataLayerListener).write(
+                courses, accent, syncedAt, loggedIn, language, disableScreenCaptureProtection,
+                quietDays,
+            )
         } catch (e: Exception) {
             // Most likely a malformed/truncated gzip payload from the Data Layer
             // (decompress() throws ZipException). Skip this packet rather than
