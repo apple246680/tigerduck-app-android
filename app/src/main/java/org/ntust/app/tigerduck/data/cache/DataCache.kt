@@ -54,13 +54,18 @@ class DataCache @Inject constructor(
     val backgroundSyncVersion: StateFlow<Int> = _backgroundSyncVersion.asStateFlow()
     fun notifyBackgroundSyncComplete() { _backgroundSyncVersion.update { it + 1 } }
 
-    suspend fun replaceIgnoredAssignments(ids: Set<String>) {
-        saveToUserData(ids.toList(), "ignored_assignments.json")
-    }
+    private val _assignmentMarksVersion = MutableStateFlow(0)
 
-    suspend fun replaceMarkedCompletedAssignments(ids: Set<String>) {
-        saveToUserData(ids.toList(), "marked_completed_assignments.json")
-    }
+    /**
+     * Bumped after every write of the ignored and marked-done sets, so a
+     * screen that only reads them, such as the class table, reads them again.
+     */
+    val assignmentMarksVersion: StateFlow<Int> = _assignmentMarksVersion.asStateFlow()
+
+    suspend fun replaceIgnoredAssignments(ids: Set<String>) = saveIgnoredAssignments(ids)
+
+    suspend fun replaceMarkedCompletedAssignments(ids: Set<String>) =
+        saveMarkedCompletedAssignments(ids)
     private val userDataMutex = Mutex()
     private val gson: Gson = GsonBuilder()
         .setDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
@@ -397,8 +402,10 @@ class DataCache @Inject constructor(
     // Stored in filesDir so the user's ignore decisions survive OS cache eviction
     // and remote re-fetches, mirroring skipped_dates.json handling.
 
-    suspend fun saveIgnoredAssignments(ids: Set<String>) =
+    suspend fun saveIgnoredAssignments(ids: Set<String>) {
         saveToUserData(ids.toList(), "ignored_assignments.json")
+        _assignmentMarksVersion.update { it + 1 }
+    }
 
     suspend fun loadIgnoredAssignments(): Set<String> {
         val type = object : TypeToken<List<String>>() {}.type
@@ -412,8 +419,10 @@ class DataCache @Inject constructor(
     // won't) record a submission. Persisted in filesDir alongside the ignore
     // list so it survives remote re-fetches.
 
-    suspend fun saveMarkedCompletedAssignments(ids: Set<String>) =
+    suspend fun saveMarkedCompletedAssignments(ids: Set<String>) {
         saveToUserData(ids.toList(), "marked_completed_assignments.json")
+        _assignmentMarksVersion.update { it + 1 }
+    }
 
     suspend fun loadMarkedCompletedAssignments(): Set<String> {
         val type = object : TypeToken<List<String>>() {}.type

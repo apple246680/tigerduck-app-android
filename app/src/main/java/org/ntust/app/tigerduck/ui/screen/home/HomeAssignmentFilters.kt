@@ -9,6 +9,7 @@
 package org.ntust.app.tigerduck.ui.screen.home
 
 import java.util.Date
+import org.ntust.app.tigerduck.data.OutstandingAssignments
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.model.AssignmentFilter
 
@@ -89,8 +90,6 @@ object HomeAssignmentFilters {
         markedCompletedIds: Set<String>,
     ): Boolean =
         this.courseNo == courseNo &&
-            !isCompleted &&
-            assignmentId !in ignoredIds &&
-            assignmentId !in markedCompletedIds
+            OutstandingAssignments.isOutstanding(this, ignoredIds, markedCompletedIds)
 
 }

@@ -55,4 +55,14 @@ class DataCacheTest {
 
         assertEquals(listOf("open"), cache.loadOutstandingAssignments().map { it.assignmentId })
     }
+
+    @Test
+    fun `writing the ignored or marked-done set tells readers to look again`() = runTest {
+        val before = cache.assignmentMarksVersion.value
+
+        cache.replaceIgnoredAssignments(setOf("a"))
+        cache.replaceMarkedCompletedAssignments(setOf("b"))
+
+        assertEquals(before + 2, cache.assignmentMarksVersion.value)
+    }
 }

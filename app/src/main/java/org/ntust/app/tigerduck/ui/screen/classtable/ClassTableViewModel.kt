@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
@@ -28,6 +29,7 @@ import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.data.CourseColorStore
 import org.ntust.app.tigerduck.shared.OngoingCourseInfo
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
+import org.ntust.app.tigerduck.data.OutstandingAssignments
 import org.ntust.app.tigerduck.data.RefreshPolicy
 import org.ntust.app.tigerduck.data.RefreshTriggers
 import org.ntust.app.tigerduck.data.cache.DataCache
@@ -100,7 +102,29 @@ class ClassTableViewModel @Inject constructor(
     private var liveSemesterCoursesTerm: String? = null
 
     private val _assignments = MutableStateFlow<List<Assignment>>(emptyList())
-    val assignments: StateFlow<List<Assignment>> = _assignments
+
+    // Home owns these two sets and writes them; the class table reads them
+    // back from the cache, so its badges leave out the same assignments.
+    private val _ignoredAssignmentIds = MutableStateFlow<Set<String>>(emptySet())
+    private val _markedCompletedIds = MutableStateFlow<Set<String>>(emptySet())
+
+    /** What the course detail lists: see [OutstandingAssignments]. */
+    val outstandingAssignments: StateFlow<List<Assignment>> = combine(
+        _assignments,
+        _ignoredAssignmentIds,
+        _markedCompletedIds,
+    ) { all, ignored, marked ->
+        OutstandingAssignments.of(all, ignored, marked)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** The courses whose cells and cards carry the "has assignments" badge. */
+    val courseNosWithAssignments: StateFlow<Set<String>> = combine(
+        _assignments,
+        _ignoredAssignmentIds,
+        _markedCompletedIds,
+    ) { all, ignored, marked ->
+        OutstandingAssignments.courseNos(all, ignored, marked)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
@@ -264,6 +288,11 @@ class ClassTableViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataCache.assignmentMarksVersion.drop(1).collect {
+                if (authService.authState.value) loadAssignmentMarks()
+            }
+        }
+        viewModelScope.launch {
             // Clear on logout, refresh on login — a login while the app is
             // open, not the value replayed to this collector. load() fetches
             // for a user signed in at launch; fetching on the replay as well
@@ -279,6 +308,8 @@ class ClassTableViewModel @Inject constructor(
                     loadJob?.cancel()
                     _courses.value = emptyList()
                     _assignments.value = emptyList()
+                    _ignoredAssignmentIds.value = emptySet()
+                    _markedCompletedIds.value = emptySet()
                     _selectedCourse.value = null
                     _moodleCourseIdByIdnumber.value = emptyMap()
                     courseCustomNames = emptyMap()
@@ -325,6 +356,15 @@ class ClassTableViewModel @Inject constructor(
 
     private fun currentDayTime(): ClassTableSelection.DayTime =
         ClassTableSelection.dayTimeFrom(AppClock.calendar())
+
+    private suspend fun loadAssignmentMarks() {
+        val account = authService.storedStudentId
+        val ignored = dataCache.loadIgnoredAssignments()
+        val marked = dataCache.loadMarkedCompletedAssignments()
+        if (!authService.isStillSignedInAs(account)) return
+        _ignoredAssignmentIds.value = ignored
+        _markedCompletedIds.value = marked
+    }
 
     /**
      * The signed-in student's id, for the credits label.
@@ -524,8 +564,8 @@ class ClassTableViewModel @Inject constructor(
 
     // hasAssignment / assignmentsFor were removed: they read _assignments.value
     // outside the snapshot system, so composables calling them never recomposed
-    // when the assignments fetch landed. The screen now collects [assignments]
-    // and derives badge state itself.
+    // when the assignments fetch landed. The screen now collects
+    // [courseNosWithAssignments] and [outstandingAssignments] instead.
 
     /**
      * [fromLiveTerm] is for the today carousel, whose courses come from the
@@ -722,6 +762,7 @@ class ClassTableViewModel @Inject constructor(
     private fun loadNow(fetch: Boolean) {
         hasLoaded = true
         loadJob = viewModelScope.launch {
+            loadAssignmentMarks()
             val cached = dataCache.loadCourses(_currentSemester.value)
             val cachedA = dataCache.loadAssignments()
             val cachedMoodleIds = dataCache.loadMoodleCourseIds()

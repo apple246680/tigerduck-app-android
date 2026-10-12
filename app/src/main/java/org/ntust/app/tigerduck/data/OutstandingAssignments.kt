@@ -27,4 +27,13 @@ object OutstandingAssignments {
         ignoredIds: Set<String>,
         markedCompletedIds: Set<String>,
     ): List<Assignment> = all.filter { isOutstanding(it, ignoredIds, markedCompletedIds) }
+
+    /** The courses with anything outstanding: the ones a "has assignments" badge marks. */
+    fun courseNos(
+        all: List<Assignment>,
+        ignoredIds: Set<String>,
+        markedCompletedIds: Set<String>,
+    ): Set<String> = all.asSequence()
+        .filter { isOutstanding(it, ignoredIds, markedCompletedIds) }
+        .mapTo(mutableSetOf()) { it.courseNo }
 }
