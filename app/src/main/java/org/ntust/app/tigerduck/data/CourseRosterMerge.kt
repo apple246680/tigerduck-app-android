@@ -128,19 +128,25 @@ object CourseRosterMerge {
      * What a Moodle fetch of [remote] should leave in the assignment cache,
      * or null when the cache is better left as it is.
      *
-     * Both rules every writer of that cache needs, in one place: an empty
-     * answer is upstream failing quietly (a NetScaler challenge, a token
-     * rotation race), not a clear week, so it writes nothing; and a
-     * submission [cached] already records is kept, see
-     * [preserveConfirmedSubmissions]. The calendar's refresh applied only the
-     * first, so one failed status call there marked a submitted assignment
-     * as outstanding for every screen.
+     * Both rules every writer of that cache needs, in one place: a null
+     * [remote] is a fetch that had no course to ask Moodle about, so it
+     * writes nothing, while an empty one is Moodle's answer and empties the
+     * cache. Moodle leaves out a course the user cannot submit to, so for a
+     * TA account whose assignments were all in courses it TAs, that answer
+     * is what takes them off every screen (issue #160). A fetch that failed
+     * threw before this, see
+     * [org.ntust.app.tigerduck.network.MoodleService.fetchAssignments].
+     *
+     * And a submission [cached] already records is kept, see
+     * [preserveConfirmedSubmissions]. The calendar's refresh used to apply
+     * only the first rule, so one failed status call there marked a
+     * submitted assignment as outstanding for every screen.
      */
     fun assignmentsToStore(
-        remote: List<Assignment>,
+        remote: List<Assignment>?,
         cached: List<Assignment>,
     ): List<Assignment>? {
-        if (remote.isEmpty()) return null
+        if (remote == null) return null
         return preserveConfirmedSubmissions(remote, completedIds(cached))
     }
 

@@ -1012,19 +1012,15 @@ class ClassTableViewModel @Inject constructor(
                                 enrolledCourses = moodleAll,
                                 rosterCourseNos = orderedCourseNos.toSet()
                             )
-                            val merged = CourseRosterMerge.preserveConfirmedSubmissions(
+                            // Null keeps the cache: an enrolment fetch that
+                            // failed above left no course to ask about. An
+                            // empty answer replaces it like any other, see
+                            // CourseRosterMerge.assignmentsToStore.
+                            val merged = CourseRosterMerge.assignmentsToStore(
                                 remote = remoteAssignments,
-                                previouslyCompleted =
-                                    CourseRosterMerge.completedIds(_assignments.value),
+                                cached = _assignments.value,
                             )
-                            // Empty means "upstream returned nothing useful",
-                            // not "you have no assignments" — the enrolment
-                            // fetch failing produces the same empty list as a
-                            // clear week. HomeViewModel has guarded this since
-                            // it was written; this path and the background
-                            // worker did not, so a NetScaler challenge or a
-                            // token-rotation race silently emptied the cache.
-                            if (merged.isNotEmpty()) {
+                            if (merged != null) {
                                 _assignments.value = merged
                                 dataCache.saveAssignments(merged)
                             }

@@ -158,11 +158,16 @@ class MoodleService @Inject constructor(
      * Mirrors iOS: filter to the current in-app roster when available (so
      * dropped courses are excluded), else fall back to semesterCode filtering
      * on first launch when the roster cache is still empty.
+     *
+     * Null when no course of this term was left to ask about, which the
+     * callers answer by keeping the assignments they have, as iOS does. Any
+     * list is Moodle's answer, and an empty one replaces them like any
+     * other: see [requestAssignments], which throws for everything else.
      */
     suspend fun fetchAssignments(
         enrolledCourses: List<MoodleEnrolledCourse>,
         rosterCourseNos: Set<String>? = null,
-    ): List<Assignment> = withContext(Dispatchers.IO) {
+    ): List<Assignment>? = withContext(Dispatchers.IO) {
         val token = tokenService.currentToken()
         val currentSemester = courseService.currentSemesterCode()
         // What the class table holds right now, hand-added rows included. It
@@ -182,9 +187,10 @@ class MoodleService @Inject constructor(
             // its courses open, or a break between terms. Dated like any other
             // answer, or the worker would ask again on every run and the
             // "Last synced" row would never move. No courses at all is not
-            // dated: it is also what an upstream failing quietly looks like.
+            // dated: it is also what an upstream failing quietly looks like,
+            // and what the class table passes when its enrolment fetch fails.
             if (enrolledCourses.isNotEmpty()) markSynced(askedWith = token)
-            return@withContext emptyList<Assignment>()
+            return@withContext null
         }
         val localCourseNos = rosterNos + cachedCourseNos
         // Once per course rather than once per assignment: the alias scan

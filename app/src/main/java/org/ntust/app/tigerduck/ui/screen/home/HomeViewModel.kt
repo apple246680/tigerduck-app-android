@@ -634,12 +634,10 @@ class HomeViewModel @Inject constructor(
                         widgetUpdater.requestUpdate()
                     }
 
-                    // Symmetric with the courses branch above: treat an empty
-                    // remote result as "upstream returned nothing useful"
-                    // (NetScaler challenge, token-rotation race, semester-code
-                    // skew in MoodleService.fetchAssignments) rather than
-                    // clobbering a valid cache with an empty list.
-                    if (!remoteAssignments.isNullOrEmpty()) {
+                    // Null when Moodle failed or was not asked; an empty list
+                    // is its answer and replaces the cache like any other.
+                    // See CourseRosterMerge.assignmentsToStore.
+                    if (remoteAssignments != null) {
                         assignments = remoteAssignments
                         dataCache.saveAssignments(remoteAssignments)
                         runCatching { pushApiClient.uploadAssignments(remoteAssignments) }
@@ -669,7 +667,8 @@ class HomeViewModel @Inject constructor(
      * portal + Moodle enrolled-courses) run in parallel, then per-course
      * detail lookups run in parallel while assignments are fetched alongside.
      * Returns (null, null) for any piece that failed so the caller can fall
-     * back to cached data cleanly.
+     * back to cached data cleanly, and null assignments when Moodle had no
+     * course of this term to ask about.
      */
     private suspend fun fetchCoursesAndAssignments(
         studentId: String,
@@ -747,10 +746,9 @@ class HomeViewModel @Inject constructor(
                     enrolledCourses = moodleEnrolled,
                     rosterCourseNos = rosterCourseNos
                 )
-                val existingCompleted =
-                    CourseRosterMerge.completedIds(dataCache.loadAssignments())
+                val cached = dataCache.loadAssignments()
                 ServerStatusTracker.set(ServerStatus.OK, ServerKind.MOODLE)
-                CourseRosterMerge.preserveConfirmedSubmissions(remote, existingCompleted)
+                CourseRosterMerge.assignmentsToStore(remote, cached)
             } catch (e: CancellationException) {
                 // A sign-out cancels the fetch; marking the servers failed
                 // here would land after the tracker was reset for the next

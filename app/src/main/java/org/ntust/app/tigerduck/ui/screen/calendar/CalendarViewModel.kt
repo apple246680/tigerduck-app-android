@@ -429,10 +429,11 @@ class CalendarViewModel @Inject constructor(
             }
             val enrolled = moodleService.fetchEnrolledCourses()
             val cached = dataCache.loadAssignments()
-            // The same rules Home and the class table store by: an empty
-            // answer keeps the cache, and a confirmed submission stays
-            // submitted. This cache is every screen's, so a status call that
-            // failed here used to mark the assignment outstanding everywhere.
+            // The same rules Home and the class table store by: a fetch with
+            // no course to ask about keeps the cache, and a confirmed
+            // submission stays submitted. This cache is every screen's, so a
+            // status call that failed here used to mark the assignment
+            // outstanding everywhere.
             val assignments = CourseRosterMerge.assignmentsToStore(
                 remote = moodleService.fetchAssignments(enrolled),
                 cached = cached,
