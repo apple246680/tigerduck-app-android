@@ -6,6 +6,7 @@
     <string name="a11y_calendar_nav_next">翌月</string>
     <string name="a11y_calendar_nav_prev">前月</string>
     <string name="a11y_class_table_cell_assignment_indicator">課題あり</string>
+    <string name="a11y_class_table_cell_assignments_ignored">課題を無視中</string>
     <string name="a11y_class_table_conflict_prefix">時間割の重複</string>
     <string name="a11y_course_card_open_details_hint">ダブルタップで詳細を表示</string>
     <string name="a11y_course_color_swatch">色 %1$lld</string>
@@ -174,6 +175,8 @@
     <string name="class_table_empty_message">下に引っ張って更新するか、⋯ をタップして授業を追加するか、別の学期に切り替えてください</string>
     <string name="class_table_export_failed">時間割を書き出せませんでした</string>
     <string name="class_table_export_screenshot">時間割のスクリーンショットを書き出す</string>
+    <string name="class_table_ignore_assignments">課題を無視</string>
+    <string name="class_table_ignore_assignments_undo">課題の無視を取り消す</string>
     <string name="class_table_more_actions">その他の操作</string>
     <string name="class_table_pick_color">色を選択</string>
     <string name="class_table_rename_default_label">デフォルト：%1$s</string>

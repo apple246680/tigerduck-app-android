@@ -6,6 +6,7 @@
     <string name="a11y_calendar_nav_next">Sljedeći mjesec</string>
     <string name="a11y_calendar_nav_prev">Prethodni mjesec</string>
     <string name="a11y_class_table_cell_assignment_indicator">Ima zadatak</string>
+    <string name="a11y_class_table_cell_assignments_ignored">Zadaci ignorirani</string>
     <string name="a11y_class_table_conflict_prefix">Sukob sati</string>
     <string name="a11y_course_card_open_details_hint">Dvaput dodirnite za detalje</string>
     <string name="a11y_course_color_swatch">Boja %1$lld</string>
@@ -174,6 +175,8 @@
     <string name="class_table_empty_message">Povucite za osvježavanje, dodirnite ⋯ za dodavanje kolegija ili prijeđite na drugi semestar</string>
     <string name="class_table_export_failed">Raspored nije moguće izvesti</string>
     <string name="class_table_export_screenshot">Izvezi snimku zaslona rasporeda</string>
+    <string name="class_table_ignore_assignments">Ignoriraj zadatke</string>
+    <string name="class_table_ignore_assignments_undo">Poništi ignoriranje zadataka</string>
     <string name="class_table_more_actions">Više radnji</string>
     <string name="class_table_pick_color">Odaberi boju</string>
     <string name="class_table_rename_default_label">Zadano: %1$s</string>

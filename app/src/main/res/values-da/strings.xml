@@ -6,6 +6,7 @@
     <string name="a11y_calendar_nav_next">Næste måned</string>
     <string name="a11y_calendar_nav_prev">Forrige måned</string>
     <string name="a11y_class_table_cell_assignment_indicator">Har opgave</string>
+    <string name="a11y_class_table_cell_assignments_ignored">Opgaver ignoreret</string>
     <string name="a11y_class_table_conflict_prefix">Timeskollision</string>
     <string name="a11y_course_card_open_details_hint">Dobbelttryk for detaljer</string>
     <string name="a11y_course_color_swatch">Farve %1$lld</string>
@@ -174,6 +175,8 @@
     <string name="class_table_empty_message">Træk for at opdatere, tryk på ⋯ for at tilføje et kursus, eller skift til et andet semester</string>
     <string name="class_table_export_failed">Skemaet kunne ikke eksporteres</string>
     <string name="class_table_export_screenshot">Eksportér skærmbillede af skemaet</string>
+    <string name="class_table_ignore_assignments">Ignorer opgaver</string>
+    <string name="class_table_ignore_assignments_undo">Stop med at ignorere opgaver</string>
     <string name="class_table_more_actions">Flere handlinger</string>
     <string name="class_table_pick_color">Vælg farve</string>
     <string name="class_table_rename_default_label">Standard: %1$s</string>

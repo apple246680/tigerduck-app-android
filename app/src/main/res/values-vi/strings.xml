@@ -6,6 +6,7 @@
     <string name="a11y_calendar_nav_next">Tháng sau</string>
     <string name="a11y_calendar_nav_prev">Tháng trước</string>
     <string name="a11y_class_table_cell_assignment_indicator">Có bài tập</string>
+    <string name="a11y_class_table_cell_assignments_ignored">Đã bỏ qua bài tập</string>
     <string name="a11y_class_table_conflict_prefix">Xung đột lịch học</string>
     <string name="a11y_course_card_open_details_hint">Nhấn đúp để xem chi tiết</string>
     <string name="a11y_course_color_swatch">Màu %1$lld</string>
@@ -174,6 +175,8 @@
     <string name="class_table_empty_message">Kéo để làm mới, nhấn ⋯ để thêm môn học, hoặc chuyển sang học kỳ khác</string>
     <string name="class_table_export_failed">Không thể xuất thời khóa biểu</string>
     <string name="class_table_export_screenshot">Xuất ảnh chụp thời khóa biểu</string>
+    <string name="class_table_ignore_assignments">Bỏ qua bài tập</string>
+    <string name="class_table_ignore_assignments_undo">Ngừng bỏ qua bài tập</string>
     <string name="class_table_more_actions">Thêm thao tác</string>
     <string name="class_table_pick_color">Chọn màu</string>
     <string name="class_table_rename_default_label">Mặc định: %1$s</string>

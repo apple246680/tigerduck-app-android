@@ -6,6 +6,7 @@
     <string name="a11y_calendar_nav_next">الشهر التالي</string>
     <string name="a11y_calendar_nav_prev">الشهر السابق</string>
     <string name="a11y_class_table_cell_assignment_indicator">يوجد مهمة</string>
+    <string name="a11y_class_table_cell_assignments_ignored">تم تجاهل المهام</string>
     <string name="a11y_class_table_conflict_prefix">تعارض في المحاضرات</string>
     <string name="a11y_course_card_open_details_hint">انقر مرتين للتفاصيل</string>
     <string name="a11y_course_color_swatch">اللون %1$lld</string>
@@ -174,6 +175,8 @@
     <string name="class_table_empty_message">اسحب للتحديث، انقر على ⋯ لإضافة مقرر، أو بدّل إلى فصل دراسي آخر</string>
     <string name="class_table_export_failed">تعذّر تصدير الجدول الدراسي</string>
     <string name="class_table_export_screenshot">تصدير لقطة شاشة للجدول الدراسي</string>
+    <string name="class_table_ignore_assignments">تجاهل المهام</string>
+    <string name="class_table_ignore_assignments_undo">تراجع عن تجاهل المهام</string>
     <string name="class_table_more_actions">المزيد من الإجراءات</string>
     <string name="class_table_pick_color">اختر لونًا</string>
     <string name="class_table_rename_default_label">الافتراضي: %1$s</string>

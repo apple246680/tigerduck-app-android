@@ -6,6 +6,7 @@
     <string name="a11y_calendar_nav_next">Следующий месяц</string>
     <string name="a11y_calendar_nav_prev">Предыдущий месяц</string>
     <string name="a11y_class_table_cell_assignment_indicator">Есть задание</string>
+    <string name="a11y_class_table_cell_assignments_ignored">Задания игнорируются</string>
     <string name="a11y_class_table_conflict_prefix">Конфликт занятий</string>
     <string name="a11y_course_card_open_details_hint">Дважды нажмите для просмотра деталей</string>
     <string name="a11y_course_color_swatch">Цвет %1$lld</string>
@@ -174,6 +175,8 @@
     <string name="class_table_empty_message">Потяните для обновления, нажмите ⋯, чтобы добавить курс, или переключитесь на другой семестр</string>
     <string name="class_table_export_failed">Не удалось экспортировать расписание</string>
     <string name="class_table_export_screenshot">Экспортировать снимок расписания</string>
+    <string name="class_table_ignore_assignments">Игнорировать задания</string>
+    <string name="class_table_ignore_assignments_undo">Отменить игнорирование заданий</string>
     <string name="class_table_more_actions">Другие действия</string>
     <string name="class_table_pick_color">Выбрать цвет</string>
     <string name="class_table_rename_default_label">По умолчанию: %1$s</string>

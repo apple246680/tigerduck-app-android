@@ -6,6 +6,7 @@
     <string name="a11y_calendar_nav_next">পরের মাস</string>
     <string name="a11y_calendar_nav_prev">আগের মাস</string>
     <string name="a11y_class_table_cell_assignment_indicator">অ্যাসাইনমেন্ট আছে</string>
+    <string name="a11y_class_table_cell_assignments_ignored">অ্যাসাইনমেন্ট উপেক্ষিত</string>
     <string name="a11y_class_table_conflict_prefix">ক্লাস দ্বন্দ্ব</string>
     <string name="a11y_course_card_open_details_hint">বিস্তারিত দেখতে দুবার ট্যাপ করুন</string>
     <string name="a11y_course_color_swatch">রং %1$lld</string>
@@ -174,6 +175,8 @@
     <string name="class_table_empty_message">রিফ্রেশ করতে টানুন, কোর্স যোগ করতে ⋯ চাপুন, অথবা অন্য সেমিস্টারে পরিবর্তন করুন</string>
     <string name="class_table_export_failed">ক্লাস তালিকা রপ্তানি করা যায়নি</string>
     <string name="class_table_export_screenshot">ক্লাস তালিকার স্ক্রিনশট রপ্তানি করুন</string>
+    <string name="class_table_ignore_assignments">অ্যাসাইনমেন্ট উপেক্ষা করুন</string>
+    <string name="class_table_ignore_assignments_undo">অ্যাসাইনমেন্ট উপেক্ষা বাতিল করুন</string>
     <string name="class_table_more_actions">আরও কার্যক্রম</string>
     <string name="class_table_pick_color">রং বেছে নিন</string>
     <string name="class_table_rename_default_label">ডিফল্ট: %1$s</string>
