@@ -55,6 +55,28 @@ internal val CalendarRefreshPolicy = RefreshPolicy(
     minInterval = 1.minutes,
 )
 
+/**
+ * [base] with its Moodle rows made from [assignments], the assignment
+ * cache's, and none when it holds none: an answer from Moodle with no
+ * assignments leaves it empty, and the rows of the ones it had must go
+ * with them (issue #160).
+ */
+internal fun withMoodleRows(
+    base: List<CalendarEvent>,
+    assignments: List<Assignment>,
+): List<CalendarEvent> =
+    base.filterNot { it.sourceRaw == EventSource.MOODLE.raw } + assignments.toCalendarEvents()
+
+private fun List<Assignment>.toCalendarEvents(): List<CalendarEvent> =
+    map { assignment ->
+        CalendarEvent(
+            eventId = "moodle-${assignment.assignmentId}",
+            title = assignment.title,
+            date = assignment.dueDate,
+            sourceRaw = EventSource.MOODLE.raw
+        )
+    }
+
 @HiltViewModel
 class CalendarViewModel @Inject constructor(
     private val networkChecker: NetworkChecker,
@@ -186,16 +208,6 @@ class CalendarViewModel @Inject constructor(
      */
     private suspend fun withCachedAssignments(base: List<CalendarEvent>): List<CalendarEvent> =
         withMoodleRows(base, dataCache.loadAssignments())
-
-    /** [base] with its Moodle rows made from [assignments]; as it was when there are none. */
-    private fun withMoodleRows(
-        base: List<CalendarEvent>,
-        assignments: List<Assignment>,
-    ): List<CalendarEvent> {
-        if (assignments.isEmpty()) return base
-        return base.filterNot { it.sourceRaw == EventSource.MOODLE.raw } +
-            assignments.toCalendarEvents()
-    }
 
     init {
         viewModelScope.launch {
@@ -386,23 +398,20 @@ class CalendarViewModel @Inject constructor(
         refreshTriggers.fetchStarted()
         _isLoading.value = true
         try {
-            val (schoolEvents, moodleEvents) = coroutineScope {
+            val (schoolEvents, assignments) = coroutineScope {
                 val schoolEventsJob = async { calendarService.fetchAndParseICS() }
-                val moodleEventsJob = async { fetchMoodleCalendarEvents() }
-                schoolEventsJob.await() to moodleEventsJob.await()
+                val assignmentsJob = async { refreshAssignments() }
+                schoolEventsJob.await() to assignmentsJob.await()
             }
 
-            val current = _events.value.toMutableList()
+            val hadMoodleRows = _events.value.any { it.sourceRaw == EventSource.MOODLE.raw }
+            val current = withMoodleRows(_events.value, assignments).toMutableList()
 
             if (schoolEvents.isNotEmpty()) {
                 current.removeAll { it.sourceRaw == EventSource.SCHOOL.raw }
                 current.addAll(schoolEvents)
             }
-            if (moodleEvents.isNotEmpty()) {
-                current.removeAll { it.sourceRaw == EventSource.MOODLE.raw }
-                current.addAll(moodleEvents)
-            }
-            if (schoolEvents.isNotEmpty() || moodleEvents.isNotEmpty()) {
+            if (schoolEvents.isNotEmpty() || assignments.isNotEmpty() || hadMoodleRows) {
                 _events.value = withAcademicEvents(current)
                 dataCache.saveCalendarEvents(current)
                 _syncCompleteEvent.tryEmit(Unit)
@@ -414,18 +423,19 @@ class CalendarViewModel @Inject constructor(
         }
     }
 
-    private suspend fun fetchMoodleCalendarEvents(): List<CalendarEvent> {
+    /** The assignment cache as a refresh from Moodle leaves it, failed or not. */
+    private suspend fun refreshAssignments(): List<Assignment> {
         val studentId = authService.storedStudentId
         val password = authService.storedPassword
 
         if (studentId.isNullOrBlank() || password.isNullOrBlank()) {
-            return dataCache.loadAssignments().toCalendarEvents()
+            return dataCache.loadAssignments()
         }
 
         return try {
             // Re-establish NTUST session before Moodle call, so calendar refresh works standalone.
             if (!authService.ensureAuthenticated()) {
-                return dataCache.loadAssignments().toCalendarEvents()
+                return dataCache.loadAssignments()
             }
             val enrolled = moodleService.fetchEnrolledCourses()
             val cached = dataCache.loadAssignments()
@@ -437,24 +447,14 @@ class CalendarViewModel @Inject constructor(
             val assignments = CourseRosterMerge.assignmentsToStore(
                 remote = moodleService.fetchAssignments(enrolled),
                 cached = cached,
-            ) ?: return cached.toCalendarEvents()
+            ) ?: return cached
             dataCache.saveAssignments(assignments)
-            assignments.toCalendarEvents()
+            assignments
         } catch (_: Exception) {
             // Keep calendar useful when Moodle auth/network is temporarily unavailable.
-            dataCache.loadAssignments().toCalendarEvents()
+            dataCache.loadAssignments()
         }
     }
-
-    private fun List<Assignment>.toCalendarEvents(): List<CalendarEvent> =
-        map { assignment ->
-            CalendarEvent(
-                eventId = "moodle-${assignment.assignmentId}",
-                title = assignment.title,
-                date = assignment.dueDate,
-                sourceRaw = EventSource.MOODLE.raw
-            )
-        }
 
     /**
      * Both sources the academic feed produces. Rows carrying either are
