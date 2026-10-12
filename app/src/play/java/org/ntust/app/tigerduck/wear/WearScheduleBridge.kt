@@ -8,14 +8,19 @@ import com.google.gson.Gson
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.tasks.await
 import org.ntust.app.tigerduck.BuildConfig
+import org.ntust.app.tigerduck.academic.AcademicCalendar
+import org.ntust.app.tigerduck.academic.AcademicCalendarStore
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.shared.Course
+import org.ntust.app.tigerduck.shared.QuietDays
 import org.ntust.app.tigerduck.shared.WearProtocol
+import org.ntust.app.tigerduck.shared.clock.AppClock
 import java.io.ByteArrayOutputStream
+import java.time.LocalDate
 import java.util.zip.GZIPOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -27,6 +32,7 @@ class WearScheduleBridge @Inject constructor(
     private val authService: AuthService,
     private val appPreferences: AppPreferences,
     private val credentials: CredentialManager,
+    private val academicCalendar: AcademicCalendarStore,
 ) {
     private val gson = Gson()
 
@@ -47,8 +53,9 @@ class WearScheduleBridge @Inject constructor(
     }
 
     /**
-     * Publishes the current course list, accent color, and login state to the
-     * watch via DataClient. Safe to call repeatedly — same payload no-ops.
+     * Publishes the current course list, accent color, login state and quiet
+     * days to the watch via DataClient. Safe to call repeatedly — same payload
+     * no-ops.
      */
     suspend fun publish() {
         val loggedIn = authService.authState.value
@@ -77,6 +84,12 @@ class WearScheduleBridge @Inject constructor(
         val disableScreenCaptureProtection =
             BuildConfig.DEBUG && appPreferences.disableScreenCaptureProtection
 
+        val quietDays = wearQuietDays(
+            academicCalendar.current(),
+            academicCalendar.optedInHolidayIds,
+            AppClock.localDateTime().toLocalDate(),
+        )
+
         val request = PutDataMapRequest.create(WearProtocol.Schedule.PATH).apply {
             dataMap.putByteArray(WearProtocol.Schedule.KEY_COURSES, gzipped)
             dataMap.putString(WearProtocol.Schedule.KEY_ACCENT, accentHex)
@@ -87,11 +100,16 @@ class WearScheduleBridge @Inject constructor(
                 WearProtocol.Schedule.KEY_DISABLE_SCREEN_CAPTURE_PROTECTION,
                 disableScreenCaptureProtection,
             )
+            dataMap.putStringArrayList(WearProtocol.Schedule.KEY_QUIET_DAYS, quietDays)
         }.asPutDataRequest().setUrgent()
 
         try {
             Wearable.getDataClient(context).putDataItem(request).await()
-            Log.d(TAG, "publish ok: ${courses.size} courses, ${gzipped.size} bytes")
+            Log.d(
+                TAG,
+                "publish ok: ${courses.size} courses, ${gzipped.size} bytes, " +
+                    "${quietDays.size} quiet days",
+            )
         } catch (t: Throwable) {
             Log.w(TAG, "publish failed: ${t.message}")
         }
@@ -174,6 +192,26 @@ class WearScheduleBridge @Inject constructor(
         const val KEY_CRED_EPOCH = "libraryCredentialEpoch"
     }
 }
+
+/**
+ * How far ahead the watch is told about quiet days. Bounded so a malformed
+ * holiday range cannot outgrow the Data Layer item, which also carries the
+ * courses; the phone sends a fresh list at every app start and watch sync
+ * request, far sooner than a year runs out.
+ */
+internal const val WEAR_QUIET_DAYS_AHEAD = 366L
+
+/**
+ * The days from [today] through [WEAR_QUIET_DAYS_AHEAD] days later on which
+ * no class meets for this user, in the form the watch reads.
+ */
+internal fun wearQuietDays(
+    calendar: AcademicCalendar,
+    optedInHolidayIds: Set<Int>,
+    today: LocalDate,
+): ArrayList<String> = QuietDays.encode(
+    calendar.suppressedDays(optedInHolidayIds, today, today.plusDays(WEAR_QUIET_DAYS_AHEAD))
+)
 
 internal fun Course.toWearDto(): WearScheduleBridge.CourseDto = WearScheduleBridge.CourseDto(
     courseNo = courseNo,

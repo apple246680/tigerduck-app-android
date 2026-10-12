@@ -136,6 +136,27 @@ data class AcademicCalendar(
     fun isQuietDay(date: LocalDate, optedInHolidayIds: Set<Int>): Boolean =
         !isInSession(date) || suppressesClasses(date, optedInHolidayIds)
 
+    /**
+     * The days from [from] through [through] on which [suppressesClasses]
+     * holds, for the paired watch, which cannot ask the calendar itself.
+     * Holidays only, unlike [isQuietDay]: the watch, like the Apple Watch,
+     * keeps showing the timetable outside the term. Each day is asked on its
+     * own, so a day an opted-in holiday also covers stays off the list.
+     */
+    fun suppressedDays(
+        optedInHolidayIds: Set<Int>,
+        from: LocalDate,
+        through: LocalDate,
+    ): Set<LocalDate> {
+        val days = sortedSetOf<LocalDate>()
+        var day = from
+        while (!day.isAfter(through)) {
+            if (suppressesClasses(day, optedInHolidayIds)) days += day
+            day = day.plusDays(1)
+        }
+        return days
+    }
+
     companion object {
         val EMPTY = AcademicCalendar(revision = 0L, terms = emptyList(), holidays = emptyList())
 

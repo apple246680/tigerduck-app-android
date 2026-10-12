@@ -83,6 +83,62 @@ class AcademicCalendarTest {
         assertFalse(AcademicCalendar.EMPTY.suppressesClasses(date("2026-09-26"), emptySet()))
     }
 
+    // --- suppressed days -----------------------------------------------
+
+    @Test
+    fun `suppressed days list every day each holiday covers`() {
+        assertEquals(
+            setOf(date("2026-09-25"), date("2026-09-26"), date("2026-09-27"), date("2027-01-01")),
+            calendar.suppressedDays(emptySet(), date("2026-09-01"), date("2027-01-31")),
+        )
+    }
+
+    @Test
+    fun `an opted-in holiday's days are not suppressed days`() {
+        assertEquals(
+            setOf(date("2027-01-01")),
+            calendar.suppressedDays(setOf(1), date("2026-09-01"), date("2027-01-31")),
+        )
+    }
+
+    @Test
+    fun `suppressed days stay inside the asked range`() {
+        assertEquals(
+            setOf(date("2026-09-26"), date("2026-09-27")),
+            calendar.suppressedDays(emptySet(), date("2026-09-26"), date("2026-12-31")),
+        )
+    }
+
+    @Test
+    fun `a day an opted-in holiday also covers is not a suppressed day`() {
+        val overlapping = calendar.copy(
+            holidays = calendar.holidays + Holiday(
+                3, "Anniversary", "Anniversary", date("2026-09-26"), date("2026-09-26")
+            )
+        )
+        assertEquals(
+            setOf(date("2026-09-25"), date("2026-09-27")),
+            overlapping.suppressedDays(setOf(3), date("2026-09-01"), date("2026-09-30")),
+        )
+    }
+
+    @Test
+    fun `a day outside the term is a suppressed day only when a holiday covers it`() {
+        // 2026-12-26 on are between the terms; only 2027-01-01 is a holiday.
+        assertEquals(
+            setOf(date("2027-01-01")),
+            calendar.suppressedDays(emptySet(), date("2026-12-20"), date("2027-01-05")),
+        )
+    }
+
+    @Test
+    fun `an empty calendar has no suppressed days`() {
+        assertTrue(
+            AcademicCalendar.EMPTY.suppressedDays(emptySet(), date("2026-09-01"), date("2027-08-31"))
+                .isEmpty()
+        )
+    }
+
     // --- current term --------------------------------------------------
 
     @Test
