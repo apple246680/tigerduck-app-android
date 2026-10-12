@@ -14,7 +14,10 @@ import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import org.ntust.app.tigerduck.shared.Course
+import org.ntust.app.tigerduck.shared.NextClassResolver
+import org.ntust.app.tigerduck.shared.NextClassResult
 import org.ntust.app.tigerduck.shared.QuietDays
+import org.ntust.app.tigerduck.shared.TodayClassEntry
 import java.io.ByteArrayInputStream
 import java.time.LocalDate
 import java.util.zip.GZIPInputStream
@@ -239,4 +242,16 @@ data class WatchSnapshot(
     val languageTag: String?,
     /** Days the phone says no class meets for this user; empty from an older phone. */
     val quietDays: Set<LocalDate>,
-)
+) {
+    /** Now and next at [minuteOfDay] on [today], leaving out the classes of quiet days. */
+    fun nextClass(today: LocalDate, minuteOfDay: Int): NextClassResult =
+        NextClassResolver.resolve(courses, today.dayOfWeek.value, minuteOfDay) { daysAhead ->
+            today.plusDays(daysAhead.toLong()) in quietDays
+        }
+
+    /** Today's classes, none when [today] is a quiet day. */
+    fun todaysClasses(today: LocalDate, minuteOfDay: Int): List<TodayClassEntry> =
+        NextClassResolver.todaysClasses(
+            courses, today.dayOfWeek.value, minuteOfDay, quietToday = today in quietDays,
+        )
+}

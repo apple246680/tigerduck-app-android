@@ -25,7 +25,6 @@ import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
-import org.ntust.app.tigerduck.shared.NextClassResolver
 import org.ntust.app.tigerduck.shared.TodayClassEntry
 import org.ntust.app.tigerduck.shared.TodayClassStatus
 import org.ntust.app.tigerduck.wear.R
@@ -41,8 +40,8 @@ fun TodayScreen(
     val pad = LocalScreenPadding.current
     // Tick once a minute so a class transitioning to Ended (and losing its
     // Ongoing highlight) refreshes without the user navigating away.
-    val (weekday, minuteOfDay) = currentTaipeiTick()
-    val entries = NextClassResolver.todaysClasses(snapshot.courses, weekday, minuteOfDay)
+    val (today, minuteOfDay) = currentTaipeiTick()
+    val entries = snapshot.todaysClasses(today, minuteOfDay)
     val listState = rememberScalingLazyListState()
 
     ScreenScaffold(scrollState = listState) {
