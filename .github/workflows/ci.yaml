@@ -35,7 +35,7 @@ jobs:
           - leg: play
             tasks: :shared:test :app:testPlayDebugUnitTest
           - leg: fdroid + wear
-            tasks: :app:testFdroidDebugUnitTest :wear:compileDebugKotlin
+            tasks: :app:testFdroidDebugUnitTest :wear:testDebugUnitTest
           # :wear's release build is minified with its own proguard-rules.pro,
           # and nothing else in the PR gate runs R8 over it — a keep-rule gap
           # would otherwise surface for the first time on release day, which is

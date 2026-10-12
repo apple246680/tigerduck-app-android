@@ -136,6 +136,24 @@ data class AcademicCalendar(
     fun isQuietDay(date: LocalDate, optedInHolidayIds: Set<Int>): Boolean =
         !isInSession(date) || suppressesClasses(date, optedInHolidayIds)
 
+    /**
+     * The days from [from] through [through] on which [isQuietDay] holds, for
+     * the paired watch, which cannot ask the calendar itself.
+     */
+    fun quietDays(
+        optedInHolidayIds: Set<Int>,
+        from: LocalDate,
+        through: LocalDate,
+    ): Set<LocalDate> {
+        val days = sortedSetOf<LocalDate>()
+        var day = from
+        while (!day.isAfter(through)) {
+            if (isQuietDay(day, optedInHolidayIds)) days += day
+            day = day.plusDays(1)
+        }
+        return days
+    }
+
     companion object {
         val EMPTY = AcademicCalendar(revision = 0L, terms = emptyList(), holidays = emptyList())
 

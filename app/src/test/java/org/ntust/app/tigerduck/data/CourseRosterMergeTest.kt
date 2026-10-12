@@ -200,12 +200,24 @@ class CourseRosterMergeTest {
     // --- assignmentsToStore ------------------------------------------------
 
     @Test
-    fun `an empty fetch leaves the cache alone`() {
+    fun `a fetch with no course to ask about leaves the cache alone`() {
         assertNull(
             CourseRosterMerge.assignmentsToStore(
-                remote = emptyList(),
+                remote = null,
                 cached = listOf(assignment("1", completed = true)),
             )
+        )
+    }
+
+    @Test
+    fun `an answer with no assignments empties the cache`() {
+        // What a TA account gets once Moodle leaves out the courses it TAs.
+        assertEquals(
+            emptyList<Assignment>(),
+            CourseRosterMerge.assignmentsToStore(
+                remote = emptyList(),
+                cached = listOf(assignment("1"), assignment("2", completed = true)),
+            ),
         )
     }
 

@@ -1,6 +1,5 @@
 package org.ntust.app.tigerduck.ui.screen.home
 
-import org.ntust.app.tigerduck.AppConstants
 import android.os.SystemClock
 import android.util.Log
 import org.ntust.app.tigerduck.data.CourseRosterMerge
@@ -62,7 +61,6 @@ import org.ntust.app.tigerduck.notification.AssignmentNotificationScheduler
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.SingleFlight
-import java.util.Calendar
 import java.util.Date
 import javax.inject.Inject
 import kotlin.time.Duration.Companion.minutes
@@ -121,9 +119,6 @@ class HomeViewModel @Inject constructor(
 
     private val _allCourses = MutableStateFlow<List<Course>>(emptyList())
     val allCourses: StateFlow<List<Course>> = _allCourses
-
-    private val _todayCourses = MutableStateFlow<List<Course>>(emptyList())
-    val todayCourses: StateFlow<List<Course>> = _todayCourses
 
     // Full assignment list from the most recent load/fetch. The UI-visible
     // list is derived from this + the ignore set + the current tab filter.
@@ -353,7 +348,6 @@ class HomeViewModel @Inject constructor(
                     fetchFlight.cancel()
                     loadJob?.cancel()
                     _allCourses.value = emptyList()
-                    _todayCourses.value = emptyList()
                     _allAssignments.value = emptyList()
                     // _skippedDates.value = emptyMap()
                     _ignoredAssignmentIds.value = emptySet()
@@ -671,12 +665,10 @@ class HomeViewModel @Inject constructor(
                         widgetUpdater.requestUpdate()
                     }
 
-                    // Symmetric with the courses branch above: treat an empty
-                    // remote result as "upstream returned nothing useful"
-                    // (NetScaler challenge, token-rotation race, semester-code
-                    // skew in MoodleService.fetchAssignments) rather than
-                    // clobbering a valid cache with an empty list.
-                    if (!remoteAssignments.isNullOrEmpty()) {
+                    // Null when Moodle failed or was not asked; an empty list
+                    // is its answer and replaces the cache like any other.
+                    // See CourseRosterMerge.assignmentsToStore.
+                    if (remoteAssignments != null) {
                         assignments = remoteAssignments
                         dataCache.saveAssignments(remoteAssignments)
                         runCatching { pushApiClient.uploadAssignments(remoteAssignments) }
@@ -706,7 +698,8 @@ class HomeViewModel @Inject constructor(
      * portal + Moodle enrolled-courses) run in parallel, then per-course
      * detail lookups run in parallel while assignments are fetched alongside.
      * Returns (null, null) for any piece that failed so the caller can fall
-     * back to cached data cleanly.
+     * back to cached data cleanly, and null assignments when there was no
+     * course to ask Moodle about.
      */
     private suspend fun fetchCoursesAndAssignments(
         studentId: String,
@@ -784,10 +777,9 @@ class HomeViewModel @Inject constructor(
                     enrolledCourses = moodleEnrolled,
                     rosterCourseNos = rosterCourseNos
                 )
-                val existingCompleted =
-                    CourseRosterMerge.completedIds(dataCache.loadAssignments())
+                val cached = dataCache.loadAssignments()
                 ServerStatusTracker.set(ServerStatus.OK, ServerKind.MOODLE)
-                CourseRosterMerge.preserveConfirmedSubmissions(remote, existingCompleted)
+                CourseRosterMerge.assignmentsToStore(remote, cached)
             } catch (e: CancellationException) {
                 // A sign-out cancels the fetch; marking the servers failed
                 // here would land after the tracker was reset for the next
@@ -805,10 +797,6 @@ class HomeViewModel @Inject constructor(
 
     private fun updateCoursesAndAssignments(courses: List<Course>, assignments: List<Assignment>) {
         _allCourses.value = courses
-        val todayIndex = AppConstants.weekdayIndex(
-            AppClock.calendar().get(Calendar.DAY_OF_WEEK)
-        )
-        _todayCourses.value = courses.filter { it.schedule.containsKey(todayIndex) }
         _allAssignments.value = assignments.sortedBy { it.dueDate }
 
         if (prefs.notifyAssignments) {

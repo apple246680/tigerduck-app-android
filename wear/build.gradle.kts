@@ -184,6 +184,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.gson)
+
+    testImplementation(libs.junit)
 }
 
 // The watch's own dependencies, exported into the phone app's play

@@ -47,7 +47,9 @@ fun WearApp() {
     val context = LocalContext.current
     val repo = SchedulePersistenceHolder.get(context)
     val snapshot by repo.flow.collectAsState(
-        initial = WatchSnapshot(emptyList(), SchedulePersistence.DEFAULT_ACCENT, null, false, null)
+        initial = WatchSnapshot(
+            emptyList(), SchedulePersistence.DEFAULT_ACCENT, null, false, null, emptySet(),
+        )
     )
     val paddingDp by repo.paddingDpFlow.collectAsState(initial = SchedulePersistence.DEFAULT_PADDING_DP)
 

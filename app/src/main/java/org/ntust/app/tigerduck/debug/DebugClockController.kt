@@ -15,6 +15,7 @@ import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.shared.clock.ClockOverride
 import org.ntust.app.tigerduck.widget.WidgetBoundaryScheduler
 import org.ntust.app.tigerduck.di.ApplicationScope
+import org.ntust.app.tigerduck.wear.WearScheduleBridge
 import org.ntust.app.tigerduck.widget.WidgetUpdater
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -31,6 +32,7 @@ class DebugClockController @Inject constructor(
     private val classPreparingScheduler: ClassPreparingNotificationScheduler,
     private val widgetBoundaryScheduler: WidgetBoundaryScheduler,
     private val widgetUpdater: WidgetUpdater,
+    private val scheduleBridge: WearScheduleBridge,
     @param:ApplicationScope private val scope: CoroutineScope,
 ) {
 
@@ -55,6 +57,9 @@ class DebugClockController @Inject constructor(
                 // entries computed against the old override are still live.
                 AppClock.setOverride(override)
                 rescheduleAll()
+                // The watch's quiet-day list starts at the phone's date when it
+                // was sent, so a clock moved to another date needs a new one.
+                scheduleBridge.publish()
             }
         }
     }
