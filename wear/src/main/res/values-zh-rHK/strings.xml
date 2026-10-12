@@ -6,6 +6,7 @@
     <string name="a11y_calendar_nav_next">下個月</string>
     <string name="a11y_calendar_nav_prev">上個月</string>
     <string name="a11y_class_table_cell_assignment_indicator">有功課</string>
+    <string name="a11y_class_table_cell_assignments_ignored">已忽略功課</string>
     <string name="a11y_class_table_conflict_prefix">撞堂</string>
     <string name="a11y_course_card_open_details_hint">㩒兩下睇詳情</string>
     <string name="a11y_course_color_swatch">顏色 %1$lld</string>
@@ -174,6 +175,8 @@
     <string name="class_table_empty_message">下拉以重新整理,或使用右上角的 ⋯ 新增課程,或切換到其他學期</string>
     <string name="class_table_export_failed">未能匯出課表</string>
     <string name="class_table_export_screenshot">匯出課表截圖</string>
+    <string name="class_table_ignore_assignments">忽略功課</string>
+    <string name="class_table_ignore_assignments_undo">取消忽略功課</string>
     <string name="class_table_more_actions">更多操作</string>
     <string name="class_table_pick_color">選擇顏色</string>
     <string name="class_table_rename_default_label">預設：%1$s</string>

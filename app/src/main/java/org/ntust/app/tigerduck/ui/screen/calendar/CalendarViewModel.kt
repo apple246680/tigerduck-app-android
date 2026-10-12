@@ -37,6 +37,7 @@ import org.ntust.app.tigerduck.network.NetworkChecker
 import org.ntust.app.tigerduck.notification.SyncSource
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.util.SingleFlight
+import org.ntust.app.tigerduck.widget.WidgetUpdater
 import java.util.Calendar
 import java.util.Date
 import javax.inject.Inject
@@ -67,6 +68,7 @@ class CalendarViewModel @Inject constructor(
     private val context: android.content.Context,
     private val academicCalendar: org.ntust.app.tigerduck.academic.AcademicCalendarStore,
     private val pushApiClient: org.ntust.app.tigerduck.push.PushApiClient,
+    private val widgetUpdater: WidgetUpdater,
 ) : ViewModel() {
 
 
@@ -158,6 +160,10 @@ class CalendarViewModel @Inject constructor(
     fun setNotifyOnHoliday(holidayId: Int, notify: Boolean) {
         if (!academicCalendar.setNotifyOnHoliday(holidayId, notify)) return
         _holidayOverrides.value = academicCalendar.optedInHolidayIds
+        // The Next Class and Today widgets go quiet on a holiday the user has
+        // not opted back into; without this they keep the old answer until
+        // their next class boundary or 30-minute update.
+        widgetUpdater.requestUpdate()
         viewModelScope.launch {
             runCatching { pushApiClient.putHolidayOverride(holidayId, notify) }
                 .onFailure { e ->

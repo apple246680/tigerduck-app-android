@@ -6,6 +6,7 @@
     <string name="a11y_calendar_nav_next">Mes següent</string>
     <string name="a11y_calendar_nav_prev">Mes anterior</string>
     <string name="a11y_class_table_cell_assignment_indicator">Té tasca</string>
+    <string name="a11y_class_table_cell_assignments_ignored">Tasques ignorades</string>
     <string name="a11y_class_table_conflict_prefix">Conflicte de classe</string>
     <string name="a11y_course_card_open_details_hint">Toca dues vegades per veure els detalls</string>
     <string name="a11y_course_color_swatch">Color %1$lld</string>
@@ -174,6 +175,8 @@
     <string name="class_table_empty_message">Estira per actualitzar, toca ⋯ per afegir un curs, o canvia a un altre semestre</string>
     <string name="class_table_export_failed">No s\'ha pogut exportar l\'horari</string>
     <string name="class_table_export_screenshot">Exporta una captura de l\'horari</string>
+    <string name="class_table_ignore_assignments">Ignora les tasques</string>
+    <string name="class_table_ignore_assignments_undo">Deixa d\'ignorar les tasques</string>
     <string name="class_table_more_actions">Més accions</string>
     <string name="class_table_pick_color">Tria un color</string>
     <string name="class_table_rename_default_label">Per defecte: %1$s</string>

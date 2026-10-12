@@ -6,6 +6,7 @@
     <string name="a11y_calendar_nav_next">Mois suivant</string>
     <string name="a11y_calendar_nav_prev">Mois précédent</string>
     <string name="a11y_class_table_cell_assignment_indicator">A un devoir</string>
+    <string name="a11y_class_table_cell_assignments_ignored">Devoirs ignorés</string>
     <string name="a11y_class_table_conflict_prefix">Conflit de cours</string>
     <string name="a11y_course_card_open_details_hint">Touchez deux fois pour les détails</string>
     <string name="a11y_course_color_swatch">Couleur %1$lld</string>
@@ -174,6 +175,8 @@
     <string name="class_table_empty_message">Tirez vers le bas pour actualiser, appuyez sur ⋯ pour ajouter un cours, ou changez de semestre</string>
     <string name="class_table_export_failed">Impossible d\'exporter l\'emploi du temps</string>
     <string name="class_table_export_screenshot">Exporter une capture de l\'emploi du temps</string>
+    <string name="class_table_ignore_assignments">Ignorer les devoirs</string>
+    <string name="class_table_ignore_assignments_undo">Ne plus ignorer les devoirs</string>
     <string name="class_table_more_actions">Plus d\'actions</string>
     <string name="class_table_pick_color">Choisir une couleur</string>
     <string name="class_table_rename_default_label">Par défaut : %1$s</string>

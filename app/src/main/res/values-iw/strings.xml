@@ -6,6 +6,7 @@
     <string name="a11y_calendar_nav_next">החודש הבא</string>
     <string name="a11y_calendar_nav_prev">החודש הקודם</string>
     <string name="a11y_class_table_cell_assignment_indicator">יש משימה</string>
+    <string name="a11y_class_table_cell_assignments_ignored">מתעלמים מהמשימות</string>
     <string name="a11y_class_table_conflict_prefix">התנגשות שיעורים</string>
     <string name="a11y_course_card_open_details_hint">הקש פעמיים לפרטים</string>
     <string name="a11y_course_color_swatch">צבע %1$lld</string>
@@ -174,6 +175,8 @@
     <string name="class_table_empty_message">יש למשוך כדי לרענן, להקיש על ⋯ כדי להוסיף קורס, או לעבור לסמסטר אחר</string>
     <string name="class_table_export_failed">לא ניתן היה לייצא את מערכת השעות</string>
     <string name="class_table_export_screenshot">ייצוא צילום מסך של מערכת השעות</string>
+    <string name="class_table_ignore_assignments">התעלם מהמשימות</string>
+    <string name="class_table_ignore_assignments_undo">בטל התעלמות מהמשימות</string>
     <string name="class_table_more_actions">פעולות נוספות</string>
     <string name="class_table_pick_color">בחר צבע</string>
     <string name="class_table_rename_default_label">ברירת מחדל: %1$s</string>

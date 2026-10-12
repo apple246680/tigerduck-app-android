@@ -12,17 +12,19 @@ data class WidgetState(
     val currentMinuteOfDay: Int,
     val isLoggedIn: Boolean,
     /**
-     * Whether the school calendar says classes are in session today — see
-     * [org.ntust.app.tigerduck.academic.AcademicCalendar.isInSession].
+     * Whether no class meets today: the school calendar says the term is not
+     * in session — see [org.ntust.app.tigerduck.academic.AcademicCalendar.isInSession]
+     * — or today is a holiday the user has not opted back into — see
+     * [org.ntust.app.tigerduck.academic.AcademicCalendar.suppressesClasses].
      *
-     * Gates the "today"-scoped widgets — Next Class and Today — which would
-     * otherwise announce classes for a term that has not started, since 選課
-     * populates the timetable weeks before 開學. The Week grid deliberately
-     * ignores this and keeps rendering: it is a reference timetable, matching
-     * the class table screen, where the today carousel hides outside the term
-     * but the grid stays.
+     * Empties the Today widget, which would otherwise list classes for a term
+     * that has not started, since 選課 populates the timetable weeks before
+     * 開學, or for a day off. The Next Class fields are already empty on such
+     * a day. The Week grid deliberately ignores this and keeps rendering: it
+     * is a reference timetable, matching the class table screen, where the
+     * today carousel hides outside the term but the grid stays.
      */
-    val isTermInSession: Boolean,
+    val isQuietToday: Boolean,
     val ongoingCourseNos: List<String>,
     val nextCourseTodayNo: String?,
     /**
