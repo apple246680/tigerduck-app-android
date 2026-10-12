@@ -353,6 +353,31 @@ class CourseIgnoreSyncTest {
     }
 
     @Test
+    fun `a snapshot fetched before the user took the backend's set does not undo it`() = runTest {
+        // Fetched while the re-enable choice was open, and answered after it.
+        val older = snapshot(fetchedAtMs = 1_500, "AAA" to true)
+        now = 2_000L
+        sync.adoptServer(snapshot(fetchedAtMs = 1_800, "AAA" to false), sync.currentGeneration())
+
+        sync.applySnapshot(older, sync.currentGeneration())
+        assertEquals(emptySet<String>(), cache.loadIgnoredCourses())
+
+        sync.applySnapshot(snapshot(fetchedAtMs = 2_500, "AAA" to true), sync.currentGeneration())
+        assertEquals("a later one is taken", setOf("1141:AAA"), cache.loadIgnoredCourses())
+    }
+
+    @Test
+    fun `a snapshot fetched before the user kept this device's set does not undo it`() = runTest {
+        val older = snapshot(fetchedAtMs = 1_500, "BBB" to true)
+        now = 2_000L
+        sync.pushLocal(snapshot(fetchedAtMs = 1_800, "BBB" to false), sync.currentGeneration())
+
+        sync.applySnapshot(older, sync.currentGeneration())
+
+        assertEquals(emptySet<String>(), cache.loadIgnoredCourses())
+    }
+
+    @Test
     fun `a snapshot fetched before a course was deleted does not bring its setting back`() = runTest {
         setIgnored("AAA")
         now = 2_000L

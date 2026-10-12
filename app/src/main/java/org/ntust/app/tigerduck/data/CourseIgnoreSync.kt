@@ -88,6 +88,11 @@ class CourseIgnoreSync internal constructor(
     // process can be that old.
     private val touchedAt = HashMap<String, Long>()
 
+    // When the user last settled a re-enable choice for the whole set, the
+    // backend's or this device's, under [mutex]. A snapshot fetched before
+    // then predates that choice, so [applySnapshot] takes nothing from it.
+    private var setChosenAt = Long.MIN_VALUE
+
     // Whether this process has given the parked changes their one more try.
     private val parkedRequeued = AtomicBoolean(false)
 
@@ -165,7 +170,8 @@ class CourseIgnoreSync internal constructor(
             val pending = dataCache.loadPendingCourseIgnores()
             val protectedKeys = pending.mapNotNullTo(mutableSetOf()) { it.key } +
                 touchedAt.filterValues { it >= result.fetchedAtMs }.keys
-            if (applies && server != null) {
+            val takes = applies && result.fetchedAtMs >= setChosenAt
+            if (takes && server != null) {
                 val now = clock()
                 val rows = serverRows(result)
                 val lost = CourseIgnoreReconciler.toResend(local, server, protectedKeys)
@@ -174,7 +180,7 @@ class CourseIgnoreSync internal constructor(
                     resend = changes
                 }
             }
-            CourseIgnoreReconciler.afterSync(local, server, protectedKeys, applies)
+            CourseIgnoreReconciler.afterSync(local, server, protectedKeys, takes)
                 ?.takeIf { it != local && dataCache.saveIgnoredCourses(it, generation) }
         }
         if (updated != null) effects.changed()
@@ -209,7 +215,7 @@ class CourseIgnoreSync internal constructor(
             var pending = dataCache.loadPendingCourseIgnores()
             for (key in ignored) pending = pending.with(changeFor(key, true, serverRows[key], now))
             for (key in cleared) pending = pending.with(changeFor(key, false, serverRows[key], now))
-            dataCache.savePendingCourseIgnores(pending, generation)
+            if (dataCache.savePendingCourseIgnores(pending, generation)) setChosenAt = now
         }
         retryPending()
     }
@@ -224,6 +230,7 @@ class CourseIgnoreSync internal constructor(
         val server = result?.let { serverView(it) }
         val updated = mutex.withLock {
             if (!dataCache.savePendingCourseIgnores(emptyList(), generation)) return@withLock null
+            setChosenAt = clock()
             val local = dataCache.loadIgnoredCourses()
             val adopted = if (result == null) emptySet() else CourseIgnoreReconciler.adopt(local, server)
             adopted?.takeIf { it != local && dataCache.saveIgnoredCourses(it, generation) }
