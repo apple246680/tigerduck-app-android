@@ -301,8 +301,13 @@ class SettingsViewModel @Inject constructor(
         val conflict = _reenableConflict.value ?: return
         Log.i(TAG, "[reenable] resolve: keepLocal=$keepLocal categories=${conflict.categories}")
         _reenableConflict.value = null
-        prefs.pendingConflictCategories = emptySet()
+        // CourseIgnoreSync holds course ignores while "assignments" is
+        // pending, so it is let go only once they are queued or adopted: a
+        // sync in between would take the server's set over this device's.
+        val holdsCourseIgnores = "assignments" in conflict.categories
+        prefs.pendingConflictCategories = if (holdsCourseIgnores) setOf("assignments") else emptySet()
         viewModelScope.launch {
+            val generation = courseIgnoreSync.currentGeneration()
             if (keepLocal) {
                 if ("courses" in conflict.categories) {
                     val courses = dataCache.loadCourses()
@@ -344,7 +349,7 @@ class SettingsViewModel @Inject constructor(
                     }
                     courseIgnoreSync.pushLocal(
                         runCatching { syncApiClient.fetchFullSync() }.getOrNull(),
-                        onlyIgnored = false,
+                        generation,
                     )
                 }
             } else {
@@ -414,7 +419,11 @@ class SettingsViewModel @Inject constructor(
                         dataCache.replaceMarkedCompletedAssignments(result.completedIds)
                     }
                 }
-                if ("assignments" in conflict.categories) courseIgnoreSync.adoptServer(result)
+                if ("assignments" in conflict.categories) courseIgnoreSync.adoptServer(result, generation)
+            }
+            if (holdsCourseIgnores) {
+                prefs.pendingConflictCategories = prefs.pendingConflictCategories - "assignments"
+                courseIgnoreSync.retryPending()
             }
         }
     }

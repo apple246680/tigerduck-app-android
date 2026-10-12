@@ -33,7 +33,6 @@ class CourseIgnoreSyncTest {
 
     private val sent = mutableListOf<Sent>()
     private var answer: suspend (Sent) -> Boolean = { true }
-    private var queues = true
     private var sends = true
     private var now = 1_000L
     private var effects = 0
@@ -50,7 +49,6 @@ class CourseIgnoreSyncTest {
                 answer(request)
             },
             effects = CourseIgnoreEffects { effects++ },
-            queues = { queues },
             sends = { sends },
             clock = { now },
         )
@@ -132,9 +130,11 @@ class CourseIgnoreSyncTest {
         onTheWire.await()
 
         now = 2_000L
-        setIgnored("AAA", ignore = false)
+        val second = launch { setIgnored("AAA", ignore = false) }
+        testScheduler.advanceUntilIdle()
         release.complete(Unit)
         first.join()
+        second.join()
 
         assertEquals(emptySet<String>(), cache.loadIgnoredCourses())
         assertEquals(listOf("1141:AAA" to false), waiting())
@@ -156,26 +156,121 @@ class CourseIgnoreSyncTest {
     }
 
     @Test
-    fun `with cloud sync off a change stays on this device`() = runTest {
-        queues = false
+    fun `a later change replaces an earlier one still waiting`() = runTest {
+        sends = false
+        setIgnored("AAA", ignore = true)
+        now = 2_000L
+        setIgnored("AAA", ignore = false)
+
+        sends = true
+        sync.retryPending()
+
+        assertEquals(listOf(Sent("1141AAA", false, null)), sent)
+        assertEquals(emptyList<Any>(), waiting())
+    }
+
+    @Test
+    fun `a change made on the wire waits for the one before it`() = runTest {
+        val onTheWire = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        answer = { request ->
+            if (request.ignore == true) {
+                onTheWire.complete(Unit)
+                release.await()
+            }
+            true
+        }
+        val first = launch { setIgnored("AAA", ignore = true) }
+        onTheWire.await()
+
+        now = 2_000L
+        val second = launch { setIgnored("AAA", ignore = false) }
+        testScheduler.advanceUntilIdle()
+        assertEquals("the second PATCH went out before the first came back", 1, sent.size)
+
+        release.complete(Unit)
+        first.join()
+        second.join()
+
+        assertEquals(listOf(true, false), sent.map { it.ignore })
+        assertEquals(emptyList<Any>(), waiting())
+    }
+
+    @Test
+    fun `a waiting change replaced during a retry is not sent`() = runTest {
+        answer = { false }
+        setIgnored("AAA", ignore = true)
+        setIgnored("BBB", ignore = true)
+        sent.clear()
+        val onTheWire = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        answer = { request ->
+            if (request.moodleId == "1141AAA" && request.ignore == true) {
+                onTheWire.complete(Unit)
+                release.await()
+            }
+            true
+        }
+        val retry = launch { sync.retryPending() }
+        onTheWire.await()
+
+        // BBB's old change is still in the retry's list when this replaces it.
+        now = 2_000L
+        val toggle = launch { setIgnored("BBB", ignore = false) }
+        release.complete(Unit)
+        retry.join()
+        toggle.join()
+
+        assertEquals(
+            listOf(Sent("1141AAA", true, null), Sent("1141BBB", false, null)),
+            sent,
+        )
+        assertEquals(emptyList<Any>(), waiting())
+    }
+
+    @Test
+    fun `with cloud sync off a change is kept for when it is back on`() = runTest {
         sends = false
 
         setIgnored("AAA")
 
         assertEquals(setOf("1141:AAA"), cache.loadIgnoredCourses())
-        assertEquals(emptyList<Any>(), waiting())
+        assertEquals(listOf("1141:AAA" to true), waiting())
     }
 
     @Test
-    fun `a change made with cloud sync off drops an older one still waiting`() = runTest {
-        answer = { false }
-        setIgnored("AAA", ignore = true)
+    fun `a sync begun before sign-out writes nothing over the next account`() = runTest {
+        val generation = sync.currentGeneration()
+        cache.clearAllUserData()
 
-        queues = false
-        sends = false
-        setIgnored("AAA", ignore = false)
+        val applied = sync.applySnapshot(snapshot(fetchedAtMs = 5_000, "BBB" to true), generation)
 
+        assertNull(applied)
         assertEquals(emptySet<String>(), cache.loadIgnoredCourses())
+    }
+
+    @Test
+    fun `a retry stops sending once its account has signed out`() = runTest {
+        sends = false
+        setIgnored("AAA")
+        now = 2_000L
+        setIgnored("BBB")
+        val onTheWire = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        answer = {
+            onTheWire.complete(Unit)
+            release.await()
+            true
+        }
+        sends = true
+        val retry = launch { sync.retryPending() }
+        onTheWire.await()
+
+        cache.clearAllUserData()
+        release.complete(Unit)
+        retry.join()
+
+        assertEquals(listOf(Sent("1141AAA", true, null)), sent)
         assertEquals(emptyList<Any>(), waiting())
     }
 
@@ -183,7 +278,7 @@ class CourseIgnoreSyncTest {
     fun `a snapshot fetched before a change does not undo it`() = runTest {
         setIgnored("AAA")
 
-        val applied = sync.applySnapshot(snapshot(fetchedAtMs = 500, "AAA" to false))
+        val applied = sync.applySnapshot(snapshot(fetchedAtMs = 500, "AAA" to false), sync.currentGeneration())
 
         assertNull(applied)
         assertEquals(setOf("1141:AAA"), cache.loadIgnoredCourses())
@@ -194,7 +289,10 @@ class CourseIgnoreSyncTest {
         setIgnored("AAA")
         val effectsBefore = effects
 
-        val applied = sync.applySnapshot(snapshot(fetchedAtMs = 2_000, "AAA" to false, "BBB" to true))
+        val applied = sync.applySnapshot(
+            snapshot(fetchedAtMs = 2_000, "AAA" to false, "BBB" to true),
+            sync.currentGeneration(),
+        )
 
         assertEquals(setOf("1141:BBB"), applied)
         assertEquals(setOf("1141:BBB"), cache.loadIgnoredCourses())
@@ -206,7 +304,7 @@ class CourseIgnoreSyncTest {
         answer = { false }
         setIgnored("AAA")
 
-        sync.applySnapshot(snapshot(fetchedAtMs = 5_000, "AAA" to false))
+        sync.applySnapshot(snapshot(fetchedAtMs = 5_000, "AAA" to false), sync.currentGeneration())
 
         assertEquals(setOf("1141:AAA"), cache.loadIgnoredCourses())
     }
@@ -227,7 +325,7 @@ class CourseIgnoreSyncTest {
         answer = { false }
         setIgnored("AAA")
 
-        sync.adoptServer(snapshot(fetchedAtMs = 5_000, "BBB" to true))
+        sync.adoptServer(snapshot(fetchedAtMs = 5_000, "BBB" to true), sync.currentGeneration())
 
         assertEquals(setOf("1141:BBB"), cache.loadIgnoredCourses())
         assertEquals(emptyList<Any>(), waiting())
@@ -237,7 +335,7 @@ class CourseIgnoreSyncTest {
     fun `keeping this device's set sends it over the backend's`() = runTest {
         cache.saveIgnoredCourses(setOf("1141:AAA"))
 
-        sync.pushLocal(snapshot(fetchedAtMs = 5_000, "BBB" to true), onlyIgnored = false)
+        sync.pushLocal(snapshot(fetchedAtMs = 5_000, "BBB" to true), sync.currentGeneration())
 
         assertEquals(
             setOf(Sent("1141AAA", true, null), Sent("1141BBB", false, null)),
@@ -260,7 +358,7 @@ class CourseIgnoreSyncTest {
             "1141",
         )
 
-        sync.applySnapshot(snapshot(fetchedAtMs = 5_000, "AAA" to true))
+        sync.applySnapshot(snapshot(fetchedAtMs = 5_000, "AAA" to true), sync.currentGeneration())
 
         assertEquals(listOf(Sent("1141AAA", null, 77)), sent)
     }

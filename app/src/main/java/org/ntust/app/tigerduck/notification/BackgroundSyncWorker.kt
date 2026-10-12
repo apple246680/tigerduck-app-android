@@ -162,6 +162,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
             return
         }
         try {
+            val generation = courseIgnoreSync.currentGeneration()
             courseIgnoreSync.retryPending()
             val result = syncApiClient.fetchFullSync()
             val localIgnored = dataCache.loadIgnoredAssignments()
@@ -174,7 +175,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
             }
             val marksChanged = !isFirstTimeMigration &&
                 (result.ignoredIds != localIgnored || result.completedIds != localMarked)
-            courseIgnoreSync.applySnapshot(result)
+            courseIgnoreSync.applySnapshot(result, generation)
 
             if (prefs.syncCourseColors && result.courseOverrides.isNotEmpty()) {
                 applyCourseOverridesBackground(result.courseOverrides)

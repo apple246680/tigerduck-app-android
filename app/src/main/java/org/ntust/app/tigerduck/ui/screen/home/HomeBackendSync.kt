@@ -131,11 +131,12 @@ class HomeBackendSync @Inject constructor(
         }
         try {
             if (BuildConfig.DEBUG) ServerFailureSimulator.check(ServerKind.BACKEND)
+            val generation = courseIgnoreSync.currentGeneration()
             // Unsent course-ignore changes go first, so the snapshot has them.
             courseIgnoreSync.retryPending()
             val result = syncApiClient.fetchFullSync()
             syncAssignmentOverrides(state, result)
-            courseIgnoreSync.applySnapshot(result)?.let { state.ignoredCourseKeys.value = it }
+            courseIgnoreSync.applySnapshot(result, generation)?.let { state.ignoredCourseKeys.value = it }
             // Course overrides and deletion detection always run regardless
             // of whether this was a first-time migration.
             if (result.courseOverrides.isNotEmpty() && (prefs.syncCourseColors || prefs.syncCourseNames)) {
@@ -298,9 +299,6 @@ class HomeBackendSync @Inject constructor(
                     )
                 }
             }
-            // Only adds: stopping what the backend ignores would undo a
-            // change another device made.
-            courseIgnoreSync.pushLocal(result, onlyIgnored = true)
             return
         }
 

@@ -64,6 +64,15 @@ class DataCache @Inject constructor(
      */
     val assignmentMarksVersion: StateFlow<Int> = _assignmentMarksVersion.asStateFlow()
 
+    /**
+     * Bumped each time the user data is wiped, under the same lock as the
+     * wipe. Work started for the account that left hands the value it began
+     * with to the writes that take one, which then drop it.
+     */
+    @Volatile
+    var userDataGeneration: Int = 0
+        private set
+
     suspend fun replaceIgnoredAssignments(ids: Set<String>) = saveIgnoredAssignments(ids)
 
     suspend fun replaceMarkedCompletedAssignments(ids: Set<String>) =
@@ -423,9 +432,11 @@ class DataCache @Inject constructor(
     // Every assignment of these courses counts as ignored. In filesDir with
     // the per-assignment list it extends.
 
-    suspend fun saveIgnoredCourses(keys: Set<String>) {
-        saveToUserData(keys.sorted(), "ignored_courses.json")
+    /** False, and nothing written, when the data was wiped since [generation]. */
+    suspend fun saveIgnoredCourses(keys: Set<String>, generation: Int = userDataGeneration): Boolean {
+        if (!saveToUserDataIf(keys.sorted(), "ignored_courses.json", generation)) return false
         _assignmentMarksVersion.update { it + 1 }
+        return true
     }
 
     suspend fun loadIgnoredCourses(): Set<String> {
@@ -437,8 +448,11 @@ class DataCache @Inject constructor(
     // Changes to the set above the backend has not confirmed; see
     // CourseIgnoreSync, the only writer of both files.
 
-    suspend fun savePendingCourseIgnores(changes: List<PendingCourseIgnore>) =
-        saveToUserData(changes, "pending_course_ignores.json")
+    /** False, and nothing written, when the data was wiped since [generation]. */
+    suspend fun savePendingCourseIgnores(
+        changes: List<PendingCourseIgnore>,
+        generation: Int = userDataGeneration,
+    ): Boolean = saveToUserDataIf(changes, "pending_course_ignores.json", generation)
 
     /** Rows without a usable [PendingCourseIgnore.key] are left out. */
     suspend fun loadPendingCourseIgnores(): List<PendingCourseIgnore> {
@@ -562,6 +576,7 @@ class DataCache @Inject constructor(
     suspend fun clearEverything() {
         cacheMutex.withLock {
             userDataMutex.withLock {
+                userDataGeneration++
                 withContext(Dispatchers.IO) {
                     listOf(cacheDir, userDataDir).forEach { dir ->
                         dir.listFiles()?.forEach { runCatching { it.deleteRecursively() } }
@@ -596,6 +611,7 @@ class DataCache @Inject constructor(
             }
         }
         userDataMutex.withLock {
+            userDataGeneration++
             withContext(Dispatchers.IO) {
                 listOf(
                     "skipped_dates.json",
@@ -654,6 +670,17 @@ class DataCache @Inject constructor(
             atomicWrite(File(userDataDir, filename), gson.toJson(value))
         }
     }
+
+    // Checked under the lock the wipe takes, so a write cannot land between
+    // the check and a sign-out.
+    private suspend fun <T> saveToUserDataIf(value: T, filename: String, generation: Int): Boolean =
+        userDataMutex.withLock {
+            if (generation != userDataGeneration) return@withLock false
+            withContext(Dispatchers.IO) {
+                atomicWrite(File(userDataDir, filename), gson.toJson(value))
+            }
+            true
+        }
 
     /**
      * Write-to-temp + rename so a crash or full disk mid-write can't leave a
