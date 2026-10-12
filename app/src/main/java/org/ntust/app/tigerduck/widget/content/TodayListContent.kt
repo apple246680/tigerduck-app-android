@@ -24,9 +24,31 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import org.ntust.app.tigerduck.AppConstants
 import org.ntust.app.tigerduck.R
+import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.widget.WidgetColors
 import org.ntust.app.tigerduck.widget.WidgetState
 import org.ntust.app.tigerduck.widget.widgetCourseColor
+
+/**
+ * Today's courses in order of their first period, or none on a quiet day
+ * ([WidgetState.isQuietToday]): before 開學 the timetable is cached weeks
+ * ahead and would list classes for a term that has not started, and on a
+ * holiday the user has not opted back into no class meets, as the Next Class
+ * widget shows. Filtered here rather than in WidgetDataLoader because the
+ * Week grid shares `state.courses` and keeps rendering the timetable.
+ */
+internal fun todayListCourses(state: WidgetState): List<Course> {
+    if (state.isQuietToday) return emptyList()
+    val today = state.currentWeekday
+    val order = AppConstants.Periods.chronologicalOrder
+    return state.courses
+        .filter { it.schedule.containsKey(today) }
+        .sortedBy { course ->
+            course.schedule[today]!!
+                .minByOrNull { order.indexOf(it) }
+                ?.let { order.indexOf(it) } ?: Int.MAX_VALUE
+        }
+}
 
 @Composable
 fun TodayListContent(state: WidgetState, colors: WidgetColors, tapAction: Action) {
@@ -43,19 +65,7 @@ fun TodayListContent(state: WidgetState, colors: WidgetColors, tapAction: Action
     )
     val isWeekend = today == 6 || today == 7
     val order = AppConstants.Periods.chronologicalOrder
-
-    // Today is a "today"-scoped surface, so it stays empty until 開學 — the
-    // timetable is cached weeks ahead and would otherwise list classes for a
-    // term that has not started. Filtered here rather than in WidgetDataLoader
-    // because this reads `state.courses` directly, and the Week grid shares
-    // that list and deliberately keeps rendering outside the term.
-    val todayCourses = (if (state.isTermInSession) state.courses else emptyList())
-        .filter { it.schedule.containsKey(today) }
-        .sortedBy { course ->
-            course.schedule[today]!!
-                .minByOrNull { order.indexOf(it) }
-                ?.let { order.indexOf(it) } ?: Int.MAX_VALUE
-        }
+    val todayCourses = todayListCourses(state)
 
     Column(
         modifier = GlanceModifier
