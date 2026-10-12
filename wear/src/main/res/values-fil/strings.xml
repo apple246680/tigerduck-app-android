@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">May takdang-aralin</string>
     <string name="a11y_class_table_conflict_prefix">Salungatan ng klase</string>
     <string name="a11y_course_card_open_details_hint">I-double tap para sa mga detalye</string>
+    <string name="a11y_course_color_swatch">Kulay %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Buksan sa Moodle</string>
     <string name="a11y_rankings_trend_chart">Trend ng GPA bawat semester</string>
     <string name="a11y_rankings_trend_no_selection">Walang napiling semester</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">Paaralan</string>
     <string name="calendar_source_semester">Semestre</string>
     <string name="calendar_today">Ngayon</string>
-    <string name="class_table_conflict_add_failed_message">Mayroon nang dalawang klase ang %1$s sa slot na ito (Araw %2$s, Panahon %3$s): %4$s at %5$s. Hindi sinusuportahan ng sistema ang tatlong magkakaagaw na klase.</string>
+    <string name="class_table_conflict_add_failed_message">Mayroon nang dalawang klase ang %1$s sa slot na ito (%2$s, Panahon %3$s): %4$s at %5$s. Hindi sinusuportahan ng sistema ang tatlong magkakaagaw na klase.</string>
     <string name="class_table_conflict_add_failed_title">Hindi maidagdag</string>
     <string name="class_table_course_name">Pangalan ng kurso</string>
     <string name="class_table_delete">Burahin</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">Mga hindi kumpleto na takdang-aralin</string>
     <string name="course_detail_instructor_label">Tagapagturo</string>
     <string name="course_detail_no_roster">Walang available na data sa pagpapatala para sa kursong ito</string>
+    <string name="course_detail_require_option_elective">Elektibo</string>
+    <string name="course_detail_require_option_label">Uri ng kurso</string>
+    <string name="course_detail_require_option_required">Kinakailangan</string>
     <string name="course_detail_time_label">Oras</string>
     <string name="course_instructor_value">Tagapagturo: %1$s</string>
     <string name="desktop_about_copyright">© Mga kontribyutor ng TigerDuck. Hindi kaugnay ng NTUST.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Network error sa Moodle: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">Tiyaking valid pa ang iyong Moodle / NTUST credentials.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">Mag-sign in muli sa NTUST at subukan ulit.</string>
+    <string name="error_moodle_site_maintenance">Kasalukuyang nasa maintenance ang Moodle. Subukan muli mamaya.</string>
     <string name="error_moodle_sso_rejected">Tinanggihan ng NTUST SSO ang Moodle authorization. Pakitiyak ang iyong credentials.</string>
     <string name="error_moodle_sso_rejected_with_reason">Tinanggihan ng NTUST SSO ang Moodle authorization: %1$@</string>
     <string name="error_moodle_webservice_disabled">Kasalukuyang hindi available ang Moodle webservice.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">Nag-expire ang session</string>
     <string name="error_sign_in_failed">Nabigong mag-login</string>
     <string name="error_sso_sign_in_failed">Nabigong mag-sign in. Pakitiyak ang iyong account at password.</string>
+    <string name="error_sso_sign_in_failed_with_reason">Nabigong mag-sign in: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">Hindi mahanap ang SSO sign-in form.</string>
     <string name="feature_announcements">Mga anunsyo</string>
     <string name="feature_announcements_short">Mga anunsyo</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">Default na browser ng sistema</string>
     <string name="settings_check_for_updates">Suriin ang mga update</string>
     <string name="settings_check_server_status">Suriin ang status ng server</string>
+    <string name="settings_class_reminder">Mga paalala ng klase</string>
+    <string name="settings_class_reminder_footer">Aabisuhan ka bago magsimula ang bawat klase.</string>
+    <string name="settings_class_reminder_lead_time">Ipaalala sa akin</string>
     <string name="settings_classroom_mandarin_display">Kapag ang pangalan ng silid-aralan ay nasa Mandarin</string>
     <string name="settings_classroom_mandarin_display_original">Ipakita ang orihinal</string>
     <string name="settings_classroom_mandarin_display_pinyin">Ipakita ang pinyin</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">Buksan ang mga link gamit ang</string>
     <string name="settings_official_website">Opisyal na website</string>
     <string name="settings_open_source_licenses">Mga open-source na lisensya</string>
+    <string name="settings_outline_required_courses">Lagyan ng border ang mga kinakailangang kurso sa iskedyul</string>
     <string name="settings_privacy_policy">Patakaran sa privacy</string>
     <string name="settings_push_server_nav_label">Push ng server</string>
     <string name="settings_remember_bulletin_filter">Tandaan ang mga filter ng bulletin</string>

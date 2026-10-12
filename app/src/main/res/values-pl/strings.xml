@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">Ma zadanie</string>
     <string name="a11y_class_table_conflict_prefix">Konflikt zajęć</string>
     <string name="a11y_course_card_open_details_hint">Podwójne stuknięcie, aby zobaczyć szczegóły</string>
+    <string name="a11y_course_color_swatch">Kolor %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Otwórz w Moodle</string>
     <string name="a11y_rankings_trend_chart">Trend GPA według semestru</string>
     <string name="a11y_rankings_trend_no_selection">Nie wybrano semestru</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">Uczelnia</string>
     <string name="calendar_source_semester">Semestr</string>
     <string name="calendar_today">Dziś</string>
-    <string name="class_table_conflict_add_failed_message">%1$s ma już dwa zajęcia w tym slocie (dzień tygodnia %2$s, godzina %3$s): %4$s i %5$s. System nie obsługuje potrójnych konfliktów.</string>
+    <string name="class_table_conflict_add_failed_message">%1$s ma już dwa zajęcia w tym slocie (%2$s, godzina %3$s): %4$s i %5$s. System nie obsługuje potrójnych konfliktów.</string>
     <string name="class_table_conflict_add_failed_title">Nie można dodać</string>
     <string name="class_table_course_name">Nazwa przedmiotu</string>
     <string name="class_table_delete">Usuń</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">Niezakończone zadania</string>
     <string name="course_detail_instructor_label">Wykładowca</string>
     <string name="course_detail_no_roster">Brak danych o zapisach na ten przedmiot</string>
+    <string name="course_detail_require_option_elective">Do wyboru</string>
+    <string name="course_detail_require_option_label">Rodzaj przedmiotu</string>
+    <string name="course_detail_require_option_required">Obowiązkowy</string>
     <string name="course_detail_time_label">Czas</string>
     <string name="course_instructor_value">Wykładowca: %1$s</string>
     <string name="desktop_about_copyright">© Współtwórcy TigerDuck. Niezwiązane z NTUST.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Błąd sieci Moodle: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">Sprawdź, czy Twoje dane Moodle / NTUST są nadal aktualne.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">Zaloguj się ponownie do NTUST i spróbuj jeszcze raz.</string>
+    <string name="error_moodle_site_maintenance">W Moodle trwają prace konserwacyjne. Spróbuj ponownie później.</string>
     <string name="error_moodle_sso_rejected">NTUST SSO odrzuciło autoryzację Moodle. Sprawdź swoje dane logowania.</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO odrzuciło autoryzację Moodle: %1$@</string>
     <string name="error_moodle_webservice_disabled">Usługa internetowa Moodle jest obecnie niedostępna.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">Sesja wygasła</string>
     <string name="error_sign_in_failed">Logowanie nie powiodło się</string>
     <string name="error_sso_sign_in_failed">Logowanie nie powiodło się. Sprawdź swoje konto i hasło.</string>
+    <string name="error_sso_sign_in_failed_with_reason">Logowanie nie powiodło się: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">Nie znaleziono formularza logowania SSO.</string>
     <string name="feature_announcements">Ogłoszenia</string>
     <string name="feature_announcements_short">Ogłoszenia</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">Domyślna przeglądarka systemowa</string>
     <string name="settings_check_for_updates">Sprawdź aktualizacje</string>
     <string name="settings_check_server_status">Sprawdź stan serwera</string>
+    <string name="settings_class_reminder">Przypomnienia o zajęciach</string>
+    <string name="settings_class_reminder_footer">Powiadomimy Cię przed rozpoczęciem każdych zajęć.</string>
+    <string name="settings_class_reminder_lead_time">Przypomnij mi</string>
     <string name="settings_classroom_mandarin_display">Gdy nazwa sali jest po chińsku</string>
     <string name="settings_classroom_mandarin_display_original">Wyświetl oryginał</string>
     <string name="settings_classroom_mandarin_display_pinyin">Wyświetl pinyin</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">Otwieraj linki w</string>
     <string name="settings_official_website">Oficjalna strona</string>
     <string name="settings_open_source_licenses">Licencje open source</string>
+    <string name="settings_outline_required_courses">Obramowuj przedmioty obowiązkowe w planie zajęć</string>
     <string name="settings_privacy_policy">Polityka prywatności</string>
     <string name="settings_push_server_nav_label">Push serwera</string>
     <string name="settings_remember_bulletin_filter">Zapamiętaj filtry biuletynu</string>

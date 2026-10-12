@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">มีงาน</string>
     <string name="a11y_class_table_conflict_prefix">ตารางเรียนชนกัน</string>
     <string name="a11y_course_card_open_details_hint">แตะสองครั้งเพื่อดูรายละเอียด</string>
+    <string name="a11y_course_color_swatch">สีที่ %1$lld</string>
     <string name="a11y_course_detail_open_moodle">เปิดใน Moodle</string>
     <string name="a11y_rankings_trend_chart">แนวโน้ม GPA ตามภาคการศึกษา</string>
     <string name="a11y_rankings_trend_no_selection">ยังไม่ได้เลือกภาคการศึกษา</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">การบ้านที่ยังไม่เสร็จ</string>
     <string name="course_detail_instructor_label">อาจารย์ผู้สอน</string>
     <string name="course_detail_no_roster">ไม่มีข้อมูลการลงทะเบียนสำหรับวิชานี้</string>
+    <string name="course_detail_require_option_elective">วิชาเลือก</string>
+    <string name="course_detail_require_option_label">ประเภทรายวิชา</string>
+    <string name="course_detail_require_option_required">วิชาบังคับ</string>
     <string name="course_detail_time_label">เวลา</string>
     <string name="course_instructor_value">อาจารย์: %1$s</string>
     <string name="desktop_about_copyright">© ผู้ร่วมพัฒนา TigerDuck ไม่ได้สังกัด NTUST</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">ข้อผิดพลาดเครือข่าย Moodle: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">ตรวจสอบว่าข้อมูลรับรอง Moodle / NTUST ของคุณยังใช้งานได้</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">เข้าสู่ระบบ NTUST อีกครั้งแล้วลองใหม่</string>
+    <string name="error_moodle_site_maintenance">Moodle อยู่ระหว่างการบำรุงรักษา ลองใหม่อีกครั้งภายหลัง</string>
     <string name="error_moodle_sso_rejected">NTUST SSO ปฏิเสธการอนุมัติ Moodle กรุณาตรวจสอบข้อมูลรับรองของคุณ</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO ปฏิเสธการอนุมัติ Moodle: %1$@</string>
     <string name="error_moodle_webservice_disabled">Moodle webservice ไม่พร้อมใช้งานในขณะนี้</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">เซสชันหมดอายุ</string>
     <string name="error_sign_in_failed">เข้าสู่ระบบล้มเหลว</string>
     <string name="error_sso_sign_in_failed">เข้าสู่ระบบล้มเหลว กรุณาตรวจสอบบัญชีและรหัสผ่านของคุณ</string>
+    <string name="error_sso_sign_in_failed_with_reason">เข้าสู่ระบบล้มเหลว: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">ไม่พบแบบฟอร์มเข้าสู่ระบบ SSO</string>
     <string name="feature_announcements">ประกาศ</string>
     <string name="feature_announcements_short">ประกาศ</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">เบราว์เซอร์เริ่มต้นของระบบ</string>
     <string name="settings_check_for_updates">ตรวจสอบการอัปเดต</string>
     <string name="settings_check_server_status">ตรวจสอบสถานะเซิร์ฟเวอร์</string>
+    <string name="settings_class_reminder">การแจ้งเตือนเรียน</string>
+    <string name="settings_class_reminder_footer">คุณจะได้รับการแจ้งเตือนก่อนเริ่มเรียนแต่ละคาบ</string>
+    <string name="settings_class_reminder_lead_time">เตือนฉัน</string>
     <string name="settings_classroom_mandarin_display">เมื่อชื่อห้องเรียนเป็นภาษาจีน</string>
     <string name="settings_classroom_mandarin_display_original">แสดงต้นฉบับ</string>
     <string name="settings_classroom_mandarin_display_pinyin">แสดงพินอิน</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">เปิดลิงก์ด้วย</string>
     <string name="settings_official_website">เว็บไซต์ทางการ</string>
     <string name="settings_open_source_licenses">สัญญาอนุญาตโอเพนซอร์ส</string>
+    <string name="settings_outline_required_courses">แสดงกรอบรอบวิชาบังคับในตารางเรียน</string>
     <string name="settings_privacy_policy">นโยบายความเป็นส่วนตัว</string>
     <string name="settings_push_server_nav_label">พุชจากเซิร์ฟเวอร์</string>
     <string name="settings_remember_bulletin_filter">จดจำตัวกรองกระดานข่าว</string>

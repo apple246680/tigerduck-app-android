@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">Има задание</string>
     <string name="a11y_class_table_conflict_prefix">Конфликт на часове</string>
     <string name="a11y_course_card_open_details_hint">Докоснете двукратно за подробности</string>
+    <string name="a11y_course_color_swatch">Цвят %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Отвори в Moodle</string>
     <string name="a11y_rankings_trend_chart">Тенденция на GPA по семестри</string>
     <string name="a11y_rankings_trend_no_selection">Не е избран семестър</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">Училище</string>
     <string name="calendar_source_semester">Семестър</string>
     <string name="calendar_today">Днес</string>
-    <string name="class_table_conflict_add_failed_message">%1$s вече има два часа в този слот (Делничен ден %2$s, Период %3$s): %4$s и %5$s. Системата не поддържа тройни конфликти.</string>
+    <string name="class_table_conflict_add_failed_message">%1$s вече има два часа в този слот (%2$s, Период %3$s): %4$s и %5$s. Системата не поддържа тройни конфликти.</string>
     <string name="class_table_conflict_add_failed_title">Не може да се добави</string>
     <string name="class_table_course_name">Наименование на курса</string>
     <string name="class_table_delete">Изтриване</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">Незавършени задачи</string>
     <string name="course_detail_instructor_label">Инструктор</string>
     <string name="course_detail_no_roster">Няма налични данни за записване за този курс</string>
+    <string name="course_detail_require_option_elective">Избираем</string>
+    <string name="course_detail_require_option_label">Вид курс</string>
+    <string name="course_detail_require_option_required">Задължителен</string>
     <string name="course_detail_time_label">време</string>
     <string name="course_instructor_value">Преподавател: %1$s</string>
     <string name="desktop_about_copyright">© Сътрудници на TigerDuck. Не е свързано с NTUST.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Мрежова грешка на Moodle: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">Уверете се, че вашите Moodle / NTUST идентификационни данни са все още валидни.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">Влезте в NTUST отново и опитайте още веднъж.</string>
+    <string name="error_moodle_site_maintenance">Moodle е в процес на поддръжка. Опитайте отново по-късно.</string>
     <string name="error_moodle_sso_rejected">NTUST SSO отхвърли оторизацията на Moodle. Моля, проверете идентификационните си данни.</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO отхвърли оторизацията на Moodle: %1$@</string>
     <string name="error_moodle_webservice_disabled">Уеб услугата на Moodle в момента не е налична.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">Сесията изтече</string>
     <string name="error_sign_in_failed">Влизането е неуспешно</string>
     <string name="error_sso_sign_in_failed">Влизането не успя. Моля, проверете акаунта и паролата си.</string>
+    <string name="error_sso_sign_in_failed_with_reason">Влизането не успя: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">Формулярът за SSO вход не може да бъде намерен.</string>
     <string name="feature_announcements">Съобщения</string>
     <string name="feature_announcements_short">Съобщения</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">Системен браузър по подразбиране</string>
     <string name="settings_check_for_updates">Провери за актуализации</string>
     <string name="settings_check_server_status">Провери статуса на сървъра</string>
+    <string name="settings_class_reminder">Напомняния за часове</string>
+    <string name="settings_class_reminder_footer">Ще бъдете уведомени преди началото на всеки час.</string>
+    <string name="settings_class_reminder_lead_time">Напомни ми</string>
     <string name="settings_classroom_mandarin_display">Когато името на класната стая е на китайски</string>
     <string name="settings_classroom_mandarin_display_original">Показване на оригинал</string>
     <string name="settings_classroom_mandarin_display_pinyin">Показване на пиньинь</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">Отваряне на връзки с</string>
     <string name="settings_official_website">Официален уебсайт</string>
     <string name="settings_open_source_licenses">Лицензи с отворен код</string>
+    <string name="settings_outline_required_courses">Очертаване на задължителните курсове в разписанието</string>
     <string name="settings_privacy_policy">Политика за поверителност</string>
     <string name="settings_push_server_nav_label">Натискане на сървъра</string>
     <string name="settings_remember_bulletin_filter">Запомнете филтрите за бюлетини</string>

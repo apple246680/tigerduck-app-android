@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">Van feladat</string>
     <string name="a11y_class_table_conflict_prefix">Óraütközés</string>
     <string name="a11y_course_card_open_details_hint">Koppintson duplán a részletekért</string>
+    <string name="a11y_course_color_swatch">%1$lld. szín</string>
     <string name="a11y_course_detail_open_moodle">Megnyitás Moodle-ban</string>
     <string name="a11y_rankings_trend_chart">GPA-tendencia szemeszterenként</string>
     <string name="a11y_rankings_trend_no_selection">Nincs szemeszter kiválasztva</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">Iskola</string>
     <string name="calendar_source_semester">Félév</string>
     <string name="calendar_today">Ma</string>
-    <string name="class_table_conflict_add_failed_message">%1$s-nél már két óra van ennél az időpontnál (%2$s nap, %3$s. óra): %4$s és %5$s. A rendszer nem támogat hármas ütközést.</string>
+    <string name="class_table_conflict_add_failed_message">%1$s-nél már két óra van ennél az időpontnál (%2$s, %3$s. óra): %4$s és %5$s. A rendszer nem támogat hármas ütközést.</string>
     <string name="class_table_conflict_add_failed_title">Nem adható hozzá</string>
     <string name="class_table_course_name">Kurzus neve</string>
     <string name="class_table_delete">Törlés</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">Befejezetlen házi feladatok</string>
     <string name="course_detail_instructor_label">Oktató</string>
     <string name="course_detail_no_roster">Ehhez a kurzushoz nincsenek elérhető létszámadatok</string>
+    <string name="course_detail_require_option_elective">Választható</string>
+    <string name="course_detail_require_option_label">Kurzustípus</string>
+    <string name="course_detail_require_option_required">Kötelező</string>
     <string name="course_detail_time_label">Időpont</string>
     <string name="course_instructor_value">Oktató: %1$s</string>
     <string name="desktop_about_copyright">© TigerDuck közreműködők. Nem áll kapcsolatban az NTUST-tal.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Moodle hálózati hiba: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">Ellenőrizze, hogy a Moodle / NTUST hitelesítő adatok még érvényesek.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">Jelentkezzen be ismét az NTUST-ba, és próbálja újra.</string>
+    <string name="error_moodle_site_maintenance">A Moodle karbantartás alatt áll. Próbálja újra később.</string>
     <string name="error_moodle_sso_rejected">Az NTUST SSO elutasította a Moodle engedélyezést. Kérjük, ellenőrizze hitelesítő adatait.</string>
     <string name="error_moodle_sso_rejected_with_reason">Az NTUST SSO elutasította a Moodle engedélyezést: %1$@</string>
     <string name="error_moodle_webservice_disabled">A Moodle webszolgáltatás jelenleg nem érhető el.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">A munkamenet lejárt</string>
     <string name="error_sign_in_failed">Bejelentkezés sikertelen</string>
     <string name="error_sso_sign_in_failed">A bejelentkezés sikertelen. Kérjük, ellenőrizze fiókját és jelszavát.</string>
+    <string name="error_sso_sign_in_failed_with_reason">A bejelentkezés sikertelen: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">Nem található az SSO bejelentkezési űrlap.</string>
     <string name="feature_announcements">Bejelentések</string>
     <string name="feature_announcements_short">Bejelentések</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">Rendszer alapértelmezett böngésző</string>
     <string name="settings_check_for_updates">Frissítések keresése</string>
     <string name="settings_check_server_status">Szerver állapotának ellenőrzése</string>
+    <string name="settings_class_reminder">Óraértesítők</string>
+    <string name="settings_class_reminder_footer">Minden óra kezdete előtt értesítést küldünk.</string>
+    <string name="settings_class_reminder_lead_time">Értesítés</string>
     <string name="settings_classroom_mandarin_display">Ha a tanterem neve kínaiul van</string>
     <string name="settings_classroom_mandarin_display_original">Eredeti megjelenítése</string>
     <string name="settings_classroom_mandarin_display_pinyin">Pinyin megjelenítése</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">Hivatkozások megnyitása ezzel:</string>
     <string name="settings_official_website">Hivatalos weboldal</string>
     <string name="settings_open_source_licenses">Nyílt forráskódú licencek</string>
+    <string name="settings_outline_required_courses">Kötelező kurzusok bekeretezése az órarendben</string>
     <string name="settings_privacy_policy">Adatvédelmi irányelvek</string>
     <string name="settings_push_server_nav_label">Szerver push</string>
     <string name="settings_remember_bulletin_filter">Hirdetményszűrők megjegyzése</string>

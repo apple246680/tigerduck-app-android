@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">Có bài tập</string>
     <string name="a11y_class_table_conflict_prefix">Xung đột lịch học</string>
     <string name="a11y_course_card_open_details_hint">Nhấn đúp để xem chi tiết</string>
+    <string name="a11y_course_color_swatch">Màu %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Mở trong Moodle</string>
     <string name="a11y_rankings_trend_chart">Xu hướng GPA theo học kỳ</string>
     <string name="a11y_rankings_trend_no_selection">Chưa chọn học kỳ</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">Trường</string>
     <string name="calendar_source_semester">Học kỳ</string>
     <string name="calendar_today">Hôm nay</string>
-    <string name="class_table_conflict_add_failed_message">%1$s đã có hai lớp ở khung này (Thứ %2$s, Tiết %3$s): %4$s và %5$s. Hệ thống không hỗ trợ trùng ba lớp.</string>
+    <string name="class_table_conflict_add_failed_message">%1$s đã có hai lớp ở khung này (%2$s, Tiết %3$s): %4$s và %5$s. Hệ thống không hỗ trợ trùng ba lớp.</string>
     <string name="class_table_conflict_add_failed_title">Không thể thêm</string>
     <string name="class_table_course_name">Tên môn học</string>
     <string name="class_table_delete">Xóa</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">Bài tập chưa hoàn thành</string>
     <string name="course_detail_instructor_label">Giảng viên</string>
     <string name="course_detail_no_roster">Không có dữ liệu đăng ký học cho môn này</string>
+    <string name="course_detail_require_option_elective">Tự chọn</string>
+    <string name="course_detail_require_option_label">Loại môn học</string>
+    <string name="course_detail_require_option_required">Bắt buộc</string>
     <string name="course_detail_time_label">Thời gian</string>
     <string name="course_instructor_value">Giảng viên: %1$s</string>
     <string name="desktop_about_copyright">© Người đóng góp TigerDuck. Không liên kết với NTUST.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Lỗi mạng Moodle: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">Hãy kiểm tra xem thông tin đăng nhập Moodle / NTUST của bạn có còn hợp lệ không.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">Hãy đăng nhập lại NTUST rồi thử lại.</string>
+    <string name="error_moodle_site_maintenance">Moodle đang được bảo trì. Vui lòng thử lại sau.</string>
     <string name="error_moodle_sso_rejected">NTUST SSO đã từ chối ủy quyền Moodle. Vui lòng kiểm tra thông tin đăng nhập.</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO đã từ chối ủy quyền Moodle: %1$@</string>
     <string name="error_moodle_webservice_disabled">Dịch vụ web Moodle hiện không khả dụng.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">Phiên đã hết hạn</string>
     <string name="error_sign_in_failed">Đăng nhập thất bại</string>
     <string name="error_sso_sign_in_failed">Đăng nhập thất bại. Vui lòng kiểm tra tài khoản và mật khẩu.</string>
+    <string name="error_sso_sign_in_failed_with_reason">Đăng nhập thất bại: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">Không tìm thấy biểu mẫu đăng nhập SSO.</string>
     <string name="feature_announcements">Thông báo</string>
     <string name="feature_announcements_short">Thông báo</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">Trình duyệt mặc định của hệ thống</string>
     <string name="settings_check_for_updates">Kiểm tra cập nhật</string>
     <string name="settings_check_server_status">Kiểm tra trạng thái máy chủ</string>
+    <string name="settings_class_reminder">Nhắc lịch học</string>
+    <string name="settings_class_reminder_footer">Bạn sẽ được thông báo trước khi mỗi lớp học bắt đầu.</string>
+    <string name="settings_class_reminder_lead_time">Nhắc tôi</string>
     <string name="settings_classroom_mandarin_display">Khi tên phòng học bằng tiếng Trung</string>
     <string name="settings_classroom_mandarin_display_original">Hiển thị nguyên gốc</string>
     <string name="settings_classroom_mandarin_display_pinyin">Hiển thị Bính âm</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">Mở liên kết bằng</string>
     <string name="settings_official_website">Trang web chính thức</string>
     <string name="settings_open_source_licenses">Giấy phép mã nguồn mở</string>
+    <string name="settings_outline_required_courses">Hiển thị viền cho các môn bắt buộc trên thời khóa biểu</string>
     <string name="settings_privacy_policy">Chính sách quyền riêng tư</string>
     <string name="settings_push_server_nav_label">Đẩy máy chủ</string>
     <string name="settings_remember_bulletin_filter">Ghi nhớ bộ lọc bản tin</string>

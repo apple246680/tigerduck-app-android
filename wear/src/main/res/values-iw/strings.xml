@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">יש משימה</string>
     <string name="a11y_class_table_conflict_prefix">התנגשות שיעורים</string>
     <string name="a11y_course_card_open_details_hint">הקש פעמיים לפרטים</string>
+    <string name="a11y_course_color_swatch">צבע %1$lld</string>
     <string name="a11y_course_detail_open_moodle">פתח ב-Moodle</string>
     <string name="a11y_rankings_trend_chart">מגמת GPA לפי סמסטר</string>
     <string name="a11y_rankings_trend_no_selection">לא נבחר סמסטר</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">משימות שלא הושלמו</string>
     <string name="course_detail_instructor_label">מנחה</string>
     <string name="course_detail_no_roster">אין נתוני הרשמה זמינים עבור קורס זה</string>
+    <string name="course_detail_require_option_elective">בחירה</string>
+    <string name="course_detail_require_option_label">סוג קורס</string>
+    <string name="course_detail_require_option_required">חובה</string>
     <string name="course_detail_time_label">זמן</string>
     <string name="course_instructor_value">מרצה: %1$s</string>
     <string name="desktop_about_copyright">© תורמי TigerDuck. ללא קשר ל-NTUST.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">שגיאת רשת Moodle: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">ודא שפרטי Moodle / NTUST שלך עדיין תקפים.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">התחבר שוב ל-NTUST ונסה שוב.</string>
+    <string name="error_moodle_site_maintenance">Moodle נמצא בתחזוקה. נסה שוב מאוחר יותר.</string>
     <string name="error_moodle_sso_rejected">NTUST SSO דחה את אישור Moodle. אנא אמת את פרטי הכניסה.</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO דחה את אישור Moodle: %1$@</string>
     <string name="error_moodle_webservice_disabled">שירות האינטרנט של Moodle אינו זמין כעת.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">הפגישה פגה</string>
     <string name="error_sign_in_failed">הכניסה נכשלה</string>
     <string name="error_sso_sign_in_failed">הכניסה נכשלה. אנא אמת את החשבון והסיסמה.</string>
+    <string name="error_sso_sign_in_failed_with_reason">הכניסה נכשלה: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">לא ניתן למצוא את טופס הכניסה של SSO.</string>
     <string name="feature_announcements">הודעות</string>
     <string name="feature_announcements_short">הודעות</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">דפדפן ברירת מחדל של המערכת</string>
     <string name="settings_check_for_updates">בדוק עדכונים</string>
     <string name="settings_check_server_status">בדוק מצב שרת</string>
+    <string name="settings_class_reminder">תזכורות שיעורים</string>
+    <string name="settings_class_reminder_footer">תישלח אליך הודעה לפני תחילת כל שיעור.</string>
+    <string name="settings_class_reminder_lead_time">הזכר לי</string>
     <string name="settings_classroom_mandarin_display">כאשר שם הכיתה הוא בסינית</string>
     <string name="settings_classroom_mandarin_display_original">הצג מקור</string>
     <string name="settings_classroom_mandarin_display_pinyin">הצג פיניין</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">פתח קישורים עם</string>
     <string name="settings_official_website">אתר רשמי</string>
     <string name="settings_open_source_licenses">רישיונות קוד פתוח</string>
+    <string name="settings_outline_required_courses">הצגת מסגרת סביב קורסי חובה במערכת השעות</string>
     <string name="settings_privacy_policy">מדיניות פרטיות</string>
     <string name="settings_push_server_nav_label">דחיפת שרת</string>
     <string name="settings_remember_bulletin_filter">זכור את מסנני העדכונים</string>

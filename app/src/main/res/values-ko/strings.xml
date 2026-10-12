@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">과제 있음</string>
     <string name="a11y_class_table_conflict_prefix">수업 충돌</string>
     <string name="a11y_course_card_open_details_hint">두 번 탭하여 세부 정보 보기</string>
+    <string name="a11y_course_color_swatch">색상 %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Moodle에서 열기</string>
     <string name="a11y_rankings_trend_chart">학기별 GPA 추세</string>
     <string name="a11y_rankings_trend_no_selection">학기 선택 안 됨</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">미완료 과제</string>
     <string name="course_detail_instructor_label">강사</string>
     <string name="course_detail_no_roster">이 강좌의 수강 데이터가 없습니다</string>
+    <string name="course_detail_require_option_elective">선택</string>
+    <string name="course_detail_require_option_label">이수 구분</string>
+    <string name="course_detail_require_option_required">필수</string>
     <string name="course_detail_time_label">시간</string>
     <string name="course_instructor_value">강사: %1$s</string>
     <string name="desktop_about_copyright">© TigerDuck 기여자. NTUST와는 무관합니다.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Moodle 네트워크 오류: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">Moodle / NTUST 자격 증명이 여전히 유효한지 확인하세요.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">NTUST에 다시 로그인한 후 다시 시도하세요.</string>
+    <string name="error_moodle_site_maintenance">Moodle이 점검 중입니다. 나중에 다시 시도해 주세요.</string>
     <string name="error_moodle_sso_rejected">NTUST SSO가 Moodle 인증을 거부했습니다. 자격 증명을 확인하세요.</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO가 Moodle 인증을 거부했습니다: %1$@</string>
     <string name="error_moodle_webservice_disabled">Moodle 웹서비스를 현재 사용할 수 없습니다.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">세션이 만료되었습니다</string>
     <string name="error_sign_in_failed">로그인 실패</string>
     <string name="error_sso_sign_in_failed">로그인에 실패했습니다. 계정과 비밀번호를 확인하세요.</string>
+    <string name="error_sso_sign_in_failed_with_reason">로그인에 실패했습니다: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">SSO 로그인 양식을 찾을 수 없습니다.</string>
     <string name="feature_announcements">공지</string>
     <string name="feature_announcements_short">공지</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">시스템 기본 브라우저</string>
     <string name="settings_check_for_updates">업데이트 확인</string>
     <string name="settings_check_server_status">서버 상태 확인</string>
+    <string name="settings_class_reminder">수업 알림</string>
+    <string name="settings_class_reminder_footer">각 수업 시작 전에 알림을 받습니다.</string>
+    <string name="settings_class_reminder_lead_time">알림 시간</string>
     <string name="settings_classroom_mandarin_display">강의실 이름이 중국어일 때</string>
     <string name="settings_classroom_mandarin_display_original">원문 표시</string>
     <string name="settings_classroom_mandarin_display_pinyin">병음 표시</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">링크 열기 방식</string>
     <string name="settings_official_website">공식 웹사이트</string>
     <string name="settings_open_source_licenses">오픈소스 라이선스</string>
+    <string name="settings_outline_required_courses">시간표에서 필수 과목에 테두리 표시</string>
     <string name="settings_privacy_policy">개인정보 처리방침</string>
     <string name="settings_push_server_nav_label">서버 푸시</string>
     <string name="settings_remember_bulletin_filter">게시판 필터 기억</string>

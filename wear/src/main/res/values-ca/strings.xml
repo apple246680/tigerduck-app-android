@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">Té tasca</string>
     <string name="a11y_class_table_conflict_prefix">Conflicte de classe</string>
     <string name="a11y_course_card_open_details_hint">Toca dues vegades per veure els detalls</string>
+    <string name="a11y_course_color_swatch">Color %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Obre a Moodle</string>
     <string name="a11y_rankings_trend_chart">Tendència del GPA per semestre</string>
     <string name="a11y_rankings_trend_no_selection">Cap semestre seleccionat</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">Escola</string>
     <string name="calendar_source_semester">Semestre</string>
     <string name="calendar_today">Avui</string>
-    <string name="class_table_conflict_add_failed_message">%1$s ja té dues classes en aquest horari (dia %2$s, període %3$s): %4$s i %5$s. El sistema no suporta conflictes triples.</string>
+    <string name="class_table_conflict_add_failed_message">%1$s ja té dues classes en aquest horari (%2$s, període %3$s): %4$s i %5$s. El sistema no suporta conflictes triples.</string>
     <string name="class_table_conflict_add_failed_title">No s\'ha pogut afegir</string>
     <string name="class_table_course_name">Nom del curs</string>
     <string name="class_table_delete">Elimina</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">Encàrrecs incomplets</string>
     <string name="course_detail_instructor_label">Professor</string>
     <string name="course_detail_no_roster">No hi ha dades de matrícula disponibles per a aquest curs</string>
+    <string name="course_detail_require_option_elective">Optatiu</string>
+    <string name="course_detail_require_option_label">Tipus de curs</string>
+    <string name="course_detail_require_option_required">Obligatori</string>
     <string name="course_detail_time_label">Temps</string>
     <string name="course_instructor_value">Professor: %1$s</string>
     <string name="desktop_about_copyright">© Col·laboradors de TigerDuck. No afiliada a NTUST.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Error de xarxa de Moodle: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">Comprova que les credencials de Moodle / NTUST encara són vàlides.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">Torna a iniciar sessió a NTUST i prova-ho una altra vegada.</string>
+    <string name="error_moodle_site_maintenance">Moodle està en manteniment. Torna-ho a provar més tard.</string>
     <string name="error_moodle_sso_rejected">L’SSO de NTUST ha rebutjat l’autorització de Moodle. Comprova les teves credencials.</string>
     <string name="error_moodle_sso_rejected_with_reason">L’SSO de NTUST ha rebutjat l’autorització de Moodle: %1$@</string>
     <string name="error_moodle_webservice_disabled">El servei web de Moodle no està disponible actualment.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">Sessió caducada</string>
     <string name="error_sign_in_failed">Error d\'inici de sessió</string>
     <string name="error_sso_sign_in_failed">Inici de sessió fallit. Comprova el compte i la contrasenya.</string>
+    <string name="error_sso_sign_in_failed_with_reason">Inici de sessió fallit: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">No s’ha trobat el formulari d’inici de sessió de l’SSO.</string>
     <string name="feature_announcements">Avisos</string>
     <string name="feature_announcements_short">Avisos</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">Navegador predeterminat del sistema</string>
     <string name="settings_check_for_updates">Cerca actualitzacions</string>
     <string name="settings_check_server_status">Comprova l\'estat dels servidors</string>
+    <string name="settings_class_reminder">Recordatoris de classe</string>
+    <string name="settings_class_reminder_footer">Rebràs una notificació abans que comenci cada classe.</string>
+    <string name="settings_class_reminder_lead_time">Recorda-m\'ho</string>
     <string name="settings_classroom_mandarin_display">Quan la sala és en mandarí</string>
     <string name="settings_classroom_mandarin_display_original">Mostra l\'original</string>
     <string name="settings_classroom_mandarin_display_pinyin">Mostra pinyin</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">Obriu els enllaços amb</string>
     <string name="settings_official_website">Lloc web oficial</string>
     <string name="settings_open_source_licenses">Llicències de codi obert</string>
+    <string name="settings_outline_required_courses">Marca amb un contorn els cursos obligatoris a l\'horari</string>
     <string name="settings_privacy_policy">Política de privadesa</string>
     <string name="settings_push_server_nav_label">Push del servidor</string>
     <string name="settings_remember_bulletin_filter">Recordeu els filtres de butlletins</string>

@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">Er með verkefni</string>
     <string name="a11y_class_table_conflict_prefix">Tímaárekstur</string>
     <string name="a11y_course_card_open_details_hint">Ýttu tvisvar fyrir upplýsingar</string>
+    <string name="a11y_course_color_swatch">Litur %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Opna í Moodle</string>
     <string name="a11y_rankings_trend_chart">GPA þróun eftir önn</string>
     <string name="a11y_rankings_trend_no_selection">Engin önn valin</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">Skóli</string>
     <string name="calendar_source_semester">Misseri</string>
     <string name="calendar_today">Í dag</string>
-    <string name="class_table_conflict_add_failed_message">%1$s hefur þegar tvo tíma í þessum rauf (Vikudagur %2$s, Tímabil %3$s): %4$s og %5$s. Kerfið styður ekki þrjár samhliða.</string>
+    <string name="class_table_conflict_add_failed_message">%1$s hefur þegar tvo tíma í þessum rauf (%2$s, Tímabil %3$s): %4$s og %5$s. Kerfið styður ekki þrjár samhliða.</string>
     <string name="class_table_conflict_add_failed_title">Ekki hægt að bæta við</string>
     <string name="class_table_course_name">Nafn námskeiðs</string>
     <string name="class_table_delete">Eyða</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">Ókláruð verkefni</string>
     <string name="course_detail_instructor_label">Kennari</string>
     <string name="course_detail_no_roster">Engin skráningargögn eru til fyrir þetta námskeið</string>
+    <string name="course_detail_require_option_elective">Valnámskeið</string>
+    <string name="course_detail_require_option_label">Tegund námskeiðs</string>
+    <string name="course_detail_require_option_required">Skyldunámskeið</string>
     <string name="course_detail_time_label">Tími</string>
     <string name="course_instructor_value">Kennari: %1$s</string>
     <string name="desktop_about_copyright">© TigerDuck-framlagsaðilar. Ótengt NTUST.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Moodle netvilla: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">Staðfestu að Moodle / NTUST aðgangsupplýsingar þínar séu enn gildar.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">Skráðu þig inn í NTUST aftur og reyndu aftur.</string>
+    <string name="error_moodle_site_maintenance">Moodle er í viðhaldi. Reyndu aftur síðar.</string>
     <string name="error_moodle_sso_rejected">NTUST SSO hafnaði Moodle-heimild. Vinsamlegast staðfestu aðgangsupplýsingar þínar.</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO hafnaði Moodle-heimild: %1$@</string>
     <string name="error_moodle_webservice_disabled">Moodle vefþjónustan er ekki tiltæk núna.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">Setan rann út</string>
     <string name="error_sign_in_failed">Innskráning mistókst</string>
     <string name="error_sso_sign_in_failed">Innskráning mistókst. Vinsamlegast staðfestu reikning þinn og lykilorð.</string>
+    <string name="error_sso_sign_in_failed_with_reason">Innskráning mistókst: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">Tókst ekki að finna SSO-innskráningarformið.</string>
     <string name="feature_announcements">Tilkynningar</string>
     <string name="feature_announcements_short">Tilkynningar</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">Sjálfgefinn kerfisvafrinn</string>
     <string name="settings_check_for_updates">Leita að uppfærslum</string>
     <string name="settings_check_server_status">Athuga stöðu netþjóna</string>
+    <string name="settings_class_reminder">Áminningar um tíma</string>
+    <string name="settings_class_reminder_footer">Þú færð tilkynningu áður en hver tími byrjar.</string>
+    <string name="settings_class_reminder_lead_time">Minna mig á</string>
     <string name="settings_classroom_mandarin_display">Þegar nafn kennslustofu er á kínversku</string>
     <string name="settings_classroom_mandarin_display_original">Sýna upprunalegt</string>
     <string name="settings_classroom_mandarin_display_pinyin">Sýna pinyin</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">Opna tengla með</string>
     <string name="settings_official_website">Opinber vefsíða</string>
     <string name="settings_open_source_licenses">Opinn uppspretta leyfi</string>
+    <string name="settings_outline_required_courses">Ramma inn skyldunámskeið í stundatöflunni</string>
     <string name="settings_privacy_policy">Persónuverndarstefna</string>
     <string name="settings_push_server_nav_label">Þjónsendari</string>
     <string name="settings_remember_bulletin_filter">Muna síur tilkynninga</string>

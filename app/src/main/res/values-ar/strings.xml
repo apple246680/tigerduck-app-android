@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">يوجد مهمة</string>
     <string name="a11y_class_table_conflict_prefix">تعارض في المحاضرات</string>
     <string name="a11y_course_card_open_details_hint">انقر مرتين للتفاصيل</string>
+    <string name="a11y_course_color_swatch">اللون %1$lld</string>
     <string name="a11y_course_detail_open_moodle">فتح في Moodle</string>
     <string name="a11y_rankings_trend_chart">اتجاه المعدل التراكمي حسب الفصل</string>
     <string name="a11y_rankings_trend_no_selection">لم يتم تحديد فصل</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">الجامعة</string>
     <string name="calendar_source_semester">فصل دراسي</string>
     <string name="calendar_today">اليوم</string>
-    <string name="class_table_conflict_add_failed_message">%1$s لديه بالفعل محاضرتان في هذا الموعد (يوم الأسبوع %2$s، الحصة %3$s): %4$s و %5$s. النظام لا يدعم تعارض ثلاث محاضرات.</string>
+    <string name="class_table_conflict_add_failed_message">%1$s لديه بالفعل محاضرتان في هذا الموعد (يوم %2$s، الحصة %3$s): %4$s و %5$s. النظام لا يدعم تعارض ثلاث محاضرات.</string>
     <string name="class_table_conflict_add_failed_title">تعذّرت الإضافة</string>
     <string name="class_table_course_name">اسم المقرر</string>
     <string name="class_table_delete">حذف</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">مهام غير مكتملة</string>
     <string name="course_detail_instructor_label">مدرب</string>
     <string name="course_detail_no_roster">لا توجد بيانات التسجيل المتاحة لهذه الدورة</string>
+    <string name="course_detail_require_option_elective">اختياري</string>
+    <string name="course_detail_require_option_label">نوع المقرر</string>
+    <string name="course_detail_require_option_required">إجباري</string>
     <string name="course_detail_time_label">وقت</string>
     <string name="course_instructor_value">المُحاضِر: %1$s</string>
     <string name="desktop_about_copyright">© مساهمو TigerDuck. غير تابع لـ NTUST.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">خطأ في شبكة Moodle: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">تحقق من أن بيانات اعتماد Moodle / NTUST لا تزال صالحة.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">سجّل الدخول إلى NTUST مرة أخرى وحاول من جديد.</string>
+    <string name="error_moodle_site_maintenance">Moodle قيد الصيانة. يرجى المحاولة لاحقًا.</string>
     <string name="error_moodle_sso_rejected">رفض NTUST SSO تفويض Moodle. يرجى التحقق من بيانات الاعتماد.</string>
     <string name="error_moodle_sso_rejected_with_reason">رفض NTUST SSO تفويض Moodle: %1$@</string>
     <string name="error_moodle_webservice_disabled">خدمة الويب الخاصة بـ Moodle غير متاحة حاليًا.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">انتهت الجلسة</string>
     <string name="error_sign_in_failed">فشل تسجيل الدخول</string>
     <string name="error_sso_sign_in_failed">فشل تسجيل الدخول. يرجى التحقق من الحساب وكلمة المرور.</string>
+    <string name="error_sso_sign_in_failed_with_reason">فشل تسجيل الدخول: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">تعذّر العثور على نموذج تسجيل الدخول إلى SSO.</string>
     <string name="feature_announcements">الإعلانات</string>
     <string name="feature_announcements_short">الإعلانات</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">متصفح النظام الافتراضي</string>
     <string name="settings_check_for_updates">التحقق من التحديثات</string>
     <string name="settings_check_server_status">التحقق من حالة الخادم</string>
+    <string name="settings_class_reminder">تذكيرات المحاضرات</string>
+    <string name="settings_class_reminder_footer">سيتم إعلامك قبل بدء كل محاضرة.</string>
+    <string name="settings_class_reminder_lead_time">ذكّرني</string>
     <string name="settings_classroom_mandarin_display">عند كون اسم القاعة باللغة الصينية</string>
     <string name="settings_classroom_mandarin_display_original">عرض الأصلي</string>
     <string name="settings_classroom_mandarin_display_pinyin">عرض بينيين</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">فتح الروابط بواسطة</string>
     <string name="settings_official_website">الموقع الرسمي</string>
     <string name="settings_open_source_licenses">تراخيص المصادر المفتوحة</string>
+    <string name="settings_outline_required_courses">إحاطة المقررات الإجبارية بإطار في الجدول الدراسي</string>
     <string name="settings_privacy_policy">سياسة الخصوصية</string>
     <string name="settings_push_server_nav_label">دفع الخادم</string>
     <string name="settings_remember_bulletin_filter">تذكر مرشحات النشرة</string>

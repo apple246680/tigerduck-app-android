@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">ਅਸਾਈਨਮੈਂਟ ਹੈ</string>
     <string name="a11y_class_table_conflict_prefix">ਕਲਾਸ ਟਕਰਾਅ</string>
     <string name="a11y_course_card_open_details_hint">ਵੇਰਵਿਆਂ ਲਈ ਦੋ ਵਾਰ ਟੈਪ ਕਰੋ</string>
+    <string name="a11y_course_color_swatch">ਰੰਗ %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Moodle ਵਿੱਚ ਖੋਲ੍ਹੋ</string>
     <string name="a11y_rankings_trend_chart">ਸਮੈਸਟਰ ਅਨੁਸਾਰ GPA ਰੁਝਾਨ</string>
     <string name="a11y_rankings_trend_no_selection">ਕੋਈ ਸਮੈਸਟਰ ਨਹੀਂ ਚੁਣਿਆ</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">ਸਕੂਲ</string>
     <string name="calendar_source_semester">ਸਮੈਸਟਰ</string>
     <string name="calendar_today">ਅੱਜ</string>
-    <string name="class_table_conflict_add_failed_message">%1$s ਦੇ ਇਸ ਸਲੌਟ (ਵੀਕਡੇ %2$s, ਪੀਰੀਅਡ %3$s) ਵਿੱਚ ਪਹਿਲਾਂ ਹੀ ਦੋ ਕਲਾਸਾਂ ਹਨ: %4$s ਅਤੇ %5$s। ਸਿਸਟਮ ਤਿੰਨ ਟਕਰਾਵਾਂ ਦਾ ਸਮਰਥਨ ਨਹੀਂ ਕਰਦਾ।</string>
+    <string name="class_table_conflict_add_failed_message">%1$s ਦੇ ਇਸ ਸਲੌਟ (%2$s, ਪੀਰੀਅਡ %3$s) ਵਿੱਚ ਪਹਿਲਾਂ ਹੀ ਦੋ ਕਲਾਸਾਂ ਹਨ: %4$s ਅਤੇ %5$s। ਸਿਸਟਮ ਤਿੰਨ ਟਕਰਾਵਾਂ ਦਾ ਸਮਰਥਨ ਨਹੀਂ ਕਰਦਾ।</string>
     <string name="class_table_conflict_add_failed_title">ਜੋੜਨ ਵਿੱਚ ਅਸਮਰੱਥ</string>
     <string name="class_table_course_name">ਕੋਰਸ ਦਾ ਨਾਂ</string>
     <string name="class_table_delete">ਮਿਟਾਓ</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">ਅਧੂਰੇ ਅਸਾਈਨਮੈਂਟ</string>
     <string name="course_detail_instructor_label">ਇੰਸਟ੍ਰਕਟਰ</string>
     <string name="course_detail_no_roster">ਇਸ ਕੋਰਸ ਲਈ ਕੋਈ ਦਾਖਲਾ ਡੇਟਾ ਉਪਲਬਧ ਨਹੀਂ</string>
+    <string name="course_detail_require_option_elective">ਵਿਕਲਪਿਕ</string>
+    <string name="course_detail_require_option_label">ਕੋਰਸ ਕਿਸਮ</string>
+    <string name="course_detail_require_option_required">ਲਾਜ਼ਮੀ</string>
     <string name="course_detail_time_label">ਸਮਾਂ</string>
     <string name="course_instructor_value">ਅਧਿਆਪਕ: %1$s</string>
     <string name="desktop_about_copyright">© TigerDuck ਯੋਗਦਾਨੀ। NTUST ਨਾਲ ਸੰਬੰਧਿਤ ਨਹੀਂ।</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Moodle ਨੈੱਟਵਰਕ ਗੜਬੜੀ: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">ਜਾਂਚੋ ਕਿ Moodle / NTUST ਜਾਣਕਾਰੀ ਹਾਲੇ ਵੈਧ ਹੈ।</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">NTUST ਵਿੱਚ ਦੁਬਾਰਾ ਸਾਈਨ ਇਨ ਕਰੋ ਅਤੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।</string>
+    <string name="error_moodle_site_maintenance">Moodle ਦਾ ਰੱਖ-ਰਖਾਅ ਚੱਲ ਰਿਹਾ ਹੈ। ਬਾਅਦ ਵਿੱਚ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।</string>
     <string name="error_moodle_sso_rejected">NTUST SSO ਨੇ Moodle ਅਧਿਕਾਰ ਰੱਦ ਕਰ ਦਿੱਤਾ। ਕਿਰਪਾ ਕਰਕੇ ਆਪਣੀ ਜਾਣਕਾਰੀ ਪਰਖੋ।</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO ਨੇ Moodle ਅਧਿਕਾਰ ਰੱਦ ਕਰ ਦਿੱਤਾ: %1$@</string>
     <string name="error_moodle_webservice_disabled">Moodle ਵੈੱਬ ਸੇਵਾ ਇਸ ਵੇਲੇ ਉਪਲਬਧ ਨਹੀਂ।</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">ਸੈਸ਼ਨ ਖਤਮ ਹੋ ਗਿਆ</string>
     <string name="error_sign_in_failed">ਲੌਗਇਨ ਅਸਫਲ ਰਿਹਾ</string>
     <string name="error_sso_sign_in_failed">ਸਾਈਨ ਇਨ ਅਸਫਲ ਰਿਹਾ। ਕਿਰਪਾ ਕਰਕੇ ਆਪਣਾ ਖਾਤਾ ਅਤੇ ਪਾਸਵਰਡ ਦੇਖੋ।</string>
+    <string name="error_sso_sign_in_failed_with_reason">ਸਾਈਨ ਇਨ ਅਸਫਲ ਰਿਹਾ: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">SSO ਸਾਈਨ ਇਨ ਫਾਰਮ ਨਹੀਂ ਮਿਲਿਆ।</string>
     <string name="feature_announcements">ਸੂਚਨਾਵਾਂ</string>
     <string name="feature_announcements_short">ਸੂਚਨਾਵਾਂ</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">ਸਿਸਟਮ ਡਿਫੌਲਟ ਬ੍ਰਾਊਜ਼ਰ</string>
     <string name="settings_check_for_updates">ਅੱਪਡੇਟ ਜਾਂਚ ਕਰੋ</string>
     <string name="settings_check_server_status">ਸਰਵਰ ਸਥਿਤੀ ਜਾਂਚੋ</string>
+    <string name="settings_class_reminder">ਕਲਾਸ ਰੀਮਾਈਂਡਰ</string>
+    <string name="settings_class_reminder_footer">ਹਰ ਕਲਾਸ ਸ਼ੁਰੂ ਹੋਣ ਤੋਂ ਪਹਿਲਾਂ ਤੁਹਾਨੂੰ ਸੂਚਿਤ ਕੀਤਾ ਜਾਵੇਗਾ।</string>
+    <string name="settings_class_reminder_lead_time">ਮੈਨੂੰ ਯਾਦ ਦਿਵਾਓ</string>
     <string name="settings_classroom_mandarin_display">ਜਦੋਂ ਕਲਾਸਰੂਮ ਦਾ ਨਾਮ ਚੀਨੀ ਵਿੱਚ ਹੋਵੇ</string>
     <string name="settings_classroom_mandarin_display_original">ਅਸਲ ਵਿਖਾਓ</string>
     <string name="settings_classroom_mandarin_display_pinyin">ਪਿਨਯਿਨ ਵਿਖਾਓ</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">ਲਿੰਕ ਖੋਲ੍ਹੋ</string>
     <string name="settings_official_website">ਅਧਿਕਾਰਤ ਵੈੱਬਸਾਈਟ</string>
     <string name="settings_open_source_licenses">ਓਪਨ-ਸੋਰਸ ਲਾਇਸੈਂਸ</string>
+    <string name="settings_outline_required_courses">ਸਮਾਂ-ਸਾਰਣੀ ਵਿੱਚ ਲਾਜ਼ਮੀ ਕੋਰਸਾਂ ਦੇ ਦੁਆਲੇ ਬਾਰਡਰ ਦਿਖਾਓ</string>
     <string name="settings_privacy_policy">ਪ੍ਰਾਈਵੇਸੀ ਨੀਤੀ</string>
     <string name="settings_push_server_nav_label">ਸਰਵਰ ਪੁਸ਼</string>
     <string name="settings_remember_bulletin_filter">ਬੁਲੇਟਿਨ ਫਿਲਟਰ ਯਾਦ ਰੱਖੋ</string>

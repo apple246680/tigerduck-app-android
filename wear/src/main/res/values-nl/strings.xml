@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">Heeft opdracht</string>
     <string name="a11y_class_table_conflict_prefix">Lesconflict</string>
     <string name="a11y_course_card_open_details_hint">Dubbeltik voor details</string>
+    <string name="a11y_course_color_swatch">Kleur %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Openen in Moodle</string>
     <string name="a11y_rankings_trend_chart">GPA-trend per semester</string>
     <string name="a11y_rankings_trend_no_selection">Geen semester geselecteerd</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">School</string>
     <string name="calendar_source_semester">Semester</string>
     <string name="calendar_today">Vandaag</string>
-    <string name="class_table_conflict_add_failed_message">%1$s heeft al twee lessen op dit moment (weekdag %2$s, lesuur %3$s): %4$s en %5$s. Het systeem ondersteunt geen drievoudige conflicten.</string>
+    <string name="class_table_conflict_add_failed_message">%1$s heeft al twee lessen op dit moment (%2$s, lesuur %3$s): %4$s en %5$s. Het systeem ondersteunt geen drievoudige conflicten.</string>
     <string name="class_table_conflict_add_failed_title">Kan niet toevoegen</string>
     <string name="class_table_course_name">Vaknaam</string>
     <string name="class_table_delete">Verwijderen</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">Onvoltooide opdrachten</string>
     <string name="course_detail_instructor_label">Docent</string>
     <string name="course_detail_no_roster">Geen inschrijvingsgegevens beschikbaar voor dit vak</string>
+    <string name="course_detail_require_option_elective">Keuzevak</string>
+    <string name="course_detail_require_option_label">Vaktype</string>
+    <string name="course_detail_require_option_required">Verplicht vak</string>
     <string name="course_detail_time_label">Tijd</string>
     <string name="course_instructor_value">Docent: %1$s</string>
     <string name="desktop_about_copyright">© TigerDuck-bijdragers. Niet verbonden met NTUST.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Moodle-netwerkfout: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">Controleer of je Moodle-/NTUST-inloggegevens nog geldig zijn.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">Log opnieuw in bij NTUST en probeer het nog eens.</string>
+    <string name="error_moodle_site_maintenance">Moodle is in onderhoud. Probeer het later opnieuw.</string>
     <string name="error_moodle_sso_rejected">NTUST SSO heeft de Moodle-autorisatie geweigerd. Controleer je inloggegevens.</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO heeft de Moodle-autorisatie geweigerd: %1$@</string>
     <string name="error_moodle_webservice_disabled">De Moodle-webservice is momenteel niet beschikbaar.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">Sessie verlopen</string>
     <string name="error_sign_in_failed">Inloggen mislukt</string>
     <string name="error_sso_sign_in_failed">Inloggen mislukt. Controleer je account en wachtwoord.</string>
+    <string name="error_sso_sign_in_failed_with_reason">Inloggen mislukt: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">Kan het SSO-inlogformulier niet vinden.</string>
     <string name="feature_announcements">Mededelingen</string>
     <string name="feature_announcements_short">Mededelingen</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">Standaardbrowser van systeem</string>
     <string name="settings_check_for_updates">Controleer op updates</string>
     <string name="settings_check_server_status">Serverstatus controleren</string>
+    <string name="settings_class_reminder">Lesherinneringen</string>
+    <string name="settings_class_reminder_footer">Je ontvangt een melding voordat elke les begint.</string>
+    <string name="settings_class_reminder_lead_time">Herinner me</string>
     <string name="settings_classroom_mandarin_display">Wanneer lokaalnaam in het Mandarijn is</string>
     <string name="settings_classroom_mandarin_display_original">Origineel weergeven</string>
     <string name="settings_classroom_mandarin_display_pinyin">Pinyin weergeven</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">Links openen met</string>
     <string name="settings_official_website">Officiële website</string>
     <string name="settings_open_source_licenses">Opensource-licenties</string>
+    <string name="settings_outline_required_courses">Verplichte vakken omlijnen in het rooster</string>
     <string name="settings_privacy_policy">Privacybeleid</string>
     <string name="settings_push_server_nav_label">Serverpush</string>
     <string name="settings_remember_bulletin_filter">Bulletinfilters onthouden</string>

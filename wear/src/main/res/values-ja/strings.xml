@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">課題あり</string>
     <string name="a11y_class_table_conflict_prefix">時間割の重複</string>
     <string name="a11y_course_card_open_details_hint">ダブルタップで詳細を表示</string>
+    <string name="a11y_course_color_swatch">色 %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Moodle で開く</string>
     <string name="a11y_rankings_trend_chart">学期ごとの GPA 推移</string>
     <string name="a11y_rankings_trend_no_selection">学期が未選択</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">未完了の課題</string>
     <string name="course_detail_instructor_label">担当教員</string>
     <string name="course_detail_no_roster">このコースの履修者データはありません</string>
+    <string name="course_detail_require_option_elective">選択科目</string>
+    <string name="course_detail_require_option_label">科目区分</string>
+    <string name="course_detail_require_option_required">必修科目</string>
     <string name="course_detail_time_label">時間</string>
     <string name="course_instructor_value">教員：%1$s</string>
     <string name="desktop_about_copyright">© TigerDuck 貢献者。NTUST との関連はありません。</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Moodle のネットワークエラー：%1$@</string>
     <string name="error_moodle_recovery_check_credentials">Moodle / NTUST の認証情報がまだ有効か確認してください。</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">NTUST に再度サインインしてもう一度お試しください。</string>
+    <string name="error_moodle_site_maintenance">Moodle はメンテナンス中です。しばらくしてからもう一度お試しください。</string>
     <string name="error_moodle_sso_rejected">NTUST SSO が Moodle の認可を拒否しました。認証情報を確認してください。</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO が Moodle の認可を拒否しました：%1$@</string>
     <string name="error_moodle_webservice_disabled">Moodle の Web サービスは現在利用できません。</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">セッションの有効期限が切れました</string>
     <string name="error_sign_in_failed">ログインに失敗しました</string>
     <string name="error_sso_sign_in_failed">サインインに失敗しました。アカウントとパスワードを確認してください。</string>
+    <string name="error_sso_sign_in_failed_with_reason">サインインに失敗しました：%1$@</string>
     <string name="error_sso_sign_in_form_not_found">SSO のサインインフォームが見つかりませんでした。</string>
     <string name="feature_announcements">お知らせ</string>
     <string name="feature_announcements_short">お知らせ</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">システム標準ブラウザ</string>
     <string name="settings_check_for_updates">アップデートを確認</string>
     <string name="settings_check_server_status">サーバーの状態を確認</string>
+    <string name="settings_class_reminder">授業のリマインダー</string>
+    <string name="settings_class_reminder_footer">各授業の開始前に通知が届きます。</string>
+    <string name="settings_class_reminder_lead_time">通知タイミング</string>
     <string name="settings_classroom_mandarin_display">教室名が中国語の場合の表示</string>
     <string name="settings_classroom_mandarin_display_original">原文を表示</string>
     <string name="settings_classroom_mandarin_display_pinyin">ピンインを表示</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">リンクを開く方法</string>
     <string name="settings_official_website">公式ウェブサイト</string>
     <string name="settings_open_source_licenses">オープンソースライセンス</string>
+    <string name="settings_outline_required_courses">時間割の必修科目を枠線で囲む</string>
     <string name="settings_privacy_policy">プライバシーポリシー</string>
     <string name="settings_push_server_nav_label">サーバープッシュ</string>
     <string name="settings_remember_bulletin_filter">掲示板フィルターを記憶する</string>
