@@ -424,15 +424,11 @@ class ClassTableViewModel @Inject constructor(
         }
 
     val todayCourses: List<Course>
-        get() {
-            // Outside the term there is no "today" worth showing — the
-            // carousel would either be empty or surface a stale day. Empty
-            // here also hides the section, which keys off `isNotEmpty()`.
-            if (!academicCalendar.current().isInSession(AppClock.localDateTime().toLocalDate())) {
-                return emptyList()
-            }
-            return ClassTableSelection.coursesOn(liveCourses, _currentDayTime.value.weekday)
-        }
+        get() = ClassTableSelection.todayCourses(
+            liveCourses,
+            AppClock.localDateTime().toLocalDate(),
+            academicCalendar.quietDays(),
+        )
 
     /**
      * Loads the live term's roster when the picker moves off it, and drops it

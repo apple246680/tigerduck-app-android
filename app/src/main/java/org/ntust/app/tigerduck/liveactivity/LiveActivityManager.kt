@@ -128,8 +128,7 @@ class LiveActivityManager @Inject constructor(
         val calendar = academicCalendar.current()
         val optedIn = academicCalendar.optedInHolidayIds
         val today = AppClock.localDateTime().toLocalDate()
-        val quietToday =
-            !calendar.isInSession(today) || calendar.suppressesClasses(today, optedIn)
+        val quietToday = calendar.isQuietDay(today, optedIn)
         // Emptying the list is what gates the resolver, which is pure and
         // takes no calendar of its own — and scheduleBoundaryRefresh reads the
         // same list, so no boundary alarm is armed for a quiet day either.

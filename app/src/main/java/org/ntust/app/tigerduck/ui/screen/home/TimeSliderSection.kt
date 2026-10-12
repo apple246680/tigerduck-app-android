@@ -71,6 +71,7 @@ import androidx.core.os.LocaleListCompat
 import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.AppConstants
 import org.ntust.app.tigerduck.R
+import org.ntust.app.tigerduck.academic.QuietDays
 import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.ui.component.JumpToNowChip
@@ -87,6 +88,7 @@ import kotlin.math.roundToInt
 @Composable
 fun TimeSliderSection(
     courses: List<Course>,
+    quietDays: QuietDays,
     invertDirection: Boolean,
     isLoggedIn: Boolean = true,
     initialLoadComplete: Boolean = true,
@@ -97,8 +99,8 @@ fun TimeSliderSection(
 ) {
     val viewModel = remember { TimeSliderViewModel() }
 
-    LaunchedEffect(courses) {
-        viewModel.configure(courses)
+    LaunchedEffect(courses, quietDays) {
+        viewModel.configure(courses, quietDays::contains)
     }
 
     // Tick every second

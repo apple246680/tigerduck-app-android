@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.ntust.app.tigerduck.academic.QuietDays
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.auth.AuthTokenManager
 import org.ntust.app.tigerduck.push.PushApiClient
@@ -109,6 +110,9 @@ class HomeViewModel @Inject constructor(
         academicCalendar.current().isInSession(
             org.ntust.app.tigerduck.shared.clock.AppClock.localDateTime().toLocalDate()
         )
+
+    /** The days the time slider leaves off; see [QuietDays]. */
+    fun quietDays(): QuietDays = academicCalendar.quietDays()
 
     private val _sections = MutableStateFlow(prefs.homeSections)
     val sections: StateFlow<List<HomeSection>> = _sections

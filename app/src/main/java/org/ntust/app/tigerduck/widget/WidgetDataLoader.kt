@@ -52,15 +52,10 @@ object WidgetDataLoader {
         // and the Today list empties off [WidgetState.isQuietToday].
         // `courses` is deliberately left alone: the Week grid shows the
         // timetable itself, which stays useful on a day off.
-        val calendarStore = entry.academicCalendar()
-        val calendar = calendarStore.current()
-        val optedIn = calendarStore.optedInHolidayIds
+        val quietDays = entry.academicCalendar().quietDays()
         val today = AppClock.localDateTime().toLocalDate()
-        val tomorrow = today.plusDays(1)
-        val inSession = calendar.isInSession(today)
-        val quietToday = !inSession || calendar.suppressesClasses(today, optedIn)
-        val quietTomorrow =
-            !calendar.isInSession(tomorrow) || calendar.suppressesClasses(tomorrow, optedIn)
+        val quietToday = today in quietDays
+        val quietTomorrow = today.plusDays(1) in quietDays
 
         val ongoingInfos =
             if (quietToday) emptyList() else computeOngoingCourses(courses, weekday, minuteOfDay)
