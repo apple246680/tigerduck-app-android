@@ -6,7 +6,10 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -307,12 +310,22 @@ class SettingsViewModel @Inject constructor(
         // CourseIgnoreSync holds course ignores while "assignments" is
         // pending, so it is let go only once they are queued or adopted: a
         // sync in between would take the server's set over this device's.
-        // On the application scope, so leaving Settings cannot strand it.
+        // On the application scope, so leaving Settings cannot strand it,
+        // and tied to this account: a sign-out ends it, and drops any write
+        // still on its way.
         val holdsCourseIgnores = "assignments" in conflict.categories
         prefs.pendingConflictCategories = if (holdsCourseIgnores) setOf("assignments") else emptySet()
-        appScope.launch {
+        val generation = dataCache.userDataGeneration
+        appScope.launch(DataCache.Generation(generation)) {
             try {
-                resolve(conflict, keepLocal)
+                coroutineScope {
+                    val signOut = launch {
+                        authService.authState.first { !it }
+                        this@coroutineScope.cancel()
+                    }
+                    resolve(conflict, keepLocal, generation)
+                    signOut.cancel()
+                }
             } finally {
                 if (holdsCourseIgnores) {
                     prefs.pendingConflictCategories = prefs.pendingConflictCategories - "assignments"
@@ -322,8 +335,7 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    private suspend fun resolve(conflict: ReenableConflict, keepLocal: Boolean) {
-        val generation = courseIgnoreSync.currentGeneration()
+    private suspend fun resolve(conflict: ReenableConflict, keepLocal: Boolean, generation: Int) {
         if (keepLocal) {
             if ("courses" in conflict.categories) {
                 val courses = dataCache.loadCourses()

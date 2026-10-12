@@ -4,6 +4,7 @@ import android.app.Application
 import java.io.File
 import java.util.Date
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -102,6 +103,29 @@ class DataCacheTest {
             listOf("1141:CS1001301"),
             cache.loadPendingCourseIgnores().map { it.key },
         )
+    }
+
+    @Test
+    fun `work begun before a sign-out writes nothing after it`() = runTest {
+        val generation = cache.userDataGeneration
+        cache.clearAllUserData()
+
+        withContext(DataCache.Generation(generation)) {
+            cache.saveAssignments(listOf(assignment("left behind")))
+            cache.saveCourseCustomNames(mapOf("CS1001301" to mapOf("zh" to "Old name")))
+        }
+
+        assertEquals(emptyList<Assignment>(), cache.loadAssignments())
+        assertEquals(emptyMap<String, Map<String, String>>(), cache.loadCourseCustomNames())
+    }
+
+    @Test
+    fun `work tied to the account still signed in writes as usual`() = runTest {
+        withContext(DataCache.Generation(cache.userDataGeneration)) {
+            cache.saveAssignments(listOf(assignment("current")))
+        }
+
+        assertEquals(listOf("current"), cache.loadAssignments().map { it.assignmentId })
     }
 
     @Test

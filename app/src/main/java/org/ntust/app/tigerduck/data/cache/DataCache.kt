@@ -12,6 +12,7 @@ import org.ntust.app.tigerduck.academic.AcademicCalendarStore
 import org.ntust.app.tigerduck.network.SemesterCodes
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -29,6 +30,8 @@ import org.ntust.app.tigerduck.network.model.CourseSearchResult
 import java.io.File
 import java.util.Date
 import javax.inject.Inject
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 import javax.inject.Singleton
 
 /**
@@ -65,13 +68,24 @@ class DataCache @Inject constructor(
     val assignmentMarksVersion: StateFlow<Int> = _assignmentMarksVersion.asStateFlow()
 
     /**
-     * Bumped each time the user data is wiped, under the same lock as the
-     * wipe. Work started for the account that left hands the value it began
-     * with to the writes that take one, which then drop it.
+     * Bumped each time the user data is wiped, before anything is deleted.
+     * Work started for the account that left hands the value it began with
+     * to its writes, which then drop it: as a parameter, or as a
+     * [Generation] in its coroutine's context.
      */
     @Volatile
     var userDataGeneration: Int = 0
         private set
+
+    /**
+     * In a coroutine's context, the [userDataGeneration] its work began
+     * with: every write made there is dropped once the data has been wiped
+     * since, so work that outlives a sign-out cannot write into the next
+     * account's files.
+     */
+    class Generation(val value: Int) : AbstractCoroutineContextElement(Generation) {
+        companion object Key : CoroutineContext.Key<Generation>
+    }
 
     suspend fun replaceIgnoredAssignments(ids: Set<String>) = saveIgnoredAssignments(ids)
 
@@ -433,8 +447,10 @@ class DataCache @Inject constructor(
     // the per-assignment list it extends.
 
     /** False, and nothing written, when the data was wiped since [generation]. */
-    suspend fun saveIgnoredCourses(keys: Set<String>, generation: Int = userDataGeneration): Boolean {
-        if (!saveToUserDataIf(keys.sorted(), "ignored_courses.json", generation)) return false
+    suspend fun saveIgnoredCourses(keys: Set<String>, generation: Int? = null): Boolean {
+        if (!saveToUserDataIf(keys.sorted(), "ignored_courses.json", generation ?: writeGeneration())) {
+            return false
+        }
         _assignmentMarksVersion.update { it + 1 }
         return true
     }
@@ -451,8 +467,8 @@ class DataCache @Inject constructor(
     /** False, and nothing written, when the data was wiped since [generation]. */
     suspend fun savePendingCourseIgnores(
         changes: List<PendingCourseIgnore>,
-        generation: Int = userDataGeneration,
-    ): Boolean = saveToUserDataIf(changes, "pending_course_ignores.json", generation)
+        generation: Int? = null,
+    ): Boolean = saveToUserDataIf(changes, "pending_course_ignores.json", generation ?: writeGeneration())
 
     /** Rows without a usable [PendingCourseIgnore.key] are left out. */
     suspend fun loadPendingCourseIgnores(): List<PendingCourseIgnore> {
@@ -588,6 +604,9 @@ class DataCache @Inject constructor(
 
     suspend fun clearAllUserData() {
         cacheMutex.withLock {
+            // First, under the cache's lock: a write checks it under the lock
+            // of the folder it writes to, and both folders are wiped after.
+            userDataGeneration++
             withContext(Dispatchers.IO) {
                 listOf(
                     "courses.json",
@@ -611,7 +630,6 @@ class DataCache @Inject constructor(
             }
         }
         userDataMutex.withLock {
-            userDataGeneration++
             withContext(Dispatchers.IO) {
                 listOf(
                     "skipped_dates.json",
@@ -641,9 +659,13 @@ class DataCache @Inject constructor(
 
     // --- Private helpers ---
 
-    private suspend fun <T> save(value: T, filename: String) = cacheMutex.withLock {
-        withContext(Dispatchers.IO) {
-            atomicWrite(File(cacheDir, filename), gson.toJson(value))
+    private suspend fun <T> save(value: T, filename: String) {
+        val generation = writeGeneration()
+        cacheMutex.withLock {
+            if (generation != userDataGeneration) return@withLock
+            withContext(Dispatchers.IO) {
+                atomicWrite(File(cacheDir, filename), gson.toJson(value))
+            }
         }
     }
 
@@ -665,14 +687,15 @@ class DataCache @Inject constructor(
             }
         }
 
-    private suspend fun <T> saveToUserData(value: T, filename: String) = userDataMutex.withLock {
-        withContext(Dispatchers.IO) {
-            atomicWrite(File(userDataDir, filename), gson.toJson(value))
-        }
+    private suspend fun <T> saveToUserData(value: T, filename: String) {
+        saveToUserDataIf(value, filename, writeGeneration())
     }
 
-    // Checked under the lock the wipe takes, so a write cannot land between
-    // the check and a sign-out.
+    private suspend fun writeGeneration(): Int =
+        currentCoroutineContext()[Generation]?.value ?: userDataGeneration
+
+    // Checked under the folder's lock, which the wipe takes before deleting
+    // anything in it, so a write cannot land after a sign-out has wiped it.
     private suspend fun <T> saveToUserDataIf(value: T, filename: String, generation: Int): Boolean =
         userDataMutex.withLock {
             if (generation != userDataGeneration) return@withLock false
