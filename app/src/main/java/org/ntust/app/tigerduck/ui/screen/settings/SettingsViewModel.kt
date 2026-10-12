@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +30,7 @@ import org.ntust.app.tigerduck.analytics.AnalyticsLogger
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.debug.DebugFixtureStore
+import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.demo.DemoAccount
 import org.ntust.app.tigerduck.network.CourseService
 import org.ntust.app.tigerduck.push.PushApiClient
@@ -61,6 +64,7 @@ class SettingsViewModel @Inject constructor(
     private val dataCache: DataCache,
     private val debugFixtures: DebugFixtureStore,
     private val demoAccount: DemoAccount,
+    @param:ApplicationScope private val appScope: CoroutineScope,
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -193,7 +197,10 @@ class SettingsViewModel @Inject constructor(
         }
         if (resolutions.defers(::checkPendingConflicts)) return
         Log.i(TAG, "[reenable] checkPendingConflicts start: pending=$pending")
-        viewModelScope.launch {
+        // On the application scope: a check cut short by leaving Settings
+        // would keep "assignments" pending, and the marks held, until
+        // TigerSync is opened again. On Main, like this view model's work.
+        appScope.launch(Dispatchers.Main) {
             try {
                 val result = syncApiClient.fetchFullSync()
                 val diffs = mutableListOf<String>()
