@@ -172,6 +172,10 @@ class MailDevServerTest {
 
     // --- requirement 3: a change resets everything ----------------------------------------
 
+    // The accounts below get the test's own scope, so runTest waits for sign-out's cache wipe.
+    // On a scope nothing waits for, the wipe can outlive the test and race TemporaryFolder
+    // deleting the same folder, and what it throws then fails the next runTest instead.
+
     @Test
     fun `changing the configuration signs out and clears cache, state and notifications`() = runTest {
         val credentials = InMemoryCredentialStore()
@@ -181,7 +185,7 @@ class MailDevServerTest {
         val cache = MailCache(tmp.root)
         val server = FakeMailServer()
         val account = MailAccount(
-            credentials, state, server.factory(), cache, FakeDemoGate(), site, scheduler, notifier, testApplicationScope(),
+            credentials, state, server.factory(), cache, FakeDemoGate(), site, scheduler, notifier, scope = this,
         )
         assertNull(account.signIn("b10000001", "pw"))
         cache.attachmentsDir.mkdirs()
@@ -211,7 +215,7 @@ class MailDevServerTest {
         val server = FakeMailServer()
         val account = MailAccount(
             credentials, state, server.factory(), MailCache(tmp.root), FakeDemoGate(), site,
-            RecordingScheduler(), RecordingNotifier(), testApplicationScope(),
+            RecordingScheduler(), RecordingNotifier(), scope = this,
         )
         account.signIn("b10000001", "pw")
         account.onAuthFailure()
@@ -233,7 +237,7 @@ class MailDevServerTest {
         val server = FakeMailServer()
         val account = MailAccount(
             credentials, InMemoryMailStateStore(), server.factory(), MailCache(tmp.root), FakeDemoGate(), site,
-            RecordingScheduler(), RecordingNotifier(), testApplicationScope(),
+            RecordingScheduler(), RecordingNotifier(), scope = this,
         )
         account.signIn("b10000001", "pw")
         val controller = MailDevServerController(store, site, account)
@@ -252,7 +256,7 @@ class MailDevServerTest {
     fun `reset goes back to the school server`() = runTest {
         val account = MailAccount(
             InMemoryCredentialStore(), InMemoryMailStateStore(), FakeMailServer().factory(), MailCache(tmp.root),
-            FakeDemoGate(), site, RecordingScheduler(), RecordingNotifier(), testApplicationScope(),
+            FakeDemoGate(), site, RecordingScheduler(), RecordingNotifier(), scope = this,
         )
         val controller = MailDevServerController(store, site, account)
         controller.apply(gmail)
