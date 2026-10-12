@@ -16,7 +16,9 @@
         plus the issuing intermediate CA SPKI as a rotation-safe backup.
 
         Rotation before expiration is MANDATORY — after the expiration date the
-        pins stop enforcing and fall back to system CA trust.
+        pins stop enforcing and fall back to system CA trust. Each pin-set has
+        its own date; NetworkSecurityConfigTest fails 45 days before any of
+        them, and PIN_EXPIRY_EPOCH in app/build.gradle.kts is the earliest.
 
         To re-pin, run (replace host as needed):
             echo | openssl s_client -servername HOST -connect HOST:443 -showcerts \
@@ -25,19 +27,21 @@
     -->
 
     <!-- *.ntust.edu.tw wildcard leaf + TWCA Secure SSL intermediate.
-         Leaf cert expires 2027-02-18; pins expire a month earlier. -->
+         Leaf cert expires 2027-02-18; pins expire six months later, so the
+         intermediate carries them through the leaf's renewal. -->
     <domain-config cleartextTrafficPermitted="false">
         <domain includeSubdomains="true">ntust.edu.tw</domain>
-        <pin-set expiration="2027-01-18">
+        <pin-set expiration="2027-08-18">
             <pin digest="SHA-256">Nz3wUtBXZ+2HPXuSyx4enXs62i/PH4MKtayV9N4X0PE=</pin>
             <pin digest="SHA-256">9VZ7Yd685RTXsE6rL/puuMbnejYaXwaZasGL7c+Uolc=</pin>
         </pin-set>
     </domain-config>
 
-    <!-- api.lib.ntust.edu.tw leaf + intermediate. -->
+    <!-- api.lib.ntust.edu.tw leaf + Sectigo DV E36 intermediate.
+         Leaf cert expires 2026-11-04; pins expire six months later. -->
     <domain-config cleartextTrafficPermitted="false">
         <domain includeSubdomains="true">api.lib.ntust.edu.tw</domain>
-        <pin-set expiration="2027-01-18">
+        <pin-set expiration="2027-05-04">
             <pin digest="SHA-256">m8Epf0KqJFv9abCXfipePZ79hfOMjddCKxz+RSZIDKY=</pin>
             <pin digest="SHA-256">ZSagvDzjltLkewXEBuDxIzpW/dpVw1Juvvmd0hhkzdY=</pin>
         </pin-set>

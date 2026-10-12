@@ -69,7 +69,10 @@ default is silently dropped and the field is null at runtime.
 - **NTUST cert pins** have a hard-coded expiry epoch in `app/build.gradle.kts`
   (`PIN_EXPIRY_EPOCH`). `TigerDuckApp.warnIfPinsNearExpiry` logs a warning
   in the 30-day window. Rotate before lapse; post-expiry the platform
-  falls back to system CA trust silently.
+  falls back to system CA trust silently. `NetworkSecurityConfigTest` fails
+  45 days before any pin-set expires, when the debug config's pin-sets drift
+  from the release one's, and when `PIN_EXPIRY_EPOCH` is not the earliest
+  expiration. The Apple repo's `tls-pin-rotation` skill rotates both apps.
 - **The Open-source licences lists are committed, not built.** Two
   generated files per flavor: `res/raw/aboutlibraries.json` (libraries and
   their licences, from the AboutLibraries plugin) and
