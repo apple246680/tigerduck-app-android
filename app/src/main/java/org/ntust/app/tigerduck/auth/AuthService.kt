@@ -356,6 +356,10 @@ class AuthService @Inject constructor(
         // The cache they dated is wiped below; left behind, they would date
         // the next account's data, and hold its first background sync off.
         prefs.clearSyncStamps()
+        // A re-enable check compares this device's data, which is wiped below.
+        // Left pending, it would hold the next session's assignment marks and
+        // then offer Use Local, sending that emptied data over the server's.
+        prefs.pendingConflictCategories = emptySet()
         _loginError.value = null
         _authState.value = false
         pushRegistration.unregister(authHeader)
