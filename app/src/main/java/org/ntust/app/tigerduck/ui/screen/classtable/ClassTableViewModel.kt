@@ -71,6 +71,8 @@ class ClassTableViewModel @Inject constructor(
     private val pushApiClient: org.ntust.app.tigerduck.push.PushApiClient,
     private val academicCalendar: org.ntust.app.tigerduck.academic.AcademicCalendarStore,
     private val debugFixtures: DebugFixtureStore,
+    private val notificationScheduler: org.ntust.app.tigerduck.notification.AssignmentNotificationScheduler,
+    private val liveActivityManager: org.ntust.app.tigerduck.liveactivity.LiveActivityManager,
 ) : ViewModel() {
 
 
@@ -1023,6 +1025,10 @@ class ClassTableViewModel @Inject constructor(
                             if (merged != null) {
                                 _assignments.value = merged
                                 dataCache.saveAssignments(merged)
+                                // The reminders and the Live Update follow the
+                                // cache, as Home and the worker make them do.
+                                notificationScheduler.rescheduleFromCache(dataCache, appPreferences)
+                                liveActivityManager.refresh()
                             }
                         } catch (e: Exception) {
                             Log.e("ClassTableVM", "Failed to fetch assignments", e)

@@ -91,6 +91,8 @@ class CalendarViewModel @Inject constructor(
     private val academicCalendar: org.ntust.app.tigerduck.academic.AcademicCalendarStore,
     private val pushApiClient: org.ntust.app.tigerduck.push.PushApiClient,
     private val widgetUpdater: WidgetUpdater,
+    private val notificationScheduler: org.ntust.app.tigerduck.notification.AssignmentNotificationScheduler,
+    private val liveActivityManager: org.ntust.app.tigerduck.liveactivity.LiveActivityManager,
 ) : ViewModel() {
 
 
@@ -449,6 +451,10 @@ class CalendarViewModel @Inject constructor(
                 cached = cached,
             ) ?: return cached
             dataCache.saveAssignments(assignments)
+            // The reminders and the Live Update follow the cache, as Home
+            // and the worker make them do.
+            notificationScheduler.rescheduleFromCache(dataCache, prefs)
+            liveActivityManager.refresh()
             assignments
         } catch (_: Exception) {
             // Keep calendar useful when Moodle auth/network is temporarily unavailable.

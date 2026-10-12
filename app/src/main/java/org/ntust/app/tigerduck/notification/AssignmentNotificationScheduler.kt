@@ -6,7 +6,9 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import dagger.hilt.android.qualifiers.ApplicationContext
+import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.model.Assignment
+import org.ntust.app.tigerduck.data.preferences.AssignmentReminderPrefs
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -179,6 +181,23 @@ class AssignmentNotificationScheduler @Inject constructor(
         }
 
         trackerPrefs.edit().putStringSet("scheduled_ids", scheduledKeys).apply()
+    }
+
+    /**
+     * Rebuilds every reminder from the assignment cache when reminders are
+     * on, with the ignored and marked-done ones as safety nets: what Home and
+     * the worker do after they write that cache, for the screens that write
+     * it without them. An empty cache cancels them all, since an answer from
+     * Moodle with no assignments takes the reminders of the ones it dropped
+     * with it, such as those of a course the user TAs (issue #160).
+     */
+    suspend fun rescheduleFromCache(dataCache: DataCache, prefs: AssignmentReminderPrefs) {
+        if (!prefs.notifyAssignments) return
+        scheduleAll(
+            dataCache.loadAssignments(),
+            dataCache.loadIgnoredAssignments() + dataCache.loadMarkedCompletedAssignments(),
+            prefs.notifyAssignmentOffsets,
+        )
     }
 
     fun cancelAllTracked(): Unit = synchronized(schedulerLock) {
