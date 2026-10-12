@@ -5,6 +5,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.sync.Mutex
@@ -56,7 +58,10 @@ class LiveActivityManager @Inject constructor(
 
     init {
         prefsCollectorJob = scope.launch {
-            preferences.changeEvent.collect { refresh() }
+            // And on every write of the ignored, marked-done and ignored-course
+            // sets: the resolver only sees what is still outstanding.
+            merge(preferences.changeEvent, dataCache.assignmentMarksVersion.drop(1))
+                .collect { refresh() }
         }
     }
 
@@ -133,7 +138,7 @@ class LiveActivityManager @Inject constructor(
         // takes no calendar of its own — and scheduleBoundaryRefresh reads the
         // same list, so no boundary alarm is armed for a quiet day either.
         val courses = if (quietToday) emptyList() else dataCache.loadCourses()
-        val assignments = dataCache.loadAssignments()
+        val assignments = dataCache.loadOutstandingAssignments()
         // 翹課 parked — see DataCache's skipped-dates section. Not read, so
         // pre-v2.0.1 marks can't suppress a class the user can no longer unskip.
         val skipped = emptyMap<String, List<String>>()

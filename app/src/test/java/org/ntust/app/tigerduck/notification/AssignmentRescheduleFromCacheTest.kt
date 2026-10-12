@@ -4,11 +4,13 @@ import android.app.AlarmManager
 import android.app.Application
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.ntust.app.tigerduck.academic.AcademicCalendarStore
+import org.ntust.app.tigerduck.data.CourseIgnores
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
@@ -43,6 +45,14 @@ class AssignmentRescheduleFromCacheTest {
 
     private fun reminders() =
         shadowOf(context.getSystemService(AlarmManager::class.java)).scheduledAlarms
+
+    /** The assignment id of every armed reminder, one per alarm. */
+    // Robolectric 4.17 deprecates the operation field but has no getter for it.
+    @Suppress("DEPRECATION")
+    private fun armedIds(): List<String?> = reminders().map {
+        shadowOf(it.operation).savedIntent
+            .getStringExtra(AssignmentNotificationReceiver.EXTRA_ASSIGNMENT_ID)
+    }
 
     private fun dueInThreeDays(id: String) = Assignment(
         assignmentId = id,
@@ -81,6 +91,27 @@ class AssignmentRescheduleFromCacheTest {
         scheduler.rescheduleFromCache(dataCache, prefs)
 
         assertTrue(reminders().isEmpty())
+    }
+
+    @Test
+    fun `homework ignored, marked done or of an ignored course gets no reminder`() = runBlocking {
+        dataCache.saveAssignments(
+            listOf(
+                dueInThreeDays("open"),
+                dueInThreeDays("ignored"),
+                dueInThreeDays("marked"),
+                dueInThreeDays("course-ignored").copy(courseNo = "IGNORED"),
+            )
+        )
+        dataCache.saveIgnoredAssignments(setOf("ignored"))
+        dataCache.saveMarkedCompletedAssignments(setOf("marked"))
+        dataCache.saveIgnoredCourses(
+            setOf(CourseIgnores.key(dataCache.currentSemesterCode(), "IGNORED"))
+        )
+
+        scheduler.rescheduleFromCache(dataCache, prefs)
+
+        assertEquals(setOf("open"), armedIds().toSet())
     }
 
     private companion object {

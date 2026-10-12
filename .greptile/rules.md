@@ -122,7 +122,9 @@ data points.
 - Anywhere the client PATCHes `/sync/courses/{id}/override` (currently every
   caller of `pushApiClient.patchCourseOverride`:
   `CourseColorStore.resetAllColors`, `ClassTableViewModel.syncCourseOverride`
-  and `SettingsViewModel.resolveReenableConflict`), do **not** flag
+  and `SettingsViewModel.resolveReenableConflict`, and
+  `pushApiClient.patchCourseIgnore`, which `CourseIgnoreSync` calls with the
+  id `ClassTableViewModel.toggleIgnoreAssignments` picks), do **not** flag
   passing `Course.moodleIdNumber` or `"{semester}{courseNo}"` as the path
   segment, and do **not** suggest changing it to the
   `"client:{semester}:{courseNo}"` course_key format.

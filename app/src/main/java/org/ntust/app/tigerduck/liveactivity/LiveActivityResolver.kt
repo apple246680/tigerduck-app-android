@@ -17,7 +17,8 @@ import java.util.Date
  * 1. inClass         — current course for today
  * 2. classPreparing  — next course within `classPreparingLeadTime`
  * 3. assignmentUrgent — earliest uncompleted assignment due within
- *    `assignmentLeadTime`
+ *    `assignmentLeadTime`. Ignored and marked-done ones are the caller's to
+ *    leave out; see [org.ntust.app.tigerduck.data.OutstandingAssignments].
  */
 class LiveActivityResolver {
 

@@ -17,6 +17,12 @@ data class Assignment(
     /** Moodle `submission.timemodified` — used to distinguish on-time vs late
      *  submissions once [isCompleted] is true. */
     val submittedAt: Date? = null,
+    /**
+     * The term the assignment was fetched for, which decides the course
+     * ignore it falls under (see [org.ntust.app.tigerduck.data.CourseIgnores]).
+     * Null in a cache written before it existed: the term in session then.
+     */
+    val semester: String? = null,
 ) {
     val isOverdue: Boolean
         get() = !isCompleted && dueDate.before(Date(AppClock.nowMillis()))

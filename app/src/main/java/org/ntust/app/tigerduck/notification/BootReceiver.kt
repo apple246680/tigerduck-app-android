@@ -50,13 +50,10 @@ class BootReceiver : BroadcastReceiver() {
             try {
                 withTimeout(10_000) {
                     if (appPreferences.notifyAssignments) {
-                        val assignments = dataCache.loadAssignments()
+                        val assignments = dataCache.loadOutstandingAssignments()
                         if (assignments.isNotEmpty()) {
-                            val ignored = dataCache.loadIgnoredAssignments()
-                            val marked = dataCache.loadMarkedCompletedAssignments()
                             scheduler.scheduleAll(
                                 assignments,
-                                ignored + marked,
                                 appPreferences.notifyAssignmentOffsets,
                             )
                         }

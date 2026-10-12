@@ -38,6 +38,7 @@ import org.ntust.app.tigerduck.auth.AuthTokenManager
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
+import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.network.CourseService
@@ -70,6 +71,8 @@ import javax.inject.Inject
 class HomeSyncState(
     val ignoredAssignmentIds: MutableStateFlow<Set<String>>,
     val markedCompletedIds: MutableStateFlow<Set<String>>,
+    /** The ignored courses; see [org.ntust.app.tigerduck.data.CourseIgnores]. */
+    val ignoredCourseKeys: MutableStateFlow<Set<String>>,
     val allAssignments: MutableStateFlow<List<Assignment>>,
     val allCourses: MutableStateFlow<List<Course>>,
     val conflicts: MutableStateFlow<List<AssignmentSyncConflict>>,
@@ -104,6 +107,7 @@ class HomeBackendSync @Inject constructor(
     private val semesterCatalog: SemesterCatalog,
     private val widgetUpdater: WidgetUpdater,
     private val academicCalendar: org.ntust.app.tigerduck.academic.AcademicCalendarStore,
+    private val courseIgnoreSync: CourseIgnoreSync,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) {
 
@@ -127,8 +131,12 @@ class HomeBackendSync @Inject constructor(
         }
         try {
             if (BuildConfig.DEBUG) ServerFailureSimulator.check(ServerKind.BACKEND)
+            val generation = courseIgnoreSync.currentGeneration()
+            // Unsent course-ignore changes go first, so the snapshot has them.
+            courseIgnoreSync.retryPending()
             val result = syncApiClient.fetchFullSync()
             syncAssignmentOverrides(state, result)
+            courseIgnoreSync.applySnapshot(result, generation)?.let { state.ignoredCourseKeys.value = it }
             // Course overrides and deletion detection always run regardless
             // of whether this was a first-time migration.
             if (result.courseOverrides.isNotEmpty() && (prefs.syncCourseColors || prefs.syncCourseNames)) {

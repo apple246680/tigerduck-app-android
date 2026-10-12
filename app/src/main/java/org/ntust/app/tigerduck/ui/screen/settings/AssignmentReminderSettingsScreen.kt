@@ -95,12 +95,8 @@ class AssignmentReminderSettingsViewModel @Inject constructor(
      */
     private fun rescheduleFromCache() {
         viewModelScope.launch {
-            val assignments = dataCache.loadAssignments().filter { !it.isCompleted }
-            val safetyNetIds =
-                dataCache.loadIgnoredAssignments() + dataCache.loadMarkedCompletedAssignments()
             scheduler.scheduleAll(
-                assignments,
-                safetyNetIds,
+                dataCache.loadOutstandingAssignments(),
                 appState.prefs.notifyAssignmentOffsets,
             )
         }

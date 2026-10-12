@@ -14,11 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Book
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -62,10 +59,13 @@ internal fun SoloCourseCell(
     y: androidx.compose.ui.unit.Dp,
     weekday: Int,
     hasAssignment: Boolean,
+    assignmentsIgnored: Boolean,
     onTap: () -> Unit,
     onLongPress: () -> Unit,
     onRename: (Course) -> Unit,
     onPickColor: (Course) -> Unit,
+    /** Null where the menu does not offer it; see [ClassTableViewModel.canIgnoreAssignments]. */
+    onToggleIgnoreAssignments: ((Course) -> Unit)?,
     onDelete: (Course) -> Unit,
 ) {
     val cellBg = if (TigerDuckTheme.isDarkMode) {
@@ -76,6 +76,7 @@ internal fun SoloCourseCell(
     val cellTextColor = if (TigerDuckTheme.isDarkMode) Color.White else Color(0xFF1C1C1E)
     var showMenu by remember { mutableStateOf(false) }
     val assignmentLabel = stringResource(R.string.a11y_class_table_cell_assignment_indicator)
+    val ignoredLabel = stringResource(R.string.a11y_class_table_cell_assignments_ignored)
     val cellRoom = course.classroom(weekday)
     val cellLabel = buildString {
         append(course.displayName)
@@ -86,6 +87,10 @@ internal fun SoloCourseCell(
         if (hasAssignment) {
             append(". ")
             append(assignmentLabel)
+        }
+        if (assignmentsIgnored) {
+            append(". ")
+            append(ignoredLabel)
         }
     }
     // A notch under the course name, so the name keeps the visual weight:
@@ -145,22 +150,24 @@ internal fun SoloCourseCell(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     // Clear of the assignment badge in the opposite corner.
-                    .padding(start = 3.dp, bottom = 2.dp, end = if (hasAssignment) 18.dp else 3.dp)
+                    .padding(
+                        start = 3.dp,
+                        bottom = 2.dp,
+                        end = if (hasAssignment || assignmentsIgnored) 18.dp else 3.dp,
+                    )
                     // Already in the cell's own label, which reads the room.
                     .clearAndSetSemantics {},
             )
         }
-        if (hasAssignment) {
-            Icon(
-                imageVector = Icons.Filled.Book,
-                contentDescription = null,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(3.dp)
-                    .size(12.dp),
-                tint = cellTextColor.copy(alpha = 0.7f),
-            )
-        }
+        CourseCellBadge(
+            hasAssignment = hasAssignment,
+            assignmentsIgnored = assignmentsIgnored,
+            tint = cellTextColor.copy(alpha = 0.7f),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(3.dp)
+                .size(12.dp),
+        )
         DropdownMenu(
             expanded = showMenu,
             onDismissRequest = { showMenu = false },
@@ -174,6 +181,12 @@ internal fun SoloCourseCell(
                 text = { Text(stringResource(R.string.class_table_pick_color)) },
                 onClick = { showMenu = false; onPickColor(course) },
             )
+            if (onToggleIgnoreAssignments != null) {
+                IgnoreAssignmentsMenuItem(
+                    ignored = assignmentsIgnored,
+                    onClick = { showMenu = false; onToggleIgnoreAssignments(course) },
+                )
+            }
             DropdownMenuItem(
                 text = {
                     Text(
@@ -185,6 +198,25 @@ internal fun SoloCourseCell(
             )
         }
     }
+}
+
+/** The long-press action that ignores a course's assignments, or stops ignoring them. */
+@Composable
+internal fun IgnoreAssignmentsMenuItem(ignored: Boolean, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = {
+            Text(
+                stringResource(
+                    if (ignored) {
+                        R.string.class_table_ignore_assignments_undo
+                    } else {
+                        R.string.class_table_ignore_assignments
+                    }
+                )
+            )
+        },
+        onClick = onClick,
+    )
 }
 
 @Composable

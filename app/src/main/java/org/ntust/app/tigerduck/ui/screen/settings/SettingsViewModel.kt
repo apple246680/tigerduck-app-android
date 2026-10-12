@@ -5,7 +5,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -18,6 +22,7 @@ import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.data.CourseColorStore
+import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.liveactivity.LiveActivityManager
@@ -28,6 +33,7 @@ import org.ntust.app.tigerduck.analytics.AnalyticsLogger
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.debug.DebugFixtureStore
+import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.demo.DemoAccount
 import org.ntust.app.tigerduck.network.CourseService
 import org.ntust.app.tigerduck.push.PushApiClient
@@ -60,6 +66,8 @@ class SettingsViewModel @Inject constructor(
     private val dataCache: DataCache,
     private val debugFixtures: DebugFixtureStore,
     private val demoAccount: DemoAccount,
+    private val courseIgnoreSync: CourseIgnoreSync,
+    @param:ApplicationScope private val appScope: CoroutineScope,
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -273,8 +281,10 @@ class SettingsViewModel @Inject constructor(
                     val localCompleted = dataCache.loadMarkedCompletedAssignments()
                     val ignoredMatch = localIgnored == result.ignoredIds
                     val completedMatch = localCompleted == result.completedIds
-                    Log.i(TAG, "[reenable] assignments: localIgnored=${localIgnored.size} serverIgnored=${result.ignoredIds.size} match=$ignoredMatch | localCompleted=${localCompleted.size} serverCompleted=${result.completedIds.size} match=$completedMatch")
-                    if (!ignoredMatch || !completedMatch) {
+                    // Course ignores follow course sync too, so with it off there is nothing to compare.
+                    val coursesMatch = !prefs.syncCourses || courseIgnoreSync.agreesWith(result)
+                    Log.i(TAG, "[reenable] assignments: localIgnored=${localIgnored.size} serverIgnored=${result.ignoredIds.size} match=$ignoredMatch | localCompleted=${localCompleted.size} serverCompleted=${result.completedIds.size} match=$completedMatch | ignoredCourses match=$coursesMatch")
+                    if (!ignoredMatch || !completedMatch || !coursesMatch) {
                         diffs.add(context.getString(R.string.sync_conflict_reenable_assignments_differ))
                     }
                 }
@@ -298,115 +308,150 @@ class SettingsViewModel @Inject constructor(
         val conflict = _reenableConflict.value ?: return
         Log.i(TAG, "[reenable] resolve: keepLocal=$keepLocal categories=${conflict.categories}")
         _reenableConflict.value = null
-        prefs.pendingConflictCategories = emptySet()
-        viewModelScope.launch {
-            if (keepLocal) {
-                if ("courses" in conflict.categories) {
-                    val courses = dataCache.loadCourses()
+        // CourseIgnoreSync holds course ignores while "assignments" is
+        // pending, so it is let go only once they are queued or adopted: a
+        // sync in between would take the server's set over this device's.
+        // On the application scope, so leaving Settings cannot strand it,
+        // and tied to this account: a sign-out ends it, and drops any write
+        // still on its way.
+        val holdsCourseIgnores = "assignments" in conflict.categories
+        prefs.pendingConflictCategories = if (holdsCourseIgnores) setOf("assignments") else emptySet()
+        val generation = dataCache.userDataGeneration
+        appScope.launch(DataCache.Generation(generation)) {
+            try {
+                coroutineScope {
+                    val signOut = launch {
+                        authService.authState.first { !it }
+                        this@coroutineScope.cancel()
+                    }
+                    resolve(conflict, keepLocal, generation)
+                    signOut.cancel()
+                }
+            } finally {
+                if (holdsCourseIgnores) {
+                    prefs.pendingConflictCategories = prefs.pendingConflictCategories - "assignments"
+                }
+            }
+            if (holdsCourseIgnores) courseIgnoreSync.retryPending()
+        }
+    }
+
+    private suspend fun resolve(conflict: ReenableConflict, keepLocal: Boolean, generation: Int) {
+        if (keepLocal) {
+            if ("courses" in conflict.categories) {
+                val courses = dataCache.loadCourses()
+                val semester = courseService.currentSemesterCode()
+                runCatching { pushApiClient.deleteAllCourses() }
+                runCatching { pushApiClient.uploadCourses(courses, semester) }
+            }
+            if ("course_colors" in conflict.categories) {
+                val courses = dataCache.loadCourses()
+                for (course in courses) {
+                    val hex = course.customColorHex ?: continue
+                    val moodleId = course.moodleIdNumber ?: continue
+                    runCatching { pushApiClient.patchCourseOverride(moodleId, colorHex = hex) }
+                }
+            }
+            if ("course_names" in conflict.categories) {
+                val customNames = dataCache.loadCourseCustomNames()
+                val courses = dataCache.loadCourses()
+                val noToMoodle = courses.mapNotNull { c ->
+                    c.moodleIdNumber?.let { c.courseNo to it }
+                }.toMap()
+                for ((courseNo, locales) in customNames) {
+                    val moodleId = noToMoodle[courseNo] ?: continue
+                    for ((locale, name) in locales) {
+                        if (name.isNotEmpty()) {
+                            runCatching { pushApiClient.patchCourseOverride(moodleId, customName = name, locale = locale) }
+                        }
+                    }
+                }
+            }
+            if ("assignments" in conflict.categories) {
+                for (id in dataCache.loadIgnoredAssignments()) {
+                    val intId = id.toIntOrNull() ?: continue
+                    runCatching { pushApiClient.patchAssignmentOverride(intId, "ignored") }
+                }
+                for (id in dataCache.loadMarkedCompletedAssignments()) {
+                    val intId = id.toIntOrNull() ?: continue
+                    runCatching { pushApiClient.patchAssignmentOverride(intId, "locally_completed") }
+                }
+                if (prefs.syncCourses) {
+                    courseIgnoreSync.pushLocal(
+                        runCatching { syncApiClient.fetchFullSync() }.getOrNull(),
+                        generation,
+                    )
+                }
+            }
+        } else {
+            if ("courses" in conflict.categories) {
+                dataCache.saveDeletedCourseNos(emptySet())
+            }
+            if ("course_names" in conflict.categories) {
+                dataCache.saveCourseCustomNames(emptyMap())
+            }
+            if ("assignments" in conflict.categories) {
+                dataCache.replaceIgnoredAssignments(emptySet())
+                dataCache.replaceMarkedCompletedAssignments(emptySet())
+            }
+            val result = runCatching { syncApiClient.fetchFullSync() }.getOrNull()
+            if (result != null) {
+                if ("courses" in conflict.categories && result.serverCourseNos.isNotEmpty()) {
                     val semester = courseService.currentSemesterCode()
-                    runCatching { pushApiClient.deleteAllCourses() }
-                    runCatching { pushApiClient.uploadCourses(courses, semester) }
+                    val serverHere = result.serverCourses
+                        .filter { it.semester == semester }
+                        .map { it.courseNo }
+                        .toSet()
+                        .ifEmpty { result.serverCourseNos }
+                    val localCourses = dataCache.loadCourses()
+                    val missing = localCourses.map { it.courseNo }.toSet() - serverHere
+                    if (missing.isNotEmpty()) {
+                        // Scoped, and added to the store rather than
+                        // replacing it: an unscoped overwrite dropped every
+                        // other term's tombstones on the floor.
+                        var deleted = dataCache.loadDeletedCourseNos()
+                        for (no in missing) {
+                            deleted = CourseTombstoneKeys.hide(no, semester, deleted)
+                        }
+                        dataCache.saveDeletedCourseNos(deleted)
+                    }
                 }
-                if ("course_colors" in conflict.categories) {
-                    val courses = dataCache.loadCourses()
-                    for (course in courses) {
-                        val hex = course.customColorHex ?: continue
-                        val moodleId = course.moodleIdNumber ?: continue
-                        runCatching { pushApiClient.patchCourseOverride(moodleId, colorHex = hex) }
+                if ("course_colors" in conflict.categories || "course_names" in conflict.categories) {
+                    if (result.courseOverrides.isNotEmpty()) {
+                        val courses = dataCache.loadCourses()
+                        val updated = courses.map { course ->
+                            val override = result.courseOverrides.find { it.courseNo == course.courseNo }
+                                ?: return@map course
+                            var c = course
+                            if ("course_colors" in conflict.categories && override.colorHex != null) {
+                                c = c.copy(customColorHex = override.colorHex)
+                            }
+                            c
+                        }
+                        dataCache.saveCourses(updated)
                     }
                 }
                 if ("course_names" in conflict.categories) {
-                    val customNames = dataCache.loadCourseCustomNames()
-                    val courses = dataCache.loadCourses()
-                    val noToMoodle = courses.mapNotNull { c ->
-                        c.moodleIdNumber?.let { c.courseNo to it }
-                    }.toMap()
-                    for ((courseNo, locales) in customNames) {
-                        val moodleId = noToMoodle[courseNo] ?: continue
-                        for ((locale, name) in locales) {
-                            if (name.isNotEmpty()) {
-                                runCatching { pushApiClient.patchCourseOverride(moodleId, customName = name, locale = locale) }
+                    val localNames = dataCache.loadCourseCustomNames().toMutableMap()
+                    for (override in result.courseOverrides) {
+                        val courseNo = override.courseNo ?: continue
+                        if (override.customNames.isNotEmpty()) {
+                            val existing = localNames[courseNo]?.toMutableMap() ?: mutableMapOf()
+                            for ((locale, name) in override.customNames) {
+                                if (name.isEmpty()) existing.remove(locale) else existing[locale] = name
                             }
+                            if (existing.isEmpty()) localNames.remove(courseNo) else localNames[courseNo] = existing
                         }
                     }
+                    dataCache.saveCourseCustomNames(localNames)
                 }
                 if ("assignments" in conflict.categories) {
-                    for (id in dataCache.loadIgnoredAssignments()) {
-                        val intId = id.toIntOrNull() ?: continue
-                        runCatching { pushApiClient.patchAssignmentOverride(intId, "ignored") }
-                    }
-                    for (id in dataCache.loadMarkedCompletedAssignments()) {
-                        val intId = id.toIntOrNull() ?: continue
-                        runCatching { pushApiClient.patchAssignmentOverride(intId, "locally_completed") }
-                    }
+                    dataCache.replaceIgnoredAssignments(result.ignoredIds)
+                    dataCache.replaceMarkedCompletedAssignments(result.completedIds)
                 }
-            } else {
-                if ("courses" in conflict.categories) {
-                    dataCache.saveDeletedCourseNos(emptySet())
-                }
-                if ("course_names" in conflict.categories) {
-                    dataCache.saveCourseCustomNames(emptyMap())
-                }
-                if ("assignments" in conflict.categories) {
-                    dataCache.replaceIgnoredAssignments(emptySet())
-                    dataCache.replaceMarkedCompletedAssignments(emptySet())
-                }
-                val result = runCatching { syncApiClient.fetchFullSync() }.getOrNull()
-                if (result != null) {
-                    if ("courses" in conflict.categories && result.serverCourseNos.isNotEmpty()) {
-                        val semester = courseService.currentSemesterCode()
-                        val serverHere = result.serverCourses
-                            .filter { it.semester == semester }
-                            .map { it.courseNo }
-                            .toSet()
-                            .ifEmpty { result.serverCourseNos }
-                        val localCourses = dataCache.loadCourses()
-                        val missing = localCourses.map { it.courseNo }.toSet() - serverHere
-                        if (missing.isNotEmpty()) {
-                            // Scoped, and added to the store rather than
-                            // replacing it: an unscoped overwrite dropped every
-                            // other term's tombstones on the floor.
-                            var deleted = dataCache.loadDeletedCourseNos()
-                            for (no in missing) {
-                                deleted = CourseTombstoneKeys.hide(no, semester, deleted)
-                            }
-                            dataCache.saveDeletedCourseNos(deleted)
-                        }
-                    }
-                    if ("course_colors" in conflict.categories || "course_names" in conflict.categories) {
-                        if (result.courseOverrides.isNotEmpty()) {
-                            val courses = dataCache.loadCourses()
-                            val updated = courses.map { course ->
-                                val override = result.courseOverrides.find { it.courseNo == course.courseNo }
-                                    ?: return@map course
-                                var c = course
-                                if ("course_colors" in conflict.categories && override.colorHex != null) {
-                                    c = c.copy(customColorHex = override.colorHex)
-                                }
-                                c
-                            }
-                            dataCache.saveCourses(updated)
-                        }
-                    }
-                    if ("course_names" in conflict.categories) {
-                        val localNames = dataCache.loadCourseCustomNames().toMutableMap()
-                        for (override in result.courseOverrides) {
-                            val courseNo = override.courseNo ?: continue
-                            if (override.customNames.isNotEmpty()) {
-                                val existing = localNames[courseNo]?.toMutableMap() ?: mutableMapOf()
-                                for ((locale, name) in override.customNames) {
-                                    if (name.isEmpty()) existing.remove(locale) else existing[locale] = name
-                                }
-                                if (existing.isEmpty()) localNames.remove(courseNo) else localNames[courseNo] = existing
-                            }
-                        }
-                        dataCache.saveCourseCustomNames(localNames)
-                    }
-                    if ("assignments" in conflict.categories) {
-                        dataCache.replaceIgnoredAssignments(result.ignoredIds)
-                        dataCache.replaceMarkedCompletedAssignments(result.completedIds)
-                    }
-                }
+            }
+            if ("assignments" in conflict.categories && prefs.syncCourses) {
+                courseIgnoreSync.adoptServer(result, generation)
             }
         }
     }
