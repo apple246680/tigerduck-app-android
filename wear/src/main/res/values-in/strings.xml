@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">Ada tugas</string>
     <string name="a11y_class_table_conflict_prefix">Konflik kelas</string>
     <string name="a11y_course_card_open_details_hint">Ketuk dua kali untuk detail</string>
+    <string name="a11y_course_color_swatch">Warna %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Buka di Moodle</string>
     <string name="a11y_rankings_trend_chart">Tren GPA per semester</string>
     <string name="a11y_rankings_trend_no_selection">Tidak ada semester yang dipilih</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">Sekolah</string>
     <string name="calendar_source_semester">Semester</string>
     <string name="calendar_today">Hari ini</string>
-    <string name="class_table_conflict_add_failed_message">%1$s sudah memiliki dua kelas pada slot ini (Hari %2$s, Periode %3$s): %4$s dan %5$s. Sistem tidak mendukung tiga konflik bersamaan.</string>
+    <string name="class_table_conflict_add_failed_message">%1$s sudah memiliki dua kelas pada slot ini (%2$s, Periode %3$s): %4$s dan %5$s. Sistem tidak mendukung tiga konflik bersamaan.</string>
     <string name="class_table_conflict_add_failed_title">Tidak dapat ditambahkan</string>
     <string name="class_table_course_name">Nama mata kuliah</string>
     <string name="class_table_delete">Hapus</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">Tugas belum selesai</string>
     <string name="course_detail_instructor_label">Pengajar</string>
     <string name="course_detail_no_roster">Tidak ada data pendaftaran untuk mata kuliah ini</string>
+    <string name="course_detail_require_option_elective">Pilihan</string>
+    <string name="course_detail_require_option_label">Jenis mata kuliah</string>
+    <string name="course_detail_require_option_required">Wajib</string>
     <string name="course_detail_time_label">Waktu</string>
     <string name="course_instructor_value">Dosen: %1$s</string>
     <string name="desktop_about_copyright">© Kontributor TigerDuck. Tidak berafiliasi dengan NTUST.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Kesalahan jaringan Moodle: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">Verifikasi bahwa kredensial Moodle / NTUST Anda masih valid.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">Masuk kembali ke NTUST dan coba sekali lagi.</string>
+    <string name="error_moodle_site_maintenance">Moodle sedang dalam pemeliharaan. Coba lagi nanti.</string>
     <string name="error_moodle_sso_rejected">NTUST SSO menolak otorisasi Moodle. Silakan verifikasi kredensial Anda.</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO menolak otorisasi Moodle: %1$@</string>
     <string name="error_moodle_webservice_disabled">Layanan web Moodle saat ini tidak tersedia.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">Sesi telah berakhir</string>
     <string name="error_sign_in_failed">Login gagal</string>
     <string name="error_sso_sign_in_failed">Masuk gagal. Silakan verifikasi akun dan kata sandi Anda.</string>
+    <string name="error_sso_sign_in_failed_with_reason">Masuk gagal: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">Tidak dapat menemukan formulir masuk SSO.</string>
     <string name="feature_announcements">Pengumuman</string>
     <string name="feature_announcements_short">Pengumuman</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">Peramban default sistem</string>
     <string name="settings_check_for_updates">Periksa pembaruan</string>
     <string name="settings_check_server_status">Periksa status server</string>
+    <string name="settings_class_reminder">Pengingat kelas</string>
+    <string name="settings_class_reminder_footer">Anda akan diberi tahu sebelum setiap kelas dimulai.</string>
+    <string name="settings_class_reminder_lead_time">Ingatkan saya</string>
     <string name="settings_classroom_mandarin_display">Saat nama ruang kelas dalam bahasa Mandarin</string>
     <string name="settings_classroom_mandarin_display_original">Tampilkan asli</string>
     <string name="settings_classroom_mandarin_display_pinyin">Tampilkan pinyin</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">Buka tautan dengan</string>
     <string name="settings_official_website">Situs web resmi</string>
     <string name="settings_open_source_licenses">Lisensi sumber terbuka</string>
+    <string name="settings_outline_required_courses">Beri garis tepi pada mata kuliah wajib di jadwal</string>
     <string name="settings_privacy_policy">Kebijakan privasi</string>
     <string name="settings_push_server_nav_label">Push server</string>
     <string name="settings_remember_bulletin_filter">Ingat filter buletin</string>

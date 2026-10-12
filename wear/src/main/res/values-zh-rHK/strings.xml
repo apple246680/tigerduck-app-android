@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">有功課</string>
     <string name="a11y_class_table_conflict_prefix">撞堂</string>
     <string name="a11y_course_card_open_details_hint">㩒兩下睇詳情</string>
+    <string name="a11y_course_color_swatch">顏色 %1$lld</string>
     <string name="a11y_course_detail_open_moodle">喺 Moodle 開啟</string>
     <string name="a11y_rankings_trend_chart">各學期 GPA 趨勢</string>
     <string name="a11y_rankings_trend_no_selection">未揀學期</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">未完成作業</string>
     <string name="course_detail_instructor_label">授課教師</string>
     <string name="course_detail_no_roster">目前沒有此課程的修課資料</string>
+    <string name="course_detail_require_option_elective">選修</string>
+    <string name="course_detail_require_option_label">類型</string>
+    <string name="course_detail_require_option_required">必修</string>
     <string name="course_detail_time_label">時間</string>
     <string name="course_instructor_value">講師：%1$s</string>
     <string name="desktop_about_copyright">© TigerDuck 貢獻者。本應用同台科大冇任何關係。</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Moodle 網絡錯誤：%1$@</string>
     <string name="error_moodle_recovery_check_credentials">請確認你嘅 Moodle／校務系統帳戶密碼仲有效。</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">請再登入一次校務系統再試。</string>
+    <string name="error_moodle_site_maintenance">Moodle 維護緊，請稍後再試。</string>
     <string name="error_moodle_sso_rejected">校務系統 SSO 拒絕咗 Moodle 授權，請確認你嘅帳戶密碼。</string>
     <string name="error_moodle_sso_rejected_with_reason">校務系統 SSO 拒絕咗 Moodle 授權：%1$@</string>
     <string name="error_moodle_webservice_disabled">Moodle 網絡服務而家無法使用。</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">登入階段已過期</string>
     <string name="error_sign_in_failed">登入失敗</string>
     <string name="error_sso_sign_in_failed">登入失敗，請確認你嘅帳戶同密碼。</string>
+    <string name="error_sso_sign_in_failed_with_reason">登入失敗：%1$@</string>
     <string name="error_sso_sign_in_form_not_found">搵唔到 SSO 登入表單。</string>
     <string name="feature_announcements">公告</string>
     <string name="feature_announcements_short">公告</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">系統預設瀏覽器</string>
     <string name="settings_check_for_updates">檢查更新</string>
     <string name="settings_check_server_status">檢查各伺服器上線狀況</string>
+    <string name="settings_class_reminder">上課提醒</string>
+    <string name="settings_class_reminder_footer">上課前會發通知提醒您</string>
+    <string name="settings_class_reminder_lead_time">提醒時間</string>
     <string name="settings_classroom_mandarin_display">當課室名稱係普通話時</string>
     <string name="settings_classroom_mandarin_display_original">顯示原文</string>
     <string name="settings_classroom_mandarin_display_pinyin">顯示拼音</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">開啟連結方式</string>
     <string name="settings_official_website">官方網站</string>
     <string name="settings_open_source_licenses">開源授權</string>
+    <string name="settings_outline_required_courses">喺課表為必修課加上外框</string>
     <string name="settings_privacy_policy">隱私權政策</string>
     <string name="settings_push_server_nav_label">伺服器推播</string>
     <string name="settings_remember_bulletin_filter">記住公告篩選條件</string>

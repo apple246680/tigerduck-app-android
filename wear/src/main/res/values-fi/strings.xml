@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">On tehtävä</string>
     <string name="a11y_class_table_conflict_prefix">Tuntiristiriita</string>
     <string name="a11y_course_card_open_details_hint">Kaksoisnapauta tarkempia tietoja varten</string>
+    <string name="a11y_course_color_swatch">Väri %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Avaa Moodlessa</string>
     <string name="a11y_rankings_trend_chart">GPA-kehitys lukukausittain</string>
     <string name="a11y_rankings_trend_no_selection">Ei valittua lukukautta</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">Koulu</string>
     <string name="calendar_source_semester">Lukukausi</string>
     <string name="calendar_today">Tänään</string>
-    <string name="class_table_conflict_add_failed_message">%1$s:llä on jo kaksi tuntia tässä ajassa (viikonpäivä %2$s, jakso %3$s): %4$s ja %5$s. Järjestelmä ei tue kolminkertaisia päällekkäisyyksiä.</string>
+    <string name="class_table_conflict_add_failed_message">%1$s:llä on jo kaksi tuntia tässä ajassa (%2$s, jakso %3$s): %4$s ja %5$s. Järjestelmä ei tue kolminkertaisia päällekkäisyyksiä.</string>
     <string name="class_table_conflict_add_failed_title">Ei voi lisätä</string>
     <string name="class_table_course_name">Kurssin nimi</string>
     <string name="class_table_delete">Poista</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">Puutteelliset tehtävät</string>
     <string name="course_detail_instructor_label">Ohjaaja</string>
     <string name="course_detail_no_roster">Tälle kurssille ei ole saatavilla ilmoittautumistietoja</string>
+    <string name="course_detail_require_option_elective">Valinnainen</string>
+    <string name="course_detail_require_option_label">Kurssin tyyppi</string>
+    <string name="course_detail_require_option_required">Pakollinen</string>
     <string name="course_detail_time_label">Aika</string>
     <string name="course_instructor_value">Opettaja: %1$s</string>
     <string name="desktop_about_copyright">© TigerDuckin tekijät. Ei liity NTUSTiin.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Moodlen verkkovirhe: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">Tarkista, että Moodle-/NTUST-tunnuksesi ovat yhä voimassa.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">Kirjaudu NTUST:iin uudelleen ja yritä vielä kerran.</string>
+    <string name="error_moodle_site_maintenance">Moodle on huollossa. Yritä myöhemmin uudelleen.</string>
     <string name="error_moodle_sso_rejected">NTUST SSO hylkäsi Moodle-valtuutuksen. Tarkista tunnuksesi.</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO hylkäsi Moodle-valtuutuksen: %1$@</string>
     <string name="error_moodle_webservice_disabled">Moodlen verkkopalvelu ei ole tällä hetkellä käytettävissä.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">Istunto vanhentunut</string>
     <string name="error_sign_in_failed">Kirjautuminen epäonnistui</string>
     <string name="error_sso_sign_in_failed">Kirjautuminen epäonnistui. Tarkista tilisi ja salasanasi.</string>
+    <string name="error_sso_sign_in_failed_with_reason">Kirjautuminen epäonnistui: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">SSO-kirjautumislomaketta ei löytynyt.</string>
     <string name="feature_announcements">Ilmoitukset</string>
     <string name="feature_announcements_short">Ilmoitukset</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">Järjestelmän oletusselain</string>
     <string name="settings_check_for_updates">Tarkista päivitykset</string>
     <string name="settings_check_server_status">Tarkista palvelimen tila</string>
+    <string name="settings_class_reminder">Tuntimuistutukset</string>
+    <string name="settings_class_reminder_footer">Saat ilmoituksen ennen jokaisen tunnin alkua.</string>
+    <string name="settings_class_reminder_lead_time">Muistuta</string>
     <string name="settings_classroom_mandarin_display">Kun luokkahuoneen nimi on kiinaksi</string>
     <string name="settings_classroom_mandarin_display_original">Näytä alkuperäinen</string>
     <string name="settings_classroom_mandarin_display_pinyin">Näytä pinyin</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">Avaa linkit</string>
     <string name="settings_official_website">Virallinen verkkosivusto</string>
     <string name="settings_open_source_licenses">Avoimen lähdekoodin lisenssit</string>
+    <string name="settings_outline_required_courses">Kehystä pakolliset kurssit lukujärjestyksessä</string>
     <string name="settings_privacy_policy">Tietosuojakäytäntö</string>
     <string name="settings_push_server_nav_label">Palvelimen push</string>
     <string name="settings_remember_bulletin_filter">Muista tiedotesuodattimet</string>

@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">Є завдання</string>
     <string name="a11y_class_table_conflict_prefix">Конфлікт занять</string>
     <string name="a11y_course_card_open_details_hint">Двічі торкніться для перегляду деталей</string>
+    <string name="a11y_course_color_swatch">Колір %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Відкрити в Moodle</string>
     <string name="a11y_rankings_trend_chart">Тенденція GPA за семестрами</string>
     <string name="a11y_rankings_trend_no_selection">Семестр не вибрано</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">Школа</string>
     <string name="calendar_source_semester">Семестр</string>
     <string name="calendar_today">Сьогодні</string>
-    <string name="class_table_conflict_add_failed_message">%1$s вже має два заняття у цьому слоті (день тижня %2$s, пара %3$s): %4$s та %5$s. Система не підтримує потрійних накладок.</string>
+    <string name="class_table_conflict_add_failed_message">%1$s вже має два заняття у цьому слоті (%2$s, пара %3$s): %4$s та %5$s. Система не підтримує потрійних накладок.</string>
     <string name="class_table_conflict_add_failed_title">Не вдалося додати</string>
     <string name="class_table_course_name">Назва курсу</string>
     <string name="class_table_delete">Видалити</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">Незавершені завдання</string>
     <string name="course_detail_instructor_label">Викладач</string>
     <string name="course_detail_no_roster">Дані про зарахування для цього курсу відсутні</string>
+    <string name="course_detail_require_option_elective">Вибірковий</string>
+    <string name="course_detail_require_option_label">Тип курсу</string>
+    <string name="course_detail_require_option_required">Обов\'язковий</string>
     <string name="course_detail_time_label">Час</string>
     <string name="course_instructor_value">Викладач: %1$s</string>
     <string name="desktop_about_copyright">© Учасники TigerDuck. Не пов\'язано з NTUST.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Мережева помилка Moodle: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">Переконайтеся, що ваші облікові дані Moodle / NTUST ще дійсні.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">Увійдіть у NTUST ще раз і спробуйте знову.</string>
+    <string name="error_moodle_site_maintenance">У Moodle тривають технічні роботи. Спробуйте пізніше.</string>
     <string name="error_moodle_sso_rejected">NTUST SSO відхилив авторизацію Moodle. Будь ласка, перевірте свої облікові дані.</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO відхилив авторизацію Moodle: %1$@</string>
     <string name="error_moodle_webservice_disabled">Веб-служба Moodle наразі недоступна.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">Сеанс завершено</string>
     <string name="error_sign_in_failed">Не вдалося увійти</string>
     <string name="error_sso_sign_in_failed">Вхід не вдався. Будь ласка, перевірте ваш обліковий запис і пароль.</string>
+    <string name="error_sso_sign_in_failed_with_reason">Вхід не вдався: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">Форму входу SSO не знайдено.</string>
     <string name="feature_announcements">Оголошення</string>
     <string name="feature_announcements_short">Оголошення</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">Стандартний системний браузер</string>
     <string name="settings_check_for_updates">Перевірити оновлення</string>
     <string name="settings_check_server_status">Перевірити статус сервера</string>
+    <string name="settings_class_reminder">Нагадування про заняття</string>
+    <string name="settings_class_reminder_footer">Ви отримаєте сповіщення перед початком кожного заняття.</string>
+    <string name="settings_class_reminder_lead_time">Нагадати</string>
     <string name="settings_classroom_mandarin_display">Коли назва аудиторії китайською мовою</string>
     <string name="settings_classroom_mandarin_display_original">Показати оригінал</string>
     <string name="settings_classroom_mandarin_display_pinyin">Показати піньїнь</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">Відкривати посилання за допомогою</string>
     <string name="settings_official_website">Офіційний сайт</string>
     <string name="settings_open_source_licenses">Ліцензії з відкритим кодом</string>
+    <string name="settings_outline_required_courses">Обводити обов\'язкові курси в розкладі</string>
     <string name="settings_privacy_policy">Політика конфіденційності</string>
     <string name="settings_push_server_nav_label">Push-сервер</string>
     <string name="settings_remember_bulletin_filter">Запам\'ятати фільтри бюлетеня</string>

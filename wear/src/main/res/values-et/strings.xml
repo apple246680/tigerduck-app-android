@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">On ülesanne</string>
     <string name="a11y_class_table_conflict_prefix">Tunnikonflikt</string>
     <string name="a11y_course_card_open_details_hint">Topelttoksake üksikasjade vaatamiseks</string>
+    <string name="a11y_course_color_swatch">Värv %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Ava Moodle\'is</string>
     <string name="a11y_rankings_trend_chart">GPA trend semestrite kaupa</string>
     <string name="a11y_rankings_trend_no_selection">Ühtegi semestrit pole valitud</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">Kool</string>
     <string name="calendar_source_semester">Semester</string>
     <string name="calendar_today">Täna</string>
-    <string name="class_table_conflict_add_failed_message">%1$s-l on selles ajavahemikus juba kaks tundi (nädalapäev %2$s, periood %3$s): %4$s ja %5$s. Süsteem ei toeta kolmekordset konflikti.</string>
+    <string name="class_table_conflict_add_failed_message">%1$s-l on selles ajavahemikus juba kaks tundi (%2$s, periood %3$s): %4$s ja %5$s. Süsteem ei toeta kolmekordset konflikti.</string>
     <string name="class_table_conflict_add_failed_title">Lisamine ebaõnnestus</string>
     <string name="class_table_course_name">Kursuse nimi</string>
     <string name="class_table_delete">Kustuta</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">Mittetäielikud ülesanded</string>
     <string name="course_detail_instructor_label">Juhendaja</string>
     <string name="course_detail_no_roster">Selle kursuse registreerimisandmed pole saadaval</string>
+    <string name="course_detail_require_option_elective">Valikuline</string>
+    <string name="course_detail_require_option_label">Kursuse tüüp</string>
+    <string name="course_detail_require_option_required">Kohustuslik</string>
     <string name="course_detail_time_label">Aeg</string>
     <string name="course_instructor_value">Õpetaja: %1$s</string>
     <string name="desktop_about_copyright">© TigerDucki kaasautorid. Ei ole seotud NTUST-iga.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Moodle’i võrgu viga: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">Kontrolli, kas su Moodle’i / NTUST-i mandaadid on veel kehtivad.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">Logi uuesti NTUST-i sisse ja proovi veel kord.</string>
+    <string name="error_moodle_site_maintenance">Moodle on hoolduses. Proovi hiljem uuesti.</string>
     <string name="error_moodle_sso_rejected">NTUST SSO lükkas Moodle’i autoriseerimise tagasi. Palun kontrolli oma mandaate.</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO lükkas Moodle’i autoriseerimise tagasi: %1$@</string>
     <string name="error_moodle_webservice_disabled">Moodle’i veebiteenus ei ole hetkel saadaval.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">Seanss on aegunud</string>
     <string name="error_sign_in_failed">Sisselogimine ebaõnnestus</string>
     <string name="error_sso_sign_in_failed">Sisselogimine ebaõnnestus. Palun kontrolli oma kontot ja parooli.</string>
+    <string name="error_sso_sign_in_failed_with_reason">Sisselogimine ebaõnnestus: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">SSO sisselogimisvormi ei leitud.</string>
     <string name="feature_announcements">Teated</string>
     <string name="feature_announcements_short">Teated</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">Süsteemi vaikebrauser</string>
     <string name="settings_check_for_updates">Kontrolli uuendusi</string>
     <string name="settings_check_server_status">Kontrolli serveri olekut</string>
+    <string name="settings_class_reminder">Tunni meeldetuletused</string>
+    <string name="settings_class_reminder_footer">Teid teavitatakse enne iga tunni algust.</string>
+    <string name="settings_class_reminder_lead_time">Tuleta meelde</string>
     <string name="settings_classroom_mandarin_display">Kui klassiruumi nimi on hiina keeles</string>
     <string name="settings_classroom_mandarin_display_original">Kuva originaal</string>
     <string name="settings_classroom_mandarin_display_pinyin">Kuva pinyin</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">Ava lingid rakendusega</string>
     <string name="settings_official_website">Ametlik veebisait</string>
     <string name="settings_open_source_licenses">Avatud lähtekoodiga litsentsid</string>
+    <string name="settings_outline_required_courses">Ümbritse tunniplaanis kohustuslikud kursused raamiga</string>
     <string name="settings_privacy_policy">Privaatsuspoliitika</string>
     <string name="settings_push_server_nav_label">Serveri tõuge</string>
     <string name="settings_remember_bulletin_filter">Pidage meeles bülletäänide filtreid</string>

@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">Má úkol</string>
     <string name="a11y_class_table_conflict_prefix">Konflikt hodin</string>
     <string name="a11y_course_card_open_details_hint">Dvojitým klepnutím zobrazíte podrobnosti</string>
+    <string name="a11y_course_color_swatch">Barva %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Otevřít v Moodle</string>
     <string name="a11y_rankings_trend_chart">Trend GPA podle semestru</string>
     <string name="a11y_rankings_trend_no_selection">Není vybrán žádný semestr</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">Škola</string>
     <string name="calendar_source_semester">Semestr</string>
     <string name="calendar_today">Dnes</string>
-    <string name="class_table_conflict_add_failed_message">%1$s již má v tomto časovém bloku dvě hodiny (den %2$s, blok %3$s): %4$s a %5$s. Systém nepodporuje trojnásobné kolize.</string>
+    <string name="class_table_conflict_add_failed_message">%1$s již má v tomto časovém bloku dvě hodiny (%2$s, blok %3$s): %4$s a %5$s. Systém nepodporuje trojnásobné kolize.</string>
     <string name="class_table_conflict_add_failed_title">Nelze přidat</string>
     <string name="class_table_course_name">Název kurzu</string>
     <string name="class_table_delete">Smazat</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">Nedokončené úkoly</string>
     <string name="course_detail_instructor_label">Instruktor</string>
     <string name="course_detail_no_roster">Pro tento kurz nejsou k dispozici žádné údaje o zápisu</string>
+    <string name="course_detail_require_option_elective">Volitelný</string>
+    <string name="course_detail_require_option_label">Typ kurzu</string>
+    <string name="course_detail_require_option_required">Povinný</string>
     <string name="course_detail_time_label">Čas</string>
     <string name="course_instructor_value">Vyučující: %1$s</string>
     <string name="desktop_about_copyright">© Přispěvatelé TigerDuck. Není spjato s NTUST.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Síťová chyba Moodle: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">Ověřte, že vaše přihlašovací údaje Moodle / NTUST jsou stále platné.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">Přihlaste se znovu do NTUST a zkuste to ještě jednou.</string>
+    <string name="error_moodle_site_maintenance">V Moodlu probíhá údržba. Zkuste to znovu později.</string>
     <string name="error_moodle_sso_rejected">NTUST SSO odmítlo autorizaci Moodle. Zkontrolujte své přihlašovací údaje.</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO odmítlo autorizaci Moodle: %1$@</string>
     <string name="error_moodle_webservice_disabled">Webová služba Moodle je momentálně nedostupná.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">Relace vypršela</string>
     <string name="error_sign_in_failed">Přihlášení se nezdařilo</string>
     <string name="error_sso_sign_in_failed">Přihlášení selhalo. Zkontrolujte účet a heslo.</string>
+    <string name="error_sso_sign_in_failed_with_reason">Přihlášení selhalo: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">Přihlašovací formulář SSO nebyl nalezen.</string>
     <string name="feature_announcements">Oznámení</string>
     <string name="feature_announcements_short">Oznámení</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">Výchozí systémový prohlížeč</string>
     <string name="settings_check_for_updates">Zkontrolovat aktualizace</string>
     <string name="settings_check_server_status">Zkontrolovat stav serveru</string>
+    <string name="settings_class_reminder">Upozornění na hodiny</string>
+    <string name="settings_class_reminder_footer">Před začátkem každé hodiny budete informováni.</string>
+    <string name="settings_class_reminder_lead_time">Upozornit</string>
     <string name="settings_classroom_mandarin_display">Když je jméno učebny v čínštině</string>
     <string name="settings_classroom_mandarin_display_original">Zobrazit originál</string>
     <string name="settings_classroom_mandarin_display_pinyin">Zobrazit pinyin</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">Otevírat odkazy v</string>
     <string name="settings_official_website">Oficiální web</string>
     <string name="settings_open_source_licenses">Open-source licence</string>
+    <string name="settings_outline_required_courses">Ohraničovat povinné kurzy v rozvrhu</string>
     <string name="settings_privacy_policy">Zásady ochrany osobních údajů</string>
     <string name="settings_push_server_nav_label">Push ze serveru</string>
     <string name="settings_remember_bulletin_filter">Pamatujte na filtry bulletinů</string>

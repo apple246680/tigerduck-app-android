@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">Ima nalogo</string>
     <string name="a11y_class_table_conflict_prefix">Konflikt ur</string>
     <string name="a11y_course_card_open_details_hint">Dvakrat tapnite za podrobnosti</string>
+    <string name="a11y_course_color_swatch">Barva %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Odpri v Moodle</string>
     <string name="a11y_rankings_trend_chart">Trend GPA po semestru</string>
     <string name="a11y_rankings_trend_no_selection">Ni izbranega semestra</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">Šola</string>
     <string name="calendar_source_semester">Semester</string>
     <string name="calendar_today">Danes</string>
-    <string name="class_table_conflict_add_failed_message">%1$s ima v tem terminu (Dan %2$s, Ura %3$s) že dve uri: %4$s in %5$s. Sistem ne podpira trojnih konfliktov.</string>
+    <string name="class_table_conflict_add_failed_message">%1$s ima v tem terminu (%2$s, Ura %3$s) že dve uri: %4$s in %5$s. Sistem ne podpira trojnih konfliktov.</string>
     <string name="class_table_conflict_add_failed_title">Dodajanje ni mogoče</string>
     <string name="class_table_course_name">Ime predmeta</string>
     <string name="class_table_delete">Izbriši</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">Nedokončane naloge</string>
     <string name="course_detail_instructor_label">Predavatelj</string>
     <string name="course_detail_no_roster">Za ta predmet ni podatkov o vpisu</string>
+    <string name="course_detail_require_option_elective">Izbirni</string>
+    <string name="course_detail_require_option_label">Vrsta predmeta</string>
+    <string name="course_detail_require_option_required">Obvezni</string>
     <string name="course_detail_time_label">Čas</string>
     <string name="course_instructor_value">Predavatelj: %1$s</string>
     <string name="desktop_about_copyright">© Sodelavci TigerDuck. Ni povezano z NTUST.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Omrežna napaka Moodle: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">Preverite, ali so vaše poverilnice Moodle / NTUST še veljavne.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">Znova se prijavite v NTUST in poskusite znova.</string>
+    <string name="error_moodle_site_maintenance">Na Moodlu poteka vzdrževanje. Poskusite znova pozneje.</string>
     <string name="error_moodle_sso_rejected">NTUST SSO je zavrnil avtorizacijo Moodle. Preverite svoje poverilnice.</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO je zavrnil avtorizacijo Moodle: %1$@</string>
     <string name="error_moodle_webservice_disabled">Spletna storitev Moodle trenutno ni na voljo.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">Seja je potekla</string>
     <string name="error_sign_in_failed">Prijava ni uspela</string>
     <string name="error_sso_sign_in_failed">Prijava ni uspela. Preverite svoj račun in geslo.</string>
+    <string name="error_sso_sign_in_failed_with_reason">Prijava ni uspela: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">Obrazca za prijavo SSO ni bilo mogoče najti.</string>
     <string name="feature_announcements">Obvestila</string>
     <string name="feature_announcements_short">Obvestila</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">Privzeti sistemski brskalnik</string>
     <string name="settings_check_for_updates">Preveri posodobitve</string>
     <string name="settings_check_server_status">Preveri stanje strežnika</string>
+    <string name="settings_class_reminder">Opomniki za pouk</string>
+    <string name="settings_class_reminder_footer">Obveščeni boste pred začetkom vsake ure.</string>
+    <string name="settings_class_reminder_lead_time">Opomni me</string>
     <string name="settings_classroom_mandarin_display">Ko je ime učilnice v kitajščini</string>
     <string name="settings_classroom_mandarin_display_original">Prikaži izvirnik</string>
     <string name="settings_classroom_mandarin_display_pinyin">Prikaži pinyin</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">Odpri povezave z</string>
     <string name="settings_official_website">Uradna spletna stran</string>
     <string name="settings_open_source_licenses">Odprtokodne licence</string>
+    <string name="settings_outline_required_courses">Obrobi obvezne predmete v urniku</string>
     <string name="settings_privacy_policy">Pravilnik o zasebnosti</string>
     <string name="settings_push_server_nav_label">Strežniški push</string>
     <string name="settings_remember_bulletin_filter">Zapomni si filtre oglasne deske</string>

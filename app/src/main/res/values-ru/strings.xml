@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">Есть задание</string>
     <string name="a11y_class_table_conflict_prefix">Конфликт занятий</string>
     <string name="a11y_course_card_open_details_hint">Дважды нажмите для просмотра деталей</string>
+    <string name="a11y_course_color_swatch">Цвет %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Открыть в Moodle</string>
     <string name="a11y_rankings_trend_chart">Тенденция GPA по семестрам</string>
     <string name="a11y_rankings_trend_no_selection">Семестр не выбран</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">Школа</string>
     <string name="calendar_source_semester">Семестр</string>
     <string name="calendar_today">Сегодня</string>
-    <string name="class_table_conflict_add_failed_message">В слоте %1$s уже есть два занятия (день недели %2$s, пара %3$s): %4$s и %5$s. Система не поддерживает тройные конфликты.</string>
+    <string name="class_table_conflict_add_failed_message">В слоте %1$s уже есть два занятия (%2$s, пара %3$s): %4$s и %5$s. Система не поддерживает тройные конфликты.</string>
     <string name="class_table_conflict_add_failed_title">Не удалось добавить</string>
     <string name="class_table_course_name">Название курса</string>
     <string name="class_table_delete">Удалить</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">Незавершённые задания</string>
     <string name="course_detail_instructor_label">Преподаватель</string>
     <string name="course_detail_no_roster">Данные о записи на курс недоступны</string>
+    <string name="course_detail_require_option_elective">По выбору</string>
+    <string name="course_detail_require_option_label">Тип курса</string>
+    <string name="course_detail_require_option_required">Обязательный</string>
     <string name="course_detail_time_label">Время</string>
     <string name="course_instructor_value">Преподаватель: %1$s</string>
     <string name="desktop_about_copyright">© Участники TigerDuck. Не связано с NTUST.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Сетевая ошибка Moodle: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">Убедитесь, что ваши учётные данные Moodle / NTUST по-прежнему действительны.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">Войдите в NTUST снова и попробуйте ещё раз.</string>
+    <string name="error_moodle_site_maintenance">В Moodle ведутся технические работы. Повторите попытку позже.</string>
     <string name="error_moodle_sso_rejected">SSO NTUST отклонил авторизацию Moodle. Проверьте свои учётные данные.</string>
     <string name="error_moodle_sso_rejected_with_reason">SSO NTUST отклонил авторизацию Moodle: %1$@</string>
     <string name="error_moodle_webservice_disabled">Веб-сервис Moodle сейчас недоступен.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">Сессия истекла</string>
     <string name="error_sign_in_failed">Не удалось войти</string>
     <string name="error_sso_sign_in_failed">Не удалось войти. Проверьте логин и пароль.</string>
+    <string name="error_sso_sign_in_failed_with_reason">Не удалось войти: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">Не удалось найти форму входа SSO.</string>
     <string name="feature_announcements">Объявления</string>
     <string name="feature_announcements_short">Объявления</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">Системный браузер по умолчанию</string>
     <string name="settings_check_for_updates">Проверить обновления</string>
     <string name="settings_check_server_status">Проверить статус сервера</string>
+    <string name="settings_class_reminder">Напоминания о занятиях</string>
+    <string name="settings_class_reminder_footer">Вы получите уведомление перед началом каждого занятия.</string>
+    <string name="settings_class_reminder_lead_time">Напомнить</string>
     <string name="settings_classroom_mandarin_display">Когда название аудитории на китайском языке</string>
     <string name="settings_classroom_mandarin_display_original">Показать оригинал</string>
     <string name="settings_classroom_mandarin_display_pinyin">Показать пиньинь</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">Открывать ссылки в</string>
     <string name="settings_official_website">Официальный сайт</string>
     <string name="settings_open_source_licenses">Лицензии открытого кода</string>
+    <string name="settings_outline_required_courses">Обводить обязательные курсы в расписании</string>
     <string name="settings_privacy_policy">Политика конфиденциальности</string>
     <string name="settings_push_server_nav_label">Серверный push</string>
     <string name="settings_remember_bulletin_filter">Запомнить фильтры бюллетеней</string>
