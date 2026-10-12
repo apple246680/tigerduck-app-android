@@ -1,6 +1,5 @@
 package org.ntust.app.tigerduck.ui.screen.home
 
-import org.ntust.app.tigerduck.AppConstants
 import android.os.SystemClock
 import android.util.Log
 import org.ntust.app.tigerduck.data.CourseRosterMerge
@@ -60,7 +59,6 @@ import org.ntust.app.tigerduck.notification.AssignmentNotificationScheduler
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.SingleFlight
-import java.util.Calendar
 import java.util.Date
 import javax.inject.Inject
 import kotlin.time.Duration.Companion.minutes
@@ -119,9 +117,6 @@ class HomeViewModel @Inject constructor(
 
     private val _allCourses = MutableStateFlow<List<Course>>(emptyList())
     val allCourses: StateFlow<List<Course>> = _allCourses
-
-    private val _todayCourses = MutableStateFlow<List<Course>>(emptyList())
-    val todayCourses: StateFlow<List<Course>> = _todayCourses
 
     // Full assignment list from the most recent load/fetch. The UI-visible
     // list is derived from this + the ignore set + the current tab filter.
@@ -334,7 +329,6 @@ class HomeViewModel @Inject constructor(
                     fetchFlight.cancel()
                     loadJob?.cancel()
                     _allCourses.value = emptyList()
-                    _todayCourses.value = emptyList()
                     _allAssignments.value = emptyList()
                     // _skippedDates.value = emptyMap()
                     _ignoredAssignmentIds.value = emptySet()
@@ -772,10 +766,6 @@ class HomeViewModel @Inject constructor(
 
     private fun updateCoursesAndAssignments(courses: List<Course>, assignments: List<Assignment>) {
         _allCourses.value = courses
-        val todayIndex = AppConstants.weekdayIndex(
-            AppClock.calendar().get(Calendar.DAY_OF_WEEK)
-        )
-        _todayCourses.value = courses.filter { it.schedule.containsKey(todayIndex) }
         _allAssignments.value = assignments.sortedBy { it.dueDate }
 
         // Schedule notifications for upcoming assignments. Items the user has
