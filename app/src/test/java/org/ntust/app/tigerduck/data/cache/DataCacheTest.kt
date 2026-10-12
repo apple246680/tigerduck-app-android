@@ -75,6 +75,14 @@ class DataCacheTest {
     }
 
     @Test
+    fun `an assignment kept from an earlier term stays under that term's course ignore`() = runTest {
+        cache.saveAssignments(listOf(assignment("kept").copy(courseNo = "OLD", semester = "1091")))
+        cache.saveIgnoredCourses(setOf(CourseIgnores.key("1091", "OLD")))
+
+        assertEquals(emptyList<String>(), cache.loadOutstandingAssignments().map { it.assignmentId })
+    }
+
+    @Test
     fun `signing out forgets the ignored courses and their unsent changes`() = runTest {
         cache.saveIgnoredCourses(setOf("1141:CS1001301"))
         cache.savePendingCourseIgnores(

@@ -27,13 +27,15 @@ object CourseIgnores {
     }
 
     /**
-     * Ids of the assignments in [all] whose course [keys] ignore. Cached
-     * assignments all belong to the term in session, which [semester] is.
+     * Ids of the assignments in [all] whose course [keys] ignore, each in the
+     * term it was fetched for. The cache keeps an earlier term's assignments
+     * while Moodle has no course for the new one yet. [semester], the term in
+     * session, stands in for one fetched before assignments recorded theirs.
      */
     fun assignmentIds(all: List<Assignment>, keys: Set<String>, semester: String): Set<String> {
         if (keys.isEmpty()) return emptySet()
         return all.asSequence()
-            .filter { key(semester, it.courseNo) in keys }
+            .filter { key(it.semester ?: semester, it.courseNo) in keys }
             .mapTo(mutableSetOf()) { it.assignmentId }
     }
 }

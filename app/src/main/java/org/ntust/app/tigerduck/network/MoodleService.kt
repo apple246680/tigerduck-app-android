@@ -231,6 +231,7 @@ class MoodleService @Inject constructor(
                     moodleUrl = "https://moodle2.ntust.edu.tw/mod/assign/view.php?id=${a.cmid}",
                     cutoffDate = a.cutoffdate?.takeIf { it > 0 }?.let { Date(it * 1000) },
                     submittedAt = submittedAt,
+                    semester = currentSemester,
                 )
             }
     }

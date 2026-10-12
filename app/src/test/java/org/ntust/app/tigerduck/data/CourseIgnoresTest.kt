@@ -37,6 +37,22 @@ class CourseIgnoresTest {
     }
 
     @Test
+    fun `an assignment kept from last term stays under last term's ignore`() {
+        // The cache keeps it while Moodle has no course for the new term yet.
+        val kept = listOf(assignment("a1", "AAA").copy(semester = "1132"))
+
+        assertEquals(
+            setOf("a1"),
+            CourseIgnores.assignmentIds(kept, setOf(CourseIgnores.key("1132", "AAA")), "1141"),
+        )
+        assertEquals(
+            "nor does this term's choice for the same course number reach it",
+            emptySet<String>(),
+            CourseIgnores.assignmentIds(kept, setOf(CourseIgnores.key("1141", "AAA")), "1141"),
+        )
+    }
+
+    @Test
     fun `the course numbers of one term come back from its keys`() {
         val keys = setOf("1141:AAA", "1141:BBB", "1132:CCC")
 
