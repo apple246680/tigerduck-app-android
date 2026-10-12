@@ -96,9 +96,16 @@ class CourseIgnoreSync internal constructor(
             val keys = dataCache.loadIgnoredCourses()
             dataCache.saveIgnoredCourses(if (ignore) keys + key else keys - key)
             touchedAt[key] = change.changedAtMs
-            if (!queues()) return@withLock false
-            dataCache.savePendingCourseIgnores(dataCache.loadPendingCourseIgnores().with(change))
-            true
+            val pending = dataCache.loadPendingCourseIgnores()
+            if (queues()) {
+                dataCache.savePendingCourseIgnores(pending.with(change))
+                return@withLock true
+            }
+            // An older change still waiting would go out once sync is back
+            // and undo this one, which the re-enable check covers instead.
+            val rest = pending.filterNot { it.key == key }
+            if (rest.size != pending.size) dataCache.savePendingCourseIgnores(rest)
+            false
         }
         effects.changed()
         if (queued) send(change)

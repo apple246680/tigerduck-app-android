@@ -167,6 +167,19 @@ class CourseIgnoreSyncTest {
     }
 
     @Test
+    fun `a change made with cloud sync off drops an older one still waiting`() = runTest {
+        answer = { false }
+        setIgnored("AAA", ignore = true)
+
+        queues = false
+        sends = false
+        setIgnored("AAA", ignore = false)
+
+        assertEquals(emptySet<String>(), cache.loadIgnoredCourses())
+        assertEquals(emptyList<Any>(), waiting())
+    }
+
+    @Test
     fun `a snapshot fetched before a change does not undo it`() = runTest {
         setIgnored("AAA")
 
