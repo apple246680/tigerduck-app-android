@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">അസൈൻമെന്റ് ഉണ്ട്</string>
     <string name="a11y_class_table_conflict_prefix">ക്ലാസ് സംഘർഷം</string>
     <string name="a11y_course_card_open_details_hint">വിശദാംശങ്ങൾക്ക് രണ്ടുതവണ ടാപ്പ് ചെയ്യുക</string>
+    <string name="a11y_course_color_swatch">നിറം %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Moodle-ൽ തുറക്കുക</string>
     <string name="a11y_rankings_trend_chart">സെമസ്റ്ററനുസരിച്ച് GPA ട്രെൻഡ്</string>
     <string name="a11y_rankings_trend_no_selection">സെമസ്റ്റർ തിരഞ്ഞെടുത്തിട്ടില്ല</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">സ്കൂൾ</string>
     <string name="calendar_source_semester">സെമസ്റ്റർ</string>
     <string name="calendar_today">ഇന്ന്</string>
-    <string name="class_table_conflict_add_failed_message">%1$s-ന് ഈ സ്ലോട്ടിൽ (ആഴ്ചദിനം %2$s, പിരീഡ് %3$s) ഇതിനകം രണ്ട് ക്ലാസ്സുകൾ ഉണ്ട്: %4$s, %5$s. സിസ്റ്റം ട്രിപ്പിൾ കോൺഫ്ലിക്ടുകളെ പിന്തുണയ്ക്കുന്നില്ല.</string>
+    <string name="class_table_conflict_add_failed_message">%1$s-ന് ഈ സ്ലോട്ടിൽ (%2$s, പിരീഡ് %3$s) ഇതിനകം രണ്ട് ക്ലാസ്സുകൾ ഉണ്ട്: %4$s, %5$s. സിസ്റ്റം ട്രിപ്പിൾ കോൺഫ്ലിക്ടുകളെ പിന്തുണയ്ക്കുന്നില്ല.</string>
     <string name="class_table_conflict_add_failed_title">ചേർക്കാൻ കഴിയില്ല</string>
     <string name="class_table_course_name">കോഴ്‌സ് നാമം</string>
     <string name="class_table_delete">ഇല്ലാതാക്കുക</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">അപൂർണ്ണ അസൈൻമെന്റുകൾ</string>
     <string name="course_detail_instructor_label">അധ്യാപകൻ</string>
     <string name="course_detail_no_roster">ഈ കോഴ്‌സിനായി എൻറോൾമെന്റ് ഡാറ്റ ലഭ്യമല്ല</string>
+    <string name="course_detail_require_option_elective">ഐച്ഛികം</string>
+    <string name="course_detail_require_option_label">കോഴ്‌സ് തരം</string>
+    <string name="course_detail_require_option_required">നിർബന്ധിതം</string>
     <string name="course_detail_time_label">സമയം</string>
     <string name="course_instructor_value">അധ്യാപകൻ: %1$s</string>
     <string name="desktop_about_copyright">© TigerDuck സംഭാവകർ. NTUST-മായി ബന്ധമില്ല.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Moodle നെറ്റ്‌വർക്ക് പിശക്: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">Moodle / NTUST ക്രെഡൻഷ്യൽ ഇപ്പോഴും സാധുവാണോ എന്ന് പരിശോധിക്കുക.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">NTUST-ൽ വീണ്ടും സൈൻ ഇൻ ചെയ്ത് ഒന്നുകൂടി ശ്രമിക്കുക.</string>
+    <string name="error_moodle_site_maintenance">Moodle-ൽ അറ്റകുറ്റപ്പണി നടക്കുന്നു. പിന്നീട് വീണ്ടും ശ്രമിക്കുക.</string>
     <string name="error_moodle_sso_rejected">NTUST SSO Moodle അംഗീകരണം നിരസിച്ചു. ദയവായി ക്രെഡൻഷ്യൽ പരിശോധിക്കുക.</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO Moodle അംഗീകരണം നിരസിച്ചു: %1$@</string>
     <string name="error_moodle_webservice_disabled">Moodle വെബ്‌സർവീസ് ഇപ്പോൾ ലഭ്യമല്ല.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">സെഷൻ കാലഹരണപ്പെട്ടു</string>
     <string name="error_sign_in_failed">ലോഗിൻ പരാജയപ്പെട്ടു</string>
     <string name="error_sso_sign_in_failed">സൈൻ ഇൻ പരാജയപ്പെട്ടു. ദയവായി അക്കൗണ്ടും പാസ്‌വേഡും പരിശോധിക്കുക.</string>
+    <string name="error_sso_sign_in_failed_with_reason">സൈൻ ഇൻ പരാജയപ്പെട്ടു: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">SSO സൈൻ ഇൻ ഫോം കണ്ടെത്തിയില്ല.</string>
     <string name="feature_announcements">അറിയിപ്പുകൾ</string>
     <string name="feature_announcements_short">അറിയിപ്പുകൾ</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">സിസ്റ്റം ഡിഫോൾട്ട് ബ്രൗസർ</string>
     <string name="settings_check_for_updates">അപ്‌ഡേറ്റുകൾ പരിശോധിക്കുക</string>
     <string name="settings_check_server_status">സെർവർ സ്ഥിതി പരിശോധിക്കുക</string>
+    <string name="settings_class_reminder">ക്ലാസ് ഓർമ്മപ്പെടുത്തലുകൾ</string>
+    <string name="settings_class_reminder_footer">ഓരോ ക്ലാസ് ആരംഭിക്കുന്നതിന് മുമ്പ് നിങ്ങൾക്ക് അറിയിപ്പ് ലഭിക്കും.</string>
+    <string name="settings_class_reminder_lead_time">എന്നെ ഓർമ്മിപ്പിക്കുക</string>
     <string name="settings_classroom_mandarin_display">ക്ലാസ് മുറിയുടെ പേര് ചൈനീസിലായിരിക്കുമ്പോൾ</string>
     <string name="settings_classroom_mandarin_display_original">യഥാർത്ഥം കാണിക്കുക</string>
     <string name="settings_classroom_mandarin_display_pinyin">പിൻയിൻ കാണിക്കുക</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">ലിങ്കുകൾ തുറക്കേണ്ടത്</string>
     <string name="settings_official_website">ഔദ്യോഗിക വെബ്സൈറ്റ്</string>
     <string name="settings_open_source_licenses">ഓപ്പൺ-സോഴ്‌സ് ലൈസൻസുകൾ</string>
+    <string name="settings_outline_required_courses">ടൈംടേബിളിൽ നിർബന്ധിത കോഴ്‌സുകൾക്ക് ബോർഡർ കാണിക്കുക</string>
     <string name="settings_privacy_policy">സ്വകാര്യതാ നയം</string>
     <string name="settings_push_server_nav_label">സെർവർ പുഷ്</string>
     <string name="settings_remember_bulletin_filter">ബുള്ളറ്റിൻ ഫിൽട്ടറുകൾ ഓർക്കുക</string>

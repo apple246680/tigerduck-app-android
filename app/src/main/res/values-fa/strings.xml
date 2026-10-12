@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">تکلیف دارد</string>
     <string name="a11y_class_table_conflict_prefix">تعارض کلاس</string>
     <string name="a11y_course_card_open_details_hint">دو بار ضربه بزنید برای جزئیات</string>
+    <string name="a11y_course_color_swatch">رنگ %1$lld</string>
     <string name="a11y_course_detail_open_moodle">باز کردن در Moodle</string>
     <string name="a11y_rankings_trend_chart">روند GPA به تفکیک ترم</string>
     <string name="a11y_rankings_trend_no_selection">هیچ ترمی انتخاب نشده</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">تکالیف ناقص</string>
     <string name="course_detail_instructor_label">مربی</string>
     <string name="course_detail_no_roster">هیچ اطلاعات ثبت نامی برای این دوره در دسترس نیست</string>
+    <string name="course_detail_require_option_elective">اختیاری</string>
+    <string name="course_detail_require_option_label">نوع درس</string>
+    <string name="course_detail_require_option_required">الزامی</string>
     <string name="course_detail_time_label">زمان</string>
     <string name="course_instructor_value">مدرس: %1$s</string>
     <string name="desktop_about_copyright">© مشارکت‌کنندگان TigerDuck. وابسته به NTUST نیست.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">خطای شبکهٔ Moodle: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">بررسی کنید که اطلاعات Moodle / NTUST شما هنوز معتبر هستند.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">دوباره به NTUST وارد شوید و یک بار دیگر امتحان کنید.</string>
+    <string name="error_moodle_site_maintenance">Moodle در حال تعمیر و نگهداری است. بعداً دوباره امتحان کنید.</string>
     <string name="error_moodle_sso_rejected">NTUST SSO مجوز Moodle را رد کرد. لطفاً اطلاعات ورود را بررسی کنید.</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO مجوز Moodle را رد کرد: %1$@</string>
     <string name="error_moodle_webservice_disabled">وب‌سرویس Moodle در حال حاضر در دسترس نیست.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">نشست منقضی شده است</string>
     <string name="error_sign_in_failed">ورود ناموفق بود</string>
     <string name="error_sso_sign_in_failed">ورود ناموفق بود. لطفاً حساب و گذرواژه خود را بررسی کنید.</string>
+    <string name="error_sso_sign_in_failed_with_reason">ورود ناموفق بود: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">فرم ورود SSO یافت نشد.</string>
     <string name="feature_announcements">اطلاعیه‌ها</string>
     <string name="feature_announcements_short">اطلاعیه‌ها</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">مرورگر پیش‌فرض سیستم</string>
     <string name="settings_check_for_updates">بررسی به‌روزرسانی</string>
     <string name="settings_check_server_status">بررسی وضعیت سرور</string>
+    <string name="settings_class_reminder">یادآورهای کلاس</string>
+    <string name="settings_class_reminder_footer">قبل از شروع هر کلاس به شما اطلاع داده می‌شود.</string>
+    <string name="settings_class_reminder_lead_time">یادآوری</string>
     <string name="settings_classroom_mandarin_display">هنگام نام کلاس به چینی</string>
     <string name="settings_classroom_mandarin_display_original">نمایش اصلی</string>
     <string name="settings_classroom_mandarin_display_pinyin">نمایش پینیین</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">باز کردن لینک‌ها با</string>
     <string name="settings_official_website">وب‌سایت رسمی</string>
     <string name="settings_open_source_licenses">مجوزهای متن‌باز</string>
+    <string name="settings_outline_required_courses">نمایش کادر دور درس‌های الزامی در برنامهٔ درسی</string>
     <string name="settings_privacy_policy">سیاست حریم خصوصی</string>
     <string name="settings_push_server_nav_label">فشار سرور</string>
     <string name="settings_remember_bulletin_filter">فیلترهای بولتن را به خاطر بسپارید</string>

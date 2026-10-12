@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">অ্যাসাইনমেন্ট আছে</string>
     <string name="a11y_class_table_conflict_prefix">ক্লাস দ্বন্দ্ব</string>
     <string name="a11y_course_card_open_details_hint">বিস্তারিত দেখতে দুবার ট্যাপ করুন</string>
+    <string name="a11y_course_color_swatch">রং %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Moodle-এ খুলুন</string>
     <string name="a11y_rankings_trend_chart">সেমেস্টার অনুযায়ী GPA প্রবণতা</string>
     <string name="a11y_rankings_trend_no_selection">কোনো সেমেস্টার নির্বাচিত নেই</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">স্কুল</string>
     <string name="calendar_source_semester">সেমিস্টার</string>
     <string name="calendar_today">আজ</string>
-    <string name="class_table_conflict_add_failed_message">%1$s-এর এই স্লটে (সাপ্তাহিক %2$s, পিরিয়ড %3$s) ইতিমধ্যে দুটি ক্লাস আছে: %4$s এবং %5$s। সিস্টেম তিনটি দ্বন্দ্ব সমর্থন করে না।</string>
+    <string name="class_table_conflict_add_failed_message">%1$s-এর এই স্লটে (%2$s, পিরিয়ড %3$s) ইতিমধ্যে দুটি ক্লাস আছে: %4$s এবং %5$s। সিস্টেম তিনটি দ্বন্দ্ব সমর্থন করে না।</string>
     <string name="class_table_conflict_add_failed_title">যোগ করা যাচ্ছে না</string>
     <string name="class_table_course_name">কোর্সের নাম</string>
     <string name="class_table_delete">মুছুন</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">অসম্পূর্ণ অ্যাসাইনমেন্ট</string>
     <string name="course_detail_instructor_label">প্রশিক্ষক</string>
     <string name="course_detail_no_roster">এই কোর্সের জন্য কোন নথিভুক্তি তথ্য উপলব্ধ</string>
+    <string name="course_detail_require_option_elective">ঐচ্ছিক</string>
+    <string name="course_detail_require_option_label">কোর্সের ধরন</string>
+    <string name="course_detail_require_option_required">আবশ্যিক</string>
     <string name="course_detail_time_label">সময়</string>
     <string name="course_instructor_value">শিক্ষক: %1$s</string>
     <string name="desktop_about_copyright">© TigerDuck অবদানকারী। NTUST-এর সাথে সংযুক্ত নয়।</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Moodle নেটওয়ার্ক ত্রুটি: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">আপনার Moodle / NTUST ক্রেডেনশিয়াল এখনও বৈধ আছে কিনা যাচাই করুন।</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">NTUST-এ আবার সাইন ইন করুন এবং আরও একবার চেষ্টা করুন।</string>
+    <string name="error_moodle_site_maintenance">Moodle-এ রক্ষণাবেক্ষণের কাজ চলছে। পরে আবার চেষ্টা করুন।</string>
     <string name="error_moodle_sso_rejected">NTUST SSO Moodle অনুমোদন প্রত্যাখ্যান করেছে। দয়া করে আপনার ক্রেডেনশিয়াল যাচাই করুন।</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO Moodle অনুমোদন প্রত্যাখ্যান করেছে: %1$@</string>
     <string name="error_moodle_webservice_disabled">Moodle ওয়েবসার্ভিস বর্তমানে উপলব্ধ নেই।</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">সেশন শেষ হয়েছে</string>
     <string name="error_sign_in_failed">লগইন ব্যর্থ হয়েছে</string>
     <string name="error_sso_sign_in_failed">সাইন-ইন ব্যর্থ। দয়া করে আপনার অ্যাকাউন্ট ও পাসওয়ার্ড যাচাই করুন।</string>
+    <string name="error_sso_sign_in_failed_with_reason">সাইন-ইন ব্যর্থ: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">SSO সাইন-ইন ফর্ম খুঁজে পাওয়া যায়নি।</string>
     <string name="feature_announcements">ঘোষণা</string>
     <string name="feature_announcements_short">ঘোষণা</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">সিস্টেম ডিফল্ট ব্রাউজার</string>
     <string name="settings_check_for_updates">আপডেট খুঁজুন</string>
     <string name="settings_check_server_status">সার্ভারের অবস্থা পরীক্ষা করুন</string>
+    <string name="settings_class_reminder">ক্লাসের স্মরণিকা</string>
+    <string name="settings_class_reminder_footer">প্রতিটি ক্লাস শুরুর আগে আপনাকে জানানো হবে।</string>
+    <string name="settings_class_reminder_lead_time">স্মরণ করিয়ে দিন</string>
     <string name="settings_classroom_mandarin_display">যখন শ্রেণীকক্ষের নাম চীনা ভাষায় থাকে</string>
     <string name="settings_classroom_mandarin_display_original">মূল প্রদর্শন করুন</string>
     <string name="settings_classroom_mandarin_display_pinyin">পিনয়িন প্রদর্শন করুন</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">লিংক খুলুন</string>
     <string name="settings_official_website">অফিসিয়াল ওয়েবসাইট</string>
     <string name="settings_open_source_licenses">ওপেন-সোর্স লাইসেন্স</string>
+    <string name="settings_outline_required_courses">ক্লাস তালিকায় আবশ্যিক কোর্সে বর্ডার দেখান</string>
     <string name="settings_privacy_policy">গোপনীয়তা নীতি</string>
     <string name="settings_push_server_nav_label">সার্ভার পুশ</string>
     <string name="settings_remember_bulletin_filter">বুলেটিন ফিল্টার মনে রাখবেন</string>

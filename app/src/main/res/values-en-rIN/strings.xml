@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">Has assignment</string>
     <string name="a11y_class_table_conflict_prefix">Class conflict</string>
     <string name="a11y_course_card_open_details_hint">Double tap for details</string>
+    <string name="a11y_course_color_swatch">Color %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Open in Moodle</string>
     <string name="a11y_rankings_trend_chart">GPA trend by semester</string>
     <string name="a11y_rankings_trend_no_selection">No semester selected</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">School</string>
     <string name="calendar_source_semester">Semester</string>
     <string name="calendar_today">Today</string>
-    <string name="class_table_conflict_add_failed_message">%1$s already has two classes at this slot (Weekday %2$s, Period %3$s): %4$s and %5$s. The system does not support triple conflicts.</string>
+    <string name="class_table_conflict_add_failed_message">%1$s already has two classes at this slot (%2$s, Period %3$s): %4$s and %5$s. The system does not support triple conflicts.</string>
     <string name="class_table_conflict_add_failed_title">Unable to add</string>
     <string name="class_table_course_name">Course name</string>
     <string name="class_table_delete">Delete</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">Incomplete assignments</string>
     <string name="course_detail_instructor_label">Instructor</string>
     <string name="course_detail_no_roster">No enrollment data available for this course</string>
+    <string name="course_detail_require_option_elective">Elective</string>
+    <string name="course_detail_require_option_label">Course type</string>
+    <string name="course_detail_require_option_required">Required</string>
     <string name="course_detail_time_label">Time</string>
     <string name="course_instructor_value">Instructor: %1$s</string>
     <string name="desktop_about_copyright">© TigerDuck contributors. Not affiliated with NTUST.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Moodle network error: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">Verify your Moodle / NTUST credentials are still valid.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">Sign in to NTUST again and try once more.</string>
+    <string name="error_moodle_site_maintenance">Moodle is under maintenance. Try again later.</string>
     <string name="error_moodle_sso_rejected">NTUST SSO rejected the Moodle authorization. Please verify your credentials.</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO rejected the Moodle authorization: %1$@</string>
     <string name="error_moodle_webservice_disabled">The Moodle webservice is currently unavailable.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">Session expired</string>
     <string name="error_sign_in_failed">Login failed</string>
     <string name="error_sso_sign_in_failed">Sign-in failed. Please verify your account and password.</string>
+    <string name="error_sso_sign_in_failed_with_reason">Sign-in failed: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">Could not find the SSO sign-in form.</string>
     <string name="feature_announcements">Announcements</string>
     <string name="feature_announcements_short">Announce</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">System default browser</string>
     <string name="settings_check_for_updates">Check for updates</string>
     <string name="settings_check_server_status">Check server status</string>
+    <string name="settings_class_reminder">Class reminders</string>
+    <string name="settings_class_reminder_footer">You\'ll be notified before each class starts.</string>
+    <string name="settings_class_reminder_lead_time">Remind me</string>
     <string name="settings_classroom_mandarin_display">When classroom name is in Mandarin</string>
     <string name="settings_classroom_mandarin_display_original">Display original</string>
     <string name="settings_classroom_mandarin_display_pinyin">Display pinyin</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">Open links with</string>
     <string name="settings_official_website">Official website</string>
     <string name="settings_open_source_licenses">Open-source licenses</string>
+    <string name="settings_outline_required_courses">Outline required courses on the class table</string>
     <string name="settings_privacy_policy">Privacy policy</string>
     <string name="settings_push_server_nav_label">Server push</string>
     <string name="settings_remember_bulletin_filter">Remember bulletin filters</string>

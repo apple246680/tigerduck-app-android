@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">అసైన్‌మెంట్ ఉంది</string>
     <string name="a11y_class_table_conflict_prefix">క్లాస్ వైరుధ్యం</string>
     <string name="a11y_course_card_open_details_hint">వివరాల కోసం రెండుసార్లు నొక్కండి</string>
+    <string name="a11y_course_color_swatch">రంగు %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Moodle లో తెరవండి</string>
     <string name="a11y_rankings_trend_chart">సెమిస్టర్ వారీగా GPA ధోరణి</string>
     <string name="a11y_rankings_trend_no_selection">సెమిస్టర్ ఎంచుకోబడలేదు</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">పాఠశాల</string>
     <string name="calendar_source_semester">సెమిస్టర్</string>
     <string name="calendar_today">నేడు</string>
-    <string name="class_table_conflict_add_failed_message">%1$s కి ఈ స్లాట్‌లో (వారం %2$s, పీరియడ్ %3$s) ఇప్పటికే రెండు తరగతులు ఉన్నాయి: %4$s మరియు %5$s. సిస్టమ్ మూడు వైరుధ్యాలను సపోర్ట్ చేయదు.</string>
+    <string name="class_table_conflict_add_failed_message">%1$s కి ఈ స్లాట్‌లో (%2$s, పీరియడ్ %3$s) ఇప్పటికే రెండు తరగతులు ఉన్నాయి: %4$s మరియు %5$s. సిస్టమ్ మూడు వైరుధ్యాలను సపోర్ట్ చేయదు.</string>
     <string name="class_table_conflict_add_failed_title">జోడించడం సాధ్యం కాలేదు</string>
     <string name="class_table_course_name">కోర్సు పేరు</string>
     <string name="class_table_delete">తొలగించు</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">అసంపూర్ణ అసైన్‌మెంట్లు</string>
     <string name="course_detail_instructor_label">బోధకుడు</string>
     <string name="course_detail_no_roster">ఈ కోర్సుకు నమోదు డేటా అందుబాటులో లేదు</string>
+    <string name="course_detail_require_option_elective">ఐచ్ఛికం</string>
+    <string name="course_detail_require_option_label">కోర్సు రకం</string>
+    <string name="course_detail_require_option_required">తప్పనిసరి</string>
     <string name="course_detail_time_label">సమయం</string>
     <string name="course_instructor_value">ఇన్‌స్ట్రక్టర్: %1$s</string>
     <string name="desktop_about_copyright">© TigerDuck సహకారులు. NTUSTతో సంబంధం లేదు.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Moodle నెట్‌వర్క్ లోపం: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">Moodle / NTUST వివరాలు ఇంకా చెల్లుతాయో ధృవీకరించండి.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">NTUST లో మళ్ళీ సైన్ ఇన్ చేసి ఒకసారి మళ్ళీ ప్రయత్నించండి.</string>
+    <string name="error_moodle_site_maintenance">Moodle నిర్వహణలో ఉంది. తర్వాత మళ్లీ ప్రయత్నించండి.</string>
     <string name="error_moodle_sso_rejected">NTUST SSO Moodle అధికారాన్ని తిరస్కరించింది. దయచేసి మీ వివరాలు తనిఖీ చేయండి.</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO Moodle అధికారాన్ని తిరస్కరించింది: %1$@</string>
     <string name="error_moodle_webservice_disabled">Moodle వెబ్‌సర్వీస్ ప్రస్తుతం అందుబాటులో లేదు.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">సెషన్ ముగిసింది</string>
     <string name="error_sign_in_failed">లాగిన్ విఫలమైంది</string>
     <string name="error_sso_sign_in_failed">సైన్-ఇన్ విఫలమైంది. దయచేసి మీ ఖాతా మరియు పాస్‌వర్డ్ తనిఖీ చేయండి.</string>
+    <string name="error_sso_sign_in_failed_with_reason">సైన్-ఇన్ విఫలమైంది: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">SSO సైన్-ఇన్ ఫారమ్ కనుగొనలేకపోయాం.</string>
     <string name="feature_announcements">ప్రకటనలు</string>
     <string name="feature_announcements_short">ప్రకటనలు</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">సిస్టమ్ డిఫాల్ట్ బ్రౌజర్</string>
     <string name="settings_check_for_updates">అప్‌డేట్‌లను తనిఖీ చేయండి</string>
     <string name="settings_check_server_status">సర్వర్ స్థితిని తనిఖీ చేయండి</string>
+    <string name="settings_class_reminder">క్లాస్ రిమైండర్లు</string>
+    <string name="settings_class_reminder_footer">ప్రతి తరగతి మొదలవడానికి ముందు మీకు నోటిఫై చేయబడుతుంది.</string>
+    <string name="settings_class_reminder_lead_time">నాకు గుర్తు చేయండి</string>
     <string name="settings_classroom_mandarin_display">తరగతి గది పేరు చైనీస్‌లో ఉన్నప్పుడు</string>
     <string name="settings_classroom_mandarin_display_original">మూలాన్ని చూపించు</string>
     <string name="settings_classroom_mandarin_display_pinyin">పిన్యిన్ చూపించు</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">లింక్‌లు తెరవడానికి</string>
     <string name="settings_official_website">అధికారిక వెబ్‌సైట్</string>
     <string name="settings_open_source_licenses">ఓపెన్-సోర్స్ లైసెన్సులు</string>
+    <string name="settings_outline_required_courses">టైమ్‌టేబుల్‌లో తప్పనిసరి కోర్సులకు అంచు చూపు</string>
     <string name="settings_privacy_policy">గోప్యతా విధానం</string>
     <string name="settings_push_server_nav_label">సర్వర్ పుష్</string>
     <string name="settings_remember_bulletin_filter">బులెటిన్ ఫిల్టర్‌లను గుర్తుంచుకో</string>

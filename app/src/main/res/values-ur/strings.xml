@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">اسائنمنٹ ہے</string>
     <string name="a11y_class_table_conflict_prefix">کلاس تنازع</string>
     <string name="a11y_course_card_open_details_hint">تفصیلات کے لیے دو بار ٹیپ کریں</string>
+    <string name="a11y_course_color_swatch">رنگ %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Moodle میں کھولیں</string>
     <string name="a11y_rankings_trend_chart">سمسٹر کے مطابق GPA رجحان</string>
     <string name="a11y_rankings_trend_no_selection">کوئی سمسٹر منتخب نہیں</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">اسکول</string>
     <string name="calendar_source_semester">سمیسٹر</string>
     <string name="calendar_today">آج</string>
-    <string name="class_table_conflict_add_failed_message">%1$s کے اس سلاٹ (ویک ڈے %2$s، پیریڈ %3$s) میں پہلے سے دو کلاسیں ہیں: %4$s اور %5$s۔ سسٹم تین گنا تنازعہ کی حمایت نہیں کرتا۔</string>
+    <string name="class_table_conflict_add_failed_message">%1$s کے اس سلاٹ (%2$s، پیریڈ %3$s) میں پہلے سے دو کلاسیں ہیں: %4$s اور %5$s۔ سسٹم تین گنا تنازعہ کی حمایت نہیں کرتا۔</string>
     <string name="class_table_conflict_add_failed_title">شامل نہیں کیا جا سکتا</string>
     <string name="class_table_course_name">کورس کا نام</string>
     <string name="class_table_delete">حذف کریں</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">نامکمل اسائنمنٹس</string>
     <string name="course_detail_instructor_label">استاد</string>
     <string name="course_detail_no_roster">اس کورس کے لیے اندراج کا کوئی ڈیٹا دستیاب نہیں</string>
+    <string name="course_detail_require_option_elective">اختیاری</string>
+    <string name="course_detail_require_option_label">کورس کی قسم</string>
+    <string name="course_detail_require_option_required">لازمی</string>
     <string name="course_detail_time_label">وقت</string>
     <string name="course_instructor_value">انسٹرکٹر: %1$s</string>
     <string name="desktop_about_copyright">© TigerDuck شراکت دار۔ NTUST سے کوئی تعلق نہیں۔</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Moodle نیٹ ورک خرابی: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">تصدیق کریں کہ آپ کی Moodle / NTUST اسناد ابھی درست ہیں۔</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">NTUST میں دوبارہ سائن ان کریں اور ایک بار پھر کوشش کریں۔</string>
+    <string name="error_moodle_site_maintenance">Moodle پر مینٹیننس جاری ہے۔ بعد میں دوبارہ کوشش کریں۔</string>
     <string name="error_moodle_sso_rejected">NTUST SSO نے Moodle اجازت مسترد کر دی۔ براہ کرم اپنی اسناد جانچیں۔</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO نے Moodle اجازت مسترد کر دی: %1$@</string>
     <string name="error_moodle_webservice_disabled">Moodle ویب سروس ابھی دستیاب نہیں۔</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">سیشن ختم ہو گیا</string>
     <string name="error_sign_in_failed">لاگ ان ناکام ہو گیا</string>
     <string name="error_sso_sign_in_failed">سائن ان ناکام ہوا۔ براہ کرم اپنا اکاؤنٹ اور پاس ورڈ جانچیں۔</string>
+    <string name="error_sso_sign_in_failed_with_reason">سائن ان ناکام ہوا: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">SSO سائن ان فارم نہیں ملا۔</string>
     <string name="feature_announcements">اعلانات</string>
     <string name="feature_announcements_short">اعلانات</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">سسٹم کا ڈیفالٹ براؤزر</string>
     <string name="settings_check_for_updates">اپ ڈیٹ چیک کریں</string>
     <string name="settings_check_server_status">سرور اسٹیٹس چیک کریں</string>
+    <string name="settings_class_reminder">کلاس کی یاددہانیاں</string>
+    <string name="settings_class_reminder_footer">ہر کلاس شروع ہونے سے پہلے آپ کو اطلاع ملے گی۔</string>
+    <string name="settings_class_reminder_lead_time">مجھے یاد دلائیں</string>
     <string name="settings_classroom_mandarin_display">جب کلاس روم کا نام منڈارن میں ہو</string>
     <string name="settings_classroom_mandarin_display_original">اصل دکھائیں</string>
     <string name="settings_classroom_mandarin_display_pinyin">پنین دکھائیں</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">لنک کھولنے کا طریقہ</string>
     <string name="settings_official_website">آفیشل ویب سائٹ</string>
     <string name="settings_open_source_licenses">اوپن سورس لائسنسز</string>
+    <string name="settings_outline_required_courses">ٹائم ٹیبل میں لازمی کورسز کے گرد بارڈر دکھائیں</string>
     <string name="settings_privacy_policy">رازداری کی پالیسی</string>
     <string name="settings_push_server_nav_label">سرور پش</string>
     <string name="settings_remember_bulletin_filter">بلیٹن فلٹرز یاد رکھیں</string>

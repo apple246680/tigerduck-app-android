@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">ஒப்படைப்பு உள்ளது</string>
     <string name="a11y_class_table_conflict_prefix">வகுப்பு மோதல்</string>
     <string name="a11y_course_card_open_details_hint">விவரங்களுக்கு இருமுறை தட்டவும்</string>
+    <string name="a11y_course_color_swatch">நிறம் %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Moodle-ல் திறக்கவும்</string>
     <string name="a11y_rankings_trend_chart">பருவம் வாரியான GPA போக்கு</string>
     <string name="a11y_rankings_trend_no_selection">பருவம் தேர்வு செய்யப்படவில்லை</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">பள்ளி</string>
     <string name="calendar_source_semester">பருவம்</string>
     <string name="calendar_today">இன்று</string>
-    <string name="class_table_conflict_add_failed_message">%1$s ஏற்கனவே இந்த இடத்தில் (வாரநாள் %2$s, பீரியட் %3$s) இரண்டு வகுப்புகள் உள்ளன: %4$s மற்றும் %5$s. கணினி மூன்று மடங்கு மோதல்களை ஆதரிக்காது.</string>
+    <string name="class_table_conflict_add_failed_message">%1$s ஏற்கனவே இந்த இடத்தில் (%2$s, பீரியட் %3$s) இரண்டு வகுப்புகள் உள்ளன: %4$s மற்றும் %5$s. கணினி மூன்று மடங்கு மோதல்களை ஆதரிக்காது.</string>
     <string name="class_table_conflict_add_failed_title">சேர்க்க முடியவில்லை</string>
     <string name="class_table_course_name">வகுப்பின் பெயர்</string>
     <string name="class_table_delete">நீக்கு</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">முடிக்காத பணிகள்</string>
     <string name="course_detail_instructor_label">பயிற்றுவிப்பாளர்</string>
     <string name="course_detail_no_roster">இந்தப் பாடத்திற்கு சேர்க்கை தரவு எதுவும் இல்லை</string>
+    <string name="course_detail_require_option_elective">விருப்பப் பாடம்</string>
+    <string name="course_detail_require_option_label">பாட வகை</string>
+    <string name="course_detail_require_option_required">கட்டாயப் பாடம்</string>
     <string name="course_detail_time_label">நேரம்</string>
     <string name="course_instructor_value">விரிவுரையாளர்: %1$s</string>
     <string name="desktop_about_copyright">© TigerDuck பங்களிப்பாளர்கள். NTUST உடன் தொடர்பற்றது.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Moodle நெட்வொர்க் பிழை: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">உங்கள் Moodle / NTUST சான்றுகள் இன்னும் செல்லுபடியாகின்றனவா எனச் சரிபார்க்கவும்.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">NTUST இல் மீண்டும் உள்நுழைந்து மீண்டும் முயற்சிக்கவும்.</string>
+    <string name="error_moodle_site_maintenance">Moodle பராமரிப்பில் உள்ளது. பின்னர் மீண்டும் முயற்சிக்கவும்.</string>
     <string name="error_moodle_sso_rejected">NTUST SSO Moodle அங்கீகாரத்தை நிராகரித்தது. உங்கள் சான்றுகளைச் சரிபார்க்கவும்.</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO Moodle அங்கீகாரத்தை நிராகரித்தது: %1$@</string>
     <string name="error_moodle_webservice_disabled">Moodle வலைச்சேவை தற்போது கிடைக்கவில்லை.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">அமர்வு காலாவதியானது</string>
     <string name="error_sign_in_failed">லாக்-இன் தோல்வியடைந்தது</string>
     <string name="error_sso_sign_in_failed">உள்நுழைவு தோல்வியடைந்தது. உங்கள் கணக்கையும் கடவுச்சொல்லையும் சரிபார்க்கவும்.</string>
+    <string name="error_sso_sign_in_failed_with_reason">உள்நுழைவு தோல்வியடைந்தது: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">SSO உள்நுழைவுப் படிவத்தைக் கண்டுபிடிக்க முடியவில்லை.</string>
     <string name="feature_announcements">அறிவிப்புகள்</string>
     <string name="feature_announcements_short">அறிவிப்புகள்</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">கணினி இயல்புநிலை உலாவி</string>
     <string name="settings_check_for_updates">புதுப்பிப்புகளை சரிபார்</string>
     <string name="settings_check_server_status">சேவையக நிலையைச் சரிபார்</string>
+    <string name="settings_class_reminder">வகுப்பு நினைவூட்டல்கள்</string>
+    <string name="settings_class_reminder_footer">ஒவ்வொரு வகுப்பும் தொடங்குவதற்கு முன் உங்களுக்கு அறிவிப்பு வரும்.</string>
+    <string name="settings_class_reminder_lead_time">எனக்கு நினைவூட்டு</string>
     <string name="settings_classroom_mandarin_display">வகுப்பறையின் பெயர் சீன மொழியில் இருக்கும்போது</string>
     <string name="settings_classroom_mandarin_display_original">மூலத்தைக் காட்டு</string>
     <string name="settings_classroom_mandarin_display_pinyin">பின்யினைக் காட்டு</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">இணைப்புகளை திறக்க</string>
     <string name="settings_official_website">அதிகாரப்பூர்வ இணையதளம்</string>
     <string name="settings_open_source_licenses">திறந்த மூல உரிமங்கள்</string>
+    <string name="settings_outline_required_courses">நேரஅட்டவணையில் கட்டாயப் பாடங்களைச் சுற்றி எல்லைக்கோடு காட்டு</string>
     <string name="settings_privacy_policy">தனியுரிமை கொள்கை</string>
     <string name="settings_push_server_nav_label">சேவையக புஷ்</string>
     <string name="settings_remember_bulletin_filter">அறிவிப்பு வடிகட்டிகளை நினைவில் வை</string>

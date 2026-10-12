@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">असाइनमेंट आहे</string>
     <string name="a11y_class_table_conflict_prefix">वर्गवेळ संघर्ष</string>
     <string name="a11y_course_card_open_details_hint">तपशीलांसाठी दोनदा टॅप करा</string>
+    <string name="a11y_course_color_swatch">रंग %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Moodle मध्ये उघडा</string>
     <string name="a11y_rankings_trend_chart">सेमेस्टरनुसार GPA ट्रेंड</string>
     <string name="a11y_rankings_trend_no_selection">कोणताही सेमेस्टर निवडला नाही</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">शाळा</string>
     <string name="calendar_source_semester">सेमिस्टर</string>
     <string name="calendar_today">आज</string>
-    <string name="class_table_conflict_add_failed_message">%1$s च्या या स्लॉटमध्ये (आठवडा %2$s, कालावधी %3$s) आधीच दोन वर्ग आहेत: %4$s आणि %5$s. प्रणाली तिहेरी संघर्षाला समर्थन देत नाही.</string>
+    <string name="class_table_conflict_add_failed_message">%1$s च्या या स्लॉटमध्ये (%2$s, कालावधी %3$s) आधीच दोन वर्ग आहेत: %4$s आणि %5$s. प्रणाली तिहेरी संघर्षाला समर्थन देत नाही.</string>
     <string name="class_table_conflict_add_failed_title">जोडता येत नाही</string>
     <string name="class_table_course_name">अभ्यासक्रमाचे नाव</string>
     <string name="class_table_delete">हटवा</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">अपूर्ण असाइनमेंट</string>
     <string name="course_detail_instructor_label">प्रशिक्षक</string>
     <string name="course_detail_no_roster">या अभ्यासक्रमासाठी नोंदणी डेटा उपलब्ध नाही</string>
+    <string name="course_detail_require_option_elective">ऐच्छिक</string>
+    <string name="course_detail_require_option_label">अभ्यासक्रम प्रकार</string>
+    <string name="course_detail_require_option_required">अनिवार्य</string>
     <string name="course_detail_time_label">वेळ</string>
     <string name="course_instructor_value">प्राध्यापक: %1$s</string>
     <string name="desktop_about_copyright">© TigerDuck योगदानकर्ते. NTUST शी संलग्न नाही.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Moodle नेटवर्क त्रुटी: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">तुमची Moodle / NTUST क्रेडेन्शियल्स अद्याप वैध आहेत याची पडताळणी करा.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">NTUST मध्ये पुन्हा साइन इन करा आणि पुन्हा प्रयत्न करा.</string>
+    <string name="error_moodle_site_maintenance">Moodle ची देखभाल सुरू आहे. नंतर पुन्हा प्रयत्न करा.</string>
     <string name="error_moodle_sso_rejected">NTUST SSO ने Moodle अधिकृतीकरण नाकारले. कृपया तुमची क्रेडेन्शियल्स पडताळून पहा.</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO ने Moodle अधिकृतीकरण नाकारले: %1$@</string>
     <string name="error_moodle_webservice_disabled">Moodle वेबसर्व्हिस सध्या उपलब्ध नाही.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">सत्र संपले</string>
     <string name="error_sign_in_failed">लॉगिन अयशस्वी</string>
     <string name="error_sso_sign_in_failed">साइन इन अयशस्वी. कृपया तुमचे खाते आणि पासवर्ड पडताळून पहा.</string>
+    <string name="error_sso_sign_in_failed_with_reason">साइन इन अयशस्वी: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">SSO साइन-इन फॉर्म सापडला नाही.</string>
     <string name="feature_announcements">घोषणा</string>
     <string name="feature_announcements_short">घोषणा</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">सिस्टम डीफॉल्ट ब्राउझर</string>
     <string name="settings_check_for_updates">अपडेट तपासा</string>
     <string name="settings_check_server_status">सर्व्हर स्थिती तपासा</string>
+    <string name="settings_class_reminder">वर्ग स्मरणपत्रे</string>
+    <string name="settings_class_reminder_footer">प्रत्येक वर्ग सुरू होण्यापूर्वी तुम्हाला सूचित केले जाईल.</string>
+    <string name="settings_class_reminder_lead_time">आठवण करून द्या</string>
     <string name="settings_classroom_mandarin_display">जेव्हा वर्गखोलीचे नाव चिनी भाषेत असेल</string>
     <string name="settings_classroom_mandarin_display_original">मूळ दर्शवा</string>
     <string name="settings_classroom_mandarin_display_pinyin">पिनयिन दर्शवा</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">लिंक उघडण्याची पद्धत</string>
     <string name="settings_official_website">अधिकृत वेबसाइट</string>
     <string name="settings_open_source_licenses">ओपन-सोर्स परवाने</string>
+    <string name="settings_outline_required_courses">वेळापत्रकात अनिवार्य अभ्यासक्रमांभोवती चौकट दाखवा</string>
     <string name="settings_privacy_policy">गोपनीयता धोरण</string>
     <string name="settings_push_server_nav_label">सर्व्हर पुश</string>
     <string name="settings_remember_bulletin_filter">बुलेटिन फिल्टर लक्षात ठेवा</string>

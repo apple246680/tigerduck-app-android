@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">Тапсырма бар</string>
     <string name="a11y_class_table_conflict_prefix">Сабақ қақтығысы</string>
     <string name="a11y_course_card_open_details_hint">Толығырақ ақпарат алу үшін екі рет түртіңіз</string>
+    <string name="a11y_course_color_swatch">Түс %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Moodle-да ашу</string>
     <string name="a11y_rankings_trend_chart">Семестр бойынша GPA үрдісі</string>
     <string name="a11y_rankings_trend_no_selection">Семестр таңдалмаған</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">Мектеп</string>
     <string name="calendar_source_semester">Семестр</string>
     <string name="calendar_today">Бүгін</string>
-    <string name="class_table_conflict_add_failed_message">%1$s осы уячейкада (Апта күні %2$s, %3$s сабақ) екі сабақ бар: %4$s және %5$s. Жүйе үш сабақ қабаттасуын қолдамайды.</string>
+    <string name="class_table_conflict_add_failed_message">%1$s осы уячейкада (%2$s, %3$s сабақ) екі сабақ бар: %4$s және %5$s. Жүйе үш сабақ қабаттасуын қолдамайды.</string>
     <string name="class_table_conflict_add_failed_title">Қосу мүмкін емес</string>
     <string name="class_table_course_name">Курс атауы</string>
     <string name="class_table_delete">Жою</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">Аяқталмаған тапсырмалар</string>
     <string name="course_detail_instructor_label">Оқытушы</string>
     <string name="course_detail_no_roster">Бұл курс үшін тіркелу деректері жоқ</string>
+    <string name="course_detail_require_option_elective">Таңдау бойынша</string>
+    <string name="course_detail_require_option_label">Курс түрі</string>
+    <string name="course_detail_require_option_required">Міндетті</string>
     <string name="course_detail_time_label">Уақыт</string>
     <string name="course_instructor_value">Оқытушы: %1$s</string>
     <string name="desktop_about_copyright">© TigerDuck үлес қосушылары. NTUST-пен байланысы жоқ.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Moodle желі қатесі: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">Moodle / NTUST тіркелгі деректерінің жарамдылығын тексеріңіз.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">NTUST-қа қайта кіріп, тағы бір рет көріңіз.</string>
+    <string name="error_moodle_site_maintenance">Moodle-да техникалық жұмыстар жүргізілуде. Кейінірек қайталап көріңіз.</string>
     <string name="error_moodle_sso_rejected">NTUST SSO Moodle авторизациясын қабылдамады. Тіркелгі деректеріңізді тексеріңіз.</string>
     <string name="error_moodle_sso_rejected_with_reason">NTUST SSO Moodle авторизациясын қабылдамады: %1$@</string>
     <string name="error_moodle_webservice_disabled">Moodle веб-қызметі қазір қол жетімді емес.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">Сеанс мерзімі бітті</string>
     <string name="error_sign_in_failed">Кіру сәтсіз аяқталды</string>
     <string name="error_sso_sign_in_failed">Кіру сәтсіз. Тіркелгі мен құпия сөзді тексеріңіз.</string>
+    <string name="error_sso_sign_in_failed_with_reason">Кіру сәтсіз: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">SSO кіру пішінін табу мүмкін болмады.</string>
     <string name="feature_announcements">Хабарландырулар</string>
     <string name="feature_announcements_short">Хабарландырулар</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">Жүйенің әдепкі браузері</string>
     <string name="settings_check_for_updates">Жаңартуларды тексеру</string>
     <string name="settings_check_server_status">Сервер күйін тексеру</string>
+    <string name="settings_class_reminder">Сабақ еске салғыштары</string>
+    <string name="settings_class_reminder_footer">Әр сабақ басталмас бұрын хабарландырылатын боласыз.</string>
+    <string name="settings_class_reminder_lead_time">Еске салу</string>
     <string name="settings_classroom_mandarin_display">Сынып бөлмесінің атауы қытайша болғанда</string>
     <string name="settings_classroom_mandarin_display_original">Түпнұсқаны көрсету</string>
     <string name="settings_classroom_mandarin_display_pinyin">Пиньиньді көрсету</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">Сілтемелерді ашу</string>
     <string name="settings_official_website">Ресми веб-сайт</string>
     <string name="settings_open_source_licenses">Ашық бастапқы лицензиялар</string>
+    <string name="settings_outline_required_courses">Кестеде міндетті курстарды жиектеу</string>
     <string name="settings_privacy_policy">Құпиялылық саясаты</string>
     <string name="settings_push_server_nav_label">Серверді итеру</string>
     <string name="settings_remember_bulletin_filter">Хабарлама сүзгілерін есте сақтау</string>

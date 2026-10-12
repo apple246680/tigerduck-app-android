@@ -8,6 +8,7 @@
     <string name="a11y_class_table_cell_assignment_indicator">Έχει εργασία</string>
     <string name="a11y_class_table_conflict_prefix">Σύγκρουση μαθήματος</string>
     <string name="a11y_course_card_open_details_hint">Πατήστε δύο φορές για λεπτομέρειες</string>
+    <string name="a11y_course_color_swatch">Χρώμα %1$lld</string>
     <string name="a11y_course_detail_open_moodle">Άνοιγμα στο Moodle</string>
     <string name="a11y_rankings_trend_chart">Τάση GPA ανά εξάμηνο</string>
     <string name="a11y_rankings_trend_no_selection">Δεν έχει επιλεγεί εξάμηνο</string>
@@ -166,7 +167,7 @@
     <string name="calendar_source_school">Σχολή</string>
     <string name="calendar_source_semester">Εξάμηνο</string>
     <string name="calendar_today">Σήμερα</string>
-    <string name="class_table_conflict_add_failed_message">Το %1$s έχει ήδη δύο μαθήματα σε αυτή τη θέση (Εβδομάδα %2$s, Περίοδος %3$s): %4$s και %5$s. Το σύστημα δεν υποστηρίζει τριπλές συγκρούσεις.</string>
+    <string name="class_table_conflict_add_failed_message">Το %1$s έχει ήδη δύο μαθήματα σε αυτή τη θέση (%2$s, Περίοδος %3$s): %4$s και %5$s. Το σύστημα δεν υποστηρίζει τριπλές συγκρούσεις.</string>
     <string name="class_table_conflict_add_failed_title">Αδύνατη η προσθήκη</string>
     <string name="class_table_course_name">Όνομα μαθήματος</string>
     <string name="class_table_delete">Διαγραφή</string>
@@ -255,6 +256,9 @@
     <string name="course_detail_incomplete_assignments">Ημιτελείς εργασίες</string>
     <string name="course_detail_instructor_label">Εκπαιδευτής</string>
     <string name="course_detail_no_roster">Δεν υπάρχουν διαθέσιμα στοιχεία εγγραφής για αυτό το μάθημα</string>
+    <string name="course_detail_require_option_elective">Επιλογής</string>
+    <string name="course_detail_require_option_label">Τύπος μαθήματος</string>
+    <string name="course_detail_require_option_required">Υποχρεωτικό</string>
     <string name="course_detail_time_label">Φορά</string>
     <string name="course_instructor_value">Καθηγητής: %1$s</string>
     <string name="desktop_about_copyright">© Συντελεστές TigerDuck. Δεν συνδέεται με το NTUST.</string>
@@ -332,6 +336,7 @@
     <string name="error_moodle_network_format">Σφάλμα δικτύου Moodle: %1$@</string>
     <string name="error_moodle_recovery_check_credentials">Επαληθεύστε ότι τα διαπιστευτήριά σας Moodle / NTUST είναι ακόμα έγκυρα.</string>
     <string name="error_moodle_recovery_re_sign_in_ntust">Συνδεθείτε ξανά στο NTUST και δοκιμάστε άλλη μία φορά.</string>
+    <string name="error_moodle_site_maintenance">Το Moodle βρίσκεται υπό συντήρηση. Δοκίμασε ξανά αργότερα.</string>
     <string name="error_moodle_sso_rejected">Το NTUST SSO απέρριψε την εξουσιοδότηση Moodle. Παρακαλώ ελέγξτε τα διαπιστευτήριά σας.</string>
     <string name="error_moodle_sso_rejected_with_reason">Το NTUST SSO απέρριψε την εξουσιοδότηση Moodle: %1$@</string>
     <string name="error_moodle_webservice_disabled">Η υπηρεσία ιστού Moodle δεν είναι διαθέσιμη αυτή τη στιγμή.</string>
@@ -341,6 +346,7 @@
     <string name="error_session_expired">Η συνεδρία έληξε</string>
     <string name="error_sign_in_failed">Αποτυχία σύνδεσης</string>
     <string name="error_sso_sign_in_failed">Η σύνδεση απέτυχε. Επαληθεύστε τον λογαριασμό και τον κωδικό σας.</string>
+    <string name="error_sso_sign_in_failed_with_reason">Η σύνδεση απέτυχε: %1$@</string>
     <string name="error_sso_sign_in_form_not_found">Δεν βρέθηκε η φόρμα σύνδεσης SSO.</string>
     <string name="feature_announcements">Ανακοινώσεις</string>
     <string name="feature_announcements_short">Ανακοινώσεις</string>
@@ -808,6 +814,9 @@
     <string name="settings_browser_system_default">Προεπιλεγμένος περιηγητής συστήματος</string>
     <string name="settings_check_for_updates">Έλεγχος για ενημερώσεις</string>
     <string name="settings_check_server_status">Έλεγχος κατάστασης διακομιστή</string>
+    <string name="settings_class_reminder">Υπενθυμίσεις μαθημάτων</string>
+    <string name="settings_class_reminder_footer">Θα ειδοποιηθείτε πριν από την έναρξη κάθε μαθήματος.</string>
+    <string name="settings_class_reminder_lead_time">Υπενθύμιση</string>
     <string name="settings_classroom_mandarin_display">Όταν το όνομα της αίθουσας είναι στα μανδαρινικά</string>
     <string name="settings_classroom_mandarin_display_original">Εμφάνιση πρωτότυπου</string>
     <string name="settings_classroom_mandarin_display_pinyin">Εμφάνιση πινγίν</string>
@@ -849,6 +858,7 @@
     <string name="settings_link_opening_method">Άνοιγμα συνδέσμων με</string>
     <string name="settings_official_website">Επίσημος ιστότοπος</string>
     <string name="settings_open_source_licenses">Άδειες ανοιχτού κώδικα</string>
+    <string name="settings_outline_required_courses">Επισήμανση υποχρεωτικών μαθημάτων με περίγραμμα στο πρόγραμμα</string>
     <string name="settings_privacy_policy">Πολιτική απορρήτου</string>
     <string name="settings_push_server_nav_label">Push διακομιστή</string>
     <string name="settings_remember_bulletin_filter">Θυμηθείτε τα φίλτρα του δελτίου</string>
