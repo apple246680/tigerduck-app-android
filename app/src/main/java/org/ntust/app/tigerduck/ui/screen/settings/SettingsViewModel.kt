@@ -37,6 +37,7 @@ import org.ntust.app.tigerduck.push.PushRegistrationService
 import org.ntust.app.tigerduck.push.SyncApiClient
 import org.ntust.app.tigerduck.ui.AppState
 import org.ntust.app.tigerduck.ui.component.ServerStatusTracker
+import org.ntust.app.tigerduck.ui.screen.home.AssignmentOverrideReconciler
 import org.ntust.app.tigerduck.wear.WearScheduleBridge
 import javax.inject.Inject
 
@@ -331,13 +332,16 @@ class SettingsViewModel @Inject constructor(
                     }
                 }
                 if ("assignments" in conflict.categories) {
-                    for (id in dataCache.loadIgnoredAssignments()) {
+                    val server = runCatching { syncApiClient.fetchFullSync() }.getOrNull()
+                    val statuses = AssignmentOverrideReconciler.keepLocal(
+                        localIgnored = dataCache.loadIgnoredAssignments(),
+                        localCompleted = dataCache.loadMarkedCompletedAssignments(),
+                        serverIgnored = server?.ignoredIds.orEmpty(),
+                        serverCompleted = server?.completedIds.orEmpty(),
+                    )
+                    for ((id, status) in statuses) {
                         val intId = id.toIntOrNull() ?: continue
-                        runCatching { pushApiClient.patchAssignmentOverride(intId, "ignored") }
-                    }
-                    for (id in dataCache.loadMarkedCompletedAssignments()) {
-                        val intId = id.toIntOrNull() ?: continue
-                        runCatching { pushApiClient.patchAssignmentOverride(intId, "locally_completed") }
+                        runCatching { pushApiClient.patchAssignmentOverride(intId, status) }
                     }
                 }
             } else {

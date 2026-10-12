@@ -181,6 +181,23 @@ object AssignmentOverrideReconciler {
         conflicts = emptyList(),
     )
 
+    /**
+     * The status to send for each id when, with sync back on, the user keeps
+     * this device's overrides: this device's own, then [STATUS_NONE] for an
+     * id only the server marks, which the next full sync would otherwise take
+     * as another device's mark and bring back. With empty server sets, as
+     * when they could not be fetched, only this device's overrides go.
+     */
+    fun keepLocal(
+        localIgnored: Set<String>,
+        localCompleted: Set<String>,
+        serverIgnored: Set<String>,
+        serverCompleted: Set<String>,
+    ): Map<String, String> =
+        localIgnored.associateWith { STATUS_IGNORED } +
+            localCompleted.associateWith { STATUS_COMPLETED } +
+            (serverIgnored + serverCompleted - localIgnored - localCompleted).associateWith { STATUS_NONE }
+
     private fun statusOf(id: String, ignored: Set<String>, completed: Set<String>): String = when (id) {
         in ignored -> STATUS_IGNORED
         in completed -> STATUS_COMPLETED
