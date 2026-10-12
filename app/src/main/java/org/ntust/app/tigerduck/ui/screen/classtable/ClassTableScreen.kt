@@ -149,6 +149,9 @@ fun ClassTableScreen(
     // Compose dependency, leaving badges stale until the next courses update.
     val outstandingAssignments by viewModel.outstandingAssignments.collectAsStateWithLifecycle()
     val courseNosWithAssignments by viewModel.courseNosWithAssignments.collectAsStateWithLifecycle()
+    val courseNosIgnoringAssignments by
+        viewModel.courseNosIgnoringAssignments.collectAsStateWithLifecycle()
+    val canIgnoreAssignments by viewModel.canIgnoreAssignments.collectAsStateWithLifecycle()
     // Hoisted alongside the other top-level subscriptions: a second
     // collectAsStateWithLifecycle for the same flow inside a conditional
     // body invites readers from the wrong scope and is fragile if the
@@ -460,6 +463,7 @@ fun ClassTableScreen(
                         weekdays = activeWeekdays,
                         periods = activePeriods,
                         courseNosWithAssignments = courseNosWithAssignments,
+                        courseNosIgnoringAssignments = courseNosIgnoringAssignments,
                         onRename = { course ->
                             renameText = course.customCourseName ?: viewModel.defaultNameFor(course)
                             courseToRename = course
@@ -469,6 +473,11 @@ fun ClassTableScreen(
                         },
                         onPickColor = { course ->
                             courseToRecolor = course
+                        },
+                        onToggleIgnoreAssignments = if (canIgnoreAssignments) {
+                            viewModel::toggleIgnoreAssignments
+                        } else {
+                            null
                         },
                         onPickConflict = { a, b, weekday, periodId ->
                             conflictPicker = ConflictPickerTarget(a, b, weekday, periodId)

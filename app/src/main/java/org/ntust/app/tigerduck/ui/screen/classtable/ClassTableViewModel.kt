@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -22,11 +24,14 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.data.CourseRosterMerge
 import org.ntust.app.tigerduck.AppConstants
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.data.CourseColorStore
+import org.ntust.app.tigerduck.data.CourseIgnoreSync
+import org.ntust.app.tigerduck.data.CourseIgnores
 import org.ntust.app.tigerduck.shared.OngoingCourseInfo
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
 import org.ntust.app.tigerduck.data.OutstandingAssignments
@@ -34,6 +39,7 @@ import org.ntust.app.tigerduck.data.RefreshPolicy
 import org.ntust.app.tigerduck.data.RefreshTriggers
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.debug.DebugFixtureStore
+import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.shared.computeOngoingCourses
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.shared.Course
@@ -73,6 +79,8 @@ class ClassTableViewModel @Inject constructor(
     private val pushApiClient: org.ntust.app.tigerduck.push.PushApiClient,
     private val academicCalendar: org.ntust.app.tigerduck.academic.AcademicCalendarStore,
     private val debugFixtures: DebugFixtureStore,
+    private val courseIgnoreSync: CourseIgnoreSync,
+    @param:ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
 
 
@@ -108,13 +116,18 @@ class ClassTableViewModel @Inject constructor(
     private val _ignoredAssignmentIds = MutableStateFlow<Set<String>>(emptySet())
     private val _markedCompletedIds = MutableStateFlow<Set<String>>(emptySet())
 
+    // The ignored courses; see CourseIgnores. Set here first, so a menu
+    // opened again at once already reads the new value.
+    private val _ignoredCourseKeys = MutableStateFlow<Set<String>>(emptySet())
+
     /** What the course detail lists: see [OutstandingAssignments]. */
     val outstandingAssignments: StateFlow<List<Assignment>> = combine(
         _assignments,
         _ignoredAssignmentIds,
         _markedCompletedIds,
-    ) { all, ignored, marked ->
-        OutstandingAssignments.of(all, ignored, marked)
+        _ignoredCourseKeys,
+    ) { all, ignored, marked, courseKeys ->
+        OutstandingAssignments.of(all, ignoredIncludingCourses(all, ignored, courseKeys), marked)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** The courses whose cells and cards carry the "has assignments" badge. */
@@ -122,8 +135,9 @@ class ClassTableViewModel @Inject constructor(
         _assignments,
         _ignoredAssignmentIds,
         _markedCompletedIds,
-    ) { all, ignored, marked ->
-        OutstandingAssignments.courseNos(all, ignored, marked)
+        _ignoredCourseKeys,
+    ) { all, ignored, marked, courseKeys ->
+        OutstandingAssignments.courseNos(all, ignoredIncludingCourses(all, ignored, courseKeys), marked)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
     private val _isLoading = MutableStateFlow(false)
@@ -206,6 +220,26 @@ class ClassTableViewModel @Inject constructor(
             kotlinx.coroutines.flow.SharingStarted.Eagerly,
             currentDayTime().minuteOfDay
         )
+
+    /** The courses of the term on screen whose assignments are all ignored. */
+    val courseNosIgnoringAssignments: StateFlow<Set<String>> = combine(
+        _currentSemester,
+        _ignoredCourseKeys,
+    ) { semester, keys ->
+        CourseIgnores.courseNosIn(semester, keys)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    /**
+     * Whether the cells offer to ignore a course's assignments: only for the
+     * term in session, the one assignments are fetched for. Rechecked each
+     * minute, in case the term rolls over while the table is open.
+     */
+    val canIgnoreAssignments: StateFlow<Boolean> = combine(
+        _currentSemester,
+        _currentDayTime,
+    ) { semester, _ ->
+        semester == courseService.currentSemesterCode()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     // One-shot UI events. These live above `init` with the rest of the
     // state for the same reason every other field does: init's collectors
@@ -310,6 +344,7 @@ class ClassTableViewModel @Inject constructor(
                     _assignments.value = emptyList()
                     _ignoredAssignmentIds.value = emptySet()
                     _markedCompletedIds.value = emptySet()
+                    _ignoredCourseKeys.value = emptySet()
                     _selectedCourse.value = null
                     _moodleCourseIdByIdnumber.value = emptyMap()
                     courseCustomNames = emptyMap()
@@ -361,10 +396,20 @@ class ClassTableViewModel @Inject constructor(
         val account = authService.storedStudentId
         val ignored = dataCache.loadIgnoredAssignments()
         val marked = dataCache.loadMarkedCompletedAssignments()
+        val courseKeys = dataCache.loadIgnoredCourses()
         if (!authService.isStillSignedInAs(account)) return
         _ignoredAssignmentIds.value = ignored
         _markedCompletedIds.value = marked
+        _ignoredCourseKeys.value = courseKeys
     }
+
+    /** The ignored ids of [all], counting those ignored with their course. */
+    private fun ignoredIncludingCourses(
+        all: List<Assignment>,
+        ignored: Set<String>,
+        courseKeys: Set<String>,
+    ): Set<String> =
+        ignored + CourseIgnores.assignmentIds(all, courseKeys, courseService.currentSemesterCode())
 
     /**
      * The signed-in student's id, for the credits label.
@@ -681,10 +726,37 @@ class ClassTableViewModel @Inject constructor(
         syncCourseOverride(courseNo, customName = "", locale = locale)
     }
 
+    /**
+     * Ignores, or stops ignoring, every assignment of [course], from the
+     * cell's long-press menu; see [canIgnoreAssignments].
+     *
+     * On the application scope, and started at once: leaving the table must
+     * not cut the write or the PATCH short, and two taps in a row must reach
+     * [CourseIgnoreSync] in the order they were made.
+     */
+    fun toggleIgnoreAssignments(course: Course) {
+        val semester = _currentSemester.value
+        if (semester != liveSemesterCode) return
+        val key = CourseIgnores.key(semester, course.courseNo)
+        val ignore = key !in _ignoredCourseKeys.value
+        _ignoredCourseKeys.update { if (ignore) it + key else it - key }
+        // A course without an idnumber is keyed "<term><courseNo>" on the
+        // backend, as the colour and name overrides already assume.
+        val moodleId = course.moodleIdNumber?.takeIf { it.isNotEmpty() }
+            ?: "$semester${course.courseNo}"
+        val moodleCourseId = course.moodleNumericCourseId ?: lookupMoodleCourseId(moodleId)
+        appScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            courseIgnoreSync.setIgnored(semester, course.courseNo, moodleId, moodleCourseId, ignore)
+        }
+    }
+
     fun deleteCourse(courseNo: String) {
         val updated = _courses.value.filter { it.courseNo != courseNo }
         _courses.value = updated
         val semester = _currentSemester.value
+        val ignoreKey = CourseIgnores.key(semester, courseNo)
+        _ignoredCourseKeys.update { it - ignoreKey }
+        appScope.launch { courseIgnoreSync.forget { it == ignoreKey } }
         viewModelScope.launch {
             val deleted = CourseTombstoneKeys.hide(
                 courseNo, semester, dataCache.loadDeletedCourseNos()
@@ -875,6 +947,9 @@ class ClassTableViewModel @Inject constructor(
             // undo itself.
             dataCache.saveCourses(emptyList(), semester)
             if (_currentSemester.value == semester) _courses.value = emptyList()
+            val inTerm = { key: String -> CourseIgnores.semesterOf(key) == semester }
+            _ignoredCourseKeys.update { keys -> keys.filterNotTo(mutableSetOf(), inTerm) }
+            courseIgnoreSync.forget(inTerm)
             widgetUpdater.requestUpdate()
         }
     }

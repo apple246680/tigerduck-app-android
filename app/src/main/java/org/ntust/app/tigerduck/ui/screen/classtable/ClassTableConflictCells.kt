@@ -23,12 +23,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Book
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -66,10 +63,13 @@ internal fun ConflictCourseCell(
     periodId: String,
     hasAssignmentA: Boolean,
     hasAssignmentB: Boolean,
+    assignmentsIgnoredA: Boolean,
+    assignmentsIgnoredB: Boolean,
     onPickConflict: (Course, Course, Int, String) -> Unit,
     onLongPress: () -> Unit,
     onRename: (Course) -> Unit,
     onPickColor: (Course) -> Unit,
+    onToggleIgnoreAssignments: ((Course) -> Unit)?,
     onDelete: (Course) -> Unit,
 ) {
     val textColor = if (TigerDuckTheme.isDarkMode) Color.White else Color(0xFF1C1C1E)
@@ -146,8 +146,13 @@ internal fun ConflictCourseCell(
             val conflictPrefix = stringResource(R.string.a11y_class_table_conflict_prefix)
             val assignmentLabel =
                 stringResource(R.string.a11y_class_table_cell_assignment_indicator)
+            val ignoredLabel = stringResource(R.string.a11y_class_table_cell_assignments_ignored)
 
-            fun cellLabel(course: Course, hasAssignment: Boolean): String = buildString {
+            fun cellLabel(
+                course: Course,
+                hasAssignment: Boolean,
+                assignmentsIgnored: Boolean,
+            ): String = buildString {
                 append(conflictPrefix)
                 append(": ")
                 append(course.displayName)
@@ -160,10 +165,14 @@ internal fun ConflictCourseCell(
                     append(". ")
                     append(assignmentLabel)
                 }
+                if (assignmentsIgnored) {
+                    append(". ")
+                    append(ignoredLabel)
+                }
             }
 
-            val labelA = cellLabel(cellRole.courseA, hasAssignmentA)
-            val labelB = cellLabel(cellRole.courseB, hasAssignmentB)
+            val labelA = cellLabel(cellRole.courseA, hasAssignmentA, assignmentsIgnoredA)
+            val labelB = cellLabel(cellRole.courseB, hasAssignmentB, assignmentsIgnoredB)
 
             Box(
                 modifier = Modifier
@@ -208,17 +217,15 @@ internal fun ConflictCourseCell(
                         maxLines = 2,
                     )
                 }
-                if (hasAssignmentA) {
-                    Icon(
-                        imageVector = Icons.Filled.Book,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(3.dp)
-                            .size(10.dp),
-                        tint = textColor.copy(alpha = 0.7f),
-                    )
-                }
+                CourseCellBadge(
+                    hasAssignment = hasAssignmentA,
+                    assignmentsIgnored = assignmentsIgnoredA,
+                    tint = textColor.copy(alpha = 0.7f),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(3.dp)
+                        .size(10.dp),
+                )
             }
 
             Box(
@@ -264,17 +271,15 @@ internal fun ConflictCourseCell(
                         maxLines = 2,
                     )
                 }
-                if (hasAssignmentB) {
-                    Icon(
-                        imageVector = Icons.Filled.Book,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(3.dp)
-                            .size(10.dp),
-                        tint = textColor.copy(alpha = 0.7f),
-                    )
-                }
+                CourseCellBadge(
+                    hasAssignment = hasAssignmentB,
+                    assignmentsIgnored = assignmentsIgnoredB,
+                    tint = textColor.copy(alpha = 0.7f),
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(3.dp)
+                        .size(10.dp),
+                )
             }
 
             DropdownMenu(
@@ -282,13 +287,20 @@ internal fun ConflictCourseCell(
                 onDismissRequest = { showMenu = false },
                 shape = RoundedCornerShape(12.dp),
             ) {
-                listOf(cellRole.courseA, cellRole.courseB).forEachIndexed { idx, course ->
+                listOf(
+                    cellRole.courseA to assignmentsIgnoredA,
+                    cellRole.courseB to assignmentsIgnoredB,
+                ).forEachIndexed { idx, (course, ignored) ->
                     if (idx > 0) HorizontalDivider()
                     CourseActionSection(
                         course = course,
                         swatch = bgFor(course),
+                        assignmentsIgnored = ignored,
                         onRename = { showMenu = false; onRename(course) },
                         onPickColor = { showMenu = false; onPickColor(course) },
+                        onToggleIgnoreAssignments = onToggleIgnoreAssignments?.let { toggle ->
+                            { showMenu = false; toggle(course) }
+                        },
                         onDelete = { showMenu = false; onDelete(course) },
                     )
                 }
@@ -317,10 +329,12 @@ internal fun MultiConflictCourseCell(
     y: androidx.compose.ui.unit.Dp,
     weekday: Int,
     hasAssignment: (String) -> Boolean,
+    assignmentsIgnored: (String) -> Boolean,
     onSelect: (Course, String) -> Unit,
     onLongPress: () -> Unit,
     onRename: (Course) -> Unit,
     onPickColor: (Course) -> Unit,
+    onToggleIgnoreAssignments: ((Course) -> Unit)?,
     onDelete: (Course) -> Unit,
 ) {
     val textColor = if (TigerDuckTheme.isDarkMode) Color.White else Color(0xFF1C1C1E)
@@ -332,7 +346,12 @@ internal fun MultiConflictCourseCell(
 
     val conflictPrefix = stringResource(R.string.a11y_class_table_conflict_prefix)
     val assignmentLabel = stringResource(R.string.a11y_class_table_cell_assignment_indicator)
-    fun cellLabel(course: Course, hasAssignmentForCourse: Boolean): String = buildString {
+    val ignoredLabel = stringResource(R.string.a11y_class_table_cell_assignments_ignored)
+    fun cellLabel(
+        course: Course,
+        hasAssignmentForCourse: Boolean,
+        ignoredForCourse: Boolean,
+    ): String = buildString {
         append(conflictPrefix)
         append(": ")
         append(course.displayName)
@@ -344,6 +363,10 @@ internal fun MultiConflictCourseCell(
         if (hasAssignmentForCourse) {
             append(". ")
             append(assignmentLabel)
+        }
+        if (ignoredForCourse) {
+            append(". ")
+            append(ignoredLabel)
         }
     }
 
@@ -365,6 +388,7 @@ internal fun MultiConflictCourseCell(
                 val mHeight = rowHeight * member.span
                 val mLeft = laneWidth * member.lane
                 val hasAssignmentForMember = hasAssignment(member.course.courseNo)
+                val ignoredForMember = assignmentsIgnored(member.course.courseNo)
 
                 Box(
                     modifier = Modifier
@@ -375,7 +399,8 @@ internal fun MultiConflictCourseCell(
                         .clip(RoundedCornerShape(4.dp))
                         .background(bgFor(member.course))
                         .semantics(mergeDescendants = true) {
-                            contentDescription = cellLabel(member.course, hasAssignmentForMember)
+                            contentDescription =
+                                cellLabel(member.course, hasAssignmentForMember, ignoredForMember)
                             role = Role.Button
                         }
                         .combinedClickable(
@@ -397,17 +422,15 @@ internal fun MultiConflictCourseCell(
                             .padding(2.dp)
                             .align(Alignment.Center),
                     )
-                    if (hasAssignmentForMember) {
-                        Icon(
-                            imageVector = Icons.Filled.Book,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(3.dp)
-                                .size(10.dp),
-                            tint = textColor.copy(alpha = 0.7f),
-                        )
-                    }
+                    CourseCellBadge(
+                        hasAssignment = hasAssignmentForMember,
+                        assignmentsIgnored = ignoredForMember,
+                        tint = textColor.copy(alpha = 0.7f),
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(3.dp)
+                            .size(10.dp),
+                    )
                 }
             }
 
@@ -420,8 +443,12 @@ internal fun MultiConflictCourseCell(
                     CourseActionSection(
                         course = course,
                         swatch = bgFor(course),
+                        assignmentsIgnored = assignmentsIgnored(course.courseNo),
                         onRename = { menuForCourse = null; onRename(course) },
                         onPickColor = { menuForCourse = null; onPickColor(course) },
+                        onToggleIgnoreAssignments = onToggleIgnoreAssignments?.let { toggle ->
+                            { menuForCourse = null; toggle(course) }
+                        },
                         onDelete = { menuForCourse = null; onDelete(course) },
                     )
                 }
@@ -452,8 +479,10 @@ internal fun MultiConflictCourseCell(
 private fun CourseActionSection(
     course: Course,
     swatch: Color,
+    assignmentsIgnored: Boolean,
     onRename: () -> Unit,
     onPickColor: () -> Unit,
+    onToggleIgnoreAssignments: (() -> Unit)?,
     onDelete: () -> Unit,
 ) {
     Row(
@@ -481,6 +510,9 @@ private fun CourseActionSection(
         text = { Text(stringResource(R.string.class_table_pick_color)) },
         onClick = onPickColor,
     )
+    if (onToggleIgnoreAssignments != null) {
+        IgnoreAssignmentsMenuItem(ignored = assignmentsIgnored, onClick = onToggleIgnoreAssignments)
+    }
     DropdownMenuItem(
         text = {
             Text(

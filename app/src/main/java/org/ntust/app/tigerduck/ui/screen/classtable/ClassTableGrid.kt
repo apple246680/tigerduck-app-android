@@ -54,9 +54,13 @@ internal fun TimetableGrid(
     weekdays: List<Int>,
     periods: List<org.ntust.app.tigerduck.data.model.TimetablePeriod>,
     courseNosWithAssignments: Set<String>,
+    /** Courses whose cells carry the ignored mark; none in the exported image. */
+    courseNosIgnoringAssignments: Set<String> = emptySet(),
     onRename: (Course) -> Unit = {},
     onDelete: (Course) -> Unit = {},
     onPickColor: (Course) -> Unit = {},
+    /** Null leaves the action out of the long-press menu. */
+    onToggleIgnoreAssignments: ((Course) -> Unit)? = null,
     onPickConflict: (Course, Course, Int, String) -> Unit = { _, _, _, _ -> },
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -204,6 +208,8 @@ internal fun TimetableGrid(
                                     y = y,
                                     weekday = weekday,
                                     hasAssignment = role.course.courseNo in courseNosWithAssignments,
+                                    assignmentsIgnored =
+                                        role.course.courseNo in courseNosIgnoringAssignments,
                                     onTap = {
                                         viewModel.selectCourse(
                                             role.course,
@@ -219,6 +225,7 @@ internal fun TimetableGrid(
                                     },
                                     onRename = onRename,
                                     onPickColor = onPickColor,
+                                    onToggleIgnoreAssignments = onToggleIgnoreAssignments,
                                     onDelete = onDelete,
                                 )
                             }
@@ -234,6 +241,10 @@ internal fun TimetableGrid(
                                     periodId = period.id,
                                     hasAssignmentA = role.courseA.courseNo in courseNosWithAssignments,
                                     hasAssignmentB = role.courseB.courseNo in courseNosWithAssignments,
+                                    assignmentsIgnoredA =
+                                        role.courseA.courseNo in courseNosIgnoringAssignments,
+                                    assignmentsIgnoredB =
+                                        role.courseB.courseNo in courseNosIgnoringAssignments,
                                     onPickConflict = onPickConflict,
                                     onLongPress = {
                                         Haptics.perform(
@@ -243,6 +254,7 @@ internal fun TimetableGrid(
                                     },
                                     onRename = onRename,
                                     onPickColor = onPickColor,
+                                    onToggleIgnoreAssignments = onToggleIgnoreAssignments,
                                     onDelete = onDelete,
                                 )
                             }
@@ -256,6 +268,9 @@ internal fun TimetableGrid(
                                     y = y,
                                     weekday = weekday,
                                     hasAssignment = { courseNo -> courseNo in courseNosWithAssignments },
+                                    assignmentsIgnored = { courseNo ->
+                                        courseNo in courseNosIgnoringAssignments
+                                    },
                                     onSelect = { course, firstPeriodId ->
                                         viewModel.selectCourse(course, weekday, firstPeriodId)
                                     },
@@ -267,6 +282,7 @@ internal fun TimetableGrid(
                                     },
                                     onRename = onRename,
                                     onPickColor = onPickColor,
+                                    onToggleIgnoreAssignments = onToggleIgnoreAssignments,
                                     onDelete = onDelete,
                                 )
                             }

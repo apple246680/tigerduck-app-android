@@ -76,10 +76,10 @@ private const val EXPORT_RETENTION_MS = 24 * 60 * 60 * 1000L
  *
  * The grid is the live [TimetableGrid], not a copy, so the image keeps
  * whatever the screen shows — colours, custom and abbreviated names, the
- * start / 節 / end period column, the room hint when it is switched on. Only
- * the assignment badge stays out: it marks work still due, a reminder for
- * whoever is looking at the screen today, not part of the timetable someone
- * is being shown.
+ * start / period / end column, the room hint when it is switched on. Only
+ * the corner marks stay out: they mark work still due, or a course whose
+ * work the user ignores, notes for whoever is looking at the screen today,
+ * not part of the timetable someone is being shown.
  */
 @Composable
 internal fun ClassTableExportCard(
