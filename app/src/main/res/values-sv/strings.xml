@@ -6,6 +6,7 @@
     <string name="a11y_calendar_nav_next">Nästa månad</string>
     <string name="a11y_calendar_nav_prev">Föregående månad</string>
     <string name="a11y_class_table_cell_assignment_indicator">Har uppgift</string>
+    <string name="a11y_class_table_cell_assignments_ignored">Uppgifter ignorerade</string>
     <string name="a11y_class_table_conflict_prefix">Lektionskonflikt</string>
     <string name="a11y_course_card_open_details_hint">Dubbeltryck för detaljer</string>
     <string name="a11y_course_color_swatch">Färg %1$lld</string>
@@ -174,6 +175,8 @@
     <string name="class_table_empty_message">Dra för att uppdatera, tryck på ⋯ för att lägga till en kurs, eller byt till en annan semester</string>
     <string name="class_table_export_failed">Det gick inte att exportera schemat</string>
     <string name="class_table_export_screenshot">Exportera skärmbild av schemat</string>
+    <string name="class_table_ignore_assignments">Ignorera uppgifter</string>
+    <string name="class_table_ignore_assignments_undo">Sluta ignorera uppgifter</string>
     <string name="class_table_more_actions">Fler åtgärder</string>
     <string name="class_table_pick_color">Välj färg</string>
     <string name="class_table_rename_default_label">Standard: %1$s</string>

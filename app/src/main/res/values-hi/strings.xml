@@ -6,6 +6,7 @@
     <string name="a11y_calendar_nav_next">अगला महीना</string>
     <string name="a11y_calendar_nav_prev">पिछला महीना</string>
     <string name="a11y_class_table_cell_assignment_indicator">असाइनमेंट है</string>
+    <string name="a11y_class_table_cell_assignments_ignored">असाइनमेंट अनदेखे किए गए हैं</string>
     <string name="a11y_class_table_conflict_prefix">क्लास टकराव</string>
     <string name="a11y_course_card_open_details_hint">विवरण के लिए दो बार टैप करें</string>
     <string name="a11y_course_color_swatch">रंग %1$lld</string>
@@ -174,6 +175,8 @@
     <string name="class_table_empty_message">रीफ़्रेश करने के लिए खींचें, कोर्स जोड़ने के लिए ⋯ दबाएँ, या किसी अन्य सेमेस्टर पर स्विच करें</string>
     <string name="class_table_export_failed">कक्षा सारणी निर्यात नहीं की जा सकी</string>
     <string name="class_table_export_screenshot">कक्षा सारणी का स्क्रीनशॉट निर्यात करें</string>
+    <string name="class_table_ignore_assignments">असाइनमेंट अनदेखा करें</string>
+    <string name="class_table_ignore_assignments_undo">असाइनमेंट अनदेखा करना बंद करें</string>
     <string name="class_table_more_actions">अधिक कार्रवाइयां</string>
     <string name="class_table_pick_color">रंग चुनें</string>
     <string name="class_table_rename_default_label">डिफ़ॉल्ट: %1$s</string>

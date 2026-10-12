@@ -6,6 +6,7 @@
     <string name="a11y_calendar_nav_next">அடுத்த மாதம்</string>
     <string name="a11y_calendar_nav_prev">கடந்த மாதம்</string>
     <string name="a11y_class_table_cell_assignment_indicator">ஒப்படைப்பு உள்ளது</string>
+    <string name="a11y_class_table_cell_assignments_ignored">ஒப்படைப்புகள் புறக்கணிக்கப்பட்டன</string>
     <string name="a11y_class_table_conflict_prefix">வகுப்பு மோதல்</string>
     <string name="a11y_course_card_open_details_hint">விவரங்களுக்கு இருமுறை தட்டவும்</string>
     <string name="a11y_course_color_swatch">நிறம் %1$lld</string>
@@ -174,6 +175,8 @@
     <string name="class_table_empty_message">புதுப்பிக்க இழுக்கவும், வகுப்பு சேர்க்க ⋯ தட்டவும், அல்லது வேறு பருவத்திற்கு மாறவும்</string>
     <string name="class_table_export_failed">வகுப்பு அட்டவணையை ஏற்றுமதி செய்ய முடியவில்லை</string>
     <string name="class_table_export_screenshot">வகுப்பு அட்டவணையின் திரைப்பிடிப்பை ஏற்றுமதி செய்</string>
+    <string name="class_table_ignore_assignments">ஒப்படைப்புகளைப் புறக்கணி</string>
+    <string name="class_table_ignore_assignments_undo">ஒப்படைப்புகளின் புறக்கணிப்பை நீக்கு</string>
     <string name="class_table_more_actions">மேலும் செயல்கள்</string>
     <string name="class_table_pick_color">நிறம் தேர்வு</string>
     <string name="class_table_rename_default_label">இயல்புநிலை: %1$s</string>

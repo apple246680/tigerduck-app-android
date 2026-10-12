@@ -6,6 +6,7 @@
     <string name="a11y_calendar_nav_next">Mese successivo</string>
     <string name="a11y_calendar_nav_prev">Mese precedente</string>
     <string name="a11y_class_table_cell_assignment_indicator">Ha un compito</string>
+    <string name="a11y_class_table_cell_assignments_ignored">Compiti ignorati</string>
     <string name="a11y_class_table_conflict_prefix">Conflitto di lezioni</string>
     <string name="a11y_course_card_open_details_hint">Tocca due volte per i dettagli</string>
     <string name="a11y_course_color_swatch">Colore %1$lld</string>
@@ -174,6 +175,8 @@
     <string name="class_table_empty_message">Trascina per aggiornare, tocca ⋯ per aggiungere un corso, o cambia semestre</string>
     <string name="class_table_export_failed">Impossibile esportare l\'orario</string>
     <string name="class_table_export_screenshot">Esporta screenshot dell\'orario</string>
+    <string name="class_table_ignore_assignments">Ignora i compiti</string>
+    <string name="class_table_ignore_assignments_undo">Non ignorare più i compiti</string>
     <string name="class_table_more_actions">Altre azioni</string>
     <string name="class_table_pick_color">Scegli colore</string>
     <string name="class_table_rename_default_label">Predefinito: %1$s</string>

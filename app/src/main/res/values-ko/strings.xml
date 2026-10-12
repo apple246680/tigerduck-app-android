@@ -6,6 +6,7 @@
     <string name="a11y_calendar_nav_next">다음 달</string>
     <string name="a11y_calendar_nav_prev">이전 달</string>
     <string name="a11y_class_table_cell_assignment_indicator">과제 있음</string>
+    <string name="a11y_class_table_cell_assignments_ignored">과제 무시됨</string>
     <string name="a11y_class_table_conflict_prefix">수업 충돌</string>
     <string name="a11y_course_card_open_details_hint">두 번 탭하여 세부 정보 보기</string>
     <string name="a11y_course_color_swatch">색상 %1$lld</string>
@@ -174,6 +175,8 @@
     <string name="class_table_empty_message">당겨서 새로고침하거나, ⋯를 눌러 수업을 추가하거나, 다른 학기로 전환하세요</string>
     <string name="class_table_export_failed">시간표를 내보낼 수 없습니다</string>
     <string name="class_table_export_screenshot">시간표 스크린샷 내보내기</string>
+    <string name="class_table_ignore_assignments">과제 무시</string>
+    <string name="class_table_ignore_assignments_undo">과제 무시 취소</string>
     <string name="class_table_more_actions">기타 작업</string>
     <string name="class_table_pick_color">색상 선택</string>
     <string name="class_table_rename_default_label">기본값: %1$s</string>

@@ -6,6 +6,7 @@
     <string name="a11y_calendar_nav_next">Neste måned</string>
     <string name="a11y_calendar_nav_prev">Forrige måned</string>
     <string name="a11y_class_table_cell_assignment_indicator">Har oppgave</string>
+    <string name="a11y_class_table_cell_assignments_ignored">Oppgaver ignorert</string>
     <string name="a11y_class_table_conflict_prefix">Timeplankonflikt</string>
     <string name="a11y_course_card_open_details_hint">Dobbelttrykk for detaljer</string>
     <string name="a11y_course_color_swatch">Farge %1$lld</string>
@@ -174,6 +175,8 @@
     <string name="class_table_empty_message">Dra ned for å oppdatere, trykk på ⋯ for å legge til et fag, eller bytt til et annet semester</string>
     <string name="class_table_export_failed">Kunne ikke eksportere timeplanen</string>
     <string name="class_table_export_screenshot">Eksporter skjermbilde av timeplanen</string>
+    <string name="class_table_ignore_assignments">Ignorer oppgaver</string>
+    <string name="class_table_ignore_assignments_undo">Slutt å ignorere oppgaver</string>
     <string name="class_table_more_actions">Flere handlinger</string>
     <string name="class_table_pick_color">Velg farge</string>
     <string name="class_table_rename_default_label">Standard: %1$s</string>

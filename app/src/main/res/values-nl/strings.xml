@@ -6,6 +6,7 @@
     <string name="a11y_calendar_nav_next">Volgende maand</string>
     <string name="a11y_calendar_nav_prev">Vorige maand</string>
     <string name="a11y_class_table_cell_assignment_indicator">Heeft opdracht</string>
+    <string name="a11y_class_table_cell_assignments_ignored">Opdrachten genegeerd</string>
     <string name="a11y_class_table_conflict_prefix">Lesconflict</string>
     <string name="a11y_course_card_open_details_hint">Dubbeltik voor details</string>
     <string name="a11y_course_color_swatch">Kleur %1$lld</string>
@@ -174,6 +175,8 @@
     <string name="class_table_empty_message">Trek om te vernieuwen, tik op ⋯ om een vak toe te voegen, of wissel naar een ander semester</string>
     <string name="class_table_export_failed">Kan rooster niet exporteren</string>
     <string name="class_table_export_screenshot">Screenshot van rooster exporteren</string>
+    <string name="class_table_ignore_assignments">Opdrachten negeren</string>
+    <string name="class_table_ignore_assignments_undo">Opdrachten niet meer negeren</string>
     <string name="class_table_more_actions">Meer acties</string>
     <string name="class_table_pick_color">Kleur kiezen</string>
     <string name="class_table_rename_default_label">Standaard: %1$s</string>
