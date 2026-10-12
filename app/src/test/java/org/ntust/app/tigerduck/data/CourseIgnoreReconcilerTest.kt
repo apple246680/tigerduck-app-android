@@ -94,17 +94,19 @@ class CourseIgnoreReconcilerTest {
     }
 
     @Test
-    fun `courses deleted here and terms reset since the snapshot are left out of it`() {
+    fun `terms reset since the snapshot was fetched are left out of it`() {
         val server = CourseIgnoreReconciler.serverIgnores(
             listOf(override("1141", "AAA", ignore = true), override("1132", "OLD", ignore = true)),
             rows + row("1132", "OLD"),
-            tombstones = setOf("AAA"),
             resetSemesters = setOf("1132"),
         )!!
 
-        assertEquals(emptySet<String>(), server.keys)
-        assertEquals(setOf("1141:BBB", "1141:CCC"), server.listed)
-        assertEquals(setOf("1132:OLD"), CourseIgnoreReconciler.afterSync(setOf("1132:OLD"), server, emptySet(), applies = true))
+        assertEquals(setOf("1141:AAA"), server.keys)
+        assertEquals(setOf("1141:AAA", "1141:BBB", "1141:CCC"), server.listed)
+        assertEquals(
+            setOf("1132:OLD", "1141:AAA"),
+            CourseIgnoreReconciler.afterSync(setOf("1132:OLD"), server, emptySet(), applies = true),
+        )
     }
 
     @Test

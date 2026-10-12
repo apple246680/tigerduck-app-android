@@ -351,12 +351,16 @@ class CourseIgnoreSync internal constructor(
         )
     }
 
-    /** [result]'s settings as this device takes them; see [CourseIgnoreReconciler.serverIgnores]. */
+    /**
+     * [result]'s settings as this device takes them; see
+     * [CourseIgnoreReconciler.serverIgnores]. A course deleted here is not
+     * left out: the course list's reconcile brings back one the snapshot
+     * lists, and [forget] guards a delete against older snapshots.
+     */
     private suspend fun serverView(result: BackendSyncResult): CourseIgnoreReconciler.ServerIgnores? =
         CourseIgnoreReconciler.serverIgnores(
             result.courseOverrides,
             result.serverCourses,
-            tombstones = dataCache.loadDeletedCourseNos(),
             resetSemesters = dataCache.loadSemesterResetAt().filterValues { it > result.fetchedAtMs }.keys +
                 dataCache.resettingSemesters(),
         )

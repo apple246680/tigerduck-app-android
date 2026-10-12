@@ -364,13 +364,12 @@ class CourseIgnoreSyncTest {
     }
 
     @Test
-    fun `a course deleted here is left out of a snapshot, its setting neither taken nor sent`() = runTest {
+    fun `a course another device added back and ignores takes its setting in that same sync`() = runTest {
         cache.saveDeletedCourseNos(setOf(CourseTombstoneKeys.key("1141", "BBB")))
 
         sync.applySnapshot(snapshot(fetchedAtMs = 5_000, "BBB" to true), sync.currentGeneration())
 
-        assertEquals(emptySet<String>(), cache.loadIgnoredCourses())
-        assertEquals(emptyList<Sent>(), sent)
+        assertEquals(setOf("1141:BBB"), cache.loadIgnoredCourses())
     }
 
     @Test
