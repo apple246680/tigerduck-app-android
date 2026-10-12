@@ -6,6 +6,7 @@ import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.ntust.app.tigerduck.data.CourseRosterMerge
+import org.ntust.app.tigerduck.data.OutstandingAssignments
 import org.ntust.app.tigerduck.academic.AcademicCalendarStore
 import org.ntust.app.tigerduck.network.SemesterCodes
 import org.ntust.app.tigerduck.shared.clock.AppClock
@@ -222,6 +223,13 @@ class DataCache @Inject constructor(
         val type = object : TypeToken<List<Assignment>>() {}.type
         return load(type, "assignments.json") ?: emptyList()
     }
+
+    /** The cached assignments [OutstandingAssignments] keeps: what reminders and the Live Update act on. */
+    suspend fun loadOutstandingAssignments(): List<Assignment> = OutstandingAssignments.of(
+        all = loadAssignments(),
+        ignoredIds = loadIgnoredAssignments(),
+        markedCompletedIds = loadMarkedCompletedAssignments(),
+    )
 
     // --- Skipped Dates (courseNo -> list of ISO date strings "yyyy-MM-dd") ---
     // Stored in filesDir — never cleared by the OS, unlike cacheDir.
