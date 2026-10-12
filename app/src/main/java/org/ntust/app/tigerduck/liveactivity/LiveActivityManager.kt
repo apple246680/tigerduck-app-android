@@ -5,6 +5,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.sync.Mutex
@@ -56,7 +58,10 @@ class LiveActivityManager @Inject constructor(
 
     init {
         prefsCollectorJob = scope.launch {
-            preferences.changeEvent.collect { refresh() }
+            // And on every write of the ignored, marked-done and ignored-course
+            // sets: the resolver only sees what is still outstanding.
+            merge(preferences.changeEvent, dataCache.assignmentMarksVersion.drop(1))
+                .collect { refresh() }
         }
     }
 
