@@ -98,7 +98,8 @@ class NextClassResolverTest {
         assertEquals(TodayClassStatus.Ongoing, today.single().status)
     }
 
-    // A quiet day is a school holiday the user has not opted back into.
+    // A quiet day is outside the term, or a school holiday the user has not
+    // opted back into.
 
     @Test
     fun `on a quiet day nothing is on now and the next class is the next class day's`() {

@@ -134,8 +134,8 @@ class TigerDuckApp : Application(), Configuration.Provider {
         appScope.launch {
             appPreferences.appLanguageChanged.collect { wearBridge.publish() }
         }
-        // The watch hides classes on the holidays it was last sent, so a new
-        // holiday list or a flipped "Still have class?" switch needs a publish.
+        // The watch hides classes on the quiet days it was last sent, so a new
+        // calendar or a flipped "Still have class?" switch needs a publish.
         appScope.launch {
             academicCalendar.changes.collect { wearBridge.publish() }
         }

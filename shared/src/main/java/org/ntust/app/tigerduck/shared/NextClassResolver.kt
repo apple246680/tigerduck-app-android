@@ -44,9 +44,10 @@ object NextClassResolver {
      * The class going on now and the next one, today or within the coming week.
      *
      * [isQuietDay] tells whether no class meets for this user on the day
-     * `daysAhead` from today (0 is today): a school holiday they have not
-     * opted back into. Such a day's classes are left out, so on a quiet today
-     * the next class is the first one of the next day that has any.
+     * `daysAhead` from today (0 is today): outside the term, or a school
+     * holiday they have not opted back into. Such a day's classes are left
+     * out, so on a quiet today the next class is the first one of the next day
+     * that has any.
      */
     fun resolve(
         courses: List<Course>,

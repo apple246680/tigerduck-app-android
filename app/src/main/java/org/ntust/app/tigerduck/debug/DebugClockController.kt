@@ -57,7 +57,7 @@ class DebugClockController @Inject constructor(
                 // entries computed against the old override are still live.
                 AppClock.setOverride(override)
                 rescheduleAll()
-                // The watch's holiday list starts at the phone's date when it
+                // The watch's quiet-day list starts at the phone's date when it
                 // was sent, so a clock moved to another date needs a new one.
                 scheduleBridge.publish()
             }
