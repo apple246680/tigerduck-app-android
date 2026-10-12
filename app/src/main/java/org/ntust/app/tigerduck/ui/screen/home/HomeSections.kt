@@ -49,6 +49,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import org.ntust.app.tigerduck.R
+import org.ntust.app.tigerduck.academic.QuietDays
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.model.AssignmentFilter
 import org.ntust.app.tigerduck.shared.Course
@@ -163,6 +164,7 @@ internal fun ReorderableSection(
 internal fun HomeSectionContent(
     section: HomeSection,
     allCourses: List<Course>,
+    quietDays: QuietDays,
     upcomingAssignments: List<Assignment>,
     assignmentFilter: AssignmentFilter,
     showIgnoredTab: Boolean,
@@ -187,6 +189,7 @@ internal fun HomeSectionContent(
             HomeSection.HomeSectionType.TODAY_COURSES -> {
                 TimeSliderSection(
                     courses = allCourses,
+                    quietDays = quietDays,
                     invertDirection = invertDirection,
                     isLoggedIn = isLoggedIn,
                     initialLoadComplete = initialLoadComplete,
