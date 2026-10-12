@@ -22,6 +22,11 @@ object WearProtocol {
         // LibraryQR SecureScreen reads the persisted value to decide whether
         // to apply FLAG_SECURE to the QR window.
         const val KEY_DISABLE_SCREEN_CAPTURE_PROTECTION = "disableScreenCaptureProtection"
+
+        // The user's quiet days, a string list in the form [QuietDays] writes.
+        // A phone that predates it sends none, which the watch reads as no
+        // quiet days, and a watch that predates it ignores the key.
+        const val KEY_QUIET_DAYS = "quietDays"
     }
 
     /** One-shot message watch → phone asking for a fresh [Schedule] publish. */
