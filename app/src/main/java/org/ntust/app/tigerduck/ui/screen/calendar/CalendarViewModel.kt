@@ -33,10 +33,12 @@ import org.ntust.app.tigerduck.network.MoodleService
 import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.UiLanguageMonitor
+import org.ntust.app.tigerduck.liveactivity.LiveActivityManager
 import org.ntust.app.tigerduck.network.NetworkChecker
 import org.ntust.app.tigerduck.notification.SyncSource
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.util.SingleFlight
+import org.ntust.app.tigerduck.widget.WidgetUpdater
 import java.util.Calendar
 import java.util.Date
 import javax.inject.Inject
@@ -67,6 +69,8 @@ class CalendarViewModel @Inject constructor(
     private val context: android.content.Context,
     private val academicCalendar: org.ntust.app.tigerduck.academic.AcademicCalendarStore,
     private val pushApiClient: org.ntust.app.tigerduck.push.PushApiClient,
+    private val widgetUpdater: WidgetUpdater,
+    private val liveActivityManager: LiveActivityManager,
 ) : ViewModel() {
 
 
@@ -158,6 +162,11 @@ class CalendarViewModel @Inject constructor(
     fun setNotifyOnHoliday(holidayId: Int, notify: Boolean) {
         if (!academicCalendar.setNotifyOnHoliday(holidayId, notify)) return
         _holidayOverrides.value = academicCalendar.optedInHolidayIds
+        // The widgets, the Live Update and the class reminders go quiet on a
+        // holiday the user has not opted back into. Without these they keep
+        // the old answer until their next class boundary or 30-minute refresh.
+        widgetUpdater.requestUpdate()
+        liveActivityManager.refresh()
         viewModelScope.launch {
             runCatching { pushApiClient.putHolidayOverride(holidayId, notify) }
                 .onFailure { e ->

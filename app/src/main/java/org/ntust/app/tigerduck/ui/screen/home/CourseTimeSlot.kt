@@ -3,6 +3,7 @@ package org.ntust.app.tigerduck.ui.screen.home
 import org.ntust.app.tigerduck.AppConstants
 import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.shared.periodOrder
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Calendar
 import java.util.Date
@@ -120,6 +121,10 @@ data class CourseTimeSlot(
         }
     }
 }
+
+/** This slot's day, in Taipei tz. */
+val CourseTimeSlot.localDate: LocalDate
+    get() = date.toInstant().atZone(AppConstants.TAIPEI_ZONE).toLocalDate()
 
 /** Weekday (1=Mon..7=Sun) for this slot's date, in Taipei tz. */
 val CourseTimeSlot.weekday: Int

@@ -93,6 +93,11 @@ fun HomeScreen(
         if (viewModel.isTermInSession()) sections
         else sections.filterNot { it.type == HomeSection.HomeSectionType.TODAY_COURSES }
     }
+    // Re-read on the same pulse, so a holiday published or switched on another
+    // device reaches the time slider while Home stays open. An equal read keeps
+    // the old value, so the sections are not redrawn every minute.
+    var quietDays by remember { mutableStateOf(viewModel.quietDays()) }
+    LaunchedEffect(termClockVersion) { quietDays = viewModel.quietDays() }
     val allCourses by viewModel.allCourses.collectAsStateWithLifecycle()
     val upcomingAssignments by viewModel.upcomingAssignments.collectAsStateWithLifecycle()
     val assignmentFilter by viewModel.assignmentFilter.collectAsStateWithLifecycle()
@@ -269,6 +274,7 @@ fun HomeScreen(
                         HomeSectionContent(
                             section = section,
                             allCourses = allCourses,
+                            quietDays = quietDays,
                             upcomingAssignments = upcomingAssignments,
                             assignmentFilter = assignmentFilter,
                             showIgnoredTab = hasIgnoredAssignments || ignoredTabPinned,

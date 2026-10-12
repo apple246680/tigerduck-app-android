@@ -127,6 +127,42 @@ class AcademicCalendarTest {
         assertTrue(AcademicCalendar.EMPTY.isInSession(date("2027-01-20")))
     }
 
+    // --- quiet days ----------------------------------------------------
+
+    @Test
+    fun `a class day in term is not quiet`() {
+        assertFalse(calendar.isQuietDay(date("2026-10-05"), emptySet()))
+    }
+
+    @Test
+    fun `a holiday the user has not opted back into is quiet`() {
+        assertTrue(calendar.isQuietDay(date("2026-09-25"), emptySet()))
+    }
+
+    @Test
+    fun `a holiday the user opted back into is not quiet`() {
+        assertFalse(calendar.isQuietDay(date("2026-09-25"), setOf(1)))
+    }
+
+    @Test
+    fun `a day outside the term is quiet whatever the user opted into`() {
+        // 元旦 falls between the two terms.
+        assertTrue(calendar.isQuietDay(date("2027-01-01"), setOf(2)))
+        assertTrue(calendar.isQuietDay(date("2027-01-20"), emptySet()))
+    }
+
+    @Test
+    fun `an empty calendar has no quiet day`() {
+        assertFalse(AcademicCalendar.EMPTY.isQuietDay(date("2027-01-20"), emptySet()))
+    }
+
+    @Test
+    fun `quiet days answer for the calendar and opt-ins they were read with`() {
+        assertTrue(date("2026-09-25") in QuietDays(calendar, emptySet()))
+        assertFalse(date("2026-09-25") in QuietDays(calendar, setOf(1)))
+        assertFalse(date("2026-10-05") in QuietDays(calendar, emptySet()))
+    }
+
     // --- parsing -------------------------------------------------------
 
     @Test
