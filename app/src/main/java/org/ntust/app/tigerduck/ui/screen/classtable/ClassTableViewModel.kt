@@ -24,7 +24,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.data.CourseRosterMerge
 import org.ntust.app.tigerduck.AppConstants
@@ -118,16 +117,16 @@ class ClassTableViewModel @Inject constructor(
     private val _ignoredAssignmentIds = MutableStateFlow<Set<String>>(emptySet())
     private val _markedCompletedIds = MutableStateFlow<Set<String>>(emptySet())
 
-    // The ignored courses; see CourseIgnores. Set here first, so a menu
+    // The ignored courses; see CourseIgnores. Edited here first, so a menu
     // opened again at once already reads the new value.
-    private val _ignoredCourseKeys = MutableStateFlow<Set<String>>(emptySet())
+    private val ignoredCourses = ClassTableIgnoredCourses(dataCache.assignmentMarksVersion)
 
     /** What the course detail lists: see [OutstandingAssignments]. */
     val outstandingAssignments: StateFlow<List<Assignment>> = combine(
         _assignments,
         _ignoredAssignmentIds,
         _markedCompletedIds,
-        _ignoredCourseKeys,
+        ignoredCourses.keys,
     ) { all, ignored, marked, courseKeys ->
         OutstandingAssignments.of(all, ignoredIncludingCourses(all, ignored, courseKeys), marked)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -137,7 +136,7 @@ class ClassTableViewModel @Inject constructor(
         _assignments,
         _ignoredAssignmentIds,
         _markedCompletedIds,
-        _ignoredCourseKeys,
+        ignoredCourses.keys,
     ) { all, ignored, marked, courseKeys ->
         OutstandingAssignments.courseNos(all, ignoredIncludingCourses(all, ignored, courseKeys), marked)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
@@ -226,7 +225,7 @@ class ClassTableViewModel @Inject constructor(
     /** The courses of the term on screen whose assignments are all ignored. */
     val courseNosIgnoringAssignments: StateFlow<Set<String>> = combine(
         _currentSemester,
-        _ignoredCourseKeys,
+        ignoredCourses.keys,
     ) { semester, keys ->
         CourseIgnores.courseNosIn(semester, keys)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
@@ -346,7 +345,7 @@ class ClassTableViewModel @Inject constructor(
                     _assignments.value = emptyList()
                     _ignoredAssignmentIds.value = emptySet()
                     _markedCompletedIds.value = emptySet()
-                    _ignoredCourseKeys.value = emptySet()
+                    ignoredCourses.clear()
                     _selectedCourse.value = null
                     _moodleCourseIdByIdnumber.value = emptyMap()
                     courseCustomNames = emptyMap()
@@ -396,13 +395,20 @@ class ClassTableViewModel @Inject constructor(
 
     private suspend fun loadAssignmentMarks() {
         val account = authService.storedStudentId
+        val readAt = dataCache.assignmentMarksVersion.value
         val ignored = dataCache.loadIgnoredAssignments()
         val marked = dataCache.loadMarkedCompletedAssignments()
         val courseKeys = dataCache.loadIgnoredCourses()
         if (!authService.isStillSignedInAs(account)) return
         _ignoredAssignmentIds.value = ignored
         _markedCompletedIds.value = marked
-        _ignoredCourseKeys.value = courseKeys
+        ignoredCourses.reloaded(courseKeys, readAt)
+    }
+
+    /** [edit]'s write is done, so the cache decides again; it may hold more by now. */
+    private fun ignoredCoursesSaved(edit: Long) {
+        ignoredCourses.saved(edit)
+        viewModelScope.launch { loadAssignmentMarks() }
     }
 
     /** The ignored ids of [all], counting those ignored with their course. */
@@ -736,15 +742,19 @@ class ClassTableViewModel @Inject constructor(
         val semester = _currentSemester.value
         if (semester != liveSemesterCode) return
         val key = CourseIgnores.key(semester, course.courseNo)
-        val ignore = key !in _ignoredCourseKeys.value
-        _ignoredCourseKeys.update { if (ignore) it + key else it - key }
+        val ignore = key !in ignoredCourses.keys.value
+        val edit = ignoredCourses.edit { if (ignore) it + key else it - key }
         // A course without an idnumber is keyed "<term><courseNo>" on the
         // backend, as the colour and name overrides already assume.
         val moodleId = course.moodleIdNumber?.takeIf { it.isNotEmpty() }
             ?: "$semester${course.courseNo}"
         val moodleCourseId = course.moodleNumericCourseId ?: lookupMoodleCourseId(moodleId)
         appScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            courseIgnoreSync.setIgnored(semester, course.courseNo, moodleId, moodleCourseId, ignore)
+            try {
+                courseIgnoreSync.setIgnored(semester, course.courseNo, moodleId, moodleCourseId, ignore)
+            } finally {
+                ignoredCoursesSaved(edit)
+            }
         }
     }
 
@@ -753,8 +763,14 @@ class ClassTableViewModel @Inject constructor(
         _courses.value = updated
         val semester = _currentSemester.value
         val ignoreKey = CourseIgnores.key(semester, courseNo)
-        _ignoredCourseKeys.update { it - ignoreKey }
-        appScope.launch { courseIgnoreSync.forget { it == ignoreKey } }
+        val edit = ignoredCourses.edit { it - ignoreKey }
+        appScope.launch {
+            try {
+                courseIgnoreSync.forget { it == ignoreKey }
+            } finally {
+                ignoredCoursesSaved(edit)
+            }
+        }
         viewModelScope.launch {
             val deleted = CourseTombstoneKeys.hide(
                 courseNo, semester, dataCache.loadDeletedCourseNos()
@@ -946,8 +962,12 @@ class ClassTableViewModel @Inject constructor(
             dataCache.saveCourses(emptyList(), semester)
             if (_currentSemester.value == semester) _courses.value = emptyList()
             val inTerm = { key: String -> CourseIgnores.semesterOf(key) == semester }
-            _ignoredCourseKeys.update { keys -> keys.filterNotTo(mutableSetOf(), inTerm) }
-            courseIgnoreSync.forget(inTerm)
+            val edit = ignoredCourses.edit { keys -> keys.filterNotTo(mutableSetOf(), inTerm) }
+            try {
+                courseIgnoreSync.forget(inTerm)
+            } finally {
+                ignoredCoursesSaved(edit)
+            }
             widgetUpdater.requestUpdate()
         }
     }
