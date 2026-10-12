@@ -29,10 +29,10 @@ data class WidgetState(
     val nextCourseTodayNo: String?,
     /**
      * `(courseNo, weekday, firstPeriodId)` for the next class beyond today —
-     * scans up to 7 future weekdays so the Next Class widget shows Monday's
+     * scans up to 7 future days so the Next Class widget shows Monday's
      * first class when a Fri/Sat/Sun stretch has nothing scheduled (mirrors
-     * iOS `WidgetTimelineDerivation.derive`'s `tomorrowFirst` branch). Null
-     * when no course exists in the next 7 days.
+     * iOS `WidgetTimelineDerivation.derive`'s `tomorrowFirst` branch), passing
+     * over quiet days. Null when no class meets in the next 7 days.
      */
     val tomorrowFirstCourseNo: String?,
     val tomorrowFirstCourseWeekday: Int?,
