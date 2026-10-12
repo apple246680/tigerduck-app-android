@@ -157,7 +157,7 @@ class CourseIgnoreSync internal constructor(
      * the new set when it changed, else null.
      */
     suspend fun applySnapshot(result: BackendSyncResult, generation: Int): Set<String>? {
-        val server = CourseIgnoreReconciler.serverIgnores(result.courseOverrides, result.serverCourses)
+        val server = serverView(result)
         val applies = sends()
         var resend = emptyList<PendingCourseIgnore>()
         val updated = mutex.withLock {
@@ -186,7 +186,7 @@ class CourseIgnoreSync internal constructor(
     /** Whether this device's ignored courses match [result]'s; for the re-enable check. */
     suspend fun agreesWith(result: BackendSyncResult): Boolean = CourseIgnoreReconciler.agrees(
         dataCache.loadIgnoredCourses(),
-        CourseIgnoreReconciler.serverIgnores(result.courseOverrides, result.serverCourses),
+        serverView(result),
     )
 
     /**
@@ -195,9 +195,7 @@ class CourseIgnoreSync internal constructor(
      * the first half.
      */
     suspend fun pushLocal(result: BackendSyncResult?, generation: Int) {
-        val server = result?.let {
-            CourseIgnoreReconciler.serverIgnores(it.courseOverrides, it.serverCourses)
-        }
+        val server = result?.let { serverView(it) }
         val serverRows = serverRows(result)
         mutex.withLock {
             val local = dataCache.loadIgnoredCourses()
@@ -221,9 +219,7 @@ class CourseIgnoreSync internal constructor(
      * the next sync takes the backend's, since nothing is left to protect.
      */
     suspend fun adoptServer(result: BackendSyncResult?, generation: Int) {
-        val server = result?.let {
-            CourseIgnoreReconciler.serverIgnores(it.courseOverrides, it.serverCourses)
-        }
+        val server = result?.let { serverView(it) }
         val updated = mutex.withLock {
             if (!dataCache.savePendingCourseIgnores(emptyList(), generation)) return@withLock null
             val local = dataCache.loadIgnoredCourses()
@@ -236,12 +232,17 @@ class CourseIgnoreSync internal constructor(
     /**
      * Forgets the keys [matches] picks, with any change of theirs still
      * waiting: their course was deleted, or their term reset, and the
-     * backend's override went with its course row.
+     * backend's override went with its course row. A snapshot fetched
+     * before this cannot bring them back.
      */
     suspend fun forget(matches: (String) -> Boolean) {
         val generation = currentGeneration()
         val changed = mutex.withLock {
             val pending = dataCache.loadPendingCourseIgnores()
+            val now = clock()
+            (pending.mapNotNull { it.key } + dataCache.loadIgnoredCourses())
+                .filter(matches)
+                .forEach { touchedAt[it] = now }
             val keptPending = pending.filterNot { it.key?.let(matches) == true }
             if (keptPending.size != pending.size) {
                 dataCache.savePendingCourseIgnores(keptPending, generation)
@@ -347,6 +348,16 @@ class CourseIgnoreSync internal constructor(
             changedAtMs = now,
         )
     }
+
+    /** [result]'s settings as this device takes them; see [CourseIgnoreReconciler.serverIgnores]. */
+    private suspend fun serverView(result: BackendSyncResult): CourseIgnoreReconciler.ServerIgnores? =
+        CourseIgnoreReconciler.serverIgnores(
+            result.courseOverrides,
+            result.serverCourses,
+            tombstones = dataCache.loadDeletedCourseNos(),
+            resetSemesters = dataCache.loadSemesterResetAt().filterValues { it > result.fetchedAtMs }.keys +
+                dataCache.resettingSemesters(),
+        )
 
     private fun serverRows(result: BackendSyncResult?): Map<String?, CourseOverrideResult> =
         result?.courseOverrides.orEmpty().associateBy { o ->

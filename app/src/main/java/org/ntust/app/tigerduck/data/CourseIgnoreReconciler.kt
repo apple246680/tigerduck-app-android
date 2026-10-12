@@ -27,21 +27,36 @@ object CourseIgnoreReconciler {
      * `ignore_assignments`: an older backend, whose silence says nothing
      * about what is ignored. No overrides at all is what the backend leaves
      * once it drops them with the course rows, so that reads as no settings.
+     *
+     * Courses this device deleted ([tombstones]) and terms it reset after
+     * the snapshot was fetched ([resetSemesters]) are left out: the snapshot
+     * can still hold what the delete or the reset removed.
      */
     fun serverIgnores(
         overrides: List<CourseOverrideResult>,
         serverCourses: List<ServerCourse>,
+        tombstones: Set<String> = emptySet(),
+        resetSemesters: Set<String> = emptySet(),
     ): ServerIgnores? {
         if (overrides.isNotEmpty() && overrides.none { it.ignoreAssignments != null }) return null
-        val semesters = serverCourses.mapNotNullTo(mutableSetOf()) { it.semester.ifBlank { null } }
-        val listed = serverCourses.mapNotNullTo(mutableSetOf()) { keyOf(it.semester, it.courseNo) }
+        fun applies(key: String): Boolean {
+            val semester = CourseIgnores.semesterOf(key)
+            return semester !in resetSemesters &&
+                !CourseTombstoneKeys.isHidden(key.substringAfter(':'), semester, tombstones)
+        }
+        val semesters = serverCourses.mapNotNullTo(mutableSetOf()) { it.semester.ifBlank { null } } -
+            resetSemesters
+        val listed = serverCourses.asSequence()
+            .mapNotNull { keyOf(it.semester, it.courseNo) }
+            .filterTo(mutableSetOf(), ::applies)
         val keys = overrides.asSequence()
             .filter { it.ignoreAssignments == true }
             .mapNotNull { keyOf(it.semester, it.courseNo) }
-            .filterTo(mutableSetOf()) { CourseIgnores.semesterOf(it) in semesters }
+            .filterTo(mutableSetOf()) { CourseIgnores.semesterOf(it) in semesters && applies(it) }
         val decided = overrides.asSequence()
             .filter { it.ignoreAssignments == true || it.ignoreAssignmentsUpdatedAt != null }
-            .mapNotNullTo(mutableSetOf()) { keyOf(it.semester, it.courseNo) }
+            .mapNotNull { keyOf(it.semester, it.courseNo) }
+            .filterTo(mutableSetOf(), ::applies)
         return ServerIgnores(semesters, keys, listed, decided)
     }
 

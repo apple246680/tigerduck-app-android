@@ -340,6 +340,36 @@ class CourseIgnoreSyncTest {
     }
 
     @Test
+    fun `a snapshot fetched before a course was deleted does not bring its setting back`() = runTest {
+        setIgnored("AAA")
+        now = 2_000L
+        sync.forget { it == "1141:AAA" }
+
+        sync.applySnapshot(snapshot(fetchedAtMs = 1_500, "AAA" to true), sync.currentGeneration())
+
+        assertEquals(emptySet<String>(), cache.loadIgnoredCourses())
+    }
+
+    @Test
+    fun `a course deleted here is left out of a snapshot, its setting neither taken nor sent`() = runTest {
+        cache.saveDeletedCourseNos(setOf(CourseTombstoneKeys.key("1141", "BBB")))
+
+        sync.applySnapshot(snapshot(fetchedAtMs = 5_000, "BBB" to true), sync.currentGeneration())
+
+        assertEquals(emptySet<String>(), cache.loadIgnoredCourses())
+        assertEquals(emptyList<Sent>(), sent)
+    }
+
+    @Test
+    fun `a term reset after the snapshot was fetched is left out of it`() = runTest {
+        cache.saveSemesterResetAt("1141", 6_000)
+
+        sync.applySnapshot(snapshot(fetchedAtMs = 5_000, "AAA" to true), sync.currentGeneration())
+
+        assertEquals(emptySet<String>(), cache.loadIgnoredCourses())
+    }
+
+    @Test
     fun `keeping this device's set sends it over the backend's`() = runTest {
         cache.saveIgnoredCourses(setOf("1141:AAA"))
 
