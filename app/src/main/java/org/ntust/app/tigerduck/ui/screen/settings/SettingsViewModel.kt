@@ -384,19 +384,22 @@ class SettingsViewModel @Inject constructor(
                 }
             }
             if ("assignments" in conflict.categories) {
-                val localIgnored = dataCache.loadIgnoredAssignments()
-                val localCompleted = dataCache.loadMarkedCompletedAssignments()
                 val server = runCatching { syncApiClient.fetchFullSync() }.getOrNull()
-                val statuses = AssignmentOverrideReconciler.keepLocal(
-                    localIgnored = localIgnored,
-                    localCompleted = localCompleted,
-                    serverIgnored = server?.ignoredIds.orEmpty(),
-                    serverCompleted = server?.completedIds.orEmpty(),
+                val serverIgnored = server?.ignoredIds.orEmpty()
+                val serverCompleted = server?.completedIds.orEmpty()
+                // Syncs leave the marks alone while "assignments" is pending,
+                // so the cache changes now only by taps on Home: the newest.
+                sendKeptMarks(
+                    marksNow = {
+                        AssignmentOverrideReconciler.keepLocal(
+                            localIgnored = dataCache.loadIgnoredAssignments(),
+                            localCompleted = dataCache.loadMarkedCompletedAssignments(),
+                            serverIgnored = serverIgnored,
+                            serverCompleted = serverCompleted,
+                        )
+                    },
+                    send = pushApiClient::patchAssignmentOverride,
                 )
-                for ((id, status) in statuses) {
-                    val intId = id.toIntOrNull() ?: continue
-                    runCatching { pushApiClient.patchAssignmentOverride(intId, status) }
-                }
                 if (prefs.syncCourses) courseIgnoreSync.pushLocal(server, generation)
             }
         } else {
