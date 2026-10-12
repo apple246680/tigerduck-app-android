@@ -128,6 +128,14 @@ data class AcademicCalendar(
         return covering.none { it.id in optedInHolidayIds }
     }
 
+    /**
+     * Whether no class meets on [date]: it is outside the term, or a holiday
+     * the user has not opted back into. The widgets, the Live Update, the
+     * class table's today carousel and Home's time slider all go quiet on it.
+     */
+    fun isQuietDay(date: LocalDate, optedInHolidayIds: Set<Int>): Boolean =
+        !isInSession(date) || suppressesClasses(date, optedInHolidayIds)
+
     companion object {
         val EMPTY = AcademicCalendar(revision = 0L, terms = emptyList(), holidays = emptyList())
 
@@ -166,4 +174,17 @@ data class AcademicCalendar(
         private fun parseDate(text: String?): LocalDate? =
             text?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
     }
+}
+
+/**
+ * [AcademicCalendar.isQuietDay] over one read of the calendar and the user's
+ * opt-ins. Equal while both are, so a screen can re-read it on a timer and
+ * redraw only when a day's answer may have changed.
+ */
+data class QuietDays(
+    val calendar: AcademicCalendar,
+    val optedInHolidayIds: Set<Int>,
+) {
+    operator fun contains(date: LocalDate): Boolean =
+        calendar.isQuietDay(date, optedInHolidayIds)
 }

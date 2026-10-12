@@ -70,6 +70,9 @@ class AcademicCalendarStore @Inject constructor(
      *  coroutine to collect the flow in (alarm receivers, widgets). */
     fun current(): AcademicCalendar = _calendar.value
 
+    /** The days no class meets on, as the calendar and opt-ins now stand. */
+    fun quietDays(): QuietDays = QuietDays(current(), optedInHolidayIds)
+
     /**
      * Re-fetch, cheaply.
      *
