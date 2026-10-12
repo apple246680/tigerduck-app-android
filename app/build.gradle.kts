@@ -58,8 +58,9 @@ android {
         // Used by TigerDuckApp to surface a logcat warning when pins are
         // within 30 days of expiry; without a runtime check, post-expiry the
         // platform silently falls back to system CA trust with no UI signal.
-        // 2027-01-18T00:00:00Z = 1800230400000L epoch ms.
-        buildConfigField("long", "PIN_EXPIRY_EPOCH", "1800230400000L")
+        // 2027-05-04T00:00:00Z = 1809388800000L epoch ms (api.lib.ntust.edu.tw);
+        // NetworkSecurityConfigTest fails when it stops matching the XML.
+        buildConfigField("long", "PIN_EXPIRY_EPOCH", "1809388800000L")
     }
 
     signingConfigs {
