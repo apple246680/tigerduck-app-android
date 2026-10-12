@@ -1,32 +1,39 @@
 package org.ntust.app.tigerduck.ui.screen.settings
 
 /**
- * The re-enable conflict answers still being applied in this process, which
- * every Settings screen's view model shares. A check while one runs would
- * compare a half-sent state, and the answer finishing would end the hold on
- * assignment marks that check needs, so checks wait for the last to finish.
+ * The re-enable conflict answers being applied in this process, which every
+ * Settings screen's view model shares. A check compares this device with the
+ * server, so one that runs while an answer is applied, or that an answer
+ * overtakes, would read a half-sent state; and an answer that finished under
+ * a waiting check would end the hold on assignment marks that check needs.
  */
 internal class ReenableResolutions {
 
     private var running = 0
+    private var started = 0
     private var waitingCheck: (() -> Unit)? = null
 
     @Synchronized
     fun start() {
         running++
+        started++
     }
 
     /**
-     * Whether [check] has to wait for the answers being applied. The last
+     * Null when [check] has to wait for the answers being applied: the last
      * check to wait runs when they have all finished, from the screen that
-     * asked for it.
+     * asked. Otherwise the token [isCurrent] takes when the check is done.
      */
     @Synchronized
-    fun defers(check: () -> Unit): Boolean {
-        if (running == 0) return false
+    fun checkStarting(check: () -> Unit): Int? {
+        if (running == 0) return started
         waitingCheck = check
-        return true
+        return null
     }
+
+    /** Whether no answer has started since the check holding [token] began. */
+    @Synchronized
+    fun isCurrent(token: Int): Boolean = started == token
 
     /**
      * Called as each answer finishes. True when it was the last one and no

@@ -2,6 +2,8 @@ package org.ntust.app.tigerduck.ui.screen.settings
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -9,7 +11,7 @@ class ReenableResolutionsTest {
 
     @Test
     fun `a check runs at once when no answer is being applied`() {
-        assertFalse(ReenableResolutions().defers { })
+        assertNotNull(ReenableResolutions().checkStarting { })
     }
 
     @Test
@@ -18,12 +20,12 @@ class ReenableResolutionsTest {
         var checks = 0
         resolutions.start()
 
-        assertTrue(resolutions.defers { checks++ })
+        assertNull(resolutions.checkStarting { checks++ })
         assertEquals(0, checks)
         // Letting the hold go here would end it under the check's own dialog.
         assertFalse(resolutions.finish())
         assertEquals(1, checks)
-        assertFalse(resolutions.defers { checks++ })
+        assertNotNull(resolutions.checkStarting { checks++ })
     }
 
     @Test
@@ -40,11 +42,29 @@ class ReenableResolutionsTest {
         var checks = 0
         resolutions.start()
         resolutions.start()
-        resolutions.defers { checks++ }
+        resolutions.checkStarting { checks++ }
 
         assertFalse(resolutions.finish())
         assertEquals(0, checks)
         assertFalse(resolutions.finish())
         assertEquals(1, checks)
+    }
+
+    @Test
+    fun `a check keeps its result when no answer starts before it is done`() {
+        val resolutions = ReenableResolutions()
+        val token = resolutions.checkStarting { }!!
+
+        assertTrue(resolutions.isCurrent(token))
+    }
+
+    @Test
+    fun `a check overtaken by an answer drops its result`() {
+        val resolutions = ReenableResolutions()
+        val token = resolutions.checkStarting { }!!
+        resolutions.start()
+        resolutions.finish()
+
+        assertFalse(resolutions.isCurrent(token))
     }
 }

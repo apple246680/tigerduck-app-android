@@ -200,7 +200,7 @@ class SettingsViewModel @Inject constructor(
             Log.d(TAG, "[reenable] checkPendingConflicts skip: pending is empty")
             return
         }
-        if (resolutions.defers(::checkPendingConflicts)) return
+        val token = resolutions.checkStarting(::checkPendingConflicts) ?: return
         Log.i(TAG, "[reenable] checkPendingConflicts start: pending=$pending")
         // On the application scope: a check cut short by leaving Settings
         // would keep "assignments" pending, and the marks held, until
@@ -300,13 +300,18 @@ class SettingsViewModel @Inject constructor(
                 }
 
                 Log.i(TAG, "[reenable] result: ${diffs.size} diffs → ${if (diffs.isEmpty()) "no conflict" else "SHOW POPUP"}")
+                // An answer given since this check began changed what it
+                // compared, and settles the pending set itself.
+                if (!resolutions.isCurrent(token)) return@launch
                 if (diffs.isNotEmpty()) {
                     _reenableConflict.value = ReenableConflict(
                         categories = pending.toList(),
                         description = diffs.joinToString("\n"),
                     )
                 } else {
-                    prefs.pendingConflictCategories = emptySet()
+                    // Only what this check compared: one started later may
+                    // still hold "assignments" for its own dialog.
+                    prefs.pendingConflictCategories = prefs.pendingConflictCategories - pending
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "[reenable] checkPendingConflicts FAILED — pending kept for retry", e)
