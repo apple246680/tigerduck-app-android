@@ -174,7 +174,9 @@ internal fun AssignmentsEmptyState(
  *    when not yet ignored, undo arrow when already ignored).
  *  - Right swipe: toggle mark-as-complete (green icon on the left edge —
  *    tick when not yet marked, undo arrow when already marked). The undo
- *    affordance is what makes 標示為完成 reversible from the 全部 tab.
+ *    affordance is what makes a mark reversible from the all tab.
+ *
+ * Without [swipeEnabled] the row takes neither gesture.
  */
 @Composable
 internal fun SwipeableAssignmentRow(
@@ -182,6 +184,7 @@ internal fun SwipeableAssignmentRow(
     course: Course?,
     isIgnored: Boolean,
     isMarkedCompleted: Boolean,
+    swipeEnabled: Boolean,
     showAbsoluteTime: Boolean,
     onClick: () -> Unit,
     onToggleIgnore: () -> Unit,
@@ -260,7 +263,8 @@ internal fun SwipeableAssignmentRow(
                 .fillMaxWidth()
                 .offset { IntOffset(swipeOffset.value.roundToInt(), 0) }
                 .background(MaterialTheme.colorScheme.surface)
-                .pointerInput(assignment.assignmentId) {
+                .pointerInput(assignment.assignmentId, swipeEnabled) {
+                    if (!swipeEnabled) return@pointerInput
                     detectHorizontalDragGestures(
                         onDragEnd = {
                             coroutineScope.launch {

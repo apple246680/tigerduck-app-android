@@ -5,6 +5,7 @@ import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.qualifiers.ApplicationContext
+import org.ntust.app.tigerduck.data.CourseIgnores
 import org.ntust.app.tigerduck.data.CourseRosterMerge
 import org.ntust.app.tigerduck.data.OutstandingAssignments
 import org.ntust.app.tigerduck.academic.AcademicCalendarStore
@@ -57,8 +58,8 @@ class DataCache @Inject constructor(
     private val _assignmentMarksVersion = MutableStateFlow(0)
 
     /**
-     * Bumped after every write of the ignored and marked-done sets, so a
-     * screen that only reads them, such as the class table, reads them again.
+     * Bumped after every write of the ignored, marked-done and ignored-course
+     * sets, so a screen that only reads them reads them again.
      */
     val assignmentMarksVersion: StateFlow<Int> = _assignmentMarksVersion.asStateFlow()
 
@@ -215,7 +216,7 @@ class DataCache @Inject constructor(
      * the month heuristic while the calendar is unknown — a device that has
      * never reached the backend still has to open on something.
      */
-    private fun currentSemesterCode(): String =
+    internal fun currentSemesterCode(): String =
         academicCalendar.current().currentTerm(AppClock.localDateTime().toLocalDate())?.code
             ?: SemesterCodes.heuristic()
 
@@ -229,12 +230,16 @@ class DataCache @Inject constructor(
         return load(type, "assignments.json") ?: emptyList()
     }
 
-    /** The cached assignments [OutstandingAssignments] keeps: what reminders and the Live Update act on. */
-    suspend fun loadOutstandingAssignments(): List<Assignment> = OutstandingAssignments.of(
-        all = loadAssignments(),
-        ignoredIds = loadIgnoredAssignments(),
-        markedCompletedIds = loadMarkedCompletedAssignments(),
-    )
+    /**
+     * The cached assignments [OutstandingAssignments] keeps, counting those of
+     * an ignored course as ignored: what reminders and the Live Update act on.
+     */
+    suspend fun loadOutstandingAssignments(): List<Assignment> {
+        val all = loadAssignments()
+        val ignored = loadIgnoredAssignments() +
+            CourseIgnores.assignmentIds(all, loadIgnoredCourses(), currentSemesterCode())
+        return OutstandingAssignments.of(all, ignored, loadMarkedCompletedAssignments())
+    }
 
     // --- Skipped Dates (courseNo -> list of ISO date strings "yyyy-MM-dd") ---
     // Stored in filesDir — never cleared by the OS, unlike cacheDir.
@@ -413,6 +418,21 @@ class DataCache @Inject constructor(
             ?: emptySet()
     }
 
+    // --- Ignored Courses (set of CourseIgnores keys) ---
+    // Every assignment of these courses counts as ignored. In filesDir with
+    // the per-assignment list it extends.
+
+    suspend fun saveIgnoredCourses(keys: Set<String>) {
+        saveToUserData(keys.sorted(), "ignored_courses.json")
+        _assignmentMarksVersion.update { it + 1 }
+    }
+
+    suspend fun loadIgnoredCourses(): Set<String> {
+        val type = object : TypeToken<List<String>>() {}.type
+        return loadFromUserData<List<String>>(type, "ignored_courses.json")?.toSet()
+            ?: emptySet()
+    }
+
     // --- Marked-Completed Assignments (set of assignmentIds) ---
     // Independent from Moodle's `isCompleted`: lets the user manually flag a
     // homework as done from the swipe gesture even when Moodle hasn't (or
@@ -564,6 +584,7 @@ class DataCache @Inject constructor(
                 listOf(
                     "skipped_dates.json",
                     "ignored_assignments.json",
+                    "ignored_courses.json",
                     "marked_completed_assignments.json",
                     "deleted_courses.json",
                     "course_custom_names.json",

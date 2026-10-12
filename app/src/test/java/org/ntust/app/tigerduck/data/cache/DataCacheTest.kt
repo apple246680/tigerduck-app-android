@@ -1,14 +1,17 @@
 package org.ntust.app.tigerduck.data.cache
 
 import android.app.Application
+import java.io.File
 import java.util.Date
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.ntust.app.tigerduck.academic.AcademicCalendarStore
+import org.ntust.app.tigerduck.data.CourseIgnores
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.robolectric.RobolectricTestRunner
@@ -54,6 +57,29 @@ class DataCacheTest {
         cache.saveMarkedCompletedAssignments(setOf("marked"))
 
         assertEquals(listOf("open"), cache.loadOutstandingAssignments().map { it.assignmentId })
+    }
+
+    @Test
+    fun `outstanding assignments leave out every assignment of an ignored course`() = runTest {
+        cache.saveAssignments(
+            listOf(
+                assignment("open"),
+                assignment("course-ignored").copy(courseNo = "IGNORED"),
+            )
+        )
+        cache.saveIgnoredCourses(setOf(CourseIgnores.key(cache.currentSemesterCode(), "IGNORED")))
+
+        assertEquals(listOf("open"), cache.loadOutstandingAssignments().map { it.assignmentId })
+    }
+
+    @Test
+    fun `signing out forgets the ignored courses`() = runTest {
+        cache.saveIgnoredCourses(setOf("1141:CS1001301"))
+
+        cache.clearAllUserData()
+
+        assertEquals(emptySet<String>(), cache.loadIgnoredCourses())
+        assertFalse(File(context.filesDir, "TigerDuckData/ignored_courses.json").exists())
     }
 
     @Test

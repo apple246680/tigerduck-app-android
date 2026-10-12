@@ -975,8 +975,8 @@ internal interface AssignmentReminderAlarms {
     fun cancelAll()
 
     /**
-     * Re-arms a reminder for every cached, unfinished assignment, at the
-     * offsets stored at the moment it arms them.
+     * Re-arms a reminder for every cached assignment still outstanding, at
+     * the offsets stored at the moment it arms them.
      */
     suspend fun rescheduleFromCache()
 }
