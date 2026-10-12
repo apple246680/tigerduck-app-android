@@ -281,7 +281,8 @@ class SettingsViewModel @Inject constructor(
                     val localCompleted = dataCache.loadMarkedCompletedAssignments()
                     val ignoredMatch = localIgnored == result.ignoredIds
                     val completedMatch = localCompleted == result.completedIds
-                    val coursesMatch = courseIgnoreSync.agreesWith(result)
+                    // Course ignores follow course sync too, so with it off there is nothing to compare.
+                    val coursesMatch = !prefs.syncCourses || courseIgnoreSync.agreesWith(result)
                     Log.i(TAG, "[reenable] assignments: localIgnored=${localIgnored.size} serverIgnored=${result.ignoredIds.size} match=$ignoredMatch | localCompleted=${localCompleted.size} serverCompleted=${result.completedIds.size} match=$completedMatch | ignoredCourses match=$coursesMatch")
                     if (!ignoredMatch || !completedMatch || !coursesMatch) {
                         diffs.add(context.getString(R.string.sync_conflict_reenable_assignments_differ))
@@ -375,10 +376,12 @@ class SettingsViewModel @Inject constructor(
                     val intId = id.toIntOrNull() ?: continue
                     runCatching { pushApiClient.patchAssignmentOverride(intId, "locally_completed") }
                 }
-                courseIgnoreSync.pushLocal(
-                    runCatching { syncApiClient.fetchFullSync() }.getOrNull(),
-                    generation,
-                )
+                if (prefs.syncCourses) {
+                    courseIgnoreSync.pushLocal(
+                        runCatching { syncApiClient.fetchFullSync() }.getOrNull(),
+                        generation,
+                    )
+                }
             }
         } else {
             if ("courses" in conflict.categories) {
@@ -447,7 +450,9 @@ class SettingsViewModel @Inject constructor(
                     dataCache.replaceMarkedCompletedAssignments(result.completedIds)
                 }
             }
-            if ("assignments" in conflict.categories) courseIgnoreSync.adoptServer(result, generation)
+            if ("assignments" in conflict.categories && prefs.syncCourses) {
+                courseIgnoreSync.adoptServer(result, generation)
+            }
         }
     }
 

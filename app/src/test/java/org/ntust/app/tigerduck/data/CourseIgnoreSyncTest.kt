@@ -6,6 +6,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
@@ -342,6 +343,19 @@ class CourseIgnoreSyncTest {
             sent.toSet(),
         )
         assertEquals(emptyList<Any>(), waiting())
+    }
+
+    @Test
+    fun `changes go out and a sync takes the backend's set only with course sync on too`() = runTest {
+        val prefs = AppPreferences(RuntimeEnvironment.getApplication())
+        prefs.syncAssignments = true
+        prefs.syncCourses = true
+        // Off on fdroid whatever is stored, which leaves nothing to sync either.
+        val synced = prefs.cloudSyncEnabled
+
+        assertEquals(synced, CourseIgnoreSync.syncsCourseIgnores(prefs))
+        prefs.syncCourses = false
+        assertFalse(CourseIgnoreSync.syncsCourseIgnores(prefs))
     }
 
     @Test

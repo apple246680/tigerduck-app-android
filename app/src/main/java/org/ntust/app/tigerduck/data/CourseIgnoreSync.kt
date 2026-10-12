@@ -36,8 +36,8 @@ internal fun interface CourseIgnoreEffects {
  * Every change waits in `pending_course_ignores.json` from the tap until a
  * PATCH the backend confirms, and is sent again before each full sync; until
  * then it keeps this device's value through a sync. It is held, not sent,
- * while cloud or assignment sync is off or an assignments re-enable conflict
- * is open, so one made offline still reaches the backend later.
+ * while cloud, course or assignment sync is off or an assignments re-enable
+ * conflict is open, so one made offline still reaches the backend later.
  *
  * Work started for one account carries [currentGeneration] and drops its writes
  * once the user data is wiped at sign-out.
@@ -66,10 +66,7 @@ class CourseIgnoreSync internal constructor(
                 )
             }
         },
-        sends = {
-            prefs.cloudSyncEnabled && prefs.syncAssignments &&
-                REENABLE_CATEGORY !in prefs.pendingConflictCategories
-        },
+        sends = { syncsCourseIgnores(prefs) },
         clock = System::currentTimeMillis,
     )
 
@@ -304,10 +301,20 @@ class CourseIgnoreSync internal constructor(
     private fun List<PendingCourseIgnore>.with(change: PendingCourseIgnore) =
         filterNot { it.key == change.key } + change
 
-    private companion object {
-        const val TAG = "CourseIgnoreSync"
+    internal companion object {
+        private const val TAG = "CourseIgnoreSync"
 
         /** The re-enable conflict category course ignores are part of. */
-        const val REENABLE_CATEGORY = "assignments"
+        private const val REENABLE_CATEGORY = "assignments"
+
+        /**
+         * Whether changes go out and a full sync applies the backend's set:
+         * cloud, assignment and course sync on, the last as the backend drops
+         * the settings with the course rows once no device syncs courses, and
+         * no assignments re-enable conflict open.
+         */
+        fun syncsCourseIgnores(prefs: AppPreferences): Boolean =
+            prefs.cloudSyncEnabled && prefs.syncAssignments && prefs.syncCourses &&
+                REENABLE_CATEGORY !in prefs.pendingConflictCategories
     }
 }

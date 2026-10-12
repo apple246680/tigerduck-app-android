@@ -268,8 +268,8 @@ class PushApiClient @Inject constructor(
      * the course's numeric Moodle id, which the backend's reminder scan
      * matches the assignments it fetches itself by. Either may be null.
      *
-     * Returns whether the backend stored it: false when assignment sync is
-     * off and nothing went out, or when the answer has no
+     * Returns whether the backend stored it: false when course or assignment
+     * sync is off and nothing went out, or when the answer has no
      * `ignore_assignments`, as from a backend that predates the field and
      * drops it unread. Throws when the request fails.
      */
@@ -278,7 +278,7 @@ class PushApiClient @Inject constructor(
         ignore: Boolean?,
         moodleCourseId: Int?,
     ): Boolean = withContext(Dispatchers.IO) {
-        if (!isSyncCapable || !prefs.syncAssignments) return@withContext false
+        if (!isSyncCapable || !prefs.syncAssignments || !prefs.syncCourses) return@withContext false
         val payload = mutableMapOf<String, Any>()
         if (ignore != null) payload["ignore_assignments"] = ignore
         if (moodleCourseId != null && moodleCourseId >= 1) payload["moodle_course_id"] = moodleCourseId
