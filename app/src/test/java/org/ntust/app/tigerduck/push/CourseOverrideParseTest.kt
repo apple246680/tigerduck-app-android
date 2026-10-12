@@ -40,9 +40,11 @@ class CourseOverrideParseTest {
         val (ignored, kept) = parseCourseOverrides(json, emptyMap())
 
         assertEquals(true, ignored.ignoreAssignments)
+        assertEquals("2026-10-13T00:00:00Z", ignored.ignoreAssignmentsUpdatedAt)
         assertEquals("1141", ignored.semester)
         assertEquals(4321, ignored.moodleNumericCourseId)
         assertEquals(false, kept.ignoreAssignments)
+        assertNull(kept.ignoreAssignmentsUpdatedAt)
         assertNull(kept.moodleNumericCourseId)
     }
 }

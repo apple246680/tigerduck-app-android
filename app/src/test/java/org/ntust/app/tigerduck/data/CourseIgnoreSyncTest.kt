@@ -60,6 +60,7 @@ class CourseIgnoreSyncTest {
 
     private suspend fun waiting() = cache.loadPendingCourseIgnores().map { it.key to it.ignore }
 
+    /** A snapshot whose [ignores] a device set; the courses are AAA and BBB. */
     private fun snapshot(fetchedAtMs: Long, vararg ignores: Pair<String, Boolean>) = BackendSyncResult(
         assignments = emptyList(),
         ignoredIds = emptySet(),
@@ -71,6 +72,7 @@ class CourseIgnoreSyncTest {
                 colorHex = null,
                 semester = "1141",
                 ignoreAssignments = ignore,
+                ignoreAssignmentsUpdatedAt = "2026-10-13T00:00:00Z",
             )
         },
         serverCourseNos = setOf("AAA", "BBB"),
@@ -342,6 +344,20 @@ class CourseIgnoreSyncTest {
             setOf(Sent("1141AAA", true, null), Sent("1141BBB", false, null)),
             sent.toSet(),
         )
+        assertEquals(emptyList<Any>(), waiting())
+    }
+
+    @Test
+    fun `a setting the backend lost with its course rows stays and is sent again`() = runTest {
+        setIgnored("AAA")
+        now = 2_000L
+
+        // Course sync was off on every device: the rows came back without their overrides.
+        val applied = sync.applySnapshot(snapshot(fetchedAtMs = 3_000), sync.currentGeneration())
+
+        assertNull(applied)
+        assertEquals(setOf("1141:AAA"), cache.loadIgnoredCourses())
+        assertEquals(listOf(Sent("1141AAA", true, null), Sent("1141AAA", true, null)), sent)
         assertEquals(emptyList<Any>(), waiting())
     }
 

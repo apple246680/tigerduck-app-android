@@ -125,20 +125,34 @@ class CourseIgnoreSync internal constructor(
 
     /**
      * Brings the ignored courses in line with a full sync; see
-     * [CourseIgnoreReconciler.afterSync]. Returns the new set when it
-     * changed, else null.
+     * [CourseIgnoreReconciler.afterSync]. Courses the backend lost the
+     * setting of ([CourseIgnoreReconciler.toResend]) are sent again. Returns
+     * the new set when it changed, else null.
      */
     suspend fun applySnapshot(result: BackendSyncResult, generation: Int): Set<String>? {
         val server = CourseIgnoreReconciler.serverIgnores(result.courseOverrides, result.serverCourses)
+        val applies = sends()
+        var resend = emptyList<PendingCourseIgnore>()
         val updated = mutex.withLock {
             val local = dataCache.loadIgnoredCourses()
-            val protectedKeys = dataCache.loadPendingCourseIgnores().mapNotNullTo(mutableSetOf()) { it.key } +
+            val pending = dataCache.loadPendingCourseIgnores()
+            val protectedKeys = pending.mapNotNullTo(mutableSetOf()) { it.key } +
                 touchedAt.filterValues { it >= result.fetchedAtMs }.keys
-            CourseIgnoreReconciler.afterSync(local, server, protectedKeys, applies = sends())
+            if (applies && server != null) {
+                val now = clock()
+                val rows = serverRows(result)
+                val lost = CourseIgnoreReconciler.toResend(local, server, protectedKeys)
+                val changes = lost.sorted().map { changeFor(it, true, rows[it], now) }
+                if (changes.isNotEmpty() && dataCache.savePendingCourseIgnores(pending + changes, generation)) {
+                    resend = changes
+                }
+            }
+            CourseIgnoreReconciler.afterSync(local, server, protectedKeys, applies)
                 ?.takeIf { it != local && dataCache.saveIgnoredCourses(it, generation) }
         }
         if (updated != null) effects.changed()
-        if (server != null && sends()) fillInMoodleCourseIds(result.courseOverrides, generation)
+        resend.forEach { send(it, generation) }
+        if (server != null && applies) fillInMoodleCourseIds(result.courseOverrides, generation)
         return updated
     }
 
@@ -157,11 +171,7 @@ class CourseIgnoreSync internal constructor(
         val server = result?.let {
             CourseIgnoreReconciler.serverIgnores(it.courseOverrides, it.serverCourses)
         }
-        val serverRows = result?.courseOverrides.orEmpty().associateBy { o ->
-            val semester = o.semester ?: return@associateBy null
-            val courseNo = o.courseNo ?: return@associateBy null
-            CourseIgnores.key(semester, courseNo)
-        }
+        val serverRows = serverRows(result)
         mutex.withLock {
             val local = dataCache.loadIgnoredCourses()
             val ignored = if (server == null) {
@@ -190,7 +200,7 @@ class CourseIgnoreSync internal constructor(
         val updated = mutex.withLock {
             if (!dataCache.savePendingCourseIgnores(emptyList(), generation)) return@withLock null
             val local = dataCache.loadIgnoredCourses()
-            CourseIgnoreReconciler.afterSync(local, server, emptySet(), applies = true)
+            CourseIgnoreReconciler.adopt(local, server)
                 ?.takeIf { it != local && dataCache.saveIgnoredCourses(it, generation) }
         }
         if (updated != null) effects.changed()
@@ -297,6 +307,13 @@ class CourseIgnoreSync internal constructor(
             changedAtMs = now,
         )
     }
+
+    private fun serverRows(result: BackendSyncResult?): Map<String?, CourseOverrideResult> =
+        result?.courseOverrides.orEmpty().associateBy { o ->
+            val semester = o.semester ?: return@associateBy null
+            val courseNo = o.courseNo ?: return@associateBy null
+            CourseIgnores.key(semester, courseNo)
+        }
 
     private fun List<PendingCourseIgnore>.with(change: PendingCourseIgnore) =
         filterNot { it.key == change.key } + change

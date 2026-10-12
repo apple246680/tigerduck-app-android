@@ -27,6 +27,12 @@ data class CourseOverrideResult(
      * backend did not send the field, which a backend older than it does.
      */
     val ignoreAssignments: Boolean? = null,
+    /**
+     * When a device last set [ignoreAssignments], either way. Null on a row
+     * made for a colour or a name, or remade after the backend dropped it
+     * with its course row.
+     */
+    val ignoreAssignmentsUpdatedAt: String? = null,
     /** The course's numeric Moodle id, once a client has sent it. */
     val moodleNumericCourseId: Int? = null,
 )
@@ -337,6 +343,7 @@ internal fun parseCourseOverrides(
                 } else {
                     co.optBoolean("ignore_assignments")
                 },
+                ignoreAssignmentsUpdatedAt = nullableString(co, "ignore_assignments_updated_at"),
                 moodleNumericCourseId = co.optLong("moodle_course_id", 0L)
                     .takeIf { it in 1..Int.MAX_VALUE }
                     ?.toInt(),
