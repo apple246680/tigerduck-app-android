@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.model.CalendarEvent
+import org.ntust.app.tigerduck.data.model.PendingCourseIgnore
 import org.ntust.app.tigerduck.data.model.SyncConflict
 import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.data.model.ScoreReport
@@ -433,6 +434,21 @@ class DataCache @Inject constructor(
             ?: emptySet()
     }
 
+    // Changes to the set above the backend has not confirmed; see
+    // CourseIgnoreSync, the only writer of both files.
+
+    suspend fun savePendingCourseIgnores(changes: List<PendingCourseIgnore>) =
+        saveToUserData(changes, "pending_course_ignores.json")
+
+    /** Rows without a usable [PendingCourseIgnore.key] are left out. */
+    suspend fun loadPendingCourseIgnores(): List<PendingCourseIgnore> {
+        val type = object : TypeToken<List<PendingCourseIgnore>>() {}.type
+        return loadFromUserData<List<PendingCourseIgnore?>>(type, "pending_course_ignores.json")
+            ?.filterNotNull()
+            ?.filter { it.key != null }
+            ?: emptyList()
+    }
+
     // --- Marked-Completed Assignments (set of assignmentIds) ---
     // Independent from Moodle's `isCompleted`: lets the user manually flag a
     // homework as done from the swipe gesture even when Moodle hasn't (or
@@ -585,6 +601,7 @@ class DataCache @Inject constructor(
                     "skipped_dates.json",
                     "ignored_assignments.json",
                     "ignored_courses.json",
+                    "pending_course_ignores.json",
                     "marked_completed_assignments.json",
                     "deleted_courses.json",
                     "course_custom_names.json",

@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.data.CourseColorStore
+import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.liveactivity.LiveActivityManager
@@ -60,6 +61,7 @@ class SettingsViewModel @Inject constructor(
     private val dataCache: DataCache,
     private val debugFixtures: DebugFixtureStore,
     private val demoAccount: DemoAccount,
+    private val courseIgnoreSync: CourseIgnoreSync,
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -273,8 +275,9 @@ class SettingsViewModel @Inject constructor(
                     val localCompleted = dataCache.loadMarkedCompletedAssignments()
                     val ignoredMatch = localIgnored == result.ignoredIds
                     val completedMatch = localCompleted == result.completedIds
-                    Log.i(TAG, "[reenable] assignments: localIgnored=${localIgnored.size} serverIgnored=${result.ignoredIds.size} match=$ignoredMatch | localCompleted=${localCompleted.size} serverCompleted=${result.completedIds.size} match=$completedMatch")
-                    if (!ignoredMatch || !completedMatch) {
+                    val coursesMatch = courseIgnoreSync.agreesWith(result)
+                    Log.i(TAG, "[reenable] assignments: localIgnored=${localIgnored.size} serverIgnored=${result.ignoredIds.size} match=$ignoredMatch | localCompleted=${localCompleted.size} serverCompleted=${result.completedIds.size} match=$completedMatch | ignoredCourses match=$coursesMatch")
+                    if (!ignoredMatch || !completedMatch || !coursesMatch) {
                         diffs.add(context.getString(R.string.sync_conflict_reenable_assignments_differ))
                     }
                 }
@@ -339,6 +342,10 @@ class SettingsViewModel @Inject constructor(
                         val intId = id.toIntOrNull() ?: continue
                         runCatching { pushApiClient.patchAssignmentOverride(intId, "locally_completed") }
                     }
+                    courseIgnoreSync.pushLocal(
+                        runCatching { syncApiClient.fetchFullSync() }.getOrNull(),
+                        onlyIgnored = false,
+                    )
                 }
             } else {
                 if ("courses" in conflict.categories) {
@@ -407,6 +414,7 @@ class SettingsViewModel @Inject constructor(
                         dataCache.replaceMarkedCompletedAssignments(result.completedIds)
                     }
                 }
+                if ("assignments" in conflict.categories) courseIgnoreSync.adoptServer(result)
             }
         }
     }

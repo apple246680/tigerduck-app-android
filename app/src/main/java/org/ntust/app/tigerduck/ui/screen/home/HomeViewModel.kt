@@ -160,6 +160,7 @@ class HomeViewModel @Inject constructor(
     private val syncState = HomeSyncState(
         ignoredAssignmentIds = _ignoredAssignmentIds,
         markedCompletedIds = _markedCompletedIds,
+        ignoredCourseKeys = _ignoredCourseKeys,
         allAssignments = _allAssignments,
         allCourses = _allCourses,
         conflicts = MutableStateFlow(emptyList()),

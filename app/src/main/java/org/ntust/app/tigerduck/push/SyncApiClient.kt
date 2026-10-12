@@ -20,6 +20,15 @@ data class CourseOverrideResult(
     val courseNo: String?,
     val colorHex: String?,
     val customNames: Map<String, String> = emptyMap(),
+    /** The term of the course row the override belongs to. */
+    val semester: String? = null,
+    /**
+     * Whether every assignment of the course is ignored. Null when the
+     * backend did not send the field, which a backend older than it does.
+     */
+    val ignoreAssignments: Boolean? = null,
+    /** The course's numeric Moodle id, once a client has sent it. */
+    val moodleNumericCourseId: Int? = null,
 )
 
 data class ServerCourse(
@@ -231,31 +240,7 @@ class SyncApiClient @Inject constructor(
 
         Log.d("SyncApi", "[fullSync] courseMoodleIdToNo: ${courseMoodleIdToNo.size} entries, courses: ${serverCourses.size}")
 
-        val courseOverrides = mutableListOf<CourseOverrideResult>()
-        val courseOverArr = json.optJSONArray("course_overrides")
-        if (courseOverArr != null) {
-            for (i in 0 until courseOverArr.length()) {
-                val co = courseOverArr.getJSONObject(i)
-                val moodleId = nullStr(co, "moodle_id") ?: continue
-                val namesObj = co.optJSONObject("custom_names")
-                val names = mutableMapOf<String, String>()
-                if (namesObj != null) {
-                    for (key in namesObj.keys()) {
-                        val v = namesObj.optString(key, "")
-                        if (v.isNotEmpty()) names[key] = v
-                    }
-                }
-                val resolvedNo = nullStr(co, "course_no") ?: courseMoodleIdToNo[moodleId]
-                val colorHex = nullStr(co, "color_hex")
-                Log.d("SyncApi", "[fullSync] override moodleId=$moodleId courseNo=$resolvedNo colorHex=$colorHex names=${names.size}")
-                courseOverrides.add(CourseOverrideResult(
-                    moodleCourseId = moodleId,
-                    courseNo = resolvedNo,
-                    colorHex = colorHex,
-                    customNames = names,
-                ))
-            }
-        }
+        val courseOverrides = parseCourseOverrides(json, courseMoodleIdToNo)
 
         val coursesResetAt = nullStr(json, "courses_reset_at")
         val tombstones = mutableListOf<CourseTombstone>()
@@ -302,11 +287,7 @@ class SyncApiClient @Inject constructor(
         return out
     }
 
-    private fun nullStr(obj: JSONObject, key: String): String? {
-        if (obj.isNull(key)) return null
-        val v = obj.optString(key, "")
-        return v.ifBlank { null }
-    }
+    private fun nullStr(obj: JSONObject, key: String): String? = nullableString(obj, key)
 
     private fun parseIso(s: String): Date? {
         if (s.isBlank() || s == "null") return null
@@ -318,4 +299,55 @@ class SyncApiClient @Inject constructor(
             null
         }
     }
+}
+
+/**
+ * The snapshot's `course_overrides`. [courseMoodleIdToNo] names the course of
+ * an override that carries no `course_no` of its own.
+ */
+internal fun parseCourseOverrides(
+    json: JSONObject,
+    courseMoodleIdToNo: Map<String, String>,
+): List<CourseOverrideResult> {
+    val rows = json.optJSONArray("course_overrides") ?: return emptyList()
+    val overrides = mutableListOf<CourseOverrideResult>()
+    for (i in 0 until rows.length()) {
+        val co = rows.optJSONObject(i) ?: continue
+        val moodleId = nullableString(co, "moodle_id") ?: continue
+        val namesObj = co.optJSONObject("custom_names")
+        val names = mutableMapOf<String, String>()
+        if (namesObj != null) {
+            for (key in namesObj.keys()) {
+                val v = namesObj.optString(key, "")
+                if (v.isNotEmpty()) names[key] = v
+            }
+        }
+        val resolvedNo = nullableString(co, "course_no") ?: courseMoodleIdToNo[moodleId]
+        val colorHex = nullableString(co, "color_hex")
+        Log.d("SyncApi", "[fullSync] override moodleId=$moodleId courseNo=$resolvedNo colorHex=$colorHex names=${names.size}")
+        overrides.add(
+            CourseOverrideResult(
+                moodleCourseId = moodleId,
+                courseNo = resolvedNo,
+                colorHex = colorHex,
+                customNames = names,
+                semester = nullableString(co, "semester"),
+                ignoreAssignments = if (co.isNull("ignore_assignments")) {
+                    null
+                } else {
+                    co.optBoolean("ignore_assignments")
+                },
+                moodleNumericCourseId = co.optLong("moodle_course_id", 0L)
+                    .takeIf { it in 1..Int.MAX_VALUE }
+                    ?.toInt(),
+            )
+        )
+    }
+    return overrides
+}
+
+private fun nullableString(obj: JSONObject, key: String): String? {
+    if (obj.isNull(key)) return null
+    val v = obj.optString(key, "")
+    return v.ifBlank { null }
 }

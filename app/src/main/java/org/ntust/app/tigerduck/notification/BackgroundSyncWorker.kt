@@ -25,6 +25,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import org.ntust.app.tigerduck.auth.AuthService
+import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.push.BackendSyncResult
@@ -62,6 +63,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
     private val authTokenManager: org.ntust.app.tigerduck.auth.AuthTokenManager,
     private val fcmBootstrap: org.ntust.app.tigerduck.push.FcmBootstrap,
     private val notificationSettingsSync: org.ntust.app.tigerduck.push.NotificationSettingsSync,
+    private val courseIgnoreSync: CourseIgnoreSync,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) : CoroutineWorker(context, params) {
 
@@ -160,6 +162,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
             return
         }
         try {
+            courseIgnoreSync.retryPending()
             val result = syncApiClient.fetchFullSync()
             val localIgnored = dataCache.loadIgnoredAssignments()
             val localMarked = dataCache.loadMarkedCompletedAssignments()
@@ -169,6 +172,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
                 dataCache.replaceIgnoredAssignments(result.ignoredIds)
                 dataCache.replaceMarkedCompletedAssignments(result.completedIds)
             }
+            courseIgnoreSync.applySnapshot(result)
 
             if (prefs.syncCourseColors && result.courseOverrides.isNotEmpty()) {
                 applyCourseOverridesBackground(result.courseOverrides)

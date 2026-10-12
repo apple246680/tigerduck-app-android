@@ -13,6 +13,7 @@ import org.junit.runner.RunWith
 import org.ntust.app.tigerduck.academic.AcademicCalendarStore
 import org.ntust.app.tigerduck.data.CourseIgnores
 import org.ntust.app.tigerduck.data.model.Assignment
+import org.ntust.app.tigerduck.data.model.PendingCourseIgnore
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
@@ -73,13 +74,34 @@ class DataCacheTest {
     }
 
     @Test
-    fun `signing out forgets the ignored courses`() = runTest {
+    fun `signing out forgets the ignored courses and their unsent changes`() = runTest {
         cache.saveIgnoredCourses(setOf("1141:CS1001301"))
+        cache.savePendingCourseIgnores(
+            listOf(PendingCourseIgnore("1141", "CS1001301", "1141CS1001301", null, true, 1L))
+        )
 
         cache.clearAllUserData()
 
         assertEquals(emptySet<String>(), cache.loadIgnoredCourses())
+        assertEquals(emptyList<PendingCourseIgnore>(), cache.loadPendingCourseIgnores())
         assertFalse(File(context.filesDir, "TigerDuckData/ignored_courses.json").exists())
+        assertFalse(File(context.filesDir, "TigerDuckData/pending_course_ignores.json").exists())
+    }
+
+    @Test
+    fun `a waiting change too damaged to send is left out`() = runTest {
+        cache.savePendingCourseIgnores(
+            listOf(
+                PendingCourseIgnore("1141", "CS1001301", "1141CS1001301", null, true, 1L),
+                PendingCourseIgnore(null, "CS1001302", "1141CS1001302", null, true, 1L),
+                PendingCourseIgnore("1141", "CS1001303", null, null, true, 1L),
+            )
+        )
+
+        assertEquals(
+            listOf("1141:CS1001301"),
+            cache.loadPendingCourseIgnores().map { it.key },
+        )
     }
 
     @Test

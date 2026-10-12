@@ -263,6 +263,41 @@ class PushApiClient @Inject constructor(
     }
 
     /**
+     * PATCH whether every assignment of the course [moodleId] is ignored,
+     * through the same override as its colour and name. [moodleCourseId] is
+     * the course's numeric Moodle id, which the backend's reminder scan
+     * matches the assignments it fetches itself by. Either may be null.
+     *
+     * Returns whether the backend stored it: false when assignment sync is
+     * off and nothing went out, or when the answer has no
+     * `ignore_assignments`, as from a backend that predates the field and
+     * drops it unread. Throws when the request fails.
+     */
+    suspend fun patchCourseIgnore(
+        moodleId: String,
+        ignore: Boolean?,
+        moodleCourseId: Int?,
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!isSyncCapable || !prefs.syncAssignments) return@withContext false
+        val payload = mutableMapOf<String, Any>()
+        if (ignore != null) payload["ignore_assignments"] = ignore
+        if (moodleCourseId != null && moodleCourseId >= 1) payload["moodle_course_id"] = moodleCourseId
+        if (payload.isEmpty()) return@withContext false
+        val request = Request.Builder()
+            .url("$baseUrl/sync/courses/$moodleId/override")
+            .patch(gson.toJson(payload).toRequestBody(jsonType))
+            .addAuthHeader()
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw PushApiException("patchCourseIgnore failed: HTTP ${response.code}")
+            }
+            runCatching { JSONObject(response.body.string()).has("ignore_assignments") }
+                .getOrDefault(false)
+        }
+    }
+
+    /**
      * Fire-and-forget upload of the user's assignment list so the backend can
      * persist it for cross-device sync. Callers wrap this in `runCatching`
      * — a failure here must never block the normal fetch/save flow.
