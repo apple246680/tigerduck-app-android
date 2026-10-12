@@ -170,6 +170,7 @@ internal fun HomeSectionContent(
     showIgnoredTab: Boolean,
     ignoredAssignmentIds: Set<String>,
     markedCompletedIds: Set<String>,
+    courseIgnoredIds: Set<String>,
     isLoggedIn: Boolean,
     isLoading: Boolean,
     initialLoadComplete: Boolean,
@@ -241,13 +242,18 @@ internal fun HomeSectionContent(
                             // ignoring an assignment would rebind the next
                             // row to the prior Animatable and leak swipe state.
                             key(assignment.assignmentId) {
-                                val isMarkedCompleted =
-                                    assignment.assignmentId in markedCompletedIds
+                                // Ignored with its course: shown as ignored even
+                                // if marked done, and only the class table
+                                // undoes it, so the row takes no swipe.
+                                val ignoredWithCourse = assignment.assignmentId in courseIgnoredIds
                                 SwipeableAssignmentRow(
                                     assignment = assignment,
                                     course = courseByNo[assignment.courseNo],
-                                    isIgnored = assignment.assignmentId in ignoredAssignmentIds,
-                                    isMarkedCompleted = isMarkedCompleted,
+                                    isIgnored = ignoredWithCourse ||
+                                        assignment.assignmentId in ignoredAssignmentIds,
+                                    isMarkedCompleted = !ignoredWithCourse &&
+                                        assignment.assignmentId in markedCompletedIds,
+                                    swipeEnabled = !ignoredWithCourse,
                                     showAbsoluteTime = showAbsoluteTime,
                                     onClick = { onAssignmentClick(assignment) },
                                     onToggleIgnore = { onToggleIgnore(assignment) },

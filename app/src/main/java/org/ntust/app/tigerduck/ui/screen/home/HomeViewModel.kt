@@ -41,7 +41,9 @@ import org.ntust.app.tigerduck.ui.component.ServerStatusTracker
 import org.ntust.app.tigerduck.notification.SyncSource
 import org.ntust.app.tigerduck.push.SyncApiClient
 import org.ntust.app.tigerduck.data.CourseColorStore
+import org.ntust.app.tigerduck.data.CourseIgnores
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
+import org.ntust.app.tigerduck.data.OutstandingAssignments
 import org.ntust.app.tigerduck.data.RefreshPolicy
 import org.ntust.app.tigerduck.data.RefreshTriggers
 import org.ntust.app.tigerduck.data.cache.DataCache
@@ -134,6 +136,18 @@ class HomeViewModel @Inject constructor(
     private val _markedCompletedIds = MutableStateFlow<Set<String>>(emptySet())
     val markedCompletedIds: StateFlow<Set<String>> = _markedCompletedIds
 
+    // Courses ignored from the class table; see CourseIgnores. The class
+    // table writes them, so they are read back from the cache here.
+    private val _ignoredCourseKeys = MutableStateFlow<Set<String>>(emptySet())
+
+    /** Assignments ignored along with their whole course. */
+    val courseIgnoredIds: StateFlow<Set<String>> = combine(
+        _allAssignments,
+        _ignoredCourseKeys,
+    ) { all, keys ->
+        CourseIgnores.assignmentIds(all, keys, courseService.currentSemesterCode())
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
     // Everything the backend sync touches, bundled so HomeBackendSync can
     // read and write it directly. Declared here rather than at the top of the
     // class because Kotlin runs property initializers in declaration order —
@@ -145,6 +159,7 @@ class HomeViewModel @Inject constructor(
     private val syncState = HomeSyncState(
         ignoredAssignmentIds = _ignoredAssignmentIds,
         markedCompletedIds = _markedCompletedIds,
+        ignoredCourseKeys = _ignoredCourseKeys,
         allAssignments = _allAssignments,
         allCourses = _allCourses,
         conflicts = MutableStateFlow(emptyList()),
@@ -206,20 +221,24 @@ class HomeViewModel @Inject constructor(
 
     val upcomingAssignments: StateFlow<List<Assignment>> = combine(
         _allAssignments,
-        _ignoredAssignmentIds,
+        combine(_ignoredAssignmentIds, _ignoredCourseKeys, ::Pair),
         _markedCompletedIds,
         _assignmentFilter,
         appClockChanges,
-    ) { all, ignored, marked, filter, _ ->
-        HomeAssignmentFilters.visible(all, ignored, marked, filter, Date(AppClock.nowMillis()))
+    ) { all, (ignored, courseKeys), marked, filter, _ ->
+        HomeAssignmentFilters.visible(
+            all, ignoredIncludingCourses(all, ignored, courseKeys), marked, filter,
+            Date(AppClock.nowMillis()),
+        )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    /** Whether the 已忽略 tab has anything to show; see [HomeAssignmentFilters.hasIgnored]. */
+    /** Whether the ignored tab has anything to show; see [HomeAssignmentFilters.hasIgnored]. */
     val hasIgnoredAssignments: StateFlow<Boolean> = combine(
         _allAssignments,
         _ignoredAssignmentIds,
-    ) { all, ignored ->
-        HomeAssignmentFilters.hasIgnored(all, ignored)
+        _ignoredCourseKeys,
+    ) { all, ignored, courseKeys ->
+        HomeAssignmentFilters.hasIgnored(all, ignoredIncludingCourses(all, ignored, courseKeys))
     }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     private val saveIgnoredChannel = Channel<Set<String>>(Channel.CONFLATED)
@@ -333,6 +352,7 @@ class HomeViewModel @Inject constructor(
                     // _skippedDates.value = emptyMap()
                     _ignoredAssignmentIds.value = emptySet()
                     _markedCompletedIds.value = emptySet()
+                    _ignoredCourseKeys.value = emptySet()
                     hasLoaded = false
                     _initialLoadComplete.value = true
                 } else if (signedIn) {
@@ -361,13 +381,25 @@ class HomeViewModel @Inject constructor(
                 val assignments = dataCache.loadAssignments()
                 val ignored = dataCache.loadIgnoredAssignments()
                 val marked = dataCache.loadMarkedCompletedAssignments()
+                val courseKeys = dataCache.loadIgnoredCourses()
                 // Signed out, or in as someone else, while the files were
                 // read: what they held was the departing account's.
                 if (!authService.isStillSignedInAs(account)) return@collect
                 _ignoredAssignmentIds.value = ignored
                 _markedCompletedIds.value = marked
+                _ignoredCourseKeys.value = courseKeys
                 TigerDuckTheme.buildCourseColorMap(courses)
                 updateCoursesAndAssignments(courses, assignments)
+            }
+        }
+        viewModelScope.launch {
+            // Only the ignored courses: Home writes the other two sets itself,
+            // and reading them back here could undo a newer swipe.
+            dataCache.assignmentMarksVersion.drop(1).collect {
+                if (!authService.authState.value) return@collect
+                val account = authService.storedStudentId
+                val courseKeys = dataCache.loadIgnoredCourses()
+                if (authService.isStillSignedInAs(account)) _ignoredCourseKeys.value = courseKeys
             }
         }
         viewModelScope.launch {
@@ -427,6 +459,7 @@ class HomeViewModel @Inject constructor(
             // _skippedDates.value = dataCache.loadSkippedDates()
             _ignoredAssignmentIds.value = dataCache.loadIgnoredAssignments()
             _markedCompletedIds.value = dataCache.loadMarkedCompletedAssignments()
+            _ignoredCourseKeys.value = dataCache.loadIgnoredCourses()
 
             // Load cached data immediately
             val cachedCourses = dataCache.loadCourses()
@@ -766,10 +799,6 @@ class HomeViewModel @Inject constructor(
         _allCourses.value = courses
         _allAssignments.value = assignments.sortedBy { it.dueDate }
 
-        // Schedule notifications for upcoming assignments. Items the user has
-        // ignored or marked-done still get scheduled, but as safety-net
-        // reminders — they fire at the same lead time as regular alerts but
-        // call out that the homework was dismissed without being submitted.
         if (prefs.notifyAssignments) {
             rescheduleAssignmentNotifications(assignments)
         }
@@ -778,25 +807,31 @@ class HomeViewModel @Inject constructor(
         liveActivityManager.refresh()
     }
 
-    /**
-     * Re-arm every assignment alarm against the current ignored/marked sets.
-     * The scheduler decides REGULAR vs SAFETY_NET per id; we just hand it the
-     * full list of non-completed assignments and the union of dismissed ids.
-     */
+    /** Re-arm every assignment alarm against the current ignored and marked-done sets. */
     private fun rescheduleAssignmentNotifications(assignments: List<Assignment>) {
-        val safetyNetIds = _ignoredAssignmentIds.value + _markedCompletedIds.value
         notificationScheduler.scheduleAll(
-            assignments.filter { !it.isCompleted },
-            safetyNetIds,
+            OutstandingAssignments.of(
+                assignments,
+                ignoredIds = ignoredIncludingCourses(assignments),
+                markedCompletedIds = _markedCompletedIds.value,
+            ),
             prefs.notifyAssignmentOffsets,
         )
     }
+
+    /** The ignored ids of [all], counting those ignored with their course. */
+    private fun ignoredIncludingCourses(
+        all: List<Assignment>,
+        ignored: Set<String> = _ignoredAssignmentIds.value,
+        courseKeys: Set<String> = _ignoredCourseKeys.value,
+    ): Set<String> =
+        ignored + CourseIgnores.assignmentIds(all, courseKeys, courseService.currentSemesterCode())
 
     fun hasUnfinishedAssignment(courseNo: String): Boolean =
         HomeAssignmentFilters.anyUnfinishedFor(
             all = _allAssignments.value,
             courseNo = courseNo,
-            ignoredIds = _ignoredAssignmentIds.value,
+            ignoredIds = ignoredIncludingCourses(_allAssignments.value),
             markedCompletedIds = _markedCompletedIds.value,
         )
 
@@ -804,7 +839,7 @@ class HomeViewModel @Inject constructor(
         HomeAssignmentFilters.unfinishedFor(
             all = _allAssignments.value,
             courseNo = courseNo,
-            ignoredIds = _ignoredAssignmentIds.value,
+            ignoredIds = ignoredIncludingCourses(_allAssignments.value),
             markedCompletedIds = _markedCompletedIds.value,
         )
 
@@ -824,7 +859,9 @@ class HomeViewModel @Inject constructor(
     fun onHomePaused() {
         _ignoredTabPinned.value = false
         if (_assignmentFilter.value == AssignmentFilter.IGNORED &&
-            !HomeAssignmentFilters.hasIgnored(_allAssignments.value, _ignoredAssignmentIds.value)
+            !HomeAssignmentFilters.hasIgnored(
+                _allAssignments.value, ignoredIncludingCourses(_allAssignments.value),
+            )
         ) {
             _assignmentFilter.value = AssignmentFilter.INCOMPLETE
             prefs.homeAssignmentFilter = AssignmentFilter.INCOMPLETE

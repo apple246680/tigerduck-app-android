@@ -72,13 +72,10 @@ class DebugClockController @Inject constructor(
      */
     private suspend fun rescheduleAll() {
         if (appPreferences.notifyAssignments) {
-            val assignments = dataCache.loadAssignments()
+            val assignments = dataCache.loadOutstandingAssignments()
             if (assignments.isNotEmpty()) {
-                val ignored = dataCache.loadIgnoredAssignments()
-                val marked = dataCache.loadMarkedCompletedAssignments()
                 assignmentScheduler.scheduleAll(
                     assignments,
-                    ignored + marked,
                     appPreferences.notifyAssignmentOffsets,
                 )
             }

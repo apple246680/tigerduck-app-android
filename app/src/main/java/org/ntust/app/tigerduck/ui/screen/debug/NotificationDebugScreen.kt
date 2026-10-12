@@ -91,7 +91,6 @@ fun NotificationDebugScreen(onBack: () -> Unit) {
             title = "Preview Assignment",
             courseName = "Preview Course",
             assignmentId = "debug-${sent.incrementAndGet()}",
-            kind = AssignmentNotificationReceiver.KIND_REGULAR,
             offset = AssignmentReminderOffset.HR24,
         )
     }

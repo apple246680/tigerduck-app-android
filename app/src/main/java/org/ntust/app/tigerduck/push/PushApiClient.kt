@@ -20,7 +20,8 @@ import java.util.TimeZone
 import javax.inject.Inject
 import javax.inject.Singleton
 
-class PushApiException(message: String) : Exception(message)
+/** [statusCode] is the HTTP status, where the caller tells refusals from outages by it. */
+class PushApiException(message: String, val statusCode: Int? = null) : Exception(message)
 
 @Singleton
 class PushApiClient @Inject constructor(
@@ -259,6 +260,41 @@ class PushApiClient @Inject constructor(
             if (!response.isSuccessful) {
                 throw PushApiException("patchCourseOverride failed: HTTP ${response.code}")
             }
+        }
+    }
+
+    /**
+     * PATCH whether every assignment of the course [moodleId] is ignored,
+     * through the same override as its colour and name. [moodleCourseId] is
+     * the course's numeric Moodle id, which the backend's reminder scan
+     * matches the assignments it fetches itself by. Either may be null.
+     *
+     * Returns whether the backend stored it: false when the answer has no
+     * `ignore_assignments`, as from a backend that predates the field and
+     * drops it unread, and null when course or assignment sync is off and
+     * nothing went out. Throws when the request fails.
+     */
+    suspend fun patchCourseIgnore(
+        moodleId: String,
+        ignore: Boolean?,
+        moodleCourseId: Int?,
+    ): Boolean? = withContext(Dispatchers.IO) {
+        if (!isSyncCapable || !prefs.syncAssignments || !prefs.syncCourses) return@withContext null
+        val payload = mutableMapOf<String, Any>()
+        if (ignore != null) payload["ignore_assignments"] = ignore
+        if (moodleCourseId != null && moodleCourseId >= 1) payload["moodle_course_id"] = moodleCourseId
+        if (payload.isEmpty()) return@withContext null
+        val request = Request.Builder()
+            .url("$baseUrl/sync/courses/$moodleId/override")
+            .patch(gson.toJson(payload).toRequestBody(jsonType))
+            .addAuthHeader()
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw PushApiException("patchCourseIgnore failed: HTTP ${response.code}", response.code)
+            }
+            runCatching { JSONObject(response.body.string()).has("ignore_assignments") }
+                .getOrDefault(false)
         }
     }
 

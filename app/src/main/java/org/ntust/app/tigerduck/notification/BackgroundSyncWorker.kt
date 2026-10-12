@@ -25,6 +25,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import org.ntust.app.tigerduck.auth.AuthService
+import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.push.BackendSyncResult
@@ -63,6 +64,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
     private val authTokenManager: org.ntust.app.tigerduck.auth.AuthTokenManager,
     private val fcmBootstrap: org.ntust.app.tigerduck.push.FcmBootstrap,
     private val notificationSettingsSync: org.ntust.app.tigerduck.push.NotificationSettingsSync,
+    private val courseIgnoreSync: CourseIgnoreSync,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) : CoroutineWorker(context, params) {
 
@@ -161,6 +163,8 @@ class BackgroundSyncWorker @AssistedInject constructor(
             return
         }
         try {
+            val generation = courseIgnoreSync.currentGeneration()
+            courseIgnoreSync.retryPending()
             val result = syncApiClient.fetchFullSync()
             val localIgnored = dataCache.loadIgnoredAssignments()
             val localMarked = dataCache.loadMarkedCompletedAssignments()
@@ -171,6 +175,9 @@ class BackgroundSyncWorker @AssistedInject constructor(
                 dataCache.replaceIgnoredAssignments(result.ignoredIds)
                 dataCache.replaceMarkedCompletedAssignments(result.completedIds)
             }
+            val marksChanged = !isFirstTimeMigration && !held &&
+                (result.ignoredIds != localIgnored || result.completedIds != localMarked)
+            courseIgnoreSync.applySnapshot(result, generation)
 
             if (prefs.syncCourseColors && result.courseOverrides.isNotEmpty()) {
                 applyCourseOverridesBackground(result.courseOverrides)
@@ -195,6 +202,15 @@ class BackgroundSyncWorker @AssistedInject constructor(
                         Log.w(TAG, "notification settings pull failed", e)
                     }
             }.await()
+            // Homework ignored or marked done on another device takes its
+            // reminders here with it, whether or not this run fetches
+            // assignments and arms them again.
+            if (marksChanged && prefs.notifyAssignments) {
+                notificationScheduler.scheduleAll(
+                    dataCache.loadOutstandingAssignments(),
+                    prefs.notifyAssignmentOffsets,
+                )
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -444,14 +460,8 @@ class BackgroundSyncWorker @AssistedInject constructor(
                 }
 
             if (prefs.notifyAssignments) {
-                // Hand the scheduler both the full non-completed list and the
-                // dismissed set; it routes ignored/marked ids to the safety-
-                // net reminder body instead of dropping them.
-                val ignored = dataCache.loadIgnoredAssignments()
-                val marked = dataCache.loadMarkedCompletedAssignments()
                 notificationScheduler.scheduleAll(
-                    merged.filter { !it.isCompleted },
-                    ignored + marked,
+                    dataCache.loadOutstandingAssignments(),
                     prefs.notifyAssignmentOffsets,
                 )
             }
