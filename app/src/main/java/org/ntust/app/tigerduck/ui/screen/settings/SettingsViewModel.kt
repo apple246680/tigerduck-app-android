@@ -66,6 +66,10 @@ class SettingsViewModel @Inject constructor(
 
     private companion object {
         const val TAG = "SyncReenable"
+
+        // Each Settings screen has its own view model, and an answer given
+        // on one is still being applied when the next one checks.
+        val resolutions = ReenableResolutions()
     }
 
     private val _syncDiagnostic = MutableStateFlow(PushDiagnostic(false, false, null))
@@ -187,6 +191,7 @@ class SettingsViewModel @Inject constructor(
             Log.d(TAG, "[reenable] checkPendingConflicts skip: pending is empty")
             return
         }
+        if (resolutions.defers(::checkPendingConflicts)) return
         Log.i(TAG, "[reenable] checkPendingConflicts start: pending=$pending")
         viewModelScope.launch {
             try {
@@ -301,9 +306,10 @@ class SettingsViewModel @Inject constructor(
         _reenableConflict.value = null
         // Full syncs leave assignment marks alone while "assignments" is
         // pending (AssignmentOverrideReconciler.isHeldForReenable), so it is
-        // let go only once this has sent or taken them, however it ends.
+        // let go only once every answer has sent or taken them.
         val holdsMarks = "assignments" in conflict.categories
         prefs.pendingConflictCategories = if (holdsMarks) setOf("assignments") else emptySet()
+        resolutions.start()
         viewModelScope.launch {
             if (keepLocal) {
                 if ("courses" in conflict.categories) {
@@ -419,7 +425,9 @@ class SettingsViewModel @Inject constructor(
                 }
             }
         }.invokeOnCompletion {
-            if (holdsMarks) prefs.pendingConflictCategories = prefs.pendingConflictCategories - "assignments"
+            if (resolutions.finish()) {
+                prefs.pendingConflictCategories = prefs.pendingConflictCategories - "assignments"
+            }
         }
     }
 
