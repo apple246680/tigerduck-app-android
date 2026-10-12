@@ -40,15 +40,26 @@ data class TodayClassEntry(
 
 object NextClassResolver {
 
+    /**
+     * The class going on now and the next one, today or within the coming week.
+     *
+     * [isQuietDay] tells whether no class meets for this user on the day
+     * `daysAhead` from today (0 is today): outside the term, or a school
+     * holiday they have not opted back into. Such a day's classes are left
+     * out, so on a quiet today the next class is the first one of the next day
+     * that has any.
+     */
     fun resolve(
         courses: List<Course>,
         weekday: Int,
         minuteOfDay: Int,
+        isQuietDay: (daysAhead: Int) -> Boolean = { false },
     ): NextClassResult {
-        val ongoing = computeOngoingCourses(courses, weekday, minuteOfDay).firstOrNull()
+        val todaysCourses = if (isQuietDay(0)) emptyList() else courses
+        val ongoing = computeOngoingCourses(todaysCourses, weekday, minuteOfDay).firstOrNull()
         if (ongoing != null) {
             val nextToday = nextStartingToday(
-                courses,
+                todaysCourses,
                 weekday,
                 minuteOfDay,
                 excluding = ongoing.course.courseNo
@@ -67,12 +78,13 @@ object NextClassResolver {
                 weekday = weekday,
             )
         }
-        val next = nextStartingToday(courses, weekday, minuteOfDay, excluding = null)
+        val next = nextStartingToday(todaysCourses, weekday, minuteOfDay, excluding = null)
         if (next != null) {
             return NextClassResult.NextToday(next.first, next.second, weekday)
         }
         // Walk forward up to 7 days.
         for (offset in 1..7) {
+            if (isQuietDay(offset)) continue
             val futureWeekday = ((weekday - 1 + offset) % 7) + 1
             val first = firstClassOfDay(courses, futureWeekday) ?: continue
             return NextClassResult.NextFuture(first.first, offset, first.second, futureWeekday)
@@ -80,11 +92,14 @@ object NextClassResolver {
         return NextClassResult.Empty
     }
 
+    /** Today's classes in start order; none when [quietToday], as [resolve] has none. */
     fun todaysClasses(
         courses: List<Course>,
         weekday: Int,
         minuteOfDay: Int,
+        quietToday: Boolean = false,
     ): List<TodayClassEntry> {
+        if (quietToday) return emptyList()
         val entries = mutableListOf<TodayClassEntry>()
         for (course in courses) {
             val periods = course.schedule[weekday]?.sortedBy(::periodOrder) ?: continue

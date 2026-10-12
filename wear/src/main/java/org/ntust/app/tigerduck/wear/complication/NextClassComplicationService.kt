@@ -14,7 +14,6 @@ import androidx.wear.watchface.complications.datasource.ComplicationDataSourceUp
 import androidx.wear.watchface.complications.datasource.ComplicationRequest
 import androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService
 import kotlinx.coroutines.flow.first
-import org.ntust.app.tigerduck.shared.NextClassResolver
 import org.ntust.app.tigerduck.shared.NextClassResult
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.wear.MainActivity
@@ -49,7 +48,6 @@ class NextClassComplicationService : SuspendingComplicationDataSourceService() {
         type: ComplicationType,
     ): ComplicationData {
         val now = AppClock.localDateTime()
-        val weekday = now.dayOfWeek.value
         val minuteOfDay = now.hour * 60 + now.minute
 
         if (snapshot.syncedAtMs == null || snapshot.courses.isEmpty()) {
@@ -57,7 +55,7 @@ class NextClassComplicationService : SuspendingComplicationDataSourceService() {
         }
 
         val tap = launchAppPendingIntent()
-        return when (val r = NextClassResolver.resolve(snapshot.courses, weekday, minuteOfDay)) {
+        return when (val r = snapshot.nextClass(now.toLocalDate(), minuteOfDay)) {
             is NextClassResult.Ongoing -> when (type) {
                 ComplicationType.SHORT_TEXT -> ShortTextComplicationData.Builder(
                     text = PlainComplicationText.Builder(truncate(r.course.displayName, 7)).build(),

@@ -1,5 +1,7 @@
 package org.ntust.app.tigerduck.shared
 
+import java.time.LocalDate
+
 /**
  * Wire constants for the phone↔watch Wearable Data Layer protocol. Defined in
  * `:shared` so the two ends can never drift — a typo or rename on one side
@@ -22,6 +24,24 @@ object WearProtocol {
         // LibraryQR SecureScreen reads the persisted value to decide whether
         // to apply FLAG_SECURE to the QR window.
         const val KEY_DISABLE_SCREEN_CAPTURE_PROTECTION = "disableScreenCaptureProtection"
+
+        // Days on which no class meets for this user, as [encodeQuietDays]
+        // writes them. A phone that predates the key sends none, which the
+        // watch reads as no quiet days, and a watch that predates it ignores it.
+        const val KEY_QUIET_DAYS = "quietDays"
+
+        /** ISO `yyyy-MM-dd` strings, the form [KEY_QUIET_DAYS] carries. */
+        fun encodeQuietDays(days: Collection<LocalDate>): ArrayList<String> =
+            days.sorted().mapTo(ArrayList(days.size)) { it.toString() }
+
+        /**
+         * Null, from a phone or a stored snapshot that predates
+         * [KEY_QUIET_DAYS], reads as none, so the watch shows every class as
+         * it did before. An entry that is not a date is dropped rather than
+         * failing the rest.
+         */
+        fun decodeQuietDays(raw: Collection<String>?): Set<LocalDate> =
+            raw.orEmpty().mapNotNullTo(HashSet()) { runCatching { LocalDate.parse(it) }.getOrNull() }
     }
 
     /** One-shot message watch → phone asking for a fresh [Schedule] publish. */

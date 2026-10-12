@@ -23,7 +23,6 @@ import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
 import org.ntust.app.tigerduck.shared.Course
-import org.ntust.app.tigerduck.shared.NextClassResolver
 import org.ntust.app.tigerduck.shared.NextClassResult
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.wear.R
@@ -52,8 +51,9 @@ fun NowNextScreen(snapshot: WatchSnapshot) {
             return@ScreenScaffold
         }
 
-        val (weekday, minuteOfDay) = currentTaipeiTick()
-        val result = NextClassResolver.resolve(snapshot.courses, weekday, minuteOfDay)
+        val (today, minuteOfDay) = currentTaipeiTick()
+        val weekday = today.dayOfWeek.value
+        val result = snapshot.nextClass(today, minuteOfDay)
 
         ScalingLazyColumn(
             modifier = Modifier
