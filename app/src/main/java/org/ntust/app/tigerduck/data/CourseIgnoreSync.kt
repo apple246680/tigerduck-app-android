@@ -215,16 +215,18 @@ class CourseIgnoreSync internal constructor(
     }
 
     /**
-     * Drops every waiting change and takes [result]'s set. Without a [result]
-     * the next sync takes the backend's, since nothing is left to protect.
+     * Drops every waiting change and takes [result]'s set. Without a
+     * [result], when its fetch failed, this device's set goes too and the
+     * next sync brings the backend's: kept, a course ignored only here would
+     * read as one the backend lost and go up again.
      */
     suspend fun adoptServer(result: BackendSyncResult?, generation: Int) {
         val server = result?.let { serverView(it) }
         val updated = mutex.withLock {
             if (!dataCache.savePendingCourseIgnores(emptyList(), generation)) return@withLock null
             val local = dataCache.loadIgnoredCourses()
-            CourseIgnoreReconciler.adopt(local, server)
-                ?.takeIf { it != local && dataCache.saveIgnoredCourses(it, generation) }
+            val adopted = if (result == null) emptySet() else CourseIgnoreReconciler.adopt(local, server)
+            adopted?.takeIf { it != local && dataCache.saveIgnoredCourses(it, generation) }
         }
         if (updated != null) effects.changed()
     }

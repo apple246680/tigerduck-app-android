@@ -340,6 +340,19 @@ class CourseIgnoreSyncTest {
     }
 
     @Test
+    fun `taking the backend's set without a snapshot drops this device's, so none of it goes up again`() = runTest {
+        answer = { false }
+        setIgnored("AAA")
+        sent.clear()
+
+        sync.adoptServer(null, sync.currentGeneration())
+        sync.applySnapshot(snapshot(fetchedAtMs = 5_000), sync.currentGeneration())
+
+        assertEquals(emptySet<String>(), cache.loadIgnoredCourses())
+        assertEquals(emptyList<Sent>(), sent)
+    }
+
+    @Test
     fun `a snapshot fetched before a course was deleted does not bring its setting back`() = runTest {
         setIgnored("AAA")
         now = 2_000L
