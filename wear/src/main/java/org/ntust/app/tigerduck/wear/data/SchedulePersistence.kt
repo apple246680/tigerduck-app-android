@@ -16,8 +16,8 @@ import kotlinx.coroutines.flow.map
 import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.shared.NextClassResolver
 import org.ntust.app.tigerduck.shared.NextClassResult
-import org.ntust.app.tigerduck.shared.QuietDays
 import org.ntust.app.tigerduck.shared.TodayClassEntry
+import org.ntust.app.tigerduck.shared.WearProtocol
 import java.io.ByteArrayInputStream
 import java.time.LocalDate
 import java.util.zip.GZIPInputStream
@@ -205,7 +205,7 @@ class SchedulePersistence(private val context: Context) {
                 loggedIn = prefs[KEY_LOGGED_IN] ?: false,
                 languageTag = prefs[KEY_LANGUAGE],
                 // Absent from a snapshot an older watch build stored.
-                quietDays = QuietDays.decode(prefs[KEY_QUIET_DAYS]),
+                quietDays = WearProtocol.Schedule.decodeQuietDays(prefs[KEY_QUIET_DAYS]),
             )
         }
 

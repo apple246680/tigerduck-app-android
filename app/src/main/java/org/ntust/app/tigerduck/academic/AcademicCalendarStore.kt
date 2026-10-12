@@ -67,7 +67,7 @@ class AcademicCalendarStore @Inject constructor(
 
     /**
      * Emits when a refresh changes the calendar or the user's holiday opt-ins
-     * change, for the paired watch: it keeps the quiet days it was last sent
+     * change, for the paired watch, which keeps the holidays it was last sent
      * and cannot ask this store. Separate from [calendar], whose collectors
      * would load the cached payload on every process start.
      */

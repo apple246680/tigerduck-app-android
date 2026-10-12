@@ -5,7 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.ntust.app.tigerduck.academic.AcademicCalendar
 import org.ntust.app.tigerduck.academic.Holiday
-import org.ntust.app.tigerduck.shared.QuietDays
+import org.ntust.app.tigerduck.shared.WearProtocol
 import java.time.LocalDate
 
 class WearQuietDaysTest {
@@ -24,7 +24,7 @@ class WearQuietDaysTest {
             Holiday(2, "Anniversary", "Anniversary", date("2026-11-14"), date("2026-11-14")),
         )
         val sent = wearQuietDays(calendar, optedInHolidayIds = setOf(2), today = today)
-        assertEquals(setOf(date("2026-10-09"), date("2026-10-10")), QuietDays.decode(sent))
+        assertEquals(setOf(date("2026-10-09"), date("2026-10-10")), WearProtocol.Schedule.decodeQuietDays(sent))
     }
 
     @Test

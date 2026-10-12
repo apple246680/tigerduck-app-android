@@ -16,7 +16,6 @@ import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.shared.Course
-import org.ntust.app.tigerduck.shared.QuietDays
 import org.ntust.app.tigerduck.shared.WearProtocol
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import java.io.ByteArrayOutputStream
@@ -53,9 +52,9 @@ class WearScheduleBridge @Inject constructor(
     }
 
     /**
-     * Publishes the current course list, accent color, login state and quiet
-     * days to the watch via DataClient. Safe to call repeatedly — same payload
-     * no-ops.
+     * Publishes the current course list, accent color, login state and the
+     * holidays the user has not opted back into to the watch via DataClient.
+     * Safe to call repeatedly — same payload no-ops.
      */
     suspend fun publish() {
         val loggedIn = authService.authState.value
@@ -194,7 +193,7 @@ class WearScheduleBridge @Inject constructor(
 }
 
 /**
- * How far ahead the watch is told about quiet days. Bounded so a malformed
+ * How far ahead the watch is told about holidays. Bounded so a malformed
  * holiday range cannot outgrow the Data Layer item, which also carries the
  * courses; the phone sends a fresh list at every app start and watch sync
  * request, far sooner than a year runs out.
@@ -202,14 +201,15 @@ class WearScheduleBridge @Inject constructor(
 internal const val WEAR_QUIET_DAYS_AHEAD = 366L
 
 /**
- * The days from [today] through [WEAR_QUIET_DAYS_AHEAD] days later on which
- * no class meets for this user, in the form the watch reads.
+ * The holidays the user has not opted back into, from [today] through
+ * [WEAR_QUIET_DAYS_AHEAD] days later, in the form the watch reads under
+ * [WearProtocol.Schedule.KEY_QUIET_DAYS].
  */
 internal fun wearQuietDays(
     calendar: AcademicCalendar,
     optedInHolidayIds: Set<Int>,
     today: LocalDate,
-): ArrayList<String> = QuietDays.encode(
+): ArrayList<String> = WearProtocol.Schedule.encodeQuietDays(
     calendar.suppressedDays(optedInHolidayIds, today, today.plusDays(WEAR_QUIET_DAYS_AHEAD))
 )
 
