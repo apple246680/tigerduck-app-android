@@ -30,9 +30,8 @@ internal class ClassTableIgnoredCourses(private val marksVersion: StateFlow<Int>
         id
     }
 
-    fun saved(id: Long) {
-        synchronized(lock) { unsaved.remove(id) }
-    }
+    /** Whether [id] was still waiting for its write. */
+    fun saved(id: Long): Boolean = synchronized(lock) { unsaved.remove(id) != null }
 
     /**
      * Takes [stored], read from the cache when [marksVersion] was [readAt],

@@ -100,6 +100,25 @@ class CourseIgnoreSyncTest {
     }
 
     @Test
+    fun `the write is reported before the backend is asked`() = runTest {
+        val onTheWire = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        answer = {
+            onTheWire.complete(Unit)
+            release.await()
+            true
+        }
+        var written = false
+
+        val tap = launch { sync.setIgnored("1141", "AAA", "1141AAA", null, true) { written = true } }
+        onTheWire.await()
+
+        assertTrue("reported while the PATCH is still out", written)
+        release.complete(Unit)
+        tap.join()
+    }
+
+    @Test
     fun `a change that fails waits and goes out first on the next sync`() = runTest {
         answer = { throw java.io.IOException("offline") }
         setIgnored("AAA")

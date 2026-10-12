@@ -407,8 +407,7 @@ class ClassTableViewModel @Inject constructor(
 
     /** [edit]'s write is done, so the cache decides again; it may hold more by now. */
     private fun ignoredCoursesSaved(edit: Long) {
-        ignoredCourses.saved(edit)
-        viewModelScope.launch { loadAssignmentMarks() }
+        if (ignoredCourses.saved(edit)) viewModelScope.launch { loadAssignmentMarks() }
     }
 
     /** The ignored ids of [all], counting those ignored with their course. */
@@ -751,7 +750,11 @@ class ClassTableViewModel @Inject constructor(
         val moodleCourseId = course.moodleNumericCourseId ?: lookupMoodleCourseId(moodleId)
         appScope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
-                courseIgnoreSync.setIgnored(semester, course.courseNo, moodleId, moodleCourseId, ignore)
+                // Done with the write, not the PATCH: a slow request must not
+                // hold the tap over a change made meanwhile, such as Use Server.
+                courseIgnoreSync.setIgnored(semester, course.courseNo, moodleId, moodleCourseId, ignore) {
+                    ignoredCoursesSaved(edit)
+                }
             } finally {
                 ignoredCoursesSaved(edit)
             }

@@ -101,7 +101,9 @@ class CourseIgnoreSync internal constructor(
 
     /**
      * Ignores, or stops ignoring, every assignment of [semester]'s
-     * [courseNo]: here at once, then on the backend.
+     * [courseNo]: here at once, then on the backend. [onWritten] runs once
+     * the file has the change, or the write was dropped, before the backend
+     * is asked.
      */
     suspend fun setIgnored(
         semester: String,
@@ -109,6 +111,7 @@ class CourseIgnoreSync internal constructor(
         moodleId: String,
         moodleCourseId: Int?,
         ignore: Boolean,
+        onWritten: () -> Unit = {},
     ) {
         val generation = currentGeneration()
         val change = PendingCourseIgnore(semester, courseNo, moodleId, moodleCourseId, ignore, clock())
@@ -123,6 +126,7 @@ class CourseIgnoreSync internal constructor(
             touchedAt[key] = change.changedAtMs
             true
         }
+        onWritten()
         if (!written) return
         effects.changed()
         send(change, generation)
