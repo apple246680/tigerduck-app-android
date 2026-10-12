@@ -52,7 +52,16 @@ data class MoodleEnrolledCourse(
 // mod_assign_get_assignments
 
 data class MoodleAssignmentsEnvelope(
-    val courses: List<MoodleAssignmentsCourse> = emptyList()
+    // Null rather than empty when the key is missing: only a body that is
+    // not this function's answer lacks it, and an empty array is an answer.
+    val courses: List<MoodleAssignmentsCourse>? = null,
+    val warnings: List<MoodleWarning>? = null,
+)
+
+/** One of the warnings a Moodle webservice answers with beside its data. */
+data class MoodleWarning(
+    /** What it is about: "course" or "module" for mod_assign_get_assignments. */
+    val item: String? = null,
 )
 
 data class MoodleAssignmentsCourse(

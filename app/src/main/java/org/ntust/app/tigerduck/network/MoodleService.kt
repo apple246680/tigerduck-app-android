@@ -17,6 +17,7 @@ import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.di.ApplicationScope
+import org.ntust.app.tigerduck.network.model.MoodleAssignmentsCourse
 import org.ntust.app.tigerduck.network.model.MoodleAssignmentsEnvelope
 import org.ntust.app.tigerduck.network.model.MoodleEnrolledCourse
 import org.ntust.app.tigerduck.network.model.MoodleSubmission
@@ -61,7 +62,7 @@ class MoodleService @Inject constructor(
 
     /** The network half of [fetchAssignments]: what every caller asking for the same courses can share. */
     private class AssignmentsRound(
-        val envelope: MoodleAssignmentsEnvelope,
+        val courses: List<MoodleAssignmentsCourse>,
         val statuses: Map<Int, MoodleSubmissionStatusEnvelope>,
         /** Submissions the cache had confirmed, not asked about — see [confirmedSubmissions]. */
         val confirmed: Map<Int, Date>,
@@ -203,7 +204,7 @@ class MoodleService @Inject constructor(
         val coursesById = relevant.associateBy { it.id }
 
         // Flatten the nested course→assignments response.
-        round.envelope.courses
+        round.courses
             .flatMap { c -> c.assignments.map { a -> c.id to a } }
             .mapNotNull { (courseId, a) ->
                 if (a.duedate <= 0) return@mapNotNull null
@@ -251,8 +252,8 @@ class MoodleService @Inject constructor(
             val round = attemptWithTokenRetry { token ->
                 askedWith = token
                 val userId = getSiteInfoUserId(token)
-                val envelope = callGetAssignments(token, courseIds)
-                val toAsk = envelope.courses.flatMap { it.assignments }
+                val courses = callGetAssignments(token, courseIds)
+                val toAsk = courses.flatMap { it.assignments }
                     .filter { it.id !in confirmed }
                 asked = toAsk.size
                 val statuses = coroutineScope {
@@ -264,7 +265,7 @@ class MoodleService @Inject constructor(
                         }
                     }.awaitAll().filterNotNull().toMap()
                 }
-                AssignmentsRound(envelope, statuses, confirmed)
+                AssignmentsRound(courses, statuses, confirmed)
             }
             // Stamped here rather than at each caller, so every screen and
             // the worker date the data alike — see RefreshPolicies. Only
@@ -349,24 +350,12 @@ class MoodleService @Inject constructor(
         }
     }
 
-    private fun callGetAssignments(token: String, courseIds: List<Int>): MoodleAssignmentsEnvelope {
-        val url =
-            "$webserviceUrl?moodlewsrestformat=json&wsfunction=mod_assign_get_assignments&wstoken=$token"
-        val req = Request.Builder().url(url).post(assignmentsForm(courseIds)).build()
-        val body = client.newCall(req).execute().use { response ->
-            if (!response.isSuccessful) throw MoodleWebserviceError.HttpStatus(response.code)
-            response.body.string()
-        }
-        MoodleWebserviceError.fromJsonBody(body)?.let { throw it }
-        return try {
-            gson.fromJson(body, MoodleAssignmentsEnvelope::class.java)
-                ?: throw MoodleWebserviceError.MalformedResponse("assignments envelope null")
-        } catch (e: MoodleWebserviceError) {
-            throw e
-        } catch (e: Exception) {
-            throw MoodleWebserviceError.MalformedResponse("assignments decode failed: ${e.message}")
-        }
-    }
+    private fun callGetAssignments(token: String, courseIds: List<Int>): List<MoodleAssignmentsCourse> =
+        requestAssignments(
+            client,
+            "$webserviceUrl?moodlewsrestformat=json&wsfunction=mod_assign_get_assignments&wstoken=$token",
+            courseIds,
+        )
 
     private fun callGetSubmissionStatus(
         token: String,
@@ -420,6 +409,52 @@ class MoodleService @Inject constructor(
             courseIds.forEachIndexed { i, id -> add("courseids[$i]", id.toString()) }
             add("capabilities[0]", "mod/assign:submit")
         }.build()
+
+        /**
+         * `mod_assign_get_assignments` for [courseIds] at [url], through
+         * [client]: the courses of Moodle's answer, which can be none. Every
+         * other outcome throws, and the callers keep the assignments they
+         * have when it does; see [decodeAssignments].
+         */
+        internal fun requestAssignments(
+            client: OkHttpClient,
+            url: String,
+            courseIds: List<Int>,
+        ): List<MoodleAssignmentsCourse> {
+            val req = Request.Builder().url(url).post(assignmentsForm(courseIds)).build()
+            val body = client.newCall(req).execute().use { response ->
+                if (!response.isSuccessful) throw MoodleWebserviceError.HttpStatus(response.code)
+                response.body.string()
+            }
+            return decodeAssignments(body)
+        }
+
+        /**
+         * The courses of the `mod_assign_get_assignments` answer in [body],
+         * or a throw for a body that is not one: an error, a page from the
+         * NTUST edge, JSON without `courses`.
+         *
+         * No course at all is an answer: Moodle leaves out a course the user
+         * cannot submit to without a word, so a TA account whose assignments
+         * are all in courses it TAs gets none (issue #160). No course and a
+         * warning about one is not: Moodle warns about a course the token's
+         * account is not enrolled in, which is what these course ids get with
+         * the token of an account that signed in after they were looked up.
+         */
+        internal fun decodeAssignments(body: String): List<MoodleAssignmentsCourse> {
+            MoodleWebserviceError.fromJsonBody(body)?.let { throw it }
+            val envelope = try {
+                decodeGson.fromJson(body, MoodleAssignmentsEnvelope::class.java)
+            } catch (e: Exception) {
+                throw MoodleWebserviceError.MalformedResponse("assignments decode failed: ${e.message}")
+            }
+            val courses = envelope?.courses
+                ?: throw MoodleWebserviceError.MalformedResponse("assignments answer without courses")
+            if (courses.isEmpty() && envelope.warnings.orEmpty().any { it.item == "course" }) {
+                throw MoodleWebserviceError.MalformedResponse("no course answered for")
+            }
+            return courses
+        }
 
         /**
          * The assignments [cached] records as submitted, by Moodle assignment
