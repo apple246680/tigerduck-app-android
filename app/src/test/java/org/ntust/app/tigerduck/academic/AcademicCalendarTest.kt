@@ -14,6 +14,9 @@ class AcademicCalendarTest {
 
     private fun date(text: String) = LocalDate.parse(text)
 
+    private fun days(from: LocalDate, through: LocalDate): Set<LocalDate> =
+        generateSequence(from) { it.plusDays(1) }.takeWhile { !it.isAfter(through) }.toSet()
+
     private val calendar = AcademicCalendar(
         revision = 1L,
         terms = listOf(
@@ -83,34 +86,31 @@ class AcademicCalendarTest {
         assertFalse(AcademicCalendar.EMPTY.suppressesClasses(date("2026-09-26"), emptySet()))
     }
 
-    // --- suppressed days -----------------------------------------------
+    // --- quiet days in a range ------------------------------------------
 
     @Test
-    fun `suppressed days list every day each holiday covers`() {
+    fun `quiet days list every day a holiday covers in the term`() {
         assertEquals(
-            setOf(date("2026-09-25"), date("2026-09-26"), date("2026-09-27"), date("2027-01-01")),
-            calendar.suppressedDays(emptySet(), date("2026-09-01"), date("2027-01-31")),
+            setOf(date("2026-09-25"), date("2026-09-26"), date("2026-09-27")),
+            calendar.quietDays(emptySet(), date("2026-09-07"), date("2026-12-25")),
         )
     }
 
     @Test
-    fun `an opted-in holiday's days are not suppressed days`() {
-        assertEquals(
-            setOf(date("2027-01-01")),
-            calendar.suppressedDays(setOf(1), date("2026-09-01"), date("2027-01-31")),
-        )
+    fun `quiet days leave out an opted-in holiday's days`() {
+        assertTrue(calendar.quietDays(setOf(1), date("2026-09-07"), date("2026-12-25")).isEmpty())
     }
 
     @Test
-    fun `suppressed days stay inside the asked range`() {
+    fun `quiet days stay inside the asked range`() {
         assertEquals(
             setOf(date("2026-09-26"), date("2026-09-27")),
-            calendar.suppressedDays(emptySet(), date("2026-09-26"), date("2026-12-31")),
+            calendar.quietDays(emptySet(), date("2026-09-26"), date("2026-12-25")),
         )
     }
 
     @Test
-    fun `a day an opted-in holiday also covers is not a suppressed day`() {
+    fun `quiet days leave out a day an opted-in holiday also covers`() {
         val overlapping = calendar.copy(
             holidays = calendar.holidays + Holiday(
                 3, "Anniversary", "Anniversary", date("2026-09-26"), date("2026-09-26")
@@ -118,23 +118,33 @@ class AcademicCalendarTest {
         )
         assertEquals(
             setOf(date("2026-09-25"), date("2026-09-27")),
-            overlapping.suppressedDays(setOf(3), date("2026-09-01"), date("2026-09-30")),
+            overlapping.quietDays(setOf(3), date("2026-09-07"), date("2026-09-30")),
         )
     }
 
     @Test
-    fun `a day outside the term is a suppressed day only when a holiday covers it`() {
-        // 2026-12-26 on are between the terms; only 2027-01-01 is a holiday.
+    fun `quiet days list every day outside the term`() {
+        // 2026-12-26 on are between the terms, New Year's Day among them even
+        // when opted into.
+        assertEquals(
+            days(date("2026-12-26"), date("2027-01-05")),
+            calendar.quietDays(setOf(2), date("2026-12-20"), date("2027-01-05")),
+        )
+    }
+
+    @Test
+    fun `with no terms known quiet days list only the holidays`() {
         assertEquals(
             setOf(date("2027-01-01")),
-            calendar.suppressedDays(emptySet(), date("2026-12-20"), date("2027-01-05")),
+            calendar.copy(terms = emptyList())
+                .quietDays(emptySet(), date("2026-12-20"), date("2027-01-05")),
         )
     }
 
     @Test
-    fun `an empty calendar has no suppressed days`() {
+    fun `an empty calendar lists no quiet days`() {
         assertTrue(
-            AcademicCalendar.EMPTY.suppressedDays(emptySet(), date("2026-09-01"), date("2027-08-31"))
+            AcademicCalendar.EMPTY.quietDays(emptySet(), date("2026-09-01"), date("2027-08-31"))
                 .isEmpty()
         )
     }

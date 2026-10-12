@@ -53,8 +53,8 @@ class WearScheduleBridge @Inject constructor(
 
     /**
      * Publishes the current course list, accent color, login state and the
-     * holidays the user has not opted back into to the watch via DataClient.
-     * Safe to call repeatedly — same payload no-ops.
+     * user's quiet days to the watch via DataClient. Safe to call repeatedly —
+     * same payload no-ops.
      */
     suspend fun publish() {
         val loggedIn = authService.authState.value
@@ -193,24 +193,24 @@ class WearScheduleBridge @Inject constructor(
 }
 
 /**
- * How far ahead the watch is told about holidays. Bounded so a malformed
- * holiday range cannot outgrow the Data Layer item, which also carries the
- * courses; the phone sends a fresh list at every app start and watch sync
- * request, far sooner than a year runs out.
+ * How far ahead the watch is told about quiet days. Bounded because every day
+ * after the last published term is quiet, and the list shares the Data Layer
+ * item with the courses; the phone sends a fresh list at every app start and
+ * watch sync request, far sooner than a year runs out.
  */
 internal const val WEAR_QUIET_DAYS_AHEAD = 366L
 
 /**
- * The holidays the user has not opted back into, from [today] through
- * [WEAR_QUIET_DAYS_AHEAD] days later, in the form the watch reads under
- * [WearProtocol.Schedule.KEY_QUIET_DAYS].
+ * The days from [today] through [WEAR_QUIET_DAYS_AHEAD] days later on which
+ * no class meets for this user ([AcademicCalendar.isQuietDay]), in the form
+ * the watch reads under [WearProtocol.Schedule.KEY_QUIET_DAYS].
  */
 internal fun wearQuietDays(
     calendar: AcademicCalendar,
     optedInHolidayIds: Set<Int>,
     today: LocalDate,
 ): ArrayList<String> = WearProtocol.Schedule.encodeQuietDays(
-    calendar.suppressedDays(optedInHolidayIds, today, today.plusDays(WEAR_QUIET_DAYS_AHEAD))
+    calendar.quietDays(optedInHolidayIds, today, today.plusDays(WEAR_QUIET_DAYS_AHEAD))
 )
 
 internal fun Course.toWearDto(): WearScheduleBridge.CourseDto = WearScheduleBridge.CourseDto(
