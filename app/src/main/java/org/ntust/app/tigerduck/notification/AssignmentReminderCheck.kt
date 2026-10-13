@@ -28,11 +28,13 @@ class AssignmentReminderCheck @Inject constructor(
     suspend fun verdict(assignmentId: String, armedDueAtMs: Long?): ReminderVerdict {
         // A sign-out while this runs wipes the data; nothing is written back after it.
         val generation = dataCache.userDataGeneration
-        val cached = cached(assignmentId)
-        AssignmentReminderPolicy.cacheDrop(cached, armedDueAtMs)?.let { return ReminderVerdict.Drop(it) }
+        AssignmentReminderPolicy.cacheDrop(cached(assignmentId), armedDueAtMs)
+            ?.let { return ReminderVerdict.Drop(it) }
 
         val moodleId = assignmentId.toIntOrNull()
         val answer = moodleId?.let { askMoodle(it) } ?: ReminderStatusAnswer.NoAnswer
+        // Read again: a mark, an ignore or a new due date can land while Moodle answers.
+        val cached = cached(assignmentId)
         if (moodleId != null && answer is ReminderStatusAnswer.Answered) {
             val (submitted, submittedAt) =
                 MoodleService.submissionState(moodleId, emptyMap(), answer.lastAttempt)

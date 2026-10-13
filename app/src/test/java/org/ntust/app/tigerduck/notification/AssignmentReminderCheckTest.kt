@@ -181,6 +181,40 @@ class AssignmentReminderCheckTest {
     }
 
     @Test
+    fun `a change to the cache while Moodle answered drops the reminder`() = runBlocking {
+        val marked = dueInThreeDays("20977")
+        val ofIgnoredCourse = dueInThreeDays("20978").copy(courseNo = "IGNORED")
+        val moved = dueInThreeDays("20979")
+        dataCache.saveAssignments(listOf(marked, ofIgnoredCourse, moved))
+        fun changingMeanwhile(change: suspend () -> Unit): () -> String = {
+            runBlocking { change() }
+            answer(own = "new")
+        }
+
+        moodle = changingMeanwhile { dataCache.saveMarkedCompletedAssignments(setOf("20977")) }
+        val afterMark = check.verdict("20977", marked.dueDate.time)
+        moodle = changingMeanwhile {
+            dataCache.saveIgnoredCourses(setOf(CourseIgnores.key(dataCache.currentSemesterCode(), "IGNORED")))
+        }
+        val afterIgnore = check.verdict("20978", ofIgnoredCourse.dueDate.time)
+        moodle = changingMeanwhile {
+            dataCache.updateAssignments { all ->
+                all.map { if (it == moved) it.copy(dueDate = Date(it.dueDate.time + DAY_MS)) else it }
+            }
+        }
+        val afterMove = check.verdict("20979", moved.dueDate.time)
+
+        assertEquals(
+            listOf(
+                ReminderVerdict.Drop(ReminderDropReason.MARKED_DONE),
+                ReminderVerdict.Drop(ReminderDropReason.COURSE_IGNORED),
+                ReminderVerdict.Drop(ReminderDropReason.DUE_DATE_CHANGED),
+            ),
+            listOf(afterMark, afterIgnore, afterMove),
+        )
+    }
+
+    @Test
     fun `an id Moodle does not number is not asked about`() = runBlocking {
         val manual = dueInThreeDays("manual-1")
         dataCache.saveAssignments(listOf(manual))
