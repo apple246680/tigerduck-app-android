@@ -29,6 +29,7 @@ import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.push.BackendSyncResult
+import org.ntust.app.tigerduck.ui.screen.home.AssignmentOverrideReconciler
 import org.ntust.app.tigerduck.ui.screen.home.CourseSyncReconciler
 import org.ntust.app.tigerduck.data.CourseRosterMerge
 import org.ntust.app.tigerduck.data.RefreshPolicy
@@ -169,11 +170,12 @@ class BackgroundSyncWorker @AssistedInject constructor(
             val localMarked = dataCache.loadMarkedCompletedAssignments()
             val isFirstTimeMigration = result.ignoredIds.isEmpty() && result.completedIds.isEmpty()
                 && (localIgnored.isNotEmpty() || localMarked.isNotEmpty())
-            if (!isFirstTimeMigration) {
+            val held = AssignmentOverrideReconciler.isHeldForReenable(prefs.pendingConflictCategories)
+            if (!isFirstTimeMigration && !held) {
                 dataCache.replaceIgnoredAssignments(result.ignoredIds)
                 dataCache.replaceMarkedCompletedAssignments(result.completedIds)
             }
-            val marksChanged = !isFirstTimeMigration &&
+            val marksChanged = !isFirstTimeMigration && !held &&
                 (result.ignoredIds != localIgnored || result.completedIds != localMarked)
             courseIgnoreSync.applySnapshot(result, generation)
 

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.coroutineScope
@@ -43,6 +44,7 @@ import org.ntust.app.tigerduck.push.PushRegistrationService
 import org.ntust.app.tigerduck.push.SyncApiClient
 import org.ntust.app.tigerduck.ui.AppState
 import org.ntust.app.tigerduck.ui.component.ServerStatusTracker
+import org.ntust.app.tigerduck.ui.screen.home.AssignmentOverrideReconciler
 import org.ntust.app.tigerduck.wear.WearScheduleBridge
 import javax.inject.Inject
 
@@ -73,6 +75,10 @@ class SettingsViewModel @Inject constructor(
 
     private companion object {
         const val TAG = "SyncReenable"
+
+        // Each Settings screen has its own view model, and an answer given
+        // on one is still being applied when the next one checks.
+        val resolutions = ReenableResolutions()
     }
 
     private val _syncDiagnostic = MutableStateFlow(PushDiagnostic(false, false, null))
@@ -194,8 +200,14 @@ class SettingsViewModel @Inject constructor(
             Log.d(TAG, "[reenable] checkPendingConflicts skip: pending is empty")
             return
         }
+        val token = resolutions.checkStarting(::checkPendingConflicts) ?: return
         Log.i(TAG, "[reenable] checkPendingConflicts start: pending=$pending")
-        viewModelScope.launch {
+        val account = authService.storedStudentId
+        val generation = dataCache.userDataGeneration
+        // On the application scope: a check cut short by leaving Settings
+        // would keep "assignments" pending, and the marks held, until
+        // TigerSync is opened again. On Main, like this view model's work.
+        appScope.launch(Dispatchers.Main) {
             try {
                 val result = syncApiClient.fetchFullSync()
                 val diffs = mutableListOf<String>()
@@ -290,13 +302,22 @@ class SettingsViewModel @Inject constructor(
                 }
 
                 Log.i(TAG, "[reenable] result: ${diffs.size} diffs → ${if (diffs.isEmpty()) "no conflict" else "SHOW POPUP"}")
+                // An answer given since this check began changed what it
+                // compared, and settles the pending set itself. After a
+                // sign-out the result is the departed account's.
+                val stillApplies = resolutions.isCurrent(token) &&
+                    authService.isStillSignedInAs(account) &&
+                    dataCache.userDataGeneration == generation
+                if (!stillApplies) return@launch
                 if (diffs.isNotEmpty()) {
                     _reenableConflict.value = ReenableConflict(
                         categories = pending.toList(),
                         description = diffs.joinToString("\n"),
                     )
                 } else {
-                    prefs.pendingConflictCategories = emptySet()
+                    // Only what this check compared: one started later may
+                    // still hold "assignments" for its own dialog.
+                    prefs.pendingConflictCategories = prefs.pendingConflictCategories - pending
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "[reenable] checkPendingConflicts FAILED — pending kept for retry", e)
@@ -308,15 +329,16 @@ class SettingsViewModel @Inject constructor(
         val conflict = _reenableConflict.value ?: return
         Log.i(TAG, "[reenable] resolve: keepLocal=$keepLocal categories=${conflict.categories}")
         _reenableConflict.value = null
-        // CourseIgnoreSync holds course ignores while "assignments" is
-        // pending, so it is let go only once they are queued or adopted: a
-        // sync in between would take the server's set over this device's.
+        // Full syncs leave assignment marks and course ignores alone while
+        // "assignments" is pending, so it is let go only once every answer
+        // has sent, queued or adopted them.
         // On the application scope, so leaving Settings cannot strand it,
         // and tied to this account: a sign-out ends it, and drops any write
         // still on its way.
         val holdsCourseIgnores = "assignments" in conflict.categories
         prefs.pendingConflictCategories = if (holdsCourseIgnores) setOf("assignments") else emptySet()
         val generation = dataCache.userDataGeneration
+        resolutions.start()
         appScope.launch(DataCache.Generation(generation)) {
             try {
                 coroutineScope {
@@ -328,7 +350,7 @@ class SettingsViewModel @Inject constructor(
                     signOut.cancel()
                 }
             } finally {
-                if (holdsCourseIgnores) {
+                if (resolutions.finish()) {
                     prefs.pendingConflictCategories = prefs.pendingConflictCategories - "assignments"
                 }
             }
@@ -368,20 +390,24 @@ class SettingsViewModel @Inject constructor(
                 }
             }
             if ("assignments" in conflict.categories) {
-                for (id in dataCache.loadIgnoredAssignments()) {
-                    val intId = id.toIntOrNull() ?: continue
-                    runCatching { pushApiClient.patchAssignmentOverride(intId, "ignored") }
-                }
-                for (id in dataCache.loadMarkedCompletedAssignments()) {
-                    val intId = id.toIntOrNull() ?: continue
-                    runCatching { pushApiClient.patchAssignmentOverride(intId, "locally_completed") }
-                }
-                if (prefs.syncCourses) {
-                    courseIgnoreSync.pushLocal(
-                        runCatching { syncApiClient.fetchFullSync() }.getOrNull(),
-                        generation,
-                    )
-                }
+                val server = runCatching { syncApiClient.fetchFullSync() }.getOrNull()
+                val serverIgnored = server?.ignoredIds.orEmpty()
+                val serverCompleted = server?.completedIds.orEmpty()
+                // Syncs leave the marks alone while "assignments" is pending,
+                // so the cache changes now only by taps on Home: the newest.
+                sendKeptMarks(
+                    marksVersion = { dataCache.assignmentMarksVersion.value },
+                    marksNow = {
+                        AssignmentOverrideReconciler.keepLocal(
+                            localIgnored = dataCache.loadIgnoredAssignments(),
+                            localCompleted = dataCache.loadMarkedCompletedAssignments(),
+                            serverIgnored = serverIgnored,
+                            serverCompleted = serverCompleted,
+                        )
+                    },
+                    send = pushApiClient::patchAssignmentOverride,
+                )
+                if (prefs.syncCourses) courseIgnoreSync.pushLocal(server, generation)
             }
         } else {
             if ("courses" in conflict.categories) {
