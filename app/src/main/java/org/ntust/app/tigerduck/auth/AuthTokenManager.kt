@@ -209,10 +209,15 @@ class AuthTokenManager(
             }
             RefreshOutcome.NoReply, RefreshOutcome.Refused -> Unit
         }
-        if (onRefreshFailed?.invoke() == true) return tokens.accessToken
+        if (onRefreshFailed?.invoke() == true) return accessTokenIfSignedIn(signIn)
         withContext(Dispatchers.IO) { clearIfSignedIn(signIn) }
         return null
     }
+
+    // After a sign-out during the relogin, the stored token belongs to whoever
+    // signed in since and is not this refresh's to hand out.
+    private fun accessTokenIfSignedIn(signIn: Int): String? =
+        synchronized(signInLock) { if (generation == signIn) tokens.accessToken else null }
 
     // Measured from the failure rather than to a deadline, so a clock set back
     // does not stretch the pause.

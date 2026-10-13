@@ -361,19 +361,24 @@ class AuthTokenManagerRefreshTest {
     }
 
     @Test
-    fun `a sign-out during the sign-in after a refused refresh leaves the next sign-in alone`() = runTest {
-        val manager = manager(Reply.Status(401))
-        manager.onRefreshFailed = {
-            relogins++
-            manager.logout()
-            tokens.save("access-b", "refresh-b", clock + 900_000)
-            false
+    fun `a sign-out during the sign-in after a refused refresh leaves the next account alone`() = runTest {
+        for (signedIn in listOf(false, true)) {
+            storePair(expiresAt = 0L)
+            val manager = manager(Reply.Status(401))
+            manager.onRefreshFailed = {
+                relogins++
+                manager.logout()
+                // The next account signs in before this sign-in returns.
+                tokens.save("access-b", "refresh-b", clock + 900_000)
+                signedIn
+            }
+
+            // Neither its token for the old caller nor a clear of its pair.
+            assertNull("signed in: $signedIn", manager.authHeader())
+
+            assertEquals("signed in: $signedIn", 1, relogins)
+            assertEquals("signed in: $signedIn", "refresh-b", tokens.refreshToken)
         }
-
-        assertNull(manager.authHeader())
-
-        assertEquals(1, relogins)
-        assertEquals("refresh-b", tokens.refreshToken)
     }
 
     @Test
