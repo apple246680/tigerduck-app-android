@@ -360,7 +360,12 @@ class PushRegistrationService @Inject constructor(
             registrationsRunning--
             if (registrationsRunning > 0 || !registrationAskedWhileRunning) return@withLock
             registrationAskedWhileRunning = false
-            val covered = pass?.covers(token, fcmToken, authTokenManager.isLoggedIn) == true
+            val covered = pass?.covers(
+                sentToken = token,
+                tokenNow = fcmToken,
+                signedInNow = authTokenManager.isLoggedIn,
+                cloudSyncNow = appPreferences.cloudSyncEnabled,
+            ) == true
             if (covered) registrationOwed = false else requestRegistration()
         }
     }
@@ -419,6 +424,7 @@ class PushRegistrationService @Inject constructor(
             recordRegistrationAttempt(landed = announceError == null)
             return RegistrationPass(landed = announceError == null)
         }
+        val cloudSyncEnabled = appPreferences.cloudSyncEnabled
         return runCatching {
             api.register(
                 DeviceRegisterRequest(
@@ -428,7 +434,7 @@ class PushRegistrationService @Inject constructor(
                     osVersion = "Android ${android.os.Build.VERSION.RELEASE}",
                     deviceModel = currentDeviceModel(),
                     pushToken = PushTokenIn(tokenValue = token),
-                    cloudSyncEnabled = appPreferences.cloudSyncEnabled,
+                    cloudSyncEnabled = cloudSyncEnabled,
                     locale = currentLocaleTag(),
                 )
             )
@@ -451,7 +457,7 @@ class PushRegistrationService @Inject constructor(
             },
         ).let { landed ->
             recordRegistrationAttempt(landed = landed)
-            RegistrationPass(landed, withAccount = true)
+            RegistrationPass(landed, withAccount = true, cloudSyncEnabled = cloudSyncEnabled)
         }
     }
 
@@ -797,19 +803,29 @@ internal fun RegistrationAttemptState.afterRegistrationAttempt(
 
 /**
  * One pass through the registration path: whether it [landed], and whether it
- * went [withAccount], registering the signed-in account as well as announcing
- * the device.
+ * went [withAccount], registering the signed-in account, with the TigerSync
+ * switch as [cloudSyncEnabled], as well as announcing the device.
  */
-internal data class RegistrationPass(val landed: Boolean, val withAccount: Boolean = false)
+internal data class RegistrationPass(
+    val landed: Boolean,
+    val withAccount: Boolean = false,
+    val cloudSyncEnabled: Boolean = false,
+)
 
 /**
  * Whether this pass already did what a registration asked for while it ran
  * would do, so that none follows it: it landed, [sentToken] is still the
- * token held, and it registered the account if one is signed in now. A pass
- * made signed out lands with the device announced alone.
+ * token held, and it registered the account with the TigerSync switch as it
+ * is now if one is signed in now. A pass made signed out lands with the
+ * device announced alone.
  */
-internal fun RegistrationPass.covers(sentToken: String?, tokenNow: String?, signedInNow: Boolean): Boolean =
-    landed && sentToken == tokenNow && (withAccount || !signedInNow)
+internal fun RegistrationPass.covers(
+    sentToken: String?,
+    tokenNow: String?,
+    signedInNow: Boolean,
+    cloudSyncNow: Boolean,
+): Boolean = landed && sentToken == tokenNow &&
+    (if (withAccount) cloudSyncEnabled == cloudSyncNow else !signedInNow)
 
 /**
  * What a registration request does: the bookkeeping it leaves behind, and

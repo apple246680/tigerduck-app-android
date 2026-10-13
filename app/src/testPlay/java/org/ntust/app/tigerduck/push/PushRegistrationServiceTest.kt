@@ -117,6 +117,26 @@ class PushRegistrationServiceTest {
     }
 
     @Test
+    fun `turning TigerSync on while a registration with it off is on the wire registers it on`() = runTest {
+        prefs.cloudSyncEnabled = false
+        val service = service()
+        service.failRegistration()
+        val held = backend.hold(REGISTER)
+        service.onSignedIn()
+        held.arrived.await()
+
+        // What the TigerSync switch does: the preference first, then the PATCH, which finds no row.
+        prefs.cloudSyncEnabled = true
+        backend.answer(PREFERENCES, 404)
+        runCatching { service.updateCloudSyncEnabled(true) }
+        held.release(200)
+        service.awaitRegistrations()
+
+        val sent = backend.received(REGISTER).map { JSONObject(it.body).getBoolean("cloud_sync_enabled") }
+        assertEquals(listOf(false, false, true), sent)
+    }
+
+    @Test
     fun `turning TigerSync on after a registration went through sends no second one`() = runTest {
         val service = service()
         service.update("fcm-1")
