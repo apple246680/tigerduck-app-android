@@ -82,11 +82,13 @@ class SettingsDocumentApiClient @Inject constructor(
         }
         .build()
 
-    /** Adds a Bearer Authorization header if a v3 token is available. */
-    private suspend fun Request.Builder.addAuthHeader(): Request.Builder {
-        val authHeader = authTokenManager.authHeader()
-        return if (authHeader != null) header("Authorization", authHeader) else this
-    }
+    /**
+     * Adds the Bearer Authorization header, signing in first when there is no
+     * session. Without one it throws [org.ntust.app.tigerduck.auth.NotSignedInException]
+     * and the request is not sent.
+     */
+    private suspend fun Request.Builder.addAuthHeader(): Request.Builder =
+        header("Authorization", authTokenManager.requireAuthHeader())
 
     /** Reified convenience for [read] — see that overload for behaviour. */
     suspend inline fun <reified T> read(namespace: String): SettingsDocumentEnvelope<T>? =

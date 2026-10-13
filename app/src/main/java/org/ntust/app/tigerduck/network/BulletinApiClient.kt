@@ -55,14 +55,12 @@ class BulletinApiClient @Inject constructor(
         .build()
 
     /**
-     * Builds a Request.Builder with Bearer auth if a v3 token is available.
-     * Called from suspension context — must be called with [withContext] if
-     * not already on a suspend call stack.
+     * Adds the Bearer Authorization header, signing in first when there is no
+     * session. Without one it throws [org.ntust.app.tigerduck.auth.NotSignedInException]
+     * and the request is not sent.
      */
-    private suspend fun Request.Builder.addAuthHeader(): Request.Builder {
-        val authHeader = authTokenManager.authHeader()
-        return if (authHeader != null) header("Authorization", authHeader) else this
-    }
+    private suspend fun Request.Builder.addAuthHeader(): Request.Builder =
+        header("Authorization", authTokenManager.requireAuthHeader())
 
     suspend fun fetchTaxonomy(): TaxonomyResponse = getJson("$baseUrl/bulletins/taxonomy")
 

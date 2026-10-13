@@ -4,6 +4,7 @@ import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.ntust.app.tigerduck.auth.NotSignedInException
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.model.PendingCourseIgnore
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
@@ -412,10 +413,11 @@ class CourseIgnoreSync internal constructor(
         /**
          * Whether a failed PATCH says the backend refused the change, as the
          * iOS outbox's `keepsWithoutAttempt` decides: no network, a session to
-         * renew and a server that is down or busy say nothing about it.
+         * renew or none to send it with, and a server that is down or busy
+         * say nothing about it.
          */
         fun refuses(e: Exception): Boolean {
-            if (e is IOException) return false
+            if (e is IOException || e is NotSignedInException) return false
             val code = (e as? PushApiException)?.statusCode ?: return true
             return code != 401 && code != 408 && code != 429 && code !in 500..599
         }

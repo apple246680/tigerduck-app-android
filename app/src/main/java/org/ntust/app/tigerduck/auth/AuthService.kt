@@ -326,7 +326,7 @@ class AuthService @Inject constructor(
         // authTokenManager.logout() both null the v3 access token, and
         // pushRegistration.unregister() runs its DELETE fire-and-forget on its
         // own scope — so without a captured header the device-unregister call
-        // would go out unauthenticated, 401, and leak the device row.
+        // would find no session to go out with, and leak the device row.
         val authHeader = authTokenManager.currentAuthHeader()
         credentials.clearNtustCredentials()
         credentials.clearLibraryCredentials()

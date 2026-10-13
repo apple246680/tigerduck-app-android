@@ -1,6 +1,7 @@
 package org.ntust.app.tigerduck.auth
 
 import android.app.Application
+import com.google.gson.JsonObject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -21,10 +22,14 @@ import org.junit.runner.RunWith
 import org.ntust.app.tigerduck.auth.AuthTokenManager.SignInAttempt
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore
+import org.ntust.app.tigerduck.network.BulletinApiClient
 import org.ntust.app.tigerduck.network.resolveAnnouncementEndpoint
+import org.ntust.app.tigerduck.push.AnonymousDeviceRequest
 import org.ntust.app.tigerduck.push.DeviceRegisterRequest
 import org.ntust.app.tigerduck.push.PushApiClient
 import org.ntust.app.tigerduck.push.PushTokenIn
+import org.ntust.app.tigerduck.push.SettingsDocumentApiClient
+import org.ntust.app.tigerduck.push.SyncApiClient
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
@@ -61,6 +66,8 @@ class AutomaticSignInTest {
         tokens.clear()
     }
 
+    // No request without a token
+
     @Test
     fun `a protected request with no session signs in first and goes out with the new session`() = runTest {
         val api = PushApiClient(backend.client, prefs, manager())
@@ -69,6 +76,64 @@ class AutomaticSignInTest {
 
         assertEquals(listOf(LOGIN, REGISTER), backend.endpoints())
         assertEquals("Bearer access-2", backend.received(REGISTER).single().authorization)
+    }
+
+    @Test
+    fun `a protected request with no session sends nothing when the sign-in fails`() = runTest {
+        backend.answer(LOGIN, 503)
+        val api = PushApiClient(backend.client, prefs, manager())
+
+        val failure = runCatching { api.register(registerRequest()) }.exceptionOrNull()
+
+        assertTrue("got $failure", failure is NotSignedInException)
+        assertEquals(listOf(LOGIN), backend.endpoints())
+    }
+
+    @Test
+    fun `no client sends a request that needs a session without one`() = runTest {
+        accountStored = false
+        val manager = manager()
+        val requests: List<suspend () -> Unit> = listOf(
+            { PushApiClient(backend.client, prefs, manager).updateCredentials("moodle") },
+            { BulletinApiClient(backend.client, prefs, manager).fetchSubscriptions() },
+            { SettingsDocumentApiClient(backend.client, prefs, manager).read<JsonObject>("notification") },
+            { SyncApiClient(manager, prefs, backend.client).fetchFullSync() },
+        )
+
+        val failures = requests.map { request -> runCatching { request() }.exceptionOrNull() }
+
+        assertTrue("got $failures", failures.all { it is NotSignedInException })
+        assertEquals(emptyList<String>(), backend.endpoints())
+    }
+
+    @Test
+    fun `the announce goes out without a header and waits for no sign-in`() = runTest {
+        tokens.save("access-1", "refresh-1", expiresAt = Long.MAX_VALUE)
+        val api = PushApiClient(backend.client, prefs, manager())
+        api.registerAnonymous(announceRequest())
+        // Signed out, with an account whose sign-in would fail.
+        tokens.clear()
+        backend.answer(LOGIN, 503)
+
+        api.registerAnonymous(announceRequest())
+
+        assertEquals(listOf(ANNOUNCE, ANNOUNCE), backend.endpoints())
+        assertEquals(listOf<String?>(null, null), backend.received(ANNOUNCE).map { it.authorization })
+    }
+
+    @Test
+    fun `the unregister after a sign-out goes out with the header taken before the tokens were wiped`() = runTest {
+        tokens.save("access-1", "refresh-1", expiresAt = Long.MAX_VALUE)
+        val manager = manager()
+        // In the order AuthService.logout() takes them.
+        val captured = manager.currentAuthHeader()
+        accountStored = false
+        manager.logout()
+
+        PushApiClient(backend.client, prefs, manager).unregister("device-1", captured)
+
+        assertEquals(listOf(UNREGISTER), backend.endpoints())
+        assertEquals("Bearer access-1", backend.received(UNREGISTER).single().authorization)
     }
 
     // Signing in again, and the pause after a failure
@@ -178,10 +243,14 @@ class AutomaticSignInTest {
         pushToken = PushTokenIn(tokenValue = "fcm-1"),
     )
 
+    private fun announceRequest() = AnonymousDeviceRequest(deviceId = "device-1", deviceClass = "phone")
+
     private companion object {
         const val LOGIN = "POST /auth/login"
         const val REFRESH = "POST /auth/refresh"
         const val REGISTER = "POST /devices/register"
+        const val ANNOUNCE = "POST /devices/anonymous"
+        const val UNREGISTER = "DELETE /devices/device-1"
     }
 }
 

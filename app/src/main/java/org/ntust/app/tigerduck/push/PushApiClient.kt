@@ -49,11 +49,13 @@ class PushApiClient @Inject constructor(
         }
         .build()
 
-    /** Adds a Bearer Authorization header if a v3 token is available. */
-    private suspend fun Request.Builder.addAuthHeader(): Request.Builder {
-        val authHeader = authTokenManager.authHeader()
-        return if (authHeader != null) header("Authorization", authHeader) else this
-    }
+    /**
+     * Adds the Bearer Authorization header, signing in first when there is no
+     * session. Without one it throws [org.ntust.app.tigerduck.auth.NotSignedInException]
+     * and the request is not sent.
+     */
+    private suspend fun Request.Builder.addAuthHeader(): Request.Builder =
+        header("Authorization", authTokenManager.requireAuthHeader())
 
     /**
      * Register the device with no account attached.
@@ -107,8 +109,8 @@ class PushApiClient @Inject constructor(
         // v3: DELETE /devices/{client_device_id}, scoped to the authed user
         // (matches iOS + the server). `deviceId` is PushIdentity.uuid().
         // On logout the caller passes a pre-captured header because the tokens
-        // are wiped before this fire-and-forget call runs — without it the
-        // DELETE goes out unauthenticated, 401s, and the device row leaks.
+        // are wiped before this fire-and-forget call runs — without it there
+        // is no session to send the DELETE with, and the device row leaks.
         val builder = Request.Builder()
             .url("$baseUrl/devices/$deviceId")
             .delete()

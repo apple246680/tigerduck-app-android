@@ -25,6 +25,9 @@ import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.cancellation.CancellationException
 
+/** A request that needs a session got no access token, so it was not sent. */
+class NotSignedInException : Exception("not authenticated")
+
 /**
  * Manages v3 JWT access and refresh tokens, and signs in again on its own
  * when they are refused or gone.
@@ -91,6 +94,12 @@ class AuthTokenManager(
         val access = validAccessToken() ?: return null
         return "Bearer $access"
     }
+
+    /**
+     * [authHeader] for a request that needs a session. Without one the request
+     * is not sent, as the backend could only refuse it with 401.
+     */
+    suspend fun requireAuthHeader(): String = authHeader() ?: throw NotSignedInException()
 
     /**
      * Signs in when there is no session, and says whether there is one now.
