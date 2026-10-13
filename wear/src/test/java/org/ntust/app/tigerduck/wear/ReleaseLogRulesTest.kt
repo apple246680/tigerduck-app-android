@@ -13,16 +13,20 @@ class ReleaseLogRulesTest {
 
     @Test
     fun `release builds drop verbose, debug and info logs and keep warnings and errors`() {
-        val block = Regex("""-assumenosideeffects\s+class\s+android\.util\.Log\s*\{([^}]*)\}""")
-            .find(File("proguard-rules.pro").readText())
-            ?.groupValues?.get(1).orEmpty()
+        // Every block, so a second one that also names w or e fails too.
+        val blocks = Regex("""-assumenosideeffects\s+class\s+android\.util\.Log\s*\{([^}]*)\}""")
+            .findAll(File("proguard-rules.pro").readText())
+            .map { block -> block.groupValues[1].lines().map { it.trim() }.filter { it.isNotEmpty() } }
+            .toList()
         assertEquals(
             listOf(
-                "public static int v(...) return 0;",
-                "public static int d(...) return 0;",
-                "public static int i(...) return 0;",
+                listOf(
+                    "public static int v(...) return 0;",
+                    "public static int d(...) return 0;",
+                    "public static int i(...) return 0;",
+                ),
             ),
-            block.lines().map { it.trim() }.filter { it.isNotEmpty() },
+            blocks,
         )
     }
 }
