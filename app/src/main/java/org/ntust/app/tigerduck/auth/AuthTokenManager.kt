@@ -11,16 +11,16 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import org.ntust.app.tigerduck.BuildConfig
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
-import org.ntust.app.tigerduck.data.preferences.CredentialManager
+import org.ntust.app.tigerduck.data.preferences.V3TokenStore
 import org.ntust.app.tigerduck.network.resolveAnnouncementEndpoint
 import org.ntust.app.tigerduck.push.currentDeviceModel
 
 /**
  * Manages v3 JWT access and refresh tokens.
- * Tokens are stored in EncryptedSharedPreferences via CredentialManager.
+ * Tokens are stored in EncryptedSharedPreferences via [V3TokenStore].
  */
 class AuthTokenManager(
-    private val credentials: CredentialManager,
+    private val tokens: V3TokenStore,
     private val httpClient: OkHttpClient,
     private val prefs: AppPreferences,
     private val deviceUuid: String,
@@ -36,7 +36,7 @@ class AuthTokenManager(
     private val baseUrl: String
         get() = resolveAnnouncementEndpoint(prefs).url.trimEnd('/')
 
-    val isLoggedIn: Boolean get() = credentials.v3RefreshToken != null
+    val isLoggedIn: Boolean get() = tokens.refreshToken != null
 
     suspend fun authHeader(): String? {
         val access = validAccessToken() ?: return null
@@ -50,7 +50,7 @@ class AuthTokenManager(
      * forget device-unregister DELETE can still authenticate.
      */
     fun currentAuthHeader(): String? =
-        credentials.v3AccessToken?.let { "Bearer $it" }
+        tokens.accessToken?.let { "Bearer $it" }
 
     suspend fun login(
         studentId: String,
@@ -83,9 +83,7 @@ class AuthTokenManager(
             val accessToken = result.getString("access_token")
             val refreshToken = result.getString("refresh_token")
             val expiresIn = result.getInt("expires_in")
-            credentials.v3AccessToken = accessToken
-            credentials.v3RefreshToken = refreshToken
-            credentials.v3TokenExpiresAt = System.currentTimeMillis() + expiresIn * 1000L
+            tokens.save(accessToken, refreshToken, System.currentTimeMillis() + expiresIn * 1000L)
             LoginResult(
                 accessToken = accessToken,
                 deviceId = result.getString("device_id"),
@@ -94,25 +92,23 @@ class AuthTokenManager(
     }
 
     fun logout() {
-        credentials.v3AccessToken = null
-        credentials.v3RefreshToken = null
-        credentials.v3TokenExpiresAt = 0L
+        tokens.clear()
     }
 
     private suspend fun validAccessToken(): String? {
-        val access = credentials.v3AccessToken ?: return null
-        val expiresAt = credentials.v3TokenExpiresAt
+        val access = tokens.accessToken ?: return null
+        val expiresAt = tokens.expiresAt
         if (System.currentTimeMillis() < expiresAt - 30_000) return access
         return refresh()
     }
 
     private suspend fun refresh(): String? = refreshMutex.withLock {
         // Double-check after acquiring lock
-        val access = credentials.v3AccessToken
-        val expiresAt = credentials.v3TokenExpiresAt
+        val access = tokens.accessToken
+        val expiresAt = tokens.expiresAt
         if (access != null && System.currentTimeMillis() < expiresAt - 30_000) return access
 
-        val refreshToken = credentials.v3RefreshToken ?: return null
+        val refreshToken = tokens.refreshToken ?: return null
         val json = JSONObject().apply {
             put("refresh_token", refreshToken)
         }
@@ -126,7 +122,7 @@ class AuthTokenManager(
                 httpClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
                         if (onRefreshFailed?.invoke() == true) {
-                            return@use credentials.v3AccessToken
+                            return@use tokens.accessToken
                         }
                         logout()
                         return@use null
@@ -135,15 +131,13 @@ class AuthTokenManager(
                     val newAccess = result.getString("access_token")
                     val newRefresh = result.getString("refresh_token")
                     val expiresIn = result.getInt("expires_in")
-                    credentials.v3AccessToken = newAccess
-                    credentials.v3RefreshToken = newRefresh
-                    credentials.v3TokenExpiresAt = System.currentTimeMillis() + expiresIn * 1000L
+                    tokens.save(newAccess, newRefresh, System.currentTimeMillis() + expiresIn * 1000L)
                     newAccess
                 }
             }
         } catch (e: Exception) {
             if (onRefreshFailed?.invoke() == true) {
-                return credentials.v3AccessToken
+                return tokens.accessToken
             }
             logout()
             null
