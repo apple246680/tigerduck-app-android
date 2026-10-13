@@ -27,6 +27,7 @@ import org.ntust.app.tigerduck.notification.SyncSource
 import org.ntust.app.tigerduck.network.BulletinApiClient
 import org.ntust.app.tigerduck.network.model.BulletinSummary
 import org.ntust.app.tigerduck.network.model.TaxonomyResponse
+import org.ntust.app.tigerduck.util.logSummary
 import java.time.Instant
 import javax.inject.Inject
 
@@ -158,7 +159,7 @@ class AnnouncementsViewModel @Inject constructor(
                     // Taxonomy is decorative (org/tag labels); the list works
                     // without it. Still log — a permanently failing taxonomy
                     // endpoint would otherwise be invisible.
-                    android.util.Log.w("AnnouncementsVM", "Taxonomy fetch failed", e)
+                    android.util.Log.w("AnnouncementsVM", "Taxonomy fetch failed: ${e.logSummary()}")
                 }
             }
         }

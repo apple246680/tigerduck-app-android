@@ -5,6 +5,7 @@ import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
+import org.ntust.app.tigerduck.util.logSummary
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -107,7 +108,7 @@ class DataMigration @Inject constructor(
         // It's a few empty tables in the app's private storage — drop it so
         // the upgrade leaves no trace.
         runCatching { context.deleteDatabase("tigerduck.db") }
-            .onFailure { Log.w(TAG, "Failed to delete orphaned tigerduck.db", it) }
+            .onFailure { Log.w(TAG, "Failed to delete orphaned tigerduck.db: ${it.logSummary()}") }
     }
 
     /**
@@ -176,7 +177,7 @@ class DataMigration @Inject constructor(
                                 Log.i(TAG, "Wiped obfuscated v1.4.0 cache: ${file.name}")
                             }
                         }
-                    }.onFailure { Log.w(TAG, "Failed to inspect ${file.name}", it) }
+                    }.onFailure { Log.w(TAG, "Failed to inspect ${file.name}: ${it.logSummary()}") }
                 }
         }
 
@@ -201,7 +202,7 @@ class DataMigration @Inject constructor(
                         if (file.delete()) {
                             Log.i(TAG, "Cleared wrong-semester course cache: ${file.name}")
                         }
-                    }.onFailure { Log.w(TAG, "Failed to delete ${file.name}", it) }
+                    }.onFailure { Log.w(TAG, "Failed to delete ${file.name}: ${it.logSummary()}") }
                 }
         }
 

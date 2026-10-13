@@ -9,6 +9,7 @@ import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.ntust.app.tigerduck.mail.store.MailCredentialStore
 import org.ntust.app.tigerduck.shared.LibraryCredentialStore
+import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -52,8 +53,7 @@ class CredentialManager @Inject constructor(@ApplicationContext context: Context
             // user only loses their stored credentials, not the whole app.
             android.util.Log.w(
                 "CredentialManager",
-                "EncryptedSharedPreferences unusable; resetting",
-                e
+                "EncryptedSharedPreferences unusable; resetting: ${e.logSummary()}"
             )
             runCatching { context.deleteSharedPreferences(PREFS_NAME) }
             try {
@@ -64,8 +64,7 @@ class CredentialManager @Inject constructor(@ApplicationContext context: Context
             } catch (retry: Exception) {
                 android.util.Log.e(
                     "CredentialManager",
-                    "EncryptedSharedPreferences retry failed",
-                    retry
+                    "EncryptedSharedPreferences retry failed: ${retry.logSummary()}"
                 )
                 throw SecurityException("Cannot create encrypted credential storage", retry)
             }

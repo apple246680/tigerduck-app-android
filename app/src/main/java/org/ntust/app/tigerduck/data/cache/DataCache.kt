@@ -27,6 +27,7 @@ import org.ntust.app.tigerduck.data.model.SyncConflict
 import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.data.model.ScoreReport
 import org.ntust.app.tigerduck.network.model.CourseSearchResult
+import org.ntust.app.tigerduck.util.logSummary
 import java.io.File
 import java.util.Date
 import javax.inject.Inject
@@ -733,7 +734,7 @@ class DataCache @Inject constructor(
                 }
             }
         } catch (e: Exception) {
-            android.util.Log.w(TAG, "Failed to write ${target.name}", e)
+            android.util.Log.w(TAG, "Failed to write a data file: ${e.logSummary()}")
             runCatching { tmp.delete() }
         }
     }

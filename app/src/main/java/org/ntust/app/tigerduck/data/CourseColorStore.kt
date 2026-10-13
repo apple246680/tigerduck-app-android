@@ -13,6 +13,7 @@ import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.push.PushApiClient
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.ui.theme.courseColorPalette
+import org.ntust.app.tigerduck.util.logSummary
 import org.ntust.app.tigerduck.widget.WidgetUpdater
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -76,7 +77,7 @@ class CourseColorStore @Inject constructor(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    Log.w("CourseColorStore", "color sync failed: ${course.courseNo}", e)
+                    Log.w("CourseColorStore", "color sync failed: ${e.logSummary()}")
                 }
             }
         }

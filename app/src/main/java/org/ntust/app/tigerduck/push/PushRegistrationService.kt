@@ -24,6 +24,7 @@ import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.UiLanguageMonitor
 import org.ntust.app.tigerduck.di.ApplicationScope
+import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -220,7 +221,7 @@ class PushRegistrationService @Inject constructor(
                 runCatching { api.unregister(deviceId, authHeaderOverride) }
                     .onFailure { e ->
                         if (e is CancellationException) throw e
-                        Log.w(TAG, "unregister failed", e)
+                        Log.w(TAG, "unregister failed: ${e.logSummary()}")
                     }
             } finally {
                 // Always reset state so a cancelled coroutine (e.g. test scope
@@ -283,7 +284,7 @@ class PushRegistrationService @Inject constructor(
             api.updateDevicePreferences(deviceId, locale = locale)
         }.onFailure { e ->
             if (e is CancellationException) throw e
-            Log.w(TAG, "locale preference PATCH failed", e)
+            Log.w(TAG, "locale preference PATCH failed: ${e.logSummary()}")
         }
     }
 
@@ -384,7 +385,7 @@ class PushRegistrationService @Inject constructor(
             },
             onFailure = { e ->
                 if (e is CancellationException) throw e
-                Log.w(TAG, "register failed", e)
+                Log.w(TAG, "register failed: ${e.logSummary()}")
                 updateDiagnostic { it.copy(lastError = e.message ?: e::class.java.simpleName) }
                 false
             },
@@ -531,7 +532,7 @@ class PushRegistrationService @Inject constructor(
                 }
             }
             failure?.let {
-                Log.w(TAG, "server push preference update failed", it)
+                Log.w(TAG, "server push preference update failed: ${it.logSummary()}")
                 it.message ?: it::class.java.simpleName
             }
         }
@@ -568,7 +569,7 @@ class PushRegistrationService @Inject constructor(
             onSuccess = { null },
             onFailure = { e ->
                 if (e is CancellationException) throw e
-                Log.w(TAG, "device announce failed", e)
+                Log.w(TAG, "device announce failed: ${e.logSummary()}")
                 e
             },
         )
@@ -609,7 +610,7 @@ class PushRegistrationService @Inject constructor(
             )
         }.onFailure { e ->
             if (e is CancellationException) throw e
-            Log.w(TAG, "sync preferences PATCH failed", e)
+            Log.w(TAG, "sync preferences PATCH failed: ${e.logSummary()}")
         }
     }
 

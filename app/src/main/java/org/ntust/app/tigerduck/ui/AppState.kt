@@ -34,6 +34,7 @@ import org.ntust.app.tigerduck.notification.AssignmentReminderOffset
 import org.ntust.app.tigerduck.notification.SystemPermissions
 import org.ntust.app.tigerduck.ui.haptics.HapticScenario
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
+import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -603,13 +604,13 @@ class AppState @Inject constructor(
             // must reach logcat — "sync silently does nothing" was previously
             // undiagnosable in the field.
             coursesResult.exceptionOrNull()?.let {
-                android.util.Log.w("AppState", "backgroundSync: courses fetch failed", it)
+                android.util.Log.w("AppState", "backgroundSync: courses fetch failed: ${it.logSummary()}")
             }
             assignmentsResult.exceptionOrNull()?.let {
-                android.util.Log.w("AppState", "backgroundSync: assignments fetch failed", it)
+                android.util.Log.w("AppState", "backgroundSync: assignments fetch failed: ${it.logSummary()}")
             }
             schoolEventsResult.exceptionOrNull()?.let {
-                android.util.Log.w("AppState", "backgroundSync: calendar fetch failed", it)
+                android.util.Log.w("AppState", "backgroundSync: calendar fetch failed: ${it.logSummary()}")
             }
 
             val anySucceeded =

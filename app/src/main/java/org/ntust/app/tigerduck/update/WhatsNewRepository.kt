@@ -13,6 +13,7 @@ import org.ntust.app.tigerduck.data.model.WhatsNewSummaryItem
 import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.update.WhatsNewRepository.Companion.parseAll
 import org.ntust.app.tigerduck.update.WhatsNewRepository.Companion.select
+import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -40,7 +41,7 @@ class WhatsNewRepository @Inject constructor(
     private fun readAsset(): String? = runCatching {
         context.assets.open(ASSET_NAME).bufferedReader().use { it.readText() }
     }.getOrElse {
-        Log.w(TAG, "whatsnew.json not readable", it)
+        Log.w(TAG, "whatsnew.json not readable: ${it.logSummary()}")
         null
     }
 

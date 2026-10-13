@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
+import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -47,7 +48,7 @@ class NotificationChannelRegistrar @Inject constructor(
                 NotificationChannels.deleteLegacyChannels(context)
                 prefs.legacyNotificationChannelsDeleted = true
             }
-        }.onFailure { Log.w(TAG, "Could not register notification channels", it) }
+        }.onFailure { Log.w(TAG, "Could not register notification channels: ${it.logSummary()}") }
     }
 
     /**
