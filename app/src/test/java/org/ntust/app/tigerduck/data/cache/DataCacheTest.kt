@@ -3,11 +3,16 @@ package org.ntust.app.tigerduck.data.cache
 import android.app.Application
 import java.io.File
 import java.util.Date
+import java.util.concurrent.CountDownLatch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -137,6 +142,54 @@ class DataCacheTest {
     }
 
     @Test
+    fun `updating the assignments stores what the change makes of them`() = runTest {
+        cache.saveAssignments(listOf(assignment("a"), assignment("b")))
+
+        val written = cache.updateAssignments { all ->
+            all.map { if (it.assignmentId == "a") it.copy(isCompleted = true) else it }
+        }
+
+        assertTrue(written)
+        assertEquals(listOf(true, false), cache.loadAssignments().map { it.isCompleted })
+    }
+
+    @Test
+    fun `a save made while the assignments update lands after it, not undone by it`() = runBlocking {
+        cache.saveAssignments(listOf(assignment("read")))
+        val changing = CountDownLatch(1)
+        val finish = CountDownLatch(1)
+        val update = async(Dispatchers.IO) {
+            cache.updateAssignments { all ->
+                changing.countDown()
+                finish.await()
+                all.map { it.copy(isCompleted = true) }
+            }
+        }
+        changing.await()
+
+        // Another writer, such as the worker, saving while the update holds what it read.
+        val save = async(Dispatchers.IO) { cache.saveAssignments(listOf(assignment("saved"))) }
+        Thread.sleep(SAVE_CHANCE_MS)
+        finish.countDown()
+        update.await()
+        save.await()
+
+        assertEquals(listOf("saved"), cache.loadAssignments().map { it.assignmentId })
+    }
+
+    @Test
+    fun `an update begun before a sign-out writes nothing after it`() = runTest {
+        val generation = cache.userDataGeneration
+        cache.clearAllUserData()
+        cache.saveAssignments(listOf(assignment("next account")))
+
+        val written = cache.updateAssignments(generation) { all -> all.map { it.copy(isCompleted = true) } }
+
+        assertFalse(written)
+        assertEquals(listOf(false), cache.loadAssignments().map { it.isCompleted })
+    }
+
+    @Test
     fun `writing the ignored or marked-done set tells readers to look again`() = runTest {
         val before = cache.assignmentMarksVersion.value
 
@@ -144,5 +197,10 @@ class DataCacheTest {
         cache.replaceMarkedCompletedAssignments(setOf("b"))
 
         assertEquals(before + 2, cache.assignmentMarksVersion.value)
+    }
+
+    private companion object {
+        // Time for a save that the update failed to hold off to land and be undone.
+        const val SAVE_CHANCE_MS = 200L
     }
 }

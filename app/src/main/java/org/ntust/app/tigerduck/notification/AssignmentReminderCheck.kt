@@ -2,7 +2,6 @@ package org.ntust.app.tigerduck.notification
 
 import android.util.Log
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.withContext
 import org.ntust.app.tigerduck.data.CourseIgnores
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.network.MoodleService
@@ -68,13 +67,11 @@ class AssignmentReminderCheck @Inject constructor(
 
     /** What a sync that asked Moodle would store, and no more reminders for it. */
     private suspend fun recordSubmission(assignmentId: String, submittedAt: Date?, generation: Int) {
-        withContext(DataCache.Generation(generation)) {
-            dataCache.saveAssignments(
-                dataCache.loadAssignments().map {
-                    if (it.assignmentId != assignmentId) it
-                    else it.copy(isCompleted = true, submittedAt = submittedAt ?: it.submittedAt)
-                }
-            )
+        dataCache.updateAssignments(generation) { assignments ->
+            assignments.map {
+                if (it.assignmentId != assignmentId) it
+                else it.copy(isCompleted = true, submittedAt = submittedAt ?: it.submittedAt)
+            }
         }
         scheduler.cancel(assignmentId)
     }
