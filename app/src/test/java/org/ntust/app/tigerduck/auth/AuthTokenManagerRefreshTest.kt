@@ -17,6 +17,7 @@ import okio.Buffer
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -58,6 +59,9 @@ class AuthTokenManagerRefreshTest {
 
     /** Runs as each refresh reaches the fake backend, before its reply. */
     private var onRefreshSent: () -> Unit = {}
+
+    /** Runs as each sign-in reaches the fake backend, before its reply. */
+    private var onLoginSent: () -> Unit = {}
 
     @Before
     fun setUp() {
@@ -272,6 +276,95 @@ class AuthTokenManagerRefreshTest {
         }
     }
 
+    @Test
+    fun `a refresh reply that comes back after a sign-out stores nothing`() = runTest {
+        val manager = manager(Reply.Pair("access-2", "refresh-2"))
+        onRefreshSent = { manager.logout() }
+
+        assertNull(manager.authHeader())
+
+        assertNull(tokens.accessToken)
+        assertNull(tokens.refreshToken)
+        // The sign-out's clear, and no save after it.
+        assertEquals(1, file.commits.size)
+        assertEquals(0, relogins)
+    }
+
+    @Test
+    fun `a sign-in reply that comes back after a sign-out stores nothing`() = runTest {
+        val manager = manager(Reply.Pair("access-2", "refresh-2"))
+        onLoginSent = { manager.logout() }
+
+        val failure = runCatching {
+            manager.login("B00000000", "password", moodleToken = "moodle", moodlePrivateToken = null)
+        }.exceptionOrNull()
+
+        assertTrue(failure is AuthTokenManager.AuthException)
+        assertNull(tokens.refreshToken)
+        assertEquals(1, file.commits.size)
+    }
+
+    @Test
+    fun `a sign-in that read the credentials before a sign-out stores nothing`() = runTest {
+        val manager = manager(Reply.Pair("access-2", "refresh-2"))
+        // Read as AuthService reads it, before the credentials and the Moodle harvest.
+        val signIn = manager.signInGeneration
+        manager.logout()
+
+        val failure = runCatching {
+            manager.login(
+                "B00000000", "password", moodleToken = "moodle", moodlePrivateToken = null,
+                signInGeneration = signIn,
+            )
+        }.exceptionOrNull()
+
+        assertTrue(failure is AuthTokenManager.AuthException)
+        assertNull(tokens.refreshToken)
+    }
+
+    @Test
+    fun `a lost reply is not sent again after a sign-out`() = runTest {
+        val manager = manager(Reply.Lost, Reply.Pair("access-2", "refresh-2"))
+        onRefreshSent = { manager.logout() }
+
+        assertNull(manager.authHeader())
+
+        assertEquals(listOf("refresh-1"), sentRefreshTokens)
+        assertEquals(0, relogins)
+        assertNull(tokens.refreshToken)
+    }
+
+    @Test
+    fun `a refresh turned down after a sign-out leaves the next sign-in alone`() = runTest {
+        val manager = manager(Reply.Status(401))
+        onRefreshSent = {
+            manager.logout()
+            // The next account signs in while the refresh is out.
+            tokens.save("access-b", "refresh-b", clock + 900_000)
+        }
+
+        assertNull(manager.authHeader())
+
+        assertEquals(0, relogins)
+        assertEquals("refresh-b", tokens.refreshToken)
+    }
+
+    @Test
+    fun `a sign-out during the sign-in after a refused refresh leaves the next sign-in alone`() = runTest {
+        val manager = manager(Reply.Status(401))
+        manager.onRefreshFailed = {
+            relogins++
+            manager.logout()
+            tokens.save("access-b", "refresh-b", clock + 900_000)
+            false
+        }
+
+        assertNull(manager.authHeader())
+
+        assertEquals(1, relogins)
+        assertEquals("refresh-b", tokens.refreshToken)
+    }
+
     private fun manager(vararg replies: Reply, reloginSucceeds: Boolean = false) = AuthTokenManager(
         tokens = tokens,
         httpClient = backend(*replies),
@@ -308,6 +401,8 @@ class AuthTokenManagerRefreshTest {
                     val body = Buffer().also { request.body!!.writeTo(it) }.readUtf8()
                     sentRefreshTokens += JSONObject(body).getString("refresh_token")
                     onRefreshSent()
+                } else if (request.url.encodedPath.endsWith("/auth/login")) {
+                    onLoginSent()
                 }
                 when (val reply = script.removeFirst()) {
                     Reply.Lost -> throw SocketTimeoutException("timeout")
