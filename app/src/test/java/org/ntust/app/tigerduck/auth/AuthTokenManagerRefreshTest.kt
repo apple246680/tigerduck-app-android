@@ -92,6 +92,19 @@ class AuthTokenManagerRefreshTest {
     }
 
     @Test
+    fun `a pair whose commit fails is still used`() = runTest {
+        // SharedPreferences holds an edit in memory before it writes the file, and a disk
+        // that refused this write would refuse a relogin's pair or a clear as well.
+        file.failCommits = true
+        val manager = manager(Reply.Pair("access-2", "refresh-2"))
+
+        assertEquals("Bearer access-2", manager.authHeader())
+
+        assertEquals(0, relogins)
+        assertEquals("refresh-2", tokens.refreshToken)
+    }
+
+    @Test
     fun `a sign-in writes its pair in one commit`() = runTest {
         val manager = manager(Reply.Pair("access-2", "refresh-2"))
 
@@ -153,13 +166,16 @@ class AuthTokenManagerRefreshTest {
     }
 
     @Test
-    fun `an access token not yet expired is still used after a 429`() = runTest {
+    fun `a 429 in the access token's last 30 s gives no header`() = runTest {
+        // A token about to expire would draw a 401, and Home answers a 401 with a relogin.
         storePair(expiresAt = clock + 10_000)
         val manager = manager(Reply.Status(429))
 
-        assertEquals("Bearer access-1", manager.authHeader())
+        assertNull(manager.authHeader())
+        assertNull(manager.authHeader())
 
         assertEquals(listOf("refresh-1"), sentRefreshTokens)
+        assertEquals("refresh-1", tokens.refreshToken)
     }
 
     @Test
@@ -381,6 +397,9 @@ private class SavesRecorder(private val inner: SharedPreferences) : SharedPrefer
     val commits = mutableListOf<Set<String>>()
     var applies = 0
 
+    /** Reports each commit as failed, as a disk that refuses the write does, after the edit is in memory. */
+    var failCommits = false
+
     override fun edit(): SharedPreferences.Editor = Editor(inner.edit())
 
     private inner class Editor(private val editor: SharedPreferences.Editor) :
@@ -407,7 +426,7 @@ private class SavesRecorder(private val inner: SharedPreferences) : SharedPrefer
 
         override fun commit(): Boolean {
             commits += keys.toSet()
-            return editor.commit()
+            return editor.commit() && !failCommits
         }
 
         override fun apply() {

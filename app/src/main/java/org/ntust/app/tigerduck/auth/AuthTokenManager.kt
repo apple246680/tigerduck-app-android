@@ -127,16 +127,16 @@ class AuthTokenManager(
         if (access != null && now() < expiresAt - 30_000) return access
 
         val refreshToken = tokens.refreshToken ?: return null
-        // Expires within 30 s, but works until then.
-        val stillValid = access?.takeIf { now() < expiresAt }
-        if (isRefreshPaused()) return stillValid
+        // No header rather than the access token in its last seconds, which
+        // would draw a 401, and Home answers a 401 with a relogin.
+        if (isRefreshPaused()) return null
         // Finishes even when the caller is cancelled: stopped between a send
         // and what follows it, a token the backend may have rotated would stay
         // on disk for the next refresh.
-        withContext(NonCancellable) { refreshAndSettle(refreshToken, stillValid) }
+        withContext(NonCancellable) { refreshAndSettle(refreshToken) }
     }
 
-    private suspend fun refreshAndSettle(refreshToken: String, stillValid: String?): String? {
+    private suspend fun refreshAndSettle(refreshToken: String): String? {
         val outcome = try {
             withContext(Dispatchers.IO) { sendWithOneResend(refreshToken) }
         } catch (e: CancellationException) {
@@ -152,7 +152,7 @@ class AuthTokenManager(
             }
             RefreshOutcome.Unavailable -> {
                 refreshPausedAt = now()
-                return stillValid
+                return null
             }
             RefreshOutcome.NoReply, RefreshOutcome.Refused -> Unit
         }
