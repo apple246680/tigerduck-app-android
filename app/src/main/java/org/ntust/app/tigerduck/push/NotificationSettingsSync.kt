@@ -1216,15 +1216,15 @@ class NotificationSettingsSync internal constructor(
      * signed out, or while cloud sync or the relevant "同步內容" switch was
      * off, or one whose retries ran out. Called from each of
      * [org.ntust.app.tigerduck.auth.AuthService]'s sign-in paths (a fresh
-     * login, the v2→v3 migration and the silent relogin), after every
+     * login and the automatic sign-in), after every
      * successful full sync (`HomeBackendSync.pull`), and by [pullNow] when it
      * finds an edit it must not overwrite.
      *
-     * The relogin is one more reason this must never mark: a lapsed refresh
-     * token sends `AuthTokenManager.authHeader()` into
-     * `AuthService.attemptRelogin` from inside whatever request is being
-     * built, a pull's included, and a pull whose own relogin had marked the
-     * device would skip applying the document it had just read.
+     * The automatic sign-in is one more reason this must never mark: a
+     * lapsed refresh token or a missing session sends
+     * `AuthTokenManager.authHeader()` into it from inside whatever request is
+     * being built, a pull's included, and a pull whose own sign-in had marked
+     * the device would skip applying the document it had just read.
      *
      * Resets [consecutiveFailures] when it queues, for the same reason
      * [markUnconfirmedAndPush] does.

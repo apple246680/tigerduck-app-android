@@ -21,6 +21,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.ntust.app.tigerduck.auth.AuthTokenManager
+import org.ntust.app.tigerduck.auth.AuthTokenManager.SignInAttempt
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.UiLanguageMonitor
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore
@@ -63,9 +64,17 @@ class PushRegistrationServiceTest {
         tokens.save("access-1", "refresh-1", expiresAt = Long.MAX_VALUE)
     }
 
-    private fun TestScope.service(signedIn: Boolean = true): PushRegistrationService {
+    /** With [signsIn], a request that finds no session signs in as AuthService's sign-in does. */
+    private fun TestScope.service(signedIn: Boolean = true, signsIn: Boolean = false): PushRegistrationService {
         if (signedIn) signIn()
         val auth = AuthTokenManager(tokens, backend.client, prefs, deviceUuid = "device-1")
+        if (signsIn) {
+            auth.signInWithStoredAccount = { signIn ->
+                runCatching {
+                    auth.login("B00000000", "password", "moodle", moodlePrivateToken = null, signInGeneration = signIn)
+                }.fold(onSuccess = { SignInAttempt.SIGNED_IN }, onFailure = { SignInAttempt.FAILED })
+            }
+        }
         return PushRegistrationService(
             context = context,
             identity = PushIdentity(prefs, context),
@@ -240,7 +249,23 @@ class PushRegistrationServiceTest {
         assertTrue(service.diagnostic.value.isRegistered)
     }
 
+    // A registration that finds no session
+
+    @Test
+    fun `a registration that finds no session signs in first and registers the account`() = runTest {
+        val service = service(signedIn = false, signsIn = true)
+
+        service.update("fcm-1")
+        service.awaitRegistrations()
+
+        assertEquals(1, backend.received(LOGIN).size)
+        assertEquals(listOf<String?>(null), backend.received(ANNOUNCE).map { it.authorization })
+        assertEquals("Bearer access-2", backend.received(REGISTER).single().authorization)
+        assertTrue(service.diagnostic.value.isRegistered)
+    }
+
     private companion object {
+        const val LOGIN = "POST /auth/login"
         const val ANNOUNCE = "POST /devices/anonymous"
         const val REGISTER = "POST /devices/register"
         const val PREFERENCES = "PATCH /devices/preferences"
@@ -288,6 +313,7 @@ private class FakeBackend {
         val endpoint = request.method + " " + when {
             path.endsWith("/devices/anonymous") -> "/devices/anonymous"
             path.endsWith("/devices/register") -> "/devices/register"
+            path.endsWith("/auth/login") -> "/auth/login"
             // Its path holds the install's device id.
             path.endsWith("/preferences") -> "/devices/preferences"
             else -> path
@@ -302,10 +328,11 @@ private class FakeBackend {
             is Int -> next
             else -> 200
         }
-        val reply = if (code in 200..299) {
-            """{"device_id":"device-1","push_token_id":1,"cloud_sync_enabled":true}"""
-        } else {
-            """{"detail":"refused"}"""
+        val reply = when {
+            code !in 200..299 -> """{"detail":"refused"}"""
+            endpoint == "POST /auth/login" ->
+                """{"access_token":"access-2","refresh_token":"refresh-2","expires_in":900,"device_id":"device-1"}"""
+            else -> """{"device_id":"device-1","push_token_id":1,"cloud_sync_enabled":true}"""
         }
         return Response.Builder()
             .request(request)

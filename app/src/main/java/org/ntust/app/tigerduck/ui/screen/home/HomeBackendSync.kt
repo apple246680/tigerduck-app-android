@@ -126,7 +126,7 @@ class HomeBackendSync @Inject constructor(
             markBackendIdle()
             return
         }
-        if (!authTokenManager.isLoggedIn) {
+        if (!authTokenManager.signInIfSignedOut()) {
             markBackendIdle()
             return
         }

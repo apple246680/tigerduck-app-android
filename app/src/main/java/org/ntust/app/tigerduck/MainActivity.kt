@@ -136,7 +136,6 @@ class MainActivity : AppCompatActivity() {
         // wasted work (and thrashes WorkManager's internal bookkeeping DB).
         if (savedInstanceState == null && authService.storedStudentId != null) {
             BackgroundSyncWorker.schedule(applicationContext)
-            lifecycleScope.launch { authService.migrateToV3IfNeeded() }
         }
 
         widgetStartRoute.value = resolveStartRoute(intent)
@@ -250,6 +249,10 @@ class MainActivity : AppCompatActivity() {
         updateChecker.resume(this)
         applyRotationPreference()
         refreshMoodleCredentials()
+        // Signs in to the backend again after a sign-in that failed or a
+        // session it dropped. Does nothing with a session, without an account,
+        // or within five minutes of a failed automatic sign-in.
+        lifecycleScope.launch { authTokenManager.signInIfSignedOut() }
         // Retries a device registration that failed while the process stayed
         // warm. Whether one is due, and the consent and flavor gates, are
         // decided inside; a no-op on fdroid.

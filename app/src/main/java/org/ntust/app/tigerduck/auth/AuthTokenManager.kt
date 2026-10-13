@@ -1,6 +1,7 @@
 package org.ntust.app.tigerduck.auth
 
 import android.util.Log
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
@@ -25,7 +26,8 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * Manages v3 JWT access and refresh tokens.
+ * Manages v3 JWT access and refresh tokens, and signs in again on its own
+ * when they are refused or gone.
  * Tokens are stored in EncryptedSharedPreferences via [V3TokenStore].
  */
 class AuthTokenManager(
@@ -37,7 +39,13 @@ class AuthTokenManager(
 ) {
     private val refreshMutex = Mutex()
     private val jsonType = "application/json".toMediaType()
-    var onRefreshFailed: (suspend () -> Boolean)? = null
+
+    /**
+     * Signs in with the stored account, passing the generation it is given to
+     * [login], and says what it sent: AuthService's. Run only by the automatic
+     * sign-in, after a refused refresh and when something finds no session.
+     */
+    var signInWithStoredAccount: (suspend (signInGeneration: Int) -> SignInAttempt)? = null
 
     // OkHttp sends a failed request again on its own, up to three sends of one
     // refresh token in all, and the backend takes a third send as reuse. The
@@ -56,6 +64,11 @@ class AuthTokenManager(
     // it, so a sign-out cannot fall between a reply's check and its save.
     private val signInLock = Any()
     private var generation = 0
+
+    // Under signInLock: the automatic sign-in that callers which overlap wait
+    // for, and when one that sent credentials last failed.
+    private var automaticSignIn: CompletableDeferred<Boolean>? = null
+    private var signInFailedAt: Long? = null
 
     /**
      * Moved by [logout]. A login or refresh reply for an earlier value belongs
@@ -77,6 +90,71 @@ class AuthTokenManager(
     suspend fun authHeader(): String? {
         val access = validAccessToken() ?: return null
         return "Bearer $access"
+    }
+
+    /**
+     * Signs in when there is no session, and says whether there is one now.
+     * Runs on each return to the app, before a registration or a sync, and
+     * from [authHeader].
+     */
+    suspend fun signInIfSignedOut(): Boolean {
+        if (!isLoggedIn) signInAutomatically()
+        return isLoggedIn
+    }
+
+    /** Signs in again after the backend refused a session that looked valid, and says whether it did. */
+    suspend fun signInAgain(): Boolean = signInAutomatically()
+
+    /**
+     * Runs [signInWithStoredAccount], one attempt for every caller that
+     * overlaps it. After one that sent credentials fails, the next waits
+     * [SIGN_IN_PAUSE_MS]: the backend allows 5 logins per 15 minutes per
+     * student and per IP, and a campus network puts many students behind one
+     * IP. The interactive sign-in calls [login] itself and never waits.
+     */
+    private suspend fun signInAutomatically(): Boolean {
+        val signInWith = signInWithStoredAccount ?: return false
+        val attempt = CompletableDeferred<Boolean>()
+        val signIn: Int
+        // The attempt already under way, which this caller waits for instead.
+        val running = synchronized(signInLock) {
+            // Before the credentials, which the sign-in reads.
+            signIn = generation
+            automaticSignIn ?: run {
+                if (isSignInPaused()) return false
+                automaticSignIn = attempt
+                null
+            }
+        }
+        if (running != null) return running.await()
+        var signedIn = false
+        try {
+            // Finishes for the callers waiting on it when this one is cancelled.
+            signedIn = withContext(NonCancellable) { settleSignIn(signIn, signInWith(signIn)) }
+        } finally {
+            synchronized(signInLock) { if (automaticSignIn === attempt) automaticSignIn = null }
+            attempt.complete(signedIn)
+        }
+        return signedIn
+    }
+
+    private fun settleSignIn(signIn: Int, attempt: SignInAttempt): Boolean = synchronized(signInLock) {
+        // Signed out since: the attempt was the departing account's, and the
+        // sign-out ended any pause.
+        if (generation != signIn) return@synchronized false
+        when (attempt) {
+            SignInAttempt.SIGNED_IN -> signInFailedAt = null
+            SignInAttempt.FAILED -> signInFailedAt = now()
+            SignInAttempt.NOTHING_TO_SEND -> Unit
+        }
+        attempt == SignInAttempt.SIGNED_IN
+    }
+
+    // Measured from the failure, as the refresh pause is, so a clock set back
+    // does not stretch it.
+    private fun isSignInPaused(): Boolean {
+        val failedAt = signInFailedAt ?: return false
+        return now() - failedAt in 0 until SIGN_IN_PAUSE_MS
     }
 
     /**
@@ -135,11 +213,16 @@ class AuthTokenManager(
         }
     }
 
-    /** Drops the pair, and keeps a login or refresh reply still on its way from storing one. */
+    /**
+     * Drops the pair, and keeps a login or refresh reply still on its way from
+     * storing one. The next account's automatic sign-in then goes at once.
+     */
     fun logout() {
         synchronized(signInLock) {
             generation++
             tokens.clear()
+            automaticSignIn = null
+            signInFailedAt = null
         }
     }
 
@@ -161,6 +244,7 @@ class AuthTokenManager(
     }
 
     private suspend fun validAccessToken(): String? {
+        if (!signInIfSignedOut()) return null
         val access = tokens.accessToken ?: return null
         val expiresAt = tokens.expiresAt
         if (now() < expiresAt - 30_000) return access
@@ -209,7 +293,7 @@ class AuthTokenManager(
             }
             RefreshOutcome.NoReply, RefreshOutcome.Refused -> Unit
         }
-        if (onRefreshFailed?.invoke() == true) return accessTokenIfSignedIn(signIn)
+        if (signInAutomatically()) return accessTokenIfSignedIn(signIn)
         withContext(Dispatchers.IO) { clearIfSignedIn(signIn) }
         return null
     }
@@ -300,6 +384,18 @@ class AuthTokenManager(
         data object Refused : RefreshOutcome
     }
 
+    /** What [signInWithStoredAccount] did. */
+    enum class SignInAttempt {
+        /** It stored a pair for the generation it was given. */
+        SIGNED_IN,
+
+        /** It sent the stored credentials, to the backend or to harvest a Moodle token, and stored no pair. */
+        FAILED,
+
+        /** No account is stored, so nothing went out. */
+        NOTHING_TO_SEND,
+    }
+
     data class LoginResult(val accessToken: String, val deviceId: String)
     class AuthException(message: String) : Exception(message)
 
@@ -309,5 +405,7 @@ class AuthTokenManager(
 
         // The backend limits refreshes per IP over a minute.
         const val REFRESH_PAUSE_MS = 60_000L
+
+        const val SIGN_IN_PAUSE_MS = 5 * 60_000L
     }
 }

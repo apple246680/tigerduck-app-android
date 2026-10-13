@@ -410,8 +410,9 @@ class PushRegistrationService @Inject constructor(
 
         // Without an account there is no second registration to make. The
         // backend links the two rows on sign-in and unlinks them on sign-out,
-        // so nothing is delivered twice either way.
-        if (!authTokenManager.isLoggedIn) {
+        // so nothing is delivered twice either way. An account whose session
+        // is gone signs in first.
+        if (!authTokenManager.signInIfSignedOut()) {
             updateDiagnostic {
                 it.copy(
                     hasFcmToken = true,
