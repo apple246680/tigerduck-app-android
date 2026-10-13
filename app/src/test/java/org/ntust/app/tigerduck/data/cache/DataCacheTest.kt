@@ -4,11 +4,15 @@ import android.app.Application
 import java.io.File
 import java.util.Date
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -161,18 +165,23 @@ class DataCacheTest {
         val update = async(Dispatchers.IO) {
             cache.updateAssignments { all ->
                 changing.countDown()
-                finish.await()
+                assertTrue("never told to finish", finish.await(WAIT_SECONDS, TimeUnit.SECONDS))
                 all.map { it.copy(isCompleted = true) }
             }
         }
-        changing.await()
+        assertTrue("the update never reached its change", changing.await(WAIT_SECONDS, TimeUnit.SECONDS))
 
         // Another writer, such as the worker, saving while the update holds what it read.
-        val save = async(Dispatchers.IO) { cache.saveAssignments(listOf(assignment("saved"))) }
-        Thread.sleep(SAVE_CHANCE_MS)
+        // Undispatched, it runs here until it first suspends: on the lock the update
+        // holds, or, were the read and the write locked apart, inside its own write.
+        val save = launch(start = CoroutineStart.UNDISPATCHED) {
+            cache.saveAssignments(listOf(assignment("saved")))
+        }
         finish.countDown()
-        update.await()
-        save.await()
+        withTimeout(WAIT_SECONDS * 1000) {
+            update.await()
+            save.join()
+        }
 
         assertEquals(listOf("saved"), cache.loadAssignments().map { it.assignmentId })
     }
@@ -205,7 +214,7 @@ class DataCacheTest {
     }
 
     private companion object {
-        // Time for a save that the update failed to hold off to land and be undone.
-        const val SAVE_CHANCE_MS = 200L
+        // Only a broken lock waits this long; it fails the test instead of hanging the suite.
+        const val WAIT_SECONDS = 5L
     }
 }
