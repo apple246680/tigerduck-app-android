@@ -88,8 +88,20 @@ data class MoodleSubmissionStatusEnvelope(
 
 data class MoodleSubmissionLastAttempt(
     val submission: MoodleSubmission? = null,
+    /** A team assignment's own submission, the one a teammate hands in. */
+    val teamsubmission: MoodleSubmission? = null,
     val gradingstatus: String? = null
-)
+) {
+    // Computed only, like MoodleEnrolledCourse's: Gson leaves a backing field null.
+
+    /**
+     * The submission Moodle records as handed in, the student's own or their
+     * team's, or null when neither is. A teammate's submission shows only in
+     * [teamsubmission]; the student's own [submission] may not exist at all.
+     */
+    val handedIn: MoodleSubmission?
+        get() = listOfNotNull(submission, teamsubmission).firstOrNull { it.status == "submitted" }
+}
 
 data class MoodleSubmission(
     val status: String? = null,

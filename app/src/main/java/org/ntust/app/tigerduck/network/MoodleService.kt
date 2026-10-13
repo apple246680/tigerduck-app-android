@@ -20,7 +20,7 @@ import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.network.model.MoodleAssignmentsCourse
 import org.ntust.app.tigerduck.network.model.MoodleAssignmentsEnvelope
 import org.ntust.app.tigerduck.network.model.MoodleEnrolledCourse
-import org.ntust.app.tigerduck.network.model.MoodleSubmission
+import org.ntust.app.tigerduck.network.model.MoodleSubmissionLastAttempt
 import org.ntust.app.tigerduck.network.model.MoodleSubmissionStatusEnvelope
 import org.ntust.app.tigerduck.util.SharedFetch
 import java.util.Date
@@ -150,7 +150,7 @@ class MoodleService @Inject constructor(
      * Moodle. Mirrors the iOS pipeline (AppServiceBridge.swift):
      * `mod_assign_get_assignments` for the roster, then one
      * `mod_assign_get_submission_status` per assignment (fanned out in
-     * parallel) to derive `isCompleted = (submission.status == "submitted")`.
+     * parallel) to derive `isCompleted` — see [submissionState].
      *
      * The caller passes in the already-fetched Moodle enrolment list so we
      * don't duplicate `core_enrol_get_users_courses` when the ViewModel has
@@ -219,7 +219,7 @@ class MoodleService @Inject constructor(
                 if (a.nosubmissions != 0) return@mapNotNull null
                 val course = coursesById[courseId]
                 val (submitted, submittedAt) = submissionState(
-                    a.id, round.confirmed, round.statuses[a.id]?.lastattempt?.submission,
+                    a.id, round.confirmed, round.statuses[a.id]?.lastattempt,
                 )
                 Assignment(
                     assignmentId = a.id.toString(),
@@ -380,15 +380,7 @@ class MoodleService @Inject constructor(
             if (!response.isSuccessful) throw MoodleWebserviceError.HttpStatus(response.code)
             response.body.string()
         }
-        MoodleWebserviceError.fromJsonBody(body)?.let { throw it }
-        return try {
-            gson.fromJson(body, MoodleSubmissionStatusEnvelope::class.java)
-                ?: throw MoodleWebserviceError.MalformedResponse("submission status envelope null")
-        } catch (e: MoodleWebserviceError) {
-            throw e
-        } catch (e: Exception) {
-            throw MoodleWebserviceError.MalformedResponse("submission status decode failed: ${e.message}")
-        }
+        return decodeSubmissionStatus(body)
     }
 
     /**
@@ -484,16 +476,35 @@ class MoodleService @Inject constructor(
         /**
          * Whether assignment [id] is submitted, and when: as [confirmed]
          * recorded it when the cache already knew, else as Moodle's
-         * [submission] says — null when its status call failed.
+         * [lastAttempt] says — null when its status call failed. Submitted
+         * when the student's own submission or their team's is (issue #222).
          */
         internal fun submissionState(
             id: Int,
             confirmed: Map<Int, Date>,
-            submission: MoodleSubmission?,
+            lastAttempt: MoodleSubmissionLastAttempt?,
         ): Pair<Boolean, Date?> {
             if (id in confirmed) return true to confirmed[id]
-            val submittedAt = submission?.timemodified?.takeIf { it > 0 }?.let { Date(it * 1000) }
-            return (submission?.status == "submitted") to submittedAt
+            val handedIn = lastAttempt?.handedIn
+            val submittedAt = (handedIn ?: lastAttempt?.submission)?.timemodified
+                ?.takeIf { it > 0 }?.let { Date(it * 1000) }
+            return (handedIn != null) to submittedAt
+        }
+
+        /**
+         * The `mod_assign_get_submission_status` answer in [body], or a throw
+         * for a body that is not one: an error, a page from the NTUST edge.
+         */
+        internal fun decodeSubmissionStatus(body: String): MoodleSubmissionStatusEnvelope {
+            MoodleWebserviceError.fromJsonBody(body)?.let { throw it }
+            return try {
+                decodeGson.fromJson(body, MoodleSubmissionStatusEnvelope::class.java)
+                    ?: throw MoodleWebserviceError.MalformedResponse("submission status envelope null")
+            } catch (e: MoodleWebserviceError) {
+                throw e
+            } catch (e: Exception) {
+                throw MoodleWebserviceError.MalformedResponse("submission status decode failed: ${e.message}")
+            }
         }
 
         /**
