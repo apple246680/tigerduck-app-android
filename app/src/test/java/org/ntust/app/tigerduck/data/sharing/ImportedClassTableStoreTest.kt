@@ -247,6 +247,29 @@ class ImportedClassTableStoreTest {
     }
 
     @Test
+    fun `a file whose account is no longer the one signed in is emptied, not read back`() = runTest {
+        // The app stopped before a sign-out emptied the store, or before another account's sign-in did.
+        for (next in listOf(null, "B11399999")) {
+            account = "B11300000"
+            store().add(code("B11300001", fall), "Ming", emptyMap())
+
+            account = next
+            assertTrue(store().load().people.isEmpty())
+            assertFalse(file.exists())
+        }
+    }
+
+    @Test
+    fun `people imported while no one was signed in are read back`() = runTest {
+        account = null
+        store().add(code("B11300001", fall), "Ming", emptyMap())
+
+        assertEquals(listOf("Ming"), store().load().people.map { it.nickname })
+        account = "B11300000"
+        assertEquals(listOf("Ming"), store().load().people.map { it.nickname })
+    }
+
+    @Test
     fun `another student ID signing in empties the store, and the same one signing in again keeps it`() = runTest {
         val store = store()
         store.add(code("B11300001", fall), "Ming", emptyMap())

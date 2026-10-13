@@ -251,6 +251,12 @@ class ImportedClassTableStore internal constructor(
             Log.w(TAG, "The imported class tables did not decode; the file is kept as it is")
             return
         }
+        // The app may have stopped before a sign-out, or another account's sign-in, emptied the
+        // store. Imports made while no one was signed in have no owner and stay.
+        if (stored.owner != null && stored.owner != signedInStudentId()) {
+            clear()
+            return
+        }
         owner = stored.owner
         _tables.update { it.copy(people = stored.people) }
     }
