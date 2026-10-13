@@ -202,6 +202,8 @@ class SettingsViewModel @Inject constructor(
         }
         val token = resolutions.checkStarting(::checkPendingConflicts) ?: return
         Log.i(TAG, "[reenable] checkPendingConflicts start: pending=$pending")
+        val account = authService.storedStudentId
+        val generation = dataCache.userDataGeneration
         // On the application scope: a check cut short by leaving Settings
         // would keep "assignments" pending, and the marks held, until
         // TigerSync is opened again. On Main, like this view model's work.
@@ -301,8 +303,12 @@ class SettingsViewModel @Inject constructor(
 
                 Log.i(TAG, "[reenable] result: ${diffs.size} diffs → ${if (diffs.isEmpty()) "no conflict" else "SHOW POPUP"}")
                 // An answer given since this check began changed what it
-                // compared, and settles the pending set itself.
-                if (!resolutions.isCurrent(token)) return@launch
+                // compared, and settles the pending set itself. After a
+                // sign-out the result is the departed account's.
+                val stillApplies = resolutions.isCurrent(token) &&
+                    authService.isStillSignedInAs(account) &&
+                    dataCache.userDataGeneration == generation
+                if (!stillApplies) return@launch
                 if (diffs.isNotEmpty()) {
                     _reenableConflict.value = ReenableConflict(
                         categories = pending.toList(),
