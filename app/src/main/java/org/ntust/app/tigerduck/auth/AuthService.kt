@@ -203,10 +203,16 @@ class AuthService @Inject constructor(
                         android.util.Log.w("AuthService", "Moodle token harvest failed; using stored: ${e.logSummary()}")
                         credentials.moodleToken
                     }
+                    if (moodleToken.isNullOrEmpty()) {
+                        // A backend login without one could only be refused, and
+                        // would count against the login limit. The automatic
+                        // sign-in tries again.
+                        android.util.Log.w("AuthService", "v3 login skipped: no Moodle token")
+                        return@signInInteractively SignInAttempt.FAILED
+                    }
                     try {
                         authTokenManager.login(
                             studentId = normalizedId,
-                            password = password,
                             moodleToken = moodleToken,
                             moodlePrivateToken = null,
                             signInGeneration = signIn,

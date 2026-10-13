@@ -330,7 +330,7 @@ class AutomaticSignInTest {
 
     /** What AuthService.login() sends to the backend once the school took the password. */
     private suspend fun AuthTokenManager.loginAsTheUser(signIn: Int): SignInAttempt = try {
-        login("B00000000", "password", "moodle", moodlePrivateToken = null, signInGeneration = signIn)
+        login("B00000000", "moodle", moodlePrivateToken = null, signInGeneration = signIn)
         SignInAttempt.SIGNED_IN
     } catch (e: CancellationException) {
         throw e
