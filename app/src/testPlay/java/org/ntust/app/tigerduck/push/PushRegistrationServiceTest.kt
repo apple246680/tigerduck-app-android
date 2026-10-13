@@ -2,6 +2,7 @@ package org.ntust.app.tigerduck.push
 
 import android.app.Application
 import android.content.Context
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType
@@ -11,6 +12,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -28,9 +30,11 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowSystemClock
 import java.time.Duration
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.TimeUnit
 
 /**
  * [PushRegistrationService] registering the device again after a registration failed:
@@ -141,7 +145,59 @@ class PushRegistrationServiceTest {
         assertEquals("after one failure the retry is due in 30 s", 5, backend.received(REGISTER).size)
     }
 
+    // A registration asked for while one is running
+
+    @Test
+    fun `a registration asked for while one is on the wire is not sent alongside it`() = runTest {
+        val service = service()
+        val held = backend.hold(REGISTER)
+        service.update("fcm-1")
+        held.arrived.await()
+
+        service.onSignedIn()
+        held.release(200)
+        service.awaitRegistrations()
+
+        assertEquals(1, backend.received(ANNOUNCE).size)
+        assertEquals(1, backend.received(REGISTER).size)
+        assertNull(service.diagnostic.value.lastError)
+    }
+
+    @Test
+    fun `a registration that fails after another was asked for is followed at once`() = runTest {
+        val service = service()
+        val held = backend.hold(REGISTER)
+        service.update("fcm-1")
+        held.arrived.await()
+
+        service.onSignedIn()
+        held.release(401)
+        service.awaitRegistrations()
+
+        assertEquals(2, backend.received(REGISTER).size)
+        assertNull(service.diagnostic.value.lastError)
+        assertTrue(service.diagnostic.value.isRegistered)
+    }
+
+    @Test
+    fun `a token that arrives while a registration is on the wire is registered after it`() = runTest {
+        val service = service()
+        val held = backend.hold(REGISTER)
+        service.update("fcm-1")
+        held.arrived.await()
+
+        service.update("fcm-2")
+        held.release(200)
+        service.awaitRegistrations()
+
+        val tokens = backend.received(REGISTER).map {
+            JSONObject(it.body).getJSONObject("push_token").getString("token_value")
+        }
+        assertEquals(listOf("fcm-1", "fcm-2"), tokens)
+    }
+
     private companion object {
+        const val ANNOUNCE = "POST /devices/anonymous"
         const val REGISTER = "POST /devices/register"
         const val PREFERENCES = "PATCH /devices/preferences"
     }
@@ -149,13 +205,25 @@ class PushRegistrationServiceTest {
 
 /**
  * Answers every request in place of the backend, which nothing reaches: the interceptor never
- * calls proceed(). Each endpoint answers 200 unless a test queued another status for it.
+ * calls proceed(). Each endpoint answers 200 unless a test queued another status for it, and a
+ * [Held] answer keeps its request waiting until the test releases it.
  */
 private class FakeBackend {
     class Received(val endpoint: String, val body: String)
 
+    class Held {
+        val arrived = CompletableDeferred<Unit>()
+        private val reply = CompletableFuture<Int>()
+
+        fun release(code: Int) {
+            reply.complete(code)
+        }
+
+        fun await(): Int = reply.get(10, TimeUnit.SECONDS)
+    }
+
     private val received = CopyOnWriteArrayList<Received>()
-    private val queued = ConcurrentHashMap<String, ConcurrentLinkedQueue<Int>>()
+    private val queued = ConcurrentHashMap<String, ConcurrentLinkedQueue<Any>>()
 
     val client: OkHttpClient = OkHttpClient.Builder()
         .addInterceptor { chain -> answer(chain.request()) }
@@ -164,6 +232,8 @@ private class FakeBackend {
     fun answer(endpoint: String, vararg codes: Int) {
         codes.forEach { queue(endpoint).add(it) }
     }
+
+    fun hold(endpoint: String): Held = Held().also { queue(endpoint).add(it) }
 
     fun received(endpoint: String): List<Received> = received.filter { it.endpoint == endpoint }
 
@@ -180,7 +250,14 @@ private class FakeBackend {
         }
         val body = request.body?.let { Buffer().also(it::writeTo).readUtf8() }.orEmpty()
         received += Received(endpoint, body)
-        val code = queued[endpoint]?.poll() ?: 200
+        val code = when (val next = queued[endpoint]?.poll()) {
+            is Held -> {
+                next.arrived.complete(Unit)
+                next.await()
+            }
+            is Int -> next
+            else -> 200
+        }
         val reply = if (code in 200..299) {
             """{"device_id":"device-1","push_token_id":1,"cloud_sync_enabled":true}"""
         } else {

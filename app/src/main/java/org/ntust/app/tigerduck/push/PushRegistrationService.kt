@@ -76,6 +76,14 @@ class PushRegistrationService @Inject constructor(
     private var consecutiveRegistrationFailures = 0
     private var lastRegistrationAttemptAt = SystemClock.elapsedRealtime()
 
+    // Guarded by [mutex]. performRegister passes that have started and not
+    // ended: a count, as one that unregister() cancelled can still be
+    // finishing when the next starts.
+    private var registrationsRunning = 0
+    // Guarded by [mutex]. A registration asked for while one was running,
+    // for endRegistration to start after it unless that one covered it.
+    private var registrationAskedWhileRunning = false
+
     private val prefs: SharedPreferences =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
@@ -179,17 +187,27 @@ class PushRegistrationService @Inject constructor(
     }
 
     private suspend fun scheduleRegister() {
-        mutex.withLock {
-            val request = RegistrationAttemptState(registrationOwed, consecutiveRegistrationFailures)
-                .onRegistrationRequested(isUnregistering)
-            registrationOwed = request.state.registrationOwed
-            if (!request.startNow) return@withLock
-            debounceJob?.cancel()
-            debounceJob = scope.launch {
-                // Coalesce the token + sign-in arrivals so we only POST once.
-                delay(250)
-                performRegister()
-            }
+        mutex.withLock { requestRegistration() }
+    }
+
+    /** [scheduleRegister] with [mutex] already held. */
+    private fun requestRegistration() {
+        val request = RegistrationAttemptState(registrationOwed, consecutiveRegistrationFailures)
+            .onRegistrationRequested(isUnregistering)
+        registrationOwed = request.state.registrationOwed
+        if (!request.startNow) return
+        // Left to finish: cancelling would not stop a request already sent,
+        // whose failure could land after the next registration's success and
+        // put the error back. endRegistration takes this request up after it.
+        if (registrationsRunning > 0) {
+            registrationAskedWhileRunning = true
+            return
+        }
+        debounceJob?.cancel()
+        debounceJob = scope.launch {
+            // Coalesce the token + sign-in arrivals so we only POST once.
+            delay(250)
+            performRegister()
         }
     }
 
@@ -227,6 +245,7 @@ class PushRegistrationService @Inject constructor(
                 // purpose, and the next sign-in or token asks for a new one.
                 registrationOwed = false
                 consecutiveRegistrationFailures = 0
+                registrationAskedWhileRunning = false
             }
             val deviceId = identity.uuid()
             try {
@@ -311,14 +330,43 @@ class PushRegistrationService @Inject constructor(
         }
         // Snapshot token under the mutex so a concurrent token rotation or
         // updateServerPushOptOut can't flip state between read and POST.
-        val token = mutex.withLock {
+        val (token, signedIn) = mutex.withLock {
             // An unregister in flight is not an attempt at anything: the row
             // is being deleted on purpose, nothing is owed while it is, and
             // moving the retry's clock here would space out the registration
             // the next sign-in asks for.
             if (isUnregistering) return false
-            fcmToken
+            registrationsRunning++
+            fcmToken to authTokenManager.isLoggedIn
         }
+        var landed = false
+        try {
+            landed = registerWith(token)
+            return landed
+        } finally {
+            // Also after an unregister cancelled this pass, or the count stays up.
+            withContext(NonCancellable) { endRegistration(token, signedIn, landed) }
+        }
+    }
+
+    /**
+     * Ends a [performRegister] pass that started with [token] and [signedIn].
+     * A registration asked for while it ran starts now, unless the pass landed
+     * and nothing it registered has changed since: so a failure is followed at
+     * once rather than after the retry's backoff, and a token or sign-in that
+     * arrived during the pass is still registered.
+     */
+    private suspend fun endRegistration(token: String?, signedIn: Boolean, landed: Boolean) {
+        mutex.withLock {
+            registrationsRunning--
+            if (registrationsRunning > 0 || !registrationAskedWhileRunning) return@withLock
+            registrationAskedWhileRunning = false
+            val unchanged = token == fcmToken && (signedIn || !authTokenManager.isLoggedIn)
+            if (landed && unchanged) registrationOwed = false else requestRegistration()
+        }
+    }
+
+    private suspend fun registerWith(token: String?): Boolean {
         if (token == null) {
             // No token in this process — the fetch has never succeeded. This
             // pass failed as surely as a rejected POST does, so it has to
