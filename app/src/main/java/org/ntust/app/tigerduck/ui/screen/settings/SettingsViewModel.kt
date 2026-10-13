@@ -390,6 +390,7 @@ class SettingsViewModel @Inject constructor(
                 // Syncs leave the marks alone while "assignments" is pending,
                 // so the cache changes now only by taps on Home: the newest.
                 sendKeptMarks(
+                    marksVersion = { dataCache.assignmentMarksVersion.value },
                     marksNow = {
                         AssignmentOverrideReconciler.keepLocal(
                             localIgnored = dataCache.loadIgnoredAssignments(),
