@@ -13,6 +13,7 @@ import org.ntust.app.tigerduck.data.cache.BulletinCache
 import org.ntust.app.tigerduck.data.BulletinReadStateStore
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
+import org.ntust.app.tigerduck.data.sharing.ImportedClassTableStore
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.network.CourseService
 import org.ntust.app.tigerduck.network.MoodleService
@@ -45,6 +46,7 @@ class AuthService @Inject constructor(
     private val dataCache: DataCache,
     private val bulletinCache: BulletinCache,
     private val bulletinReadStateStore: BulletinReadStateStore,
+    private val importedClassTables: ImportedClassTableStore,
     @param:ApplicationScope private val appScope: CoroutineScope,
     private val demoAccount: org.ntust.app.tigerduck.demo.DemoAccount,
     private val prefs: org.ntust.app.tigerduck.data.preferences.AppPreferences,
@@ -221,6 +223,7 @@ class AuthService @Inject constructor(
                 demoAccount.enter()
                 credentials.ntustStudentId = normalizedId
                 credentials.ntustPassword = password
+                importedClassTables.accountDidSignIn(normalizedId)
                 _authState.value = true
                 _isLoggingIn.value = false
                 return@withLock true
@@ -234,6 +237,9 @@ class AuthService @Inject constructor(
                 val signIn = authTokenManager.signInGeneration
                 credentials.ntustStudentId = normalizedId
                 credentials.ntustPassword = password
+                // Before the class table can show: another account must not inherit what the last
+                // one imported, whether imported while signed out or left by a wipe that never ran.
+                importedClassTables.accountDidSignIn(normalizedId)
                 _authState.value = true
                 // Best-effort: v3 JWT login failures must not block the SSO
                 // session — the push system falls back to the shared secret if
@@ -384,6 +390,10 @@ class AuthService @Inject constructor(
         // Without this guarantee, the JSON cache survives logout and bleeds
         // into the next account on the same device.
         appScope.launch {
+            // Only this sign-out empties them: a relogin in the background or a renewed session
+            // keeps the class tables the user imported.
+            runCatching { importedClassTables.clearForSignOut() }
+                .onFailure { android.util.Log.w("AuthService", "clearForSignOut failed on logout: ${it.logSummary()}") }
             runCatching { dataCache.clearAllUserData() }
                 .onFailure { android.util.Log.w("AuthService", "clearAllUserData failed on logout: ${it.logSummary()}") }
             // Bulletins are school-wide rather than private, but the read-state
