@@ -6,6 +6,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.ntust.app.tigerduck.data.DataMigration
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.ui.screen.home.AssignmentOverrideReconciler
 import org.robolectric.RobolectricTestRunner
@@ -64,6 +65,36 @@ class ReenableMarksTest {
         turnTigerSyncOn(signedIn = false)
 
         assertEquals(emptySet<String>(), prefs.pendingConflictCategories)
+    }
+
+    @Test
+    fun `an install signed in at the update still marks every category switched back on`() {
+        DataMigration.settleReenableCheck(prefs, signedIn = true)
+
+        turnTigerSyncOn()
+
+        assertEquals(CATEGORIES, prefs.pendingConflictCategories)
+    }
+
+    @Test
+    fun `a fresh install, or one signed out at the update, marks nothing before its first sync`() {
+        DataMigration.settleReenableCheck(prefs, signedIn = false)
+
+        // Signed in since.
+        turnTigerSyncOn()
+
+        assertEquals(emptySet<String>(), prefs.pendingConflictCategories)
+    }
+
+    @Test
+    fun `an install signed out at the update drops the checks an older build left pending`() {
+        // Marked while signed out, the check failing for want of a session.
+        prefs.pendingConflictCategories = setOf("assignments", "courses")
+
+        DataMigration.settleReenableCheck(prefs, signedIn = false)
+
+        assertEquals(emptySet<String>(), prefs.pendingConflictCategories)
+        assertFalse(AssignmentOverrideReconciler.isHeldForReenable(prefs.pendingConflictCategories))
     }
 
     private companion object {

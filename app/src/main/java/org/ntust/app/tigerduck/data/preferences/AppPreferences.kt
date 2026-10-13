@@ -185,8 +185,8 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
      * Whether a full sync has applied the signed-in account's data on this
      * phone. Until one has, a category switched back on is not marked for
      * the re-enable check: the phone holds none of the account's data to
-     * compare. Set by `HomeBackendSync.pull`, cleared at sign-out by
-     * [clearSyncStamps].
+     * compare. Set by `HomeBackendSync.pull` and `DataMigration.migrate3to4`,
+     * cleared at sign-out by [clearSyncStamps].
      */
     var hasSyncedAccount: Boolean
         get() = prefs.getBoolean("hasSyncedAccount", false)

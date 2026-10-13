@@ -96,6 +96,7 @@ class DataMigration @Inject constructor(
                 0 -> migrate0to1()
                 1 -> migrate1to2()
                 2 -> migrate2to3()
+                3 -> migrate3to4()
             }
             current++
             prefs.dataSchemaVersion = current
@@ -160,6 +161,18 @@ class DataMigration @Inject constructor(
         deleteCourseCaches(cacheDir)
     }
 
+    /**
+     * Starts the re-enable check's record ([AppPreferences.hasSyncedAccount]),
+     * which no earlier build kept. An install signed in at this update counts
+     * as synced, so turning TigerSync back on still asks the question rather
+     * than let the first sync take the server's data over changes made here
+     * while it was off. Signed out, a check an older build left pending would
+     * wait for whoever signs in next, so it is dropped.
+     */
+    private fun migrate3to4() {
+        settleReenableCheck(prefs, signedIn = credentials.ntustStudentId != null)
+    }
+
     companion object {
         private const val TAG = "DataMigration"
 
@@ -206,6 +219,15 @@ class DataMigration @Inject constructor(
                 }
         }
 
+        /** [migrate3to4], here so a test can run it without a [CredentialManager]. */
+        internal fun settleReenableCheck(prefs: AppPreferences, signedIn: Boolean) {
+            if (signedIn) {
+                prefs.hasSyncedAccount = true
+            } else {
+                prefs.pendingConflictCategories = emptySet()
+            }
+        }
+
         // Mirrors DataCache. Kept in sync deliberately — DataMigration must
         // run before any DataCache access, so we don't import the cache
         // class here to avoid pulling DI into the migration boot path.
@@ -224,7 +246,7 @@ class DataMigration @Inject constructor(
         private const val COURSE_NO_TOKEN = "\"courseNo\":"
 
         /** Highest schema this build writes. Bump when adding a new step. */
-        const val CURRENT_SCHEMA = 3
+        const val CURRENT_SCHEMA = 4
 
         /**
          * Lowest schema this build can migrate forward from. Anything below
