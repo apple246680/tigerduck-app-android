@@ -293,8 +293,8 @@ private fun FullLayout(state: WidgetState, colors: WidgetColors, tapAction: Acti
             state.tomorrowFirstCourseNo != null -> {
                 // Mirrors iOS `WidgetTimelineDerivation` `.tomorrowFirst` —
                 // same card layout as next-today. `computeTomorrowFirst` scans
-                // up to 7 weekdays ahead, so the label switches to the short
-                // weekday name (e.g., "Mon") when the picked day isn't
+                // up to 7 weekdays ahead, so the label switches to the
+                // weekday caption (e.g., "Mon") when the picked day isn't
                 // literally tomorrow (Fri → Mon after a weekend with no
                 // classes). Classroom resolves against that picked day so the
                 // per-period room reflects it.
@@ -515,20 +515,20 @@ private fun NextCard(
 
 /**
  * "Tomorrow" only when [futureWeekday] is literally the calendar day after
- * [todayWeekday]; otherwise the short weekday name. `computeTomorrowFirst`
+ * [todayWeekday]; otherwise the weekday's caption. `computeTomorrowFirst`
  * scans up to 7 weekdays ahead, so a Friday-afternoon viewer with no Sat/Sun
  * classes sees Monday's first class — labeling it "Tomorrow" would mislead.
  */
-private fun futureDayLabel(context: Context, todayWeekday: Int, futureWeekday: Int): String {
+internal fun futureDayLabel(context: Context, todayWeekday: Int, futureWeekday: Int): String {
     val literalTomorrow = (todayWeekday % 7) + 1
     return if (futureWeekday == literalTomorrow) {
         context.getString(R.string.widget_tomorrow)
     } else {
-        context.getString(weekdayShortRes(futureWeekday))
+        context.getString(weekdayCaptionRes(futureWeekday))
     }
 }
 
-private fun futureCourseTimeLabel(
+internal fun futureCourseTimeLabel(
     context: Context,
     todayWeekday: Int,
     futureWeekday: Int?,
@@ -538,18 +538,23 @@ private fun futureCourseTimeLabel(
     return if (futureWeekday == null || futureWeekday == literalTomorrow) {
         context.getString(R.string.widget_tomorrow_time, startTime)
     } else {
-        "${context.getString(weekdayShortRes(futureWeekday))} $startTime"
+        "${context.getString(weekdayCaptionRes(futureWeekday))} $startTime"
     }
 }
 
-private fun weekdayShortRes(weekday: Int): Int = when (weekday) {
-    1 -> R.string.weekday_mon_short
-    2 -> R.string.weekday_tue_short
-    3 -> R.string.weekday_wed_short
-    4 -> R.string.weekday_thu_short
-    5 -> R.string.weekday_fri_short
-    6 -> R.string.weekday_sat_short
-    else -> R.string.weekday_sun_short
+/**
+ * Caption keys, not `weekday_*_short`: in zh-Hant a short name is the bare
+ * numeral the Week grid heads its columns with, which alone does not read as
+ * a day.
+ */
+private fun weekdayCaptionRes(weekday: Int): Int = when (weekday) {
+    1 -> R.string.weekday_mon_caption
+    2 -> R.string.weekday_tue_caption
+    3 -> R.string.weekday_wed_caption
+    4 -> R.string.weekday_thu_caption
+    5 -> R.string.weekday_fri_caption
+    6 -> R.string.weekday_sat_caption
+    else -> R.string.weekday_sun_caption
 }
 
 @Composable

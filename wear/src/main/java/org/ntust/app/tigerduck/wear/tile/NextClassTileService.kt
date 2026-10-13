@@ -25,6 +25,7 @@ import org.ntust.app.tigerduck.wear.MainActivity
 import org.ntust.app.tigerduck.wear.R
 import org.ntust.app.tigerduck.wear.data.SchedulePersistenceHolder
 import org.ntust.app.tigerduck.wear.data.WatchSnapshot
+import org.ntust.app.tigerduck.wear.ui.weekdayCaptionRes
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -132,7 +133,6 @@ class NextClassTileService : TileService() {
         today: LocalDate,
         minuteOfDay: Int,
     ): LayoutElementBuilders.Layout {
-        val weekday = today.dayOfWeek.value
         val (label, body, sub) = when {
             snapshot.syncedAtMs == null -> Triple(
                 getString(R.string.watch_open_phone_to_sync), "", ""
@@ -165,10 +165,9 @@ class NextClassTileService : TileService() {
                     if (r.daysAhead == 1) {
                         getString(R.string.watch_tomorrow_at, formatHm(r.startMinute))
                     } else {
-                        val targetWeekday = ((weekday - 1 + r.daysAhead) % 7) + 1
                         getString(
                             R.string.watch_weekday_at,
-                            weekdayShortName(targetWeekday),
+                            getString(weekdayCaptionRes(r.weekday)),
                             formatHm(r.startMinute),
                         )
                     },
@@ -216,18 +215,6 @@ class NextClassTileService : TileService() {
 
     private fun formatHm(minuteOfDay: Int): String =
         "%02d:%02d".format(minuteOfDay / 60, minuteOfDay % 60)
-
-    private fun weekdayShortName(weekday: Int): String = getString(
-        when (weekday) {
-            1 -> R.string.weekday_mon_short
-            2 -> R.string.weekday_tue_short
-            3 -> R.string.weekday_wed_short
-            4 -> R.string.weekday_thu_short
-            5 -> R.string.weekday_fri_short
-            6 -> R.string.weekday_sat_short
-            else -> R.string.weekday_sun_short
-        }
-    )
 
     companion object {
         private const val RESOURCES_VERSION = "1"
