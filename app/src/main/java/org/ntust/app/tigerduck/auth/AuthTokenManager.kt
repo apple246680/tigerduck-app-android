@@ -1,5 +1,6 @@
 package org.ntust.app.tigerduck.auth
 
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -14,6 +15,9 @@ import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore
 import org.ntust.app.tigerduck.network.resolveAnnouncementEndpoint
 import org.ntust.app.tigerduck.push.currentDeviceModel
+import java.io.IOException
+import java.util.concurrent.TimeUnit
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Manages v3 JWT access and refresh tokens.
@@ -28,6 +32,15 @@ class AuthTokenManager(
     private val refreshMutex = Mutex()
     private val jsonType = "application/json".toMediaType()
     var onRefreshFailed: (suspend () -> Boolean)? = null
+
+    // OkHttp sends a failed request again on its own, up to three sends of one
+    // refresh token in all, and the backend takes a third send as reuse. The
+    // timeout keeps the two sends [sendWithOneResend] makes inside the
+    // backend's 60 s grace.
+    private val refreshClient = httpClient.newBuilder()
+        .retryOnConnectionFailure(false)
+        .callTimeout(REFRESH_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .build()
 
     // Resolve per-call so the debug API-endpoint override applies immediately,
     // matching PushApiClient — pinning at construction made login/refresh
@@ -109,6 +122,35 @@ class AuthTokenManager(
         if (access != null && System.currentTimeMillis() < expiresAt - 30_000) return access
 
         val refreshToken = tokens.refreshToken ?: return null
+        val outcome = try {
+            withContext(Dispatchers.IO) { sendWithOneResend(refreshToken) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "refresh failed: ${e.javaClass.simpleName}")
+            RefreshOutcome.Refused
+        }
+        if (outcome is RefreshOutcome.Refreshed) return outcome.accessToken
+        if (onRefreshFailed?.invoke() == true) return tokens.accessToken
+        logout()
+        null
+    }
+
+    /**
+     * Sends [refreshToken], and once more at once if no reply came back.
+     *
+     * A send whose reply is lost may still have rotated the token. Within 60 s
+     * of a rotation the backend answers the old token once more with a fresh
+     * pair, and takes any later send of it as reuse, so a resend that fails
+     * too is a failed refresh, never a token kept for later.
+     */
+    private fun sendWithOneResend(refreshToken: String): RefreshOutcome {
+        val first = send(refreshToken)
+        if (first != RefreshOutcome.NoReply) return first
+        return send(refreshToken) as? RefreshOutcome.Refreshed ?: RefreshOutcome.Refused
+    }
+
+    private fun send(refreshToken: String): RefreshOutcome {
         val json = JSONObject().apply {
             put("refresh_token", refreshToken)
         }
@@ -118,32 +160,36 @@ class AuthTokenManager(
             .post(body)
             .build()
         return try {
-            withContext(Dispatchers.IO) {
-                httpClient.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        if (onRefreshFailed?.invoke() == true) {
-                            return@use tokens.accessToken
-                        }
-                        logout()
-                        return@use null
-                    }
-                    val result = JSONObject(response.body.string())
-                    val newAccess = result.getString("access_token")
-                    val newRefresh = result.getString("refresh_token")
-                    val expiresIn = result.getInt("expires_in")
-                    tokens.save(newAccess, newRefresh, System.currentTimeMillis() + expiresIn * 1000L)
-                    newAccess
-                }
+            refreshClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use RefreshOutcome.Refused
+                val result = JSONObject(response.body.string())
+                val newAccess = result.getString("access_token")
+                val newRefresh = result.getString("refresh_token")
+                val expiresIn = result.getInt("expires_in")
+                tokens.save(newAccess, newRefresh, System.currentTimeMillis() + expiresIn * 1000L)
+                RefreshOutcome.Refreshed(newAccess)
             }
-        } catch (e: Exception) {
-            if (onRefreshFailed?.invoke() == true) {
-                return tokens.accessToken
-            }
-            logout()
-            null
+        } catch (e: IOException) {
+            Log.w(TAG, "refresh got no reply: ${e.javaClass.simpleName}")
+            RefreshOutcome.NoReply
         }
+    }
+
+    private sealed interface RefreshOutcome {
+        // Not a data class, whose toString() would print the token.
+        class Refreshed(val accessToken: String) : RefreshOutcome
+
+        /** No reply came back, so the backend may or may not have rotated the token. */
+        data object NoReply : RefreshOutcome
+
+        data object Refused : RefreshOutcome
     }
 
     data class LoginResult(val accessToken: String, val deviceId: String)
     class AuthException(message: String) : Exception(message)
+
+    private companion object {
+        const val TAG = "AuthTokenManager"
+        const val REFRESH_TIMEOUT_SECONDS = 20L
+    }
 }

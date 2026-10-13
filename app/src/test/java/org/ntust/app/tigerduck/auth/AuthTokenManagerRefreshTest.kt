@@ -13,6 +13,7 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -24,7 +25,14 @@ import org.ntust.app.tigerduck.data.preferences.V3TokenStore.Companion.KEY_REFRE
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import java.io.Closeable
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.Socket
 import java.net.SocketTimeoutException
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.concurrent.thread
 
 /**
  * How [AuthTokenManager] keeps the v3 pair through a refresh. The backend
@@ -42,6 +50,7 @@ class AuthTokenManagerRefreshTest {
 
     /** The refresh tokens the fake backend received, in order. */
     private val sentRefreshTokens = mutableListOf<String>()
+    private var relogins = 0
 
     @Before
     fun setUp() {
@@ -80,12 +89,59 @@ class AuthTokenManagerRefreshTest {
         assertEquals("refresh-2", tokens.refreshToken)
     }
 
-    private fun manager(vararg replies: Reply) = AuthTokenManager(
+    @Test
+    fun `a refresh whose reply was lost is sent once more with the same token and keeps that pair`() = runTest {
+        val manager = manager(Reply.Lost, Reply.Pair("access-2", "refresh-2"))
+
+        assertEquals("Bearer access-2", manager.authHeader())
+
+        assertEquals(listOf("refresh-1", "refresh-1"), sentRefreshTokens)
+        assertEquals(0, relogins)
+        assertEquals("refresh-2", tokens.refreshToken)
+    }
+
+    @Test
+    fun `a second lost reply is not sent a third time`() = runTest {
+        val manager = manager(Reply.Lost, Reply.Lost, Reply.Pair("access-2", "refresh-2"))
+
+        assertNull(manager.authHeader())
+
+        // The resend may have spent the backend's one grace: sign in again as before.
+        assertEquals(listOf("refresh-1", "refresh-1"), sentRefreshTokens)
+        assertEquals(1, relogins)
+        assertNull(tokens.refreshToken)
+    }
+
+    @Test
+    fun `OkHttp does not send a refresh again on its own`() = runTest {
+        // The sign-in leaves its connection in the pool, and the refresh goes out on it. OkHttp
+        // resends a request that failed on a pooled connection unless told not to.
+        LoopbackBackend(listOf(pairJson("access-2", "refresh-2", expiresIn = 0))).use { backend ->
+            val prefs = AppPreferences(context).apply { announcementApiBaseUrlOverride = backend.baseUrl }
+            val manager = AuthTokenManager(tokens, OkHttpClient(), prefs, deviceUuid = "device-1")
+            manager.login("B00000000", "password", moodleToken = "moodle", moodlePrivateToken = null)
+
+            assertNull(manager.authHeader())
+
+            assertEquals(listOf("refresh-2", "refresh-2"), backend.refreshTokens)
+        }
+    }
+
+    private fun manager(vararg replies: Reply, reloginSucceeds: Boolean = false) = AuthTokenManager(
         tokens = tokens,
         httpClient = backend(*replies),
         prefs = AppPreferences(context),
         deviceUuid = "device-1",
-    )
+    ).apply {
+        // Stands in for AuthService.attemptRelogin, which signs in through login().
+        onRefreshFailed = {
+            relogins++
+            if (reloginSucceeds) {
+                tokens.save("access-relogin", "refresh-relogin", System.currentTimeMillis() + 900_000)
+            }
+            reloginSucceeds
+        }
+    }
 
     /** What the fake backend does with each request it gets, in order. */
     private sealed interface Reply {
@@ -111,12 +167,7 @@ class AuthTokenManagerRefreshTest {
                 when (val reply = script.removeFirst()) {
                     Reply.Lost -> throw SocketTimeoutException("timeout")
                     is Reply.Status -> answer(request, reply.code, """{"detail":"error"}""")
-                    is Reply.Pair -> answer(
-                        request,
-                        200,
-                        """{"access_token":"${reply.access}","refresh_token":"${reply.refresh}",""" +
-                            """"expires_in":900,"device_id":"device-1"}""",
-                    )
+                    is Reply.Pair -> answer(request, 200, pairJson(reply.access, reply.refresh))
                 }
             }
             .build()
@@ -129,6 +180,71 @@ class AuthTokenManagerRefreshTest {
         .message("")
         .body(body.toResponseBody("application/json".toMediaType()))
         .build()
+}
+
+private fun pairJson(access: String, refresh: String, expiresIn: Int = 900) =
+    """{"access_token":"$access","refresh_token":"$refresh","expires_in":$expiresIn,""" +
+        """"device_id":"device-1"}"""
+
+/**
+ * A plain-HTTP backend on the loopback address that answers each request with
+ * the next of [replies] and, once they run out, closes the connection without
+ * a reply. It keeps a connection open after each answer, so OkHttp pools it.
+ */
+private class LoopbackBackend(private val replies: List<String>) : Closeable {
+    private val server = ServerSocket(0, 50, InetAddress.getLoopbackAddress())
+    private val answered = AtomicInteger()
+
+    /** The refresh tokens it received, in order. */
+    val refreshTokens = CopyOnWriteArrayList<String>()
+    val baseUrl = "http://127.0.0.1:${server.localPort}/v3"
+
+    init {
+        thread(isDaemon = true) {
+            while (true) {
+                val socket = runCatching { server.accept() }.getOrNull() ?: break
+                thread(isDaemon = true) { serve(socket) }
+            }
+        }
+    }
+
+    private fun serve(socket: Socket) {
+        socket.use {
+            // Latin-1 maps each byte to one char, so Content-Length counts chars too.
+            val input = socket.getInputStream().bufferedReader(Charsets.ISO_8859_1)
+            val output = socket.getOutputStream()
+            while (true) {
+                val path = input.readLine()?.split(' ')?.getOrNull(1) ?: return
+                var length = 0
+                while (true) {
+                    val header = input.readLine() ?: return
+                    if (header.isEmpty()) break
+                    if (header.startsWith("Content-Length:", ignoreCase = true)) {
+                        length = header.substringAfter(':').trim().toInt()
+                    }
+                }
+                val body = CharArray(length)
+                var read = 0
+                while (read < length) {
+                    val n = input.read(body, read, length - read)
+                    if (n < 0) return
+                    read += n
+                }
+                if (path.endsWith("/auth/refresh")) {
+                    refreshTokens += JSONObject(String(body)).getString("refresh_token")
+                }
+                val reply = replies.getOrNull(answered.getAndIncrement()) ?: return
+                val bytes = reply.toByteArray()
+                output.write(
+                    ("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n" +
+                        "Content-Length: ${bytes.size}\r\n\r\n").toByteArray() + bytes
+                )
+                output.flush()
+            }
+        }
+    }
+
+    override fun close() = server.close()
 }
 
 /** Records the keys of each committed edit, and how many edits were applied instead. */
