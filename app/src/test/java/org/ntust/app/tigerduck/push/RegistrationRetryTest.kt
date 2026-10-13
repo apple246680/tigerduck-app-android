@@ -163,4 +163,47 @@ class RegistrationRetryTest {
             registrationRetryBackoffMillis(100),
         )
     }
+
+    // RegistrationPass.covers: whether a registration asked for while one ran still goes out.
+
+    @Test
+    fun `a sign-in after a signed-out pass announced the device is still registered`() {
+        val announced = RegistrationPass(landed = true)
+
+        assertFalse(
+            "the account was signed in after the pass chose to announce the device alone",
+            announced.covers(sentToken = "fcm-1", tokenNow = "fcm-1", signedInNow = true, cloudSyncNow = true),
+        )
+        assertTrue(
+            "still signed out, there is nothing more to register",
+            announced.covers(sentToken = "fcm-1", tokenNow = "fcm-1", signedInNow = false, cloudSyncNow = true),
+        )
+    }
+
+    @Test
+    fun `a pass that registered the current token and account covers a request made while it ran`() {
+        val registered = RegistrationPass(landed = true, withAccount = true, cloudSyncEnabled = true)
+
+        assertTrue(registered.covers(sentToken = "fcm-1", tokenNow = "fcm-1", signedInNow = true, cloudSyncNow = true))
+        assertFalse(
+            "a token that arrived during the pass is registered after it",
+            registered.covers(sentToken = "fcm-1", tokenNow = "fcm-2", signedInNow = true, cloudSyncNow = true),
+        )
+        assertFalse(
+            "a failed pass is followed at once, not after the backoff",
+            RegistrationPass(landed = false, withAccount = true, cloudSyncEnabled = true)
+                .covers(sentToken = "fcm-1", tokenNow = "fcm-1", signedInNow = true, cloudSyncNow = true),
+        )
+    }
+
+    @Test
+    fun `a pass that registered TigerSync as off does not cover turning it on`() {
+        val sentOff = RegistrationPass(landed = true, withAccount = true, cloudSyncEnabled = false)
+
+        assertFalse(
+            "turning TigerSync on during the pass must reach the server, whose PATCH may have found no row",
+            sentOff.covers(sentToken = "fcm-1", tokenNow = "fcm-1", signedInNow = true, cloudSyncNow = true),
+        )
+        assertTrue(sentOff.covers(sentToken = "fcm-1", tokenNow = "fcm-1", signedInNow = true, cloudSyncNow = false))
+    }
 }

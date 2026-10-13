@@ -77,6 +77,14 @@ class PushRegistrationService @Inject constructor(
     private var consecutiveRegistrationFailures = 0
     private var lastRegistrationAttemptAt = SystemClock.elapsedRealtime()
 
+    // Guarded by [mutex]. performRegister passes that have started and not
+    // ended: a count, as one that unregister() cancelled can still be
+    // finishing when the next starts.
+    private var registrationsRunning = 0
+    // Guarded by [mutex]. A registration asked for while one was running,
+    // for endRegistration to start after it unless that one covered it.
+    private var registrationAskedWhileRunning = false
+
     private val prefs: SharedPreferences =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
@@ -180,17 +188,40 @@ class PushRegistrationService @Inject constructor(
     }
 
     private suspend fun scheduleRegister() {
-        mutex.withLock {
-            val request = RegistrationAttemptState(registrationOwed, consecutiveRegistrationFailures)
-                .onRegistrationRequested(isUnregistering)
-            registrationOwed = request.state.registrationOwed
-            if (!request.startNow) return@withLock
-            debounceJob?.cancel()
-            debounceJob = scope.launch {
-                // Coalesce the token + sign-in arrivals so we only POST once.
-                delay(250)
-                performRegister()
-            }
+        mutex.withLock { requestRegistration() }
+    }
+
+    /** [scheduleRegister] with [mutex] already held. */
+    private fun requestRegistration() {
+        val request = RegistrationAttemptState(registrationOwed, consecutiveRegistrationFailures)
+            .onRegistrationRequested(isUnregistering)
+        registrationOwed = request.state.registrationOwed
+        if (!request.startNow) return
+        // Left to finish: cancelling would not stop a request already sent,
+        // whose failure could land after the next registration's success and
+        // put the error back. endRegistration takes this request up after it.
+        if (registrationsRunning > 0) {
+            registrationAskedWhileRunning = true
+            return
+        }
+        debounceJob?.cancel()
+        debounceJob = scope.launch {
+            // Coalesce the token + sign-in arrivals so we only POST once.
+            delay(250)
+            performRegister()
+        }
+    }
+
+    /**
+     * Waits until no registration is debouncing or running on [scope],
+     * including one started while it waits. For tests, which cannot reach
+     * those jobs otherwise.
+     */
+    internal suspend fun awaitRegistrations() {
+        while (true) {
+            val job = mutex.withLock { debounceJob } ?: return
+            job.join()
+            if (mutex.withLock { debounceJob === job }) return
         }
     }
 
@@ -215,6 +246,7 @@ class PushRegistrationService @Inject constructor(
                 // purpose, and the next sign-in or token asks for a new one.
                 registrationOwed = false
                 consecutiveRegistrationFailures = 0
+                registrationAskedWhileRunning = false
             }
             val deviceId = identity.uuid()
             try {
@@ -305,15 +337,47 @@ class PushRegistrationService @Inject constructor(
             // moving the retry's clock here would space out the registration
             // the next sign-in asks for.
             if (isUnregistering) return false
+            registrationsRunning++
             fcmToken
         }
+        var pass: RegistrationPass? = null
+        try {
+            return registerWith(token).also { pass = it }.landed
+        } finally {
+            // Also after an unregister cancelled this pass, or the count stays up.
+            withContext(NonCancellable) { endRegistration(token, pass) }
+        }
+    }
+
+    /**
+     * Ends a [performRegister] pass that sent [token]. A registration asked
+     * for while it ran starts now, unless [pass] covered it: so a failure is
+     * followed at once rather than after the retry's backoff, and a token or
+     * sign-in that arrived during the pass is still registered.
+     */
+    private suspend fun endRegistration(token: String?, pass: RegistrationPass?) {
+        mutex.withLock {
+            registrationsRunning--
+            if (registrationsRunning > 0 || !registrationAskedWhileRunning) return@withLock
+            registrationAskedWhileRunning = false
+            val covered = pass?.covers(
+                sentToken = token,
+                tokenNow = fcmToken,
+                signedInNow = authTokenManager.isLoggedIn,
+                cloudSyncNow = appPreferences.cloudSyncEnabled,
+            ) == true
+            if (covered) registrationOwed = false else requestRegistration()
+        }
+    }
+
+    private suspend fun registerWith(token: String?): RegistrationPass {
         if (token == null) {
             // No token in this process — the fetch has never succeeded. This
             // pass failed as surely as a rejected POST does, so it has to
             // climb the same backoff; without it the retry spins on every
             // trigger for as long as the device stays offline.
             recordRegistrationAttempt(landed = false)
-            return false
+            return RegistrationPass(landed = false)
         }
         // Nothing identifying leaves the device until the user has been
         // through onboarding and seen the privacy page. `fcmBootstrap.start()`
@@ -333,7 +397,7 @@ class PushRegistrationService @Inject constructor(
         // right: this process did just run the registration path.
         if (!appPreferences.hasCompletedOnboarding) {
             recordRegistrationAttempt(landed = false, countsAsFailure = false)
-            return false
+            return RegistrationPass(landed = false)
         }
         val clientDeviceId = identity.uuid()
         // Announce the hardware first, every time, signed in or not. The two
@@ -357,8 +421,10 @@ class PushRegistrationService @Inject constructor(
                     lastError = announceError?.let { e -> e.message ?: e::class.java.simpleName },
                 )
             }
-            return (announceError == null).also { recordRegistrationAttempt(landed = it) }
+            recordRegistrationAttempt(landed = announceError == null)
+            return RegistrationPass(landed = announceError == null)
         }
+        val cloudSyncEnabled = appPreferences.cloudSyncEnabled
         return runCatching {
             api.register(
                 DeviceRegisterRequest(
@@ -368,7 +434,7 @@ class PushRegistrationService @Inject constructor(
                     osVersion = "Android ${android.os.Build.VERSION.RELEASE}",
                     deviceModel = currentDeviceModel(),
                     pushToken = PushTokenIn(tokenValue = token),
-                    cloudSyncEnabled = appPreferences.cloudSyncEnabled,
+                    cloudSyncEnabled = cloudSyncEnabled,
                     locale = currentLocaleTag(),
                 )
             )
@@ -389,7 +455,10 @@ class PushRegistrationService @Inject constructor(
                 updateDiagnostic { it.copy(lastError = e.message ?: e::class.java.simpleName) }
                 false
             },
-        ).also { recordRegistrationAttempt(landed = it) }
+        ).let { landed ->
+            recordRegistrationAttempt(landed = landed)
+            RegistrationPass(landed, withAccount = true, cloudSyncEnabled = cloudSyncEnabled)
+        }
     }
 
     /**
@@ -580,11 +649,31 @@ class PushRegistrationService @Inject constructor(
      * and the network boundary is guarded once, for this and
      * [updateSyncPreferences] together, inside
      * [PushApiClient.updateDevicePreferences] — see `preferencesPatchBlockedOnFdroid`.
+     *
+     * Turning TigerSync on is how a user restarts sync, and the PATCH registers
+     * nothing, so a failed registration, whose error stays on the status card
+     * until one lands, is made again with the retry's backoff started over.
+     * Also after a refused PATCH: the server answers 404 for a device it holds
+     * no row for, and only a registration adds one. The refusal is still
+     * thrown, as `SettingsViewModel.pushCloudSyncEnabled` records the switch
+     * only when this returns.
      */
     suspend fun updateCloudSyncEnabled(enabled: Boolean) {
         if (fixtures.demoMode) return
         val deviceId = identity.uuid()
-        api.updateDevicePreferences(deviceId, cloudSyncEnabled = enabled)
+        val refusal = try {
+            api.updateDevicePreferences(deviceId, cloudSyncEnabled = enabled)
+            null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            e
+        }
+        if (enabled && _diagnostic.value.lastError != null) {
+            mutex.withLock { consecutiveRegistrationFailures = 0 }
+            scheduleRegister()
+        }
+        if (refusal != null) throw refusal
     }
 
     /** See [updateCloudSyncEnabled]'s note on where the fdroid guard lives. */
@@ -633,9 +722,8 @@ class PushRegistrationService @Inject constructor(
  * site, [PushRegistrationService.isServerPushOptedOut]. Tests pass it
  * explicitly instead, for the same reason
  * [org.ntust.app.tigerduck.data.preferences.effectiveCloudSyncEnabled] does:
- * this module's tests can't construct [PushRegistrationService] (real OkHttp
- * / Keystore dependencies), and a literal expectation on `BuildConfig.FLAVOR`
- * would only hold under one Gradle variant's unit-test task.
+ * a literal expectation on `BuildConfig.FLAVOR` would only hold under one
+ * Gradle variant's unit-test task.
  */
 internal fun effectiveServerPushOptedOut(storedOptOut: Boolean, flavor: String = BuildConfig.FLAVOR): Boolean =
     storedOptOut || flavor.equals("fdroid", ignoreCase = true)
@@ -702,11 +790,7 @@ internal data class RegistrationAttemptState(
  *
  * Extracted as a pure function, like [applyOptOutIfAccepted] and
  * [isRegistrationRetryDue] itself, so this state→flag mapping is testable
- * without [PushRegistrationService], which this module cannot construct
- * (real OkHttp / Android-Keystore dependencies, and neither Robolectric nor
- * a mocking library here). Only the mapping: the wiring that feeds it — the
- * `.also { recordRegistrationAttempt(...) }` on each registration path —
- * still has no test.
+ * on its own.
  */
 internal fun RegistrationAttemptState.afterRegistrationAttempt(
     landed: Boolean,
@@ -716,6 +800,32 @@ internal fun RegistrationAttemptState.afterRegistrationAttempt(
     countsAsFailure -> copy(consecutiveFailures = consecutiveFailures + 1)
     else -> this
 }
+
+/**
+ * One pass through the registration path: whether it [landed], and whether it
+ * went [withAccount], registering the signed-in account, with the TigerSync
+ * switch as [cloudSyncEnabled], as well as announcing the device.
+ */
+internal data class RegistrationPass(
+    val landed: Boolean,
+    val withAccount: Boolean = false,
+    val cloudSyncEnabled: Boolean = false,
+)
+
+/**
+ * Whether this pass already did what a registration asked for while it ran
+ * would do, so that none follows it: it landed, [sentToken] is still the
+ * token held, and it registered the account with the TigerSync switch as it
+ * is now if one is signed in now. A pass made signed out lands with the
+ * device announced alone.
+ */
+internal fun RegistrationPass.covers(
+    sentToken: String?,
+    tokenNow: String?,
+    signedInNow: Boolean,
+    cloudSyncNow: Boolean,
+): Boolean = landed && sentToken == tokenNow &&
+    (if (withAccount) cloudSyncEnabled == cloudSyncNow else !signedInNow)
 
 /**
  * What a registration request does: the bookkeeping it leaves behind, and
