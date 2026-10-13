@@ -5,7 +5,9 @@ import android.content.Context
 import com.google.gson.JsonObject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -45,6 +47,7 @@ import java.util.concurrent.TimeUnit
  * finds none, and on each return to the app
  * (https://github.com/tigerduck-app/tigerduck-app-android/issues/202).
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
 class AutomaticSignInTest {
@@ -192,8 +195,9 @@ class AutomaticSignInTest {
 
         val interactive = async { manager.signInInteractively { manager.loginAsTheUser(it) } }
         held.arrived.await()
-        // Home's pull, once the account shows as signed in.
+        // Home's pull, once the account shows as signed in, waiting before the answer comes.
         val automatic = async { manager.signInIfSignedOut() }
+        runCurrent()
         held.release(200)
 
         assertEquals(listOf(true, true), listOf(interactive.await(), automatic.await()))
