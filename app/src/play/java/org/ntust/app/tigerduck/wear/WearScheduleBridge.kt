@@ -18,6 +18,7 @@ import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.shared.WearProtocol
 import org.ntust.app.tigerduck.shared.clock.AppClock
+import org.ntust.app.tigerduck.util.logSummary
 import java.io.ByteArrayOutputStream
 import java.time.LocalDate
 import java.util.zip.GZIPOutputStream
@@ -110,7 +111,7 @@ class WearScheduleBridge @Inject constructor(
                     "${quietDays.size} quiet days",
             )
         } catch (t: Throwable) {
-            Log.w(TAG, "publish failed: ${t.message}")
+            Log.w(TAG, "publish failed: ${t.logSummary()}")
         }
     }
 
@@ -157,7 +158,7 @@ class WearScheduleBridge @Inject constructor(
             Wearable.getDataClient(context).putDataItem(request).await()
             Log.d(TAG, "library credentials publish ok (has=$hasCredentials)")
         } catch (t: Throwable) {
-            Log.w(TAG, "library credentials publish failed: ${t.message}")
+            Log.w(TAG, "library credentials publish failed: ${t.logSummary()}")
         }
     }
 

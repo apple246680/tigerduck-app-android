@@ -10,6 +10,7 @@ import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.debug.DebugFixtureStore
 import org.ntust.app.tigerduck.ui.component.ServerStatusTracker
+import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -129,7 +130,7 @@ class DemoAccount @Inject constructor(
 
     private fun load(lang: String): DemoFixture? = runCatching {
         context.assets.open(ASSET).bufferedReader().use { DemoFixture.parse(it.readText(), lang) }
-    }.onFailure { Log.e(TAG, "cannot read $ASSET", it) }.getOrNull()
+    }.onFailure { Log.e(TAG, "cannot read $ASSET: ${it.logSummary()}") }.getOrNull()
 
     /** The language the app is showing, resolved the way push registration resolves it. */
     private fun currentLang(): String {

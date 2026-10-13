@@ -37,6 +37,7 @@ import org.ntust.app.tigerduck.ui.component.ContentCard
 import org.ntust.app.tigerduck.ui.component.NoTopBarInsets
 import org.ntust.app.tigerduck.ui.component.SectionHeader
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
+import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
 
 @HiltViewModel
@@ -64,7 +65,7 @@ class AssignmentReminderSettingsViewModel @Inject constructor(
             runCatching { notificationSettingsSync.pullNow() }
                 .onFailure { e ->
                     if (e is CancellationException) throw e
-                    Log.w(TAG, "pulling assignment settings failed", e)
+                    Log.w(TAG, "pulling assignment settings failed: ${e.logSummary()}")
                 }
         }
     }

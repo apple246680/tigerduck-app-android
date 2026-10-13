@@ -590,7 +590,7 @@ class HomeViewModel @Inject constructor(
                         syncAndRepublish()
                     }
                 } catch (e: Exception) {
-                    Log.w("RevisionPoll", "[poll] tick failed", e)
+                    Log.w("RevisionPoll", "[poll] tick failed: ${e.logSummary()}")
                 }
             }
         }
@@ -675,7 +675,7 @@ class HomeViewModel @Inject constructor(
                         runCatching { pushApiClient.uploadAssignments(remoteAssignments) }
                             .onFailure {
                                 prefs.setLastSyncSource(SyncSource.LOCAL)
-                                Log.w("HomeViewModel", "uploadAssignments failed (non-fatal)", it)
+                                Log.w("HomeViewModel", "uploadAssignments failed (non-fatal): ${it.logSummary()}")
                             }
                     }
                 }
@@ -728,7 +728,7 @@ class HomeViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 ServerStatusTracker.set(ServerStatus.FAILED, ServerKind.MOODLE)
-                Log.e("HomeViewModel", "Failed to fetch Moodle enrolled courses", e)
+                Log.e("HomeViewModel", "Failed to fetch Moodle enrolled courses: ${e.logSummary()}")
                 null
             }
         }
@@ -745,7 +745,7 @@ class HomeViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 ServerStatusTracker.set(ServerStatus.FAILED, ServerKind.COURSE_SELECTION)
-                Log.e("HomeViewModel", "Failed to fetch enrolled course numbers", e)
+                Log.e("HomeViewModel", "Failed to fetch enrolled course numbers: ${e.logSummary()}")
                 null
             }
         }
@@ -788,7 +788,7 @@ class HomeViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 ServerStatusTracker.set(ServerStatus.FAILED, ServerKind.MOODLE)
-                Log.e("HomeViewModel", "Failed to fetch assignments", e)
+                Log.e("HomeViewModel", "Failed to fetch assignments: ${e.logSummary()}")
                 null
             }
         }

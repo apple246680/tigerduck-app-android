@@ -200,7 +200,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
                 runCatching { notificationSettingsSync.pullNow() }
                     .onFailure { e ->
                         if (e is CancellationException) throw e
-                        Log.w(TAG, "notification settings pull failed", e)
+                        Log.w(TAG, "notification settings pull failed: ${e.logSummary()}")
                     }
             }.await()
             // Homework ignored or marked done on another device takes its
@@ -216,7 +216,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
             throw e
         } catch (e: Exception) {
             prefs.setLastSyncSource(SyncSource.LOCAL)
-            Log.w(TAG, "override sync failed", e)
+            Log.w(TAG, "override sync failed: ${e.logSummary()}")
         }
     }
 
@@ -273,7 +273,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
         if (outcome.uploadLocal) {
             runCatching { pushApiClient.uploadCourses(outcome.toUpload, semester) }
                 .onSuccess { accepted -> if (!accepted.isNullOrEmpty()) known = known + accepted }
-                .onFailure { e -> Log.w(TAG, "[Sync] auto-upload failed", e) }
+                .onFailure { e -> Log.w(TAG, "[Sync] auto-upload failed: ${e.logSummary()}") }
             Log.i(TAG, "[Sync] backend empty, auto-uploaded ${outcome.toUpload.size} courses")
         }
         if (known != knownHere) {
@@ -318,7 +318,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
                     try {
                         courseService.fetchEnrolledCourseNos(studentId, password)
                     } catch (e: Exception) {
-                        Log.w(TAG, "Failed to fetch enrolled course numbers", e)
+                        Log.w(TAG, "Failed to fetch enrolled course numbers: ${e.logSummary()}")
                         null
                     }
                 }
@@ -326,7 +326,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
                     try {
                         moodleService.fetchEnrolledCourses()
                     } catch (e: Exception) {
-                        Log.w(TAG, "Failed to fetch Moodle enrolled courses", e)
+                        Log.w(TAG, "Failed to fetch Moodle enrolled courses: ${e.logSummary()}")
                         null
                     }
                 }
@@ -432,12 +432,12 @@ class BackgroundSyncWorker @AssistedInject constructor(
                 runCatching { pushApiClient.uploadCourses(merged, semester) }
                     .onFailure {
                         prefs.setLastSyncSource(SyncSource.LOCAL)
-                        Log.w(TAG, "uploadCourses failed (non-fatal)", it)
+                        Log.w(TAG, "uploadCourses failed (non-fatal): ${it.logSummary()}")
                     }
             }
             true
         } catch (e: Exception) {
-            Log.w(TAG, "Course refresh failed", e)
+            Log.w(TAG, "Course refresh failed: ${e.logSummary()}")
             false
         }
     }
@@ -457,7 +457,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
             runCatching { pushApiClient.uploadAssignments(merged) }
                 .onFailure {
                     prefs.setLastSyncSource(SyncSource.LOCAL)
-                    Log.w(TAG, "uploadAssignments failed (non-fatal)", it)
+                    Log.w(TAG, "uploadAssignments failed (non-fatal): ${it.logSummary()}")
                 }
 
             if (prefs.notifyAssignments) {
@@ -468,7 +468,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
             }
             true
         } catch (e: Exception) {
-            Log.w(TAG, "Assignment refresh failed", e)
+            Log.w(TAG, "Assignment refresh failed: ${e.logSummary()}")
             false
         }
     }
@@ -545,7 +545,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
                     .get(2, TimeUnit.SECONDS)
                     .map { it.state }
             }.getOrElse { e ->
-                Log.w(TAG, "could not read queued syncs", e)
+                Log.w(TAG, "could not read queued syncs: ${e.logSummary()}")
                 null
             }
             // Unread, the queue is appended to rather than kept: KEEP would

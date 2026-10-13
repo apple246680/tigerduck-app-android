@@ -20,6 +20,7 @@ import org.ntust.app.tigerduck.notification.NotificationChannels
 import org.ntust.app.tigerduck.notification.NotificationGroup
 import org.ntust.app.tigerduck.notification.brandedNotification
 import org.ntust.app.tigerduck.serverpush.ServerPushIntentToken
+import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -164,7 +165,7 @@ class FcmService : FirebaseMessagingService() {
         // notify leaves it standing as an empty row.
         runCatching { manager.notify(id, notification) }
             .onSuccess { NotificationGroup.OTHER.postSummary(this) }
-            .onFailure { Log.w(TAG, "notify failed for bulletin $id", it) }
+            .onFailure { Log.w(TAG, "notify failed for bulletin $id: ${it.logSummary()}") }
     }
 
     private fun showServerPopupNotification(
@@ -229,7 +230,7 @@ class FcmService : FirebaseMessagingService() {
         // overwrite each other on a 32-bit hash collision.
         runCatching { manager.notify(notificationId, NOTIFY_ID_SERVER_POPUP, notification) }
             .onSuccess { NotificationGroup.OTHER.postSummary(this) }
-            .onFailure { Log.w(TAG, "notify failed for popup $notificationId", it) }
+            .onFailure { Log.w(TAG, "notify failed for popup $notificationId: ${it.logSummary()}") }
     }
 
     /**
@@ -268,7 +269,7 @@ class FcmService : FirebaseMessagingService() {
             .build()
         runCatching { manager.notify(REAUTH_NOTIFICATION_ID, notification) }
             .onSuccess { NotificationGroup.OTHER.postSummary(this) }
-            .onFailure { Log.w(TAG, "notify failed for reauth", it) }
+            .onFailure { Log.w(TAG, "notify failed for reauth: ${it.logSummary()}") }
     }
 
     companion object {

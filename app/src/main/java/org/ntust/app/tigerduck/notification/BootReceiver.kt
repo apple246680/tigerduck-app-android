@@ -14,6 +14,7 @@ import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.liveactivity.LiveActivityManager
 import org.ntust.app.tigerduck.liveactivity.LiveActivityPreferences
+import org.ntust.app.tigerduck.util.logSummary
 import org.ntust.app.tigerduck.widget.WidgetBoundaryScheduler
 import javax.inject.Inject
 
@@ -85,7 +86,7 @@ class BootReceiver : BroadcastReceiver() {
                     }
                 }
             } catch (e: Exception) {
-                android.util.Log.w("BootReceiver", "Boot rescheduling failed", e)
+                android.util.Log.w("BootReceiver", "Boot rescheduling failed: ${e.logSummary()}")
             } finally {
                 pendingResult.finish()
                 scope.cancel()
