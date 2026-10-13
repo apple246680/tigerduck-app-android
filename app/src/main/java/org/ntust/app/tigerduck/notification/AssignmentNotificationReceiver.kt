@@ -62,6 +62,10 @@ class AssignmentNotificationReceiver : BroadcastReceiver() {
         // per-offset scheduling shipped.
         const val EXTRA_OFFSET = "offset"
 
+        // Epoch milliseconds of the due date the reminder was armed for;
+        // absent on alarms armed by a version without it.
+        const val EXTRA_DUE_AT = "due_at"
+
         /**
          * Post the reminder, past every check onReceive makes first; the
          * developer menu's preview posts through here too. The channels must

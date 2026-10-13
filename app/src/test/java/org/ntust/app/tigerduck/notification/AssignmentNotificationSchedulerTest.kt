@@ -2,6 +2,7 @@ package org.ntust.app.tigerduck.notification
 
 import android.app.AlarmManager
 import android.app.Application
+import android.content.Intent
 import java.util.Date
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
@@ -43,14 +44,17 @@ class AssignmentNotificationSchedulerTest {
         dueDate = Date(AppClock.nowMillis() + days * 86_400_000),
     )
 
-    /** The assignment id of every armed reminder, one per alarm. */
+    /** The intent of every armed reminder, one per alarm. */
     // Robolectric 4.17 deprecates the operation field but has no getter for it.
     @Suppress("DEPRECATION")
-    private fun armedIds(): List<String?> =
+    private fun armed(): List<Intent> =
         shadowOf(context.getSystemService(AlarmManager::class.java)).scheduledAlarms.map {
             shadowOf(it.operation).savedIntent
-                .getStringExtra(AssignmentNotificationReceiver.EXTRA_ASSIGNMENT_ID)
         }
+
+    /** The assignment id of every armed reminder, one per alarm. */
+    private fun armedIds(): List<String?> =
+        armed().map { it.getStringExtra(AssignmentNotificationReceiver.EXTRA_ASSIGNMENT_ID) }
 
     @Test
     fun `homework ignored or marked done gets no reminder, not even one`() = runTest {
@@ -66,5 +70,33 @@ class AssignmentNotificationSchedulerTest {
         )
 
         assertEquals(listOf("open", "open"), armedIds())
+    }
+
+    @Test
+    fun `every reminder carries the due date it was armed for`() {
+        val assignment = dueInDays("1", 3)
+
+        scheduler.scheduleAll(
+            listOf(assignment),
+            setOf(AssignmentReminderOffset.HR24, AssignmentReminderOffset.HR2),
+        )
+
+        assertEquals(
+            listOf(assignment.dueDate.time, assignment.dueDate.time),
+            armed().map { it.getLongExtra(AssignmentNotificationReceiver.EXTRA_DUE_AT, 0L) },
+        )
+    }
+
+    @Test
+    fun `cancelling one assignment leaves the others' reminders armed`() {
+        val offsets = setOf(AssignmentReminderOffset.HR24, AssignmentReminderOffset.HR2)
+        scheduler.scheduleAll(listOf(dueInDays("1", 3), dueInDays("12", 3)), offsets)
+
+        scheduler.cancel("1")
+
+        assertEquals(listOf("12", "12"), armedIds())
+        // Still tracked, so a full cancel finds them.
+        scheduler.cancelAllTracked()
+        assertEquals(emptyList<String?>(), armedIds())
     }
 }
