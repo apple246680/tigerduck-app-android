@@ -183,9 +183,14 @@ class DataCacheTest {
         cache.clearAllUserData()
         cache.saveAssignments(listOf(assignment("next account")))
 
-        val written = cache.updateAssignments(generation) { all -> all.map { it.copy(isCompleted = true) } }
+        var changed = false
+        val written = cache.updateAssignments(generation) { all ->
+            changed = true
+            all.map { it.copy(isCompleted = true) }
+        }
 
         assertFalse(written)
+        assertFalse("the change does not even run", changed)
         assertEquals(listOf(false), cache.loadAssignments().map { it.isCompleted })
     }
 

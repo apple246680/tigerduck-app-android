@@ -260,6 +260,9 @@ class DataCache @Inject constructor(
      * written under one hold of the cache's lock: a save landing between a
      * separate load and save would be undone by that save. False, and
      * nothing written, when the data was wiped since [generation].
+     *
+     * [transform] runs only after that check and under the same lock, so a
+     * sign-out cannot wipe the data while it runs.
      */
     suspend fun updateAssignments(
         generation: Int? = null,

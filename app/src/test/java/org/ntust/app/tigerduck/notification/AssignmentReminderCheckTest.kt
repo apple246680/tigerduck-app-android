@@ -228,15 +228,15 @@ class AssignmentReminderCheckTest {
     }
 
     @Test
-    fun `an answer that outlived a sign-out is not written into the next account's cache`() =
+    fun `an answer that outlived a sign-out leaves the next account's cache and reminders alone`() =
         runBlocking {
             val assignment = dueInThreeDays("20977")
             dataCache.saveAssignments(listOf(assignment))
             moodle = {
                 runBlocking {
                     dataCache.clearAllUserData()
-                    // The next account, with the same assignment still to do.
-                    dataCache.saveAssignments(listOf(assignment))
+                    // The next account, in the same course, with the assignment still to do.
+                    armAll(assignment)
                 }
                 answer(own = "submitted")
             }
@@ -244,6 +244,7 @@ class AssignmentReminderCheckTest {
             check.verdict("20977", assignment.dueDate.time)
 
             assertEquals(listOf(assignment), dataCache.loadAssignments())
+            assertEquals(listOf("20977", "20977"), armedIds())
         }
 
     // --- no answer from Moodle --------------------------------------------

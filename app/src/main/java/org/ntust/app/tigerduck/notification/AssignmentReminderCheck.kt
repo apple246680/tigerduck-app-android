@@ -61,12 +61,14 @@ class AssignmentReminderCheck @Inject constructor(
     /** What a sync that asked Moodle would store, and no more reminders for it. */
     private suspend fun recordSubmission(assignmentId: String, submittedAt: Date?, generation: Int) {
         dataCache.updateAssignments(generation) { assignments ->
+            // Inside the update's account check: an answer that outlived a sign-out
+            // must not cancel the reminders the next account armed for the same id.
+            scheduler.cancel(assignmentId)
             assignments.map {
                 if (it.assignmentId != assignmentId) it
                 else it.copy(isCompleted = true, submittedAt = submittedAt ?: it.submittedAt)
             }
         }
-        scheduler.cancel(assignmentId)
     }
 
     private suspend fun askMoodle(moodleId: Int): ReminderStatusAnswer = try {
