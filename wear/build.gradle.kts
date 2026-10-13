@@ -72,6 +72,15 @@ android {
         compose = true
         buildConfig = true
     }
+
+    testOptions {
+        unitTests {
+            // Merged resources, so a Robolectric test reads the strings the watch ships.
+            isIncludeAndroidResources = true
+            // As in :app: Robolectric's API 36 sandbox needs jdk.internal.access.
+            all { it.jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED") }
+        }
+    }
 }
 
 // ---- Localization pipeline (mirrors :app) ------------------------------
@@ -186,6 +195,7 @@ dependencies {
     implementation(libs.gson)
 
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
 }
 
 // The watch's own dependencies, exported into the phone app's play

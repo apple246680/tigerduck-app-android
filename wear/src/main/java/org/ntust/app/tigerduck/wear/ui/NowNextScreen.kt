@@ -52,7 +52,6 @@ fun NowNextScreen(snapshot: WatchSnapshot) {
         }
 
         val (today, minuteOfDay) = currentTaipeiTick()
-        val weekday = today.dayOfWeek.value
         val result = snapshot.nextClass(today, minuteOfDay)
 
         ScalingLazyColumn(
@@ -92,7 +91,7 @@ fun NowNextScreen(snapshot: WatchSnapshot) {
                     NextCard(
                         course = result.course,
                         weekday = result.weekday,
-                        statusText = futureStatusText(result.daysAhead, result.startMinute, weekday),
+                        statusText = futureStatusText(result.daysAhead, result.startMinute, result.weekday),
                         titleResId = null,
                     )
                 }
@@ -198,14 +197,13 @@ private fun nextStatusText(startMinute: Int, minuteOfDay: Int): String {
 }
 
 @Composable
-private fun futureStatusText(daysAhead: Int, startMinute: Int, todayWeekday: Int): String =
+private fun futureStatusText(daysAhead: Int, startMinute: Int, weekday: Int): String =
     if (daysAhead == 1) {
         stringResource(R.string.watch_tomorrow_at, formatHm(startMinute))
     } else {
-        val targetWeekday = ((todayWeekday - 1 + daysAhead) % 7) + 1
         stringResource(
             R.string.watch_weekday_at,
-            weekdayShortName(targetWeekday),
+            stringResource(weekdayCaptionRes(weekday)),
             formatHm(startMinute),
         )
     }
@@ -237,16 +235,3 @@ private fun formatHm(minuteOfDay: Int): String {
     val m = minuteOfDay % 60
     return "%02d:%02d".format(h, m)
 }
-
-@Composable
-private fun weekdayShortName(weekday: Int): String = stringResource(
-    when (weekday) {
-        1 -> R.string.weekday_mon_short
-        2 -> R.string.weekday_tue_short
-        3 -> R.string.weekday_wed_short
-        4 -> R.string.weekday_thu_short
-        5 -> R.string.weekday_fri_short
-        6 -> R.string.weekday_sat_short
-        else -> R.string.weekday_sun_short
-    }
-)

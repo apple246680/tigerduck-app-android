@@ -17,8 +17,10 @@ import kotlinx.coroutines.flow.first
 import org.ntust.app.tigerduck.shared.NextClassResult
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.wear.MainActivity
+import org.ntust.app.tigerduck.wear.R
 import org.ntust.app.tigerduck.wear.data.SchedulePersistenceHolder
 import org.ntust.app.tigerduck.wear.data.WatchSnapshot
+import org.ntust.app.tigerduck.wear.ui.weekdayCaptionRes
 
 class NextClassComplicationService : SuspendingComplicationDataSourceService() {
 
@@ -92,7 +94,7 @@ class NextClassComplicationService : SuspendingComplicationDataSourceService() {
             is NextClassResult.NextFuture -> shortOrLong(
                 type, r.course.displayName, r.course.classroom(r.weekday),
                 titleShort = formatHm(r.startMinute),
-                titleLong = "${formatHm(r.startMinute)} · +${r.daysAhead}d",
+                titleLong = laterDayTitle(this, r.daysAhead, r.weekday, formatHm(r.startMinute)),
                 tap = tap,
             )
 
@@ -141,3 +143,15 @@ class NextClassComplicationService : SuspendingComplicationDataSourceService() {
         }
     }
 }
+
+/**
+ * The long text title for a class on a later day: its day, then its [startTime], as the
+ * phone's Next class widget words it. "Tomorrow 08:10" for the next day, else the
+ * weekday's caption, "Tue 08:10".
+ */
+internal fun laterDayTitle(context: Context, daysAhead: Int, weekday: Int, startTime: String): String =
+    if (daysAhead == 1) {
+        context.getString(R.string.widget_tomorrow_time, startTime)
+    } else {
+        "${context.getString(weekdayCaptionRes(weekday))} $startTime"
+    }
