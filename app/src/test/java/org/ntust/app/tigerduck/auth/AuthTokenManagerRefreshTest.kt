@@ -124,7 +124,7 @@ class AuthTokenManagerRefreshTest {
     fun `a sign-in writes its pair in one commit`() = runTest {
         val manager = manager(Reply.Pair("access-2", "refresh-2"))
 
-        manager.login("B00000000", "password", moodleToken = "moodle", moodlePrivateToken = null)
+        manager.login("B00000000", moodleToken = "moodle", moodlePrivateToken = null)
 
         assertEquals(listOf(setOf(KEY_ACCESS_TOKEN, KEY_REFRESH_TOKEN, KEY_EXPIRES_AT)), file.commits)
         assertEquals(0, file.applies)
@@ -280,7 +280,7 @@ class AuthTokenManagerRefreshTest {
         LoopbackBackend(listOf(pairJson("access-2", "refresh-2", expiresIn = 0))).use { backend ->
             val prefs = AppPreferences(context).apply { announcementApiBaseUrlOverride = backend.baseUrl }
             val manager = AuthTokenManager(tokens, OkHttpClient(), prefs, "device-1", now = { clock })
-            manager.login("B00000000", "password", moodleToken = "moodle", moodlePrivateToken = null)
+            manager.login("B00000000", moodleToken = "moodle", moodlePrivateToken = null)
 
             assertNull(manager.authHeader())
 
@@ -308,7 +308,7 @@ class AuthTokenManagerRefreshTest {
         onLoginSent = { manager.logout() }
 
         val failure = runCatching {
-            manager.login("B00000000", "password", moodleToken = "moodle", moodlePrivateToken = null)
+            manager.login("B00000000", moodleToken = "moodle", moodlePrivateToken = null)
         }.exceptionOrNull()
 
         assertTrue(failure is AuthTokenManager.AuthException)
@@ -325,7 +325,7 @@ class AuthTokenManagerRefreshTest {
 
         val failure = runCatching {
             manager.login(
-                "B00000000", "password", moodleToken = "moodle", moodlePrivateToken = null,
+                "B00000000", moodleToken = "moodle", moodlePrivateToken = null,
                 signInGeneration = signIn,
             )
         }.exceptionOrNull()

@@ -218,18 +218,22 @@ class AuthTokenManager(
      * Signs in to the backend and stores the pair it returns. When [logout]
      * has moved [signInGeneration] past the value passed here, the reply
      * stores nothing and this throws [AuthException].
+     *
+     * The backend proves the account with [moodleToken] alone and ignores a
+     * password (https://github.com/tigerduck-app/tigerduck-backend/pull/64),
+     * so none is sent. Without a token nothing is sent either: such a login
+     * could only be refused, and would count against the student's limit.
      */
     suspend fun login(
         studentId: String,
-        password: String,
-        moodleToken: String?,
+        moodleToken: String,
         moodlePrivateToken: String?,
         platform: String = "android",
         signInGeneration: Int = this.signInGeneration,
     ): LoginResult = withContext(Dispatchers.IO) {
+        if (moodleToken.isBlank()) throw AuthException("no Moodle token")
         val json = JSONObject().apply {
             put("student_id", studentId)
-            put("password", password)
             put("moodle_token", moodleToken)
             put("moodle_private_token", moodlePrivateToken)
             put("device_info", JSONObject().apply {

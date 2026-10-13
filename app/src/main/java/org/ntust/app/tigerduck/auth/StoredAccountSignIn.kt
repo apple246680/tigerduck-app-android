@@ -56,7 +56,6 @@ internal class StoredAccountSignIn(
         return try {
             tokens.login(
                 studentId = studentId,
-                password = password ?: "",
                 moodleToken = moodleToken,
                 moodlePrivateToken = null,
                 signInGeneration = signIn,
