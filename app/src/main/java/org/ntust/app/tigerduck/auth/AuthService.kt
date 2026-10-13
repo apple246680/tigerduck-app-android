@@ -123,9 +123,11 @@ class AuthService @Inject constructor(
         // verifies it against moodle2, and the stored one may be stale, which
         // gets the login rejected with 401 invalid_token (see login()).
         // Best-effort: fall back to the stored token if the harvest fails.
+        // refreshToken() stores no token once the account has signed out, so
+        // a sign-out during the harvest leaves none for the next account.
         val moodleToken = if (password != null) {
             try {
-                moodleTokenService.obtainToken(studentId, password)
+                moodleTokenService.refreshToken()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -143,6 +145,9 @@ class AuthService @Inject constructor(
                 SignInAttempt.NOTHING_TO_SEND
             }
         }
+        // Signed out during the harvest: the stored token it fell back to may
+        // be the next account's, and must not go out with this one's ID.
+        if (authTokenManager.signInGeneration != signIn) return SignInAttempt.FAILED
         return try {
             authTokenManager.login(
                 studentId = studentId,
@@ -155,7 +160,10 @@ class AuthService @Inject constructor(
             // Launched: this sign-in can run inside a request that
             // PushRegistrationService makes while it holds the lock
             // onSignedIn() takes.
-            appScope.launch { runCatching { pushRegistration.onSignedIn() } }
+            appScope.launch {
+                runCatching { pushRegistration.onSignedIn() }
+                    .onFailure { e -> android.util.Log.w("AuthService", "registration after auto sign-in failed: ${e.logSummary()}") }
+            }
             // Deliver a live_activity edit that is still unconfirmed: one made
             // while signed out, or while the v3 JWT had lapsed. With nothing
             // pending this sends nothing, so this device's values never

@@ -239,6 +239,22 @@ class AutomaticSignInTest {
     }
 
     @Test
+    fun `a sign-in that throws reads as no session and holds the next one off`() = runTest {
+        var attempts = 0
+        val manager = manager().apply {
+            signInWithStoredAccount = {
+                attempts++
+                throw IllegalStateException("account unreadable")
+            }
+        }
+
+        assertFalse(manager.signInIfSignedOut())
+        assertNull(manager.authHeader())
+
+        assertEquals(1, attempts)
+    }
+
+    @Test
     fun `with no account stored nothing goes out and no pause starts`() = runTest {
         accountStored = false
         val manager = manager()

@@ -163,7 +163,17 @@ class AuthTokenManager(
     ): Boolean {
         var signedIn = false
         try {
-            signedIn = settleSignIn(signIn, signInWith(signIn))
+            // A failure of the sign-in itself is the caller's no session, never
+            // an exception from its token lookup.
+            val outcome = try {
+                signInWith(signIn)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "sign-in failed: ${e.logSummary()}")
+                SignInAttempt.FAILED
+            }
+            signedIn = settleSignIn(signIn, outcome)
         } finally {
             synchronized(signInLock) { if (signInUnderWay === attempt) signInUnderWay = null }
             attempt.complete(signedIn)
