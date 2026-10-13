@@ -34,7 +34,7 @@ enum class ReminderDropReason {
     NO_ANSWER,
     SUBMITTED_ON_MOODLE,
 
-    /** Neither the student's submission nor the team's is new, a draft or reopened. */
+    /** No lastattempt, or submission records none of which is new, a draft or reopened. */
     UNKNOWN_STATUS,
     SUBMISSIONS_DISABLED,
     LOCKED,
@@ -95,11 +95,13 @@ object AssignmentReminderPolicy {
 
     private fun attemptDrop(attempt: MoodleSubmissionLastAttempt?, dueAtMs: Long): ReminderDropReason? {
         if (attempt == null) return ReminderDropReason.UNKNOWN_STATUS
-        val statuses = listOfNotNull(attempt.submission?.status, attempt.teamsubmission?.status)
+        val records = listOfNotNull(attempt.submission, attempt.teamsubmission)
+        // No record at all is Moodle's "No attempt": nothing saved yet, still to hand in like new.
+        val open = records.isEmpty() || records.any { it.status in OPEN_STATUSES }
         val extendedToMs = (attempt.extensionduedate ?: 0L) * 1000
         return when {
             attempt.handedIn != null -> ReminderDropReason.SUBMITTED_ON_MOODLE
-            statuses.none { it in OPEN_STATUSES } -> ReminderDropReason.UNKNOWN_STATUS
+            !open -> ReminderDropReason.UNKNOWN_STATUS
             attempt.submissionsenabled == false -> ReminderDropReason.SUBMISSIONS_DISABLED
             attempt.locked == true -> ReminderDropReason.LOCKED
             extendedToMs > dueAtMs -> ReminderDropReason.EXTENDED

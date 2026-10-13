@@ -95,6 +95,18 @@ class AssignmentReminderCheckTest {
     }
 
     @Test
+    fun `a reminder for an assignment never started shows and leaves the cache alone`() = runBlocking {
+        val assignment = dueInThreeDays("20977")
+        armAll(assignment)
+
+        val verdict = check.verdict("20977", assignment.dueDate.time, answering(own = null))
+
+        assertEquals(ReminderVerdict.Show, verdict)
+        assertEquals(listOf(assignment), dataCache.loadAssignments())
+        assertEquals(listOf("20977", "20977"), armedIds())
+    }
+
+    @Test
     fun `a teammate's submission is recorded and the assignment's other reminders cancelled`() =
         runBlocking {
             val assignment = dueInThreeDays("20977")

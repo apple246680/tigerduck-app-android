@@ -3,6 +3,7 @@ package org.ntust.app.tigerduck.notification
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import org.ntust.app.tigerduck.network.MoodleService
 import org.ntust.app.tigerduck.network.model.MoodleSubmission
 import org.ntust.app.tigerduck.network.model.MoodleSubmissionLastAttempt
 import org.ntust.app.tigerduck.notification.ReminderDropReason.COURSE_IGNORED
@@ -147,8 +148,43 @@ class AssignmentReminderPolicyTest {
     @Test
     fun `an answer without a status still to hand in drops it`() {
         assertEquals(drop(UNKNOWN_STATUS), decide(answer = ReminderStatusAnswer.Answered(null)))
-        assertEquals(drop(UNKNOWN_STATUS), decide(answer = answered(own = null, team = null)))
         assertEquals(drop(UNKNOWN_STATUS), decide(answer = answered(own = "marked")))
+        assertEquals(
+            drop(UNKNOWN_STATUS),
+            decide(
+                answer = ReminderStatusAnswer.Answered(
+                    MoodleSubmissionLastAttempt(submission = MoodleSubmission(status = null))
+                )
+            ),
+        )
+    }
+
+    @Test
+    fun `an assignment the student never started is still due`() {
+        // No submission record at all: Moodle's "No attempt", still to hand in like new.
+        assertEquals(ReminderVerdict.Show, decide(answer = answered(own = null, team = null)))
+        assertEquals(drop(SUBMISSIONS_DISABLED), decide(answer = answered(own = null, enabled = false)))
+        assertEquals(drop(LOCKED), decide(answer = answered(own = null, locked = true)))
+        assertEquals(
+            drop(EXTENDED),
+            decide(answer = answered(own = null, extensionSeconds = dueAtMs / 1000 + 1)),
+        )
+    }
+
+    @Test
+    fun `a real answer for an assignment never started shows`() {
+        val attempt = MoodleService.decodeSubmissionStatus(
+            """
+            {"lastattempt":{
+              "submissiongroupmemberswhoneedtosubmit":[],
+              "submissionsenabled":true,"locked":false,"graded":false,"canedit":true,
+              "caneditowner":true,"cansubmit":false,"extensionduedate":null,"timelimit":0,
+              "blindmarking":false,"gradingstatus":"notgraded","usergroups":[]},
+             "assignmentdata":{},"warnings":[]}
+            """.trimIndent()
+        ).lastattempt
+
+        assertEquals(ReminderVerdict.Show, decide(answer = ReminderStatusAnswer.Answered(attempt)))
     }
 
     @Test
