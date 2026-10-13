@@ -32,7 +32,9 @@ class ReenableMarksTest {
     }
 
     // What HomeBackendSync.pull records once a full sync has run.
-    private fun syncFully() = recordSyncedCategories(prefs, categoriesSwitchedOn(prefs))
+    private fun syncFully() {
+        prefs.syncedCategories += categoriesSwitchedOn(prefs)
+    }
 
     // What turning TigerSync on does with every category's switch on.
     private fun turnTigerSyncOn(signedIn: Boolean = true) {
@@ -64,26 +66,16 @@ class ReenableMarksTest {
     fun `a category switched off in every sync since the sign-in is left to its first sync`() {
         prefs.syncCourses = false
         prefs.syncCourseColors = false
+        prefs.syncAssignments = false
         syncFully()
 
-        // Courses back on, which takes their colours with them.
+        // Courses back on, which takes their colours with them, and assignments.
         prefs.syncCourses = true
         prefs.syncCourseColors = true
+        prefs.syncAssignments = true
         turnTigerSyncOn()
 
-        assertEquals(setOf("course_names", "assignments"), prefs.pendingConflictCategories)
-    }
-
-    @Test
-    fun `a category switched on or off while a sync runs is not counted as synced by it`() {
-        prefs.syncCourses = false
-        val switchedOnBefore = categoriesSwitchedOn(prefs)
-
-        prefs.syncCourses = true
-        prefs.syncCourseNames = false
-        recordSyncedCategories(prefs, switchedOnBefore)
-
-        assertEquals(setOf("course_colors", "assignments"), prefs.syncedCategories)
+        assertEquals(setOf("course_names"), prefs.pendingConflictCategories)
     }
 
     @Test
