@@ -1,6 +1,7 @@
 package org.ntust.app.tigerduck.auth
 
 import android.app.Application
+import android.content.Context
 import com.google.gson.JsonObject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -62,7 +63,7 @@ class AutomaticSignInTest {
         prefs = AppPreferences(context).apply { announcementApiBaseUrlOverride = "http://127.0.0.1:9/v3" }
         // Never the real backend, even past the scripted one.
         assertTrue(resolveAnnouncementEndpoint(prefs).overrideApplied)
-        tokens = V3TokenStore(context.getSharedPreferences("v3-tokens-test", android.content.Context.MODE_PRIVATE))
+        tokens = V3TokenStore(context.getSharedPreferences("v3-tokens-test", Context.MODE_PRIVATE))
         tokens.clear()
     }
 
@@ -178,11 +179,40 @@ class AutomaticSignInTest {
         val manager = manager()
         assertFalse(manager.signInIfSignedOut())
 
-        // What AuthService.login() sends once the school took the password.
-        manager.login("B00000000", "password", moodleToken = "moodle", moodlePrivateToken = null)
+        assertTrue(manager.signInInteractively { manager.loginAsTheUser(it) })
 
         assertEquals(2, backend.received(LOGIN).size)
         assertEquals("refresh-2", tokens.refreshToken)
+    }
+
+    @Test
+    fun `an automatic sign-in that starts during an interactive one waits for it and sends no login`() = runTest {
+        val held = backend.hold(LOGIN)
+        val manager = manager()
+
+        val interactive = async { manager.signInInteractively { manager.loginAsTheUser(it) } }
+        held.arrived.await()
+        // Home's pull, once the account shows as signed in.
+        val automatic = async { manager.signInIfSignedOut() }
+        held.release(200)
+
+        assertEquals(listOf(true, true), listOf(interactive.await(), automatic.await()))
+        assertEquals(1, backend.received(LOGIN).size)
+    }
+
+    @Test
+    fun `an interactive sign-in that fails holds the automatic one off`() = runTest {
+        backend.answer(LOGIN, 503)
+        val manager = manager()
+        assertFalse(manager.signInInteractively { manager.loginAsTheUser(it) })
+
+        // The registration the sign-in asks for, a moment later.
+        assertFalse(manager.signInIfSignedOut())
+        assertEquals(1, backend.received(LOGIN).size)
+
+        clock += 300_000
+        assertTrue(manager.signInIfSignedOut())
+        assertEquals(2, backend.received(LOGIN).size)
     }
 
     @Test
@@ -223,19 +253,18 @@ class AutomaticSignInTest {
     private fun manager() = AuthTokenManager(tokens, backend.client, prefs, "device-1", now = { clock }).apply {
         // Stands in for AuthService's, which sends the stored account through login().
         signInWithStoredAccount = { signIn ->
-            if (!accountStored) {
-                SignInAttempt.NOTHING_TO_SEND
-            } else {
-                try {
-                    login("B00000000", "password", "moodle", moodlePrivateToken = null, signInGeneration = signIn)
-                    SignInAttempt.SIGNED_IN
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    SignInAttempt.FAILED
-                }
-            }
+            if (accountStored) loginAsTheUser(signIn) else SignInAttempt.NOTHING_TO_SEND
         }
+    }
+
+    /** What AuthService.login() sends to the backend once the school took the password. */
+    private suspend fun AuthTokenManager.loginAsTheUser(signIn: Int): SignInAttempt = try {
+        login("B00000000", "password", "moodle", moodlePrivateToken = null, signInGeneration = signIn)
+        SignInAttempt.SIGNED_IN
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        SignInAttempt.FAILED
     }
 
     private fun registerRequest() = DeviceRegisterRequest(

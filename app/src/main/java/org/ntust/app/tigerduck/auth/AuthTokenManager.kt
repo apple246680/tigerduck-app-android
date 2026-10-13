@@ -68,9 +68,9 @@ class AuthTokenManager(
     private val signInLock = Any()
     private var generation = 0
 
-    // Under signInLock: the automatic sign-in that callers which overlap wait
-    // for, and when one that sent credentials last failed.
-    private var automaticSignIn: CompletableDeferred<Boolean>? = null
+    // Under signInLock: the sign-in that automatic callers which overlap it
+    // wait for, and when one that sent credentials last failed.
+    private var signInUnderWay: CompletableDeferred<Boolean>? = null
     private var signInFailedAt: Long? = null
 
     /**
@@ -115,33 +115,57 @@ class AuthTokenManager(
     suspend fun signInAgain(): Boolean = signInAutomatically()
 
     /**
-     * Runs [signInWithStoredAccount], one attempt for every caller that
-     * overlaps it. After one that sent credentials fails, the next waits
-     * [SIGN_IN_PAUSE_MS]: the backend allows 5 logins per 15 minutes per
-     * student and per IP, and a campus network puts many students behind one
-     * IP. The interactive sign-in calls [login] itself and never waits.
+     * Runs the interactive sign-in's [signIn], which calls [login] with the
+     * generation it is given, and says whether it signed in. It never waits
+     * for the pause. An automatic sign-in that starts meanwhile waits for it
+     * instead of logging in too, and a failure starts the pause as an
+     * automatic one does.
+     */
+    suspend fun signInInteractively(signIn: suspend (signInGeneration: Int) -> SignInAttempt): Boolean {
+        val attempt = CompletableDeferred<Boolean>()
+        val current = synchronized(signInLock) {
+            signInUnderWay = attempt
+            generation
+        }
+        return runSignIn(attempt, current, signIn)
+    }
+
+    /**
+     * Runs [signInWithStoredAccount], or waits for the sign-in under way. After
+     * one that sent credentials fails, the next waits [SIGN_IN_PAUSE_MS]: the
+     * backend allows 5 logins per 15 minutes per student and per IP, and a
+     * campus network puts many students behind one IP.
      */
     private suspend fun signInAutomatically(): Boolean {
         val signInWith = signInWithStoredAccount ?: return false
         val attempt = CompletableDeferred<Boolean>()
         val signIn: Int
-        // The attempt already under way, which this caller waits for instead.
+        // The sign-in already under way, which this caller waits for instead.
         val running = synchronized(signInLock) {
             // Before the credentials, which the sign-in reads.
             signIn = generation
-            automaticSignIn ?: run {
+            signInUnderWay ?: run {
                 if (isSignInPaused()) return false
-                automaticSignIn = attempt
+                signInUnderWay = attempt
                 null
             }
         }
         if (running != null) return running.await()
+        // Finishes for the callers waiting on it when this one is cancelled.
+        return withContext(NonCancellable) { runSignIn(attempt, signIn, signInWith) }
+    }
+
+    /** Runs [signInWith] as the sign-in under way, which [attempt] tells its waiting callers about. */
+    private suspend fun runSignIn(
+        attempt: CompletableDeferred<Boolean>,
+        signIn: Int,
+        signInWith: suspend (Int) -> SignInAttempt,
+    ): Boolean {
         var signedIn = false
         try {
-            // Finishes for the callers waiting on it when this one is cancelled.
-            signedIn = withContext(NonCancellable) { settleSignIn(signIn, signInWith(signIn)) }
+            signedIn = settleSignIn(signIn, signInWith(signIn))
         } finally {
-            synchronized(signInLock) { if (automaticSignIn === attempt) automaticSignIn = null }
+            synchronized(signInLock) { if (signInUnderWay === attempt) signInUnderWay = null }
             attempt.complete(signedIn)
         }
         return signedIn
@@ -230,7 +254,7 @@ class AuthTokenManager(
         synchronized(signInLock) {
             generation++
             tokens.clear()
-            automaticSignIn = null
+            signInUnderWay = null
             signInFailedAt = null
         }
     }
@@ -393,12 +417,12 @@ class AuthTokenManager(
         data object Refused : RefreshOutcome
     }
 
-    /** What [signInWithStoredAccount] did. */
+    /** What a sign-in did: [signInWithStoredAccount], or the one [signInInteractively] runs. */
     enum class SignInAttempt {
         /** It stored a pair for the generation it was given. */
         SIGNED_IN,
 
-        /** It sent the stored credentials, to the backend or to harvest a Moodle token, and stored no pair. */
+        /** It sent credentials, to the backend or to harvest a Moodle token, and stored no pair. */
         FAILED,
 
         /** No account is stored, so nothing went out. */
