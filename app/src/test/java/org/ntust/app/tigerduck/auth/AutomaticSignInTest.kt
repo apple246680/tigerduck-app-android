@@ -178,6 +178,42 @@ class AutomaticSignInTest {
     }
 
     @Test
+    fun `a request whose sign-in a sign-out overtook gets no token, not even the next account's`() = runTest {
+        val held = backend.hold(LOGIN)
+        val manager = manager()
+
+        val request = async { manager.authHeader() }
+        held.arrived.await()
+        // The user signs out, and the next account signs in, while the sign-in is out.
+        manager.logout()
+        tokens.save("access-b", "refresh-b", clock + 900_000)
+        held.release(200)
+
+        assertNull(request.await())
+        assertEquals("refresh-b", tokens.refreshToken)
+    }
+
+    @Test
+    fun `a request waiting on a refresh that a sign-out overtook gets no token, not even the next account's`() = runTest {
+        tokens.save("access-1", "refresh-1", expiresAt = 0L)
+        val held = backend.hold(REFRESH)
+        val manager = manager()
+
+        val first = async { manager.authHeader() }
+        held.arrived.await()
+        val second = async { manager.authHeader() }
+        runCurrent()
+        manager.logout()
+        tokens.save("access-b", "refresh-b", clock + 900_000)
+        held.release(200)
+
+        assertEquals(listOf<String?>(null, null), listOf(first.await(), second.await()))
+        // The next account's refresh token never went out, which would rotate it unseen.
+        assertEquals(1, backend.received(REFRESH).size)
+        assertEquals("refresh-b", tokens.refreshToken)
+    }
+
+    @Test
     fun `an interactive sign-in ignores the pause`() = runTest {
         backend.answer(LOGIN, 503)
         val manager = manager()

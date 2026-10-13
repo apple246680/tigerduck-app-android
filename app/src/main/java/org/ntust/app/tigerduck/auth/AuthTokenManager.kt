@@ -292,23 +292,29 @@ class AuthTokenManager(
     }
 
     private suspend fun validAccessToken(): String? {
+        // Read first: after a sign-out while this waits for a sign-in or a
+        // refresh, the session stored is the next account's, not this request's.
+        val signIn = signInGeneration
         if (!signInIfSignedOut()) return null
-        val access = tokens.accessToken ?: return null
-        val expiresAt = tokens.expiresAt
-        if (now() < expiresAt - 30_000) return access
-        return refresh()
+        return validTokenIfSignedIn(signIn) ?: refresh(signIn)
     }
 
-    private suspend fun refresh(): String? = refreshMutex.withLock {
-        // Double-check after acquiring lock
+    // The stored access token while it has more than 30 s left and is still
+    // generation [signIn]'s.
+    private fun validTokenIfSignedIn(signIn: Int): String? = synchronized(signInLock) {
         val access = tokens.accessToken
-        val expiresAt = tokens.expiresAt
-        if (access != null && now() < expiresAt - 30_000) return access
+        if (generation != signIn || access == null || now() >= tokens.expiresAt - 30_000) null else access
+    }
 
-        // Before the refresh token: read after it, a sign-out between the two
-        // reads would go unseen.
-        val signIn = signInGeneration
-        val refreshToken = tokens.refreshToken ?: return null
+    private suspend fun refresh(signIn: Int): String? = refreshMutex.withLock {
+        // Double-check after acquiring lock
+        validTokenIfSignedIn(signIn)?.let { return it }
+
+        // With the generation under the lock a sign-out takes, so the token is
+        // the account's that asked.
+        val refreshToken = synchronized(signInLock) {
+            if (generation == signIn) tokens.refreshToken else null
+        } ?: return null
         // No header rather than the access token in its last seconds, which
         // would draw a 401, and Home answers a 401 with a relogin.
         if (isRefreshPaused()) return null

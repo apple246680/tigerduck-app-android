@@ -18,8 +18,8 @@ import java.util.concurrent.TimeUnit
 /**
  * Answers every request in place of the backend: the interceptor never calls proceed(). Each
  * endpoint answers 200 unless a test queued another status for it, and a [Held] answer keeps its
- * request waiting until the test releases it. A sign-in answers with the pair "access-2" and
- * "refresh-2".
+ * request waiting until the test releases it. A sign-in or a refresh answers with the pair
+ * "access-2" and "refresh-2".
  */
 internal class ScriptedBackend {
     class Received(val endpoint: String, val authorization: String?, val body: String)
@@ -78,7 +78,7 @@ internal class ScriptedBackend {
         }
         val reply = when {
             code !in 200..299 -> """{"detail":"refused"}"""
-            endpoint == "POST /auth/login" ->
+            endpoint == "POST /auth/login" || endpoint == "POST /auth/refresh" ->
                 """{"access_token":"access-2","refresh_token":"refresh-2","expires_in":900,"device_id":"device-1"}"""
             else -> """{"device_id":"device-1","push_token_id":1}"""
         }
