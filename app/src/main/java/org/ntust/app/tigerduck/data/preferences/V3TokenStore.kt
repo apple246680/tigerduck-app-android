@@ -29,12 +29,18 @@ class V3TokenStore internal constructor(private val prefs: SharedPreferences) {
         if (!written) Log.w(TAG, "v3 token pair not written to disk")
     }
 
+    /**
+     * Removes the three, committed like [save]: a refresh token left on disk
+     * after its refresh failed may have been rotated already, and the next
+     * launch would send it again.
+     */
     fun clear() {
-        prefs.edit()
+        val written = prefs.edit()
             .remove(KEY_ACCESS_TOKEN)
             .remove(KEY_REFRESH_TOKEN)
             .remove(KEY_EXPIRES_AT)
-            .apply()
+            .commit()
+        if (!written) Log.w(TAG, "v3 token pair not removed from disk")
     }
 
     internal companion object {

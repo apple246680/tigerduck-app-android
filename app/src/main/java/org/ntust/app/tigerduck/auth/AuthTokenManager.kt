@@ -2,6 +2,7 @@ package org.ntust.app.tigerduck.auth
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -129,6 +130,13 @@ class AuthTokenManager(
         // Expires within 30 s, but works until then.
         val stillValid = access?.takeIf { now() < expiresAt }
         if (isRefreshPaused()) return stillValid
+        // Finishes even when the caller is cancelled: stopped between a send
+        // and what follows it, a token the backend may have rotated would stay
+        // on disk for the next refresh.
+        withContext(NonCancellable) { refreshAndSettle(refreshToken, stillValid) }
+    }
+
+    private suspend fun refreshAndSettle(refreshToken: String, stillValid: String?): String? {
         val outcome = try {
             withContext(Dispatchers.IO) { sendWithOneResend(refreshToken) }
         } catch (e: CancellationException) {
@@ -149,8 +157,8 @@ class AuthTokenManager(
             RefreshOutcome.NoReply, RefreshOutcome.Refused -> Unit
         }
         if (onRefreshFailed?.invoke() == true) return tokens.accessToken
-        logout()
-        null
+        withContext(Dispatchers.IO) { logout() }
+        return null
     }
 
     // Measured from the failure rather than to a deadline, so a clock set back

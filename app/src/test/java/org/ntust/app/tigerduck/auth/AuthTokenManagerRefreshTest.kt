@@ -3,6 +3,9 @@ package org.ntust.app.tigerduck.auth
 import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -52,6 +55,9 @@ class AuthTokenManagerRefreshTest {
     /** The refresh tokens the fake backend received, in order. */
     private val sentRefreshTokens = mutableListOf<String>()
     private var relogins = 0
+
+    /** Runs as each refresh reaches the fake backend, before its reply. */
+    private var onRefreshSent: () -> Unit = {}
 
     @Before
     fun setUp() {
@@ -192,10 +198,44 @@ class AuthTokenManagerRefreshTest {
     }
 
     @Test
-    fun `a 401 whose sign-in fails drops the pair as before`() = runTest {
+    fun `a 401 whose sign-in fails drops the pair in one commit`() = runTest {
         val manager = manager(Reply.Status(401))
 
         assertNull(manager.authHeader())
+
+        assertEquals(1, relogins)
+        assertNull(tokens.refreshToken)
+        assertEquals(listOf(setOf(KEY_ACCESS_TOKEN, KEY_REFRESH_TOKEN, KEY_EXPIRES_AT)), file.commits)
+        assertEquals(0, file.applies)
+    }
+
+    @Test
+    fun `a caller cancelled during the resend still signs in again`() = runTest {
+        val manager = manager(Reply.Lost, Reply.Lost)
+        lateinit var caller: Job
+        onRefreshSent = { if (sentRefreshTokens.size == 2) caller.cancel() }
+
+        caller = launch { manager.authHeader() }
+        caller.join()
+
+        // Left on disk, the token would go out a third time on the next refresh.
+        assertEquals(1, relogins)
+        assertNull(tokens.refreshToken)
+    }
+
+    @Test
+    fun `a caller cancelled during the sign-in after a failed resend still drops the token`() = runTest {
+        val manager = manager(Reply.Lost, Reply.Lost)
+        lateinit var caller: Job
+        manager.onRefreshFailed = {
+            relogins++
+            caller.cancel()
+            delay(1_000)
+            false
+        }
+
+        caller = launch { manager.authHeader() }
+        caller.join()
 
         assertEquals(1, relogins)
         assertNull(tokens.refreshToken)
@@ -251,6 +291,7 @@ class AuthTokenManagerRefreshTest {
                 if (request.url.encodedPath.endsWith("/auth/refresh")) {
                     val body = Buffer().also { request.body!!.writeTo(it) }.readUtf8()
                     sentRefreshTokens += JSONObject(body).getString("refresh_token")
+                    onRefreshSent()
                 }
                 when (val reply = script.removeFirst()) {
                     Reply.Lost -> throw SocketTimeoutException("timeout")
