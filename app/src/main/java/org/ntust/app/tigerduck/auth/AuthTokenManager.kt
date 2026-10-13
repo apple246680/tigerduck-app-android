@@ -46,7 +46,8 @@ class AuthTokenManager(
     /**
      * Signs in with the stored account, passing the generation it is given to
      * [login], and says what it sent: AuthService's. Run only by the automatic
-     * sign-in, after a refused refresh and when something finds no session.
+     * sign-in: after a refused refresh, for [signInAgain], and when something
+     * finds no session.
      */
     var signInWithStoredAccount: (suspend (signInGeneration: Int) -> SignInAttempt)? = null
 
@@ -131,10 +132,11 @@ class AuthTokenManager(
     }
 
     /**
-     * Runs [signInWithStoredAccount], or waits for the sign-in under way. After
-     * one that sent credentials fails, the next waits [SIGN_IN_PAUSE_MS]: the
-     * backend allows 5 logins per 15 minutes per student and per IP, and a
-     * campus network puts many students behind one IP.
+     * Runs [signInWithStoredAccount], or waits for the sign-in under way. For
+     * [SIGN_IN_PAUSE_MS] after one with credentials to send failed, it makes
+     * none and returns false: the backend allows 5 logins per 15 minutes per
+     * student and per IP, and a campus network puts many students behind one
+     * IP.
      */
     private suspend fun signInAutomatically(): Boolean {
         val signInWith = signInWithStoredAccount ?: return false
@@ -152,7 +154,20 @@ class AuthTokenManager(
         }
         if (running != null) return running.await()
         // Finishes for the callers waiting on it when this one is cancelled.
-        return withContext(NonCancellable) { runSignIn(attempt, signIn, signInWith) }
+        return withContext(NonCancellable) {
+            runSignIn(attempt, signIn) { generation ->
+                // A failure of the sign-in itself is the caller's no session,
+                // never an exception out of its token lookup.
+                try {
+                    signInWith(generation)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "sign-in failed: ${e.logSummary()}")
+                    SignInAttempt.FAILED
+                }
+            }
+        }
     }
 
     /** Runs [signInWith] as the sign-in under way, which [attempt] tells its waiting callers about. */
@@ -163,17 +178,7 @@ class AuthTokenManager(
     ): Boolean {
         var signedIn = false
         try {
-            // A failure of the sign-in itself is the caller's no session, never
-            // an exception from its token lookup.
-            val outcome = try {
-                signInWith(signIn)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "sign-in failed: ${e.logSummary()}")
-                SignInAttempt.FAILED
-            }
-            signedIn = settleSignIn(signIn, outcome)
+            signedIn = settleSignIn(signIn, signInWith(signIn))
         } finally {
             synchronized(signInLock) { if (signInUnderWay === attempt) signInUnderWay = null }
             attempt.complete(signedIn)
@@ -432,10 +437,10 @@ class AuthTokenManager(
         /** It stored a pair for the generation it was given. */
         SIGNED_IN,
 
-        /** It sent credentials, to the backend or to harvest a Moodle token, and stored no pair. */
+        /** It had credentials to send, to the backend or to harvest a Moodle token, and stored no pair. */
         FAILED,
 
-        /** No account is stored, so nothing went out. */
+        /** It had nothing to send: no account, the demo account, or neither a password nor a Moodle token. */
         NOTHING_TO_SEND,
     }
 

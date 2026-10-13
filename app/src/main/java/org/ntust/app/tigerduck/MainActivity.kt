@@ -40,6 +40,7 @@ import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.liveactivity.LiveActivityManager
 import org.ntust.app.tigerduck.network.ApiVersionGate
 import org.ntust.app.tigerduck.network.MoodleTokenService
+import org.ntust.app.tigerduck.network.NetworkChecker
 import org.ntust.app.tigerduck.notification.BackgroundSyncWorker
 import org.ntust.app.tigerduck.push.FcmBootstrap
 import org.ntust.app.tigerduck.push.PushApiClient
@@ -105,6 +106,9 @@ class MainActivity : AppCompatActivity() {
 
     @Inject
     lateinit var authTokenManager: AuthTokenManager
+
+    @Inject
+    lateinit var networkChecker: NetworkChecker
 
     @Inject
     lateinit var fcmBootstrap: FcmBootstrap
@@ -251,8 +255,11 @@ class MainActivity : AppCompatActivity() {
         refreshMoodleCredentials()
         // Signs in to the backend again after a sign-in that failed or a
         // session it dropped. Does nothing with a session, without an account,
-        // or within five minutes of a failed automatic sign-in.
-        lifecycleScope.launch { authTokenManager.signInIfSignedOut() }
+        // or within five minutes of a failed sign-in. Not offline, where it
+        // could only fail and start that wait.
+        if (networkChecker.isAvailable()) {
+            lifecycleScope.launch { authTokenManager.signInIfSignedOut() }
+        }
         // Retries a device registration that failed while the process stayed
         // warm. Whether one is due, and the consent and flavor gates, are
         // decided inside; a no-op on fdroid.

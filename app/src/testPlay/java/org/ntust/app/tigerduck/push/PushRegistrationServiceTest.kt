@@ -264,6 +264,19 @@ class PushRegistrationServiceTest {
         assertTrue(service.diagnostic.value.isRegistered)
     }
 
+    @Test
+    fun `turning server push off with no session signs in and sends it on the account's row`() = runTest {
+        val service = service(signedIn = false, signsIn = true)
+
+        assertTrue(service.updateServerPushOptOut(true))
+
+        assertEquals(1, backend.received(LOGIN).size)
+        val patch = backend.received(PREFERENCES).single()
+        assertEquals("Bearer access-2", patch.authorization)
+        assertEquals(false, JSONObject(patch.body).getBoolean("server_push_enabled"))
+        assertEquals(emptyList<FakeBackend.Received>(), backend.received(ANNOUNCE))
+    }
+
     private companion object {
         const val LOGIN = "POST /auth/login"
         const val ANNOUNCE = "POST /devices/anonymous"

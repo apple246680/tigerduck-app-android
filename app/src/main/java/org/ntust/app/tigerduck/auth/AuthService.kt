@@ -98,68 +98,18 @@ class AuthService @Inject constructor(
 
     private val loginMutex = Mutex()
 
-    init {
-        authTokenManager.signInWithStoredAccount = { signIn -> signInWithStoredAccount(signIn) }
-    }
-
-    /**
-     * Signs in to the backend again after it refused the session, as the
-     * automatic sign-in: it shares an attempt that is under way, and makes
-     * none in the pause after one that failed. Says whether it signed in.
-     */
-    suspend fun attemptRelogin(): Boolean = authTokenManager.signInAgain()
-
-    /**
-     * The automatic backend sign-in, with the stored account; see
-     * [AuthTokenManager.signInWithStoredAccount]. [signIn] was read before the
-     * credentials, so a sign-out during the harvest below keeps the login from
-     * storing the departing account's pair.
-     */
-    private suspend fun signInWithStoredAccount(signIn: Int): SignInAttempt {
-        if (demoAccount.isActive) return SignInAttempt.NOTHING_TO_SEND
-        val studentId = credentials.ntustStudentId ?: return SignInAttempt.NOTHING_TO_SEND
-        val password = credentials.ntustPassword
-        // Harvest a FRESH Moodle token before the v3 login — the backend
-        // verifies it against moodle2, and the stored one may be stale, which
-        // gets the login rejected with 401 invalid_token (see login()).
-        // Best-effort: fall back to the stored token if the harvest fails.
-        // refreshToken() stores no token once the account has signed out, so
-        // a sign-out during the harvest leaves none for the next account.
-        val moodleToken = if (password != null) {
-            try {
-                moodleTokenService.refreshToken()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                android.util.Log.w("AuthService", "auto sign-in: Moodle token harvest failed; using stored: ${e.logSummary()}")
-                credentials.moodleToken
-            }
-        } else {
-            credentials.moodleToken
-        }
-        if (moodleToken.isNullOrEmpty()) {
-            // With a password the harvest went out.
-            return if (password != null) {
-                SignInAttempt.FAILED
-            } else {
-                SignInAttempt.NOTHING_TO_SEND
-            }
-        }
-        // Signed out during the harvest: the stored token it fell back to may
-        // be the next account's, and must not go out with this one's ID.
-        if (authTokenManager.signInGeneration != signIn) return SignInAttempt.FAILED
-        return try {
-            authTokenManager.login(
-                studentId = studentId,
-                password = password ?: "",
-                moodleToken = moodleToken,
-                moodlePrivateToken = null,
-                signInGeneration = signIn,
-            )
-            android.util.Log.i("AuthService", "auto sign-in: v3 JWT obtained")
-            // Launched: this sign-in can run inside a request that
-            // PushRegistrationService makes while it holds the lock
-            // onSignedIn() takes.
+    // The automatic backend sign-in, after a refused refresh and whenever
+    // something finds no session.
+    private val storedAccountSignIn = StoredAccountSignIn(
+        tokens = authTokenManager,
+        isDemo = { demoAccount.isActive },
+        studentId = { credentials.ntustStudentId },
+        password = { credentials.ntustPassword },
+        storedMoodleToken = { credentials.moodleToken },
+        // Unlike obtainToken(), stores no token once the account has signed
+        // out, so a sign-out during the harvest leaves none for the next one.
+        harvestMoodleToken = { moodleTokenService.refreshToken() },
+        afterSignIn = {
             appScope.launch {
                 runCatching { pushRegistration.onSignedIn() }
                     .onFailure { e -> android.util.Log.w("AuthService", "registration after auto sign-in failed: ${e.logSummary()}") }
@@ -171,13 +121,19 @@ class AuthService @Inject constructor(
             // either, because this sign-in can run from inside a pull's own
             // request — see NotificationSettingsSync.pushIfUnconfirmed.
             notificationSettingsSync.pushIfUnconfirmed()
-            SignInAttempt.SIGNED_IN
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            android.util.Log.w("AuthService", "auto sign-in failed: ${e.logSummary()}")
-            SignInAttempt.FAILED
-        }
+        },
+    )
+
+    init {
+        authTokenManager.signInWithStoredAccount = storedAccountSignIn::signIn
     }
+
+    /**
+     * Signs in to the backend again after it refused the session, as the
+     * automatic sign-in: it shares an attempt that is under way, and makes
+     * none in the pause after one that failed. Says whether it signed in.
+     */
+    suspend fun attemptRelogin(): Boolean = authTokenManager.signInAgain()
 
     val storedStudentId: String? get() = credentials.ntustStudentId
 

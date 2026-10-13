@@ -4,17 +4,10 @@ import android.app.Application
 import android.content.Context
 import com.google.gson.JsonObject
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Protocol
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -36,11 +29,6 @@ import org.ntust.app.tigerduck.push.SyncApiClient
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.TimeUnit
 
 /**
  * The backend sign-in [AuthTokenManager] makes on its own: before a request that needs a session
@@ -140,6 +128,19 @@ class AutomaticSignInTest {
         assertEquals("Bearer access-1", backend.received(UNREGISTER).single().authorization)
     }
 
+    @Test
+    fun `the unregister after a sign-out with no header taken sends nothing and borrows no session`() = runTest {
+        // The next account is stored by the time the DELETE goes out.
+        val manager = manager()
+
+        val failure = runCatching {
+            PushApiClient(backend.client, prefs, manager).unregister("device-1", null)
+        }.exceptionOrNull()
+
+        assertTrue("got $failure", failure is NotSignedInException)
+        assertEquals(emptyList<String>(), backend.endpoints())
+    }
+
     // Signing in again, and the pause after a failure
 
     @Test
@@ -217,6 +218,20 @@ class AutomaticSignInTest {
         clock += 300_000
         assertTrue(manager.signInIfSignedOut())
         assertEquals(2, backend.received(LOGIN).size)
+    }
+
+    @Test
+    fun `an interactive sign-in that throws passes the exception on and leaves no sign-in under way`() = runTest {
+        val manager = manager()
+
+        val failure = runCatching {
+            manager.signInInteractively { throw IllegalStateException("account unwritable") }
+        }.exceptionOrNull()
+
+        // AuthService.login() reports it, rather than a sign-in that went through.
+        assertTrue("got $failure", failure is IllegalStateException)
+        assertTrue(manager.signInIfSignedOut())
+        assertEquals(1, backend.received(LOGIN).size)
     }
 
     @Test
@@ -300,76 +315,5 @@ class AutomaticSignInTest {
         const val REGISTER = "POST /devices/register"
         const val ANNOUNCE = "POST /devices/anonymous"
         const val UNREGISTER = "DELETE /devices/device-1"
-    }
-}
-
-/**
- * Answers every request in place of the backend: the interceptor never calls proceed(). Each
- * endpoint answers 200 unless a test queued another status for it, and a [Held] answer keeps its
- * request waiting until the test releases it. A sign-in answers with the pair "access-2" and
- * "refresh-2".
- */
-private class ScriptedBackend {
-    class Received(val endpoint: String, val authorization: String?)
-
-    class Held {
-        val arrived = CompletableDeferred<Unit>()
-        private val reply = CompletableFuture<Int>()
-
-        fun release(code: Int) {
-            reply.complete(code)
-        }
-
-        fun await(): Int = reply.get(10, TimeUnit.SECONDS)
-    }
-
-    private val received = CopyOnWriteArrayList<Received>()
-    private val queued = ConcurrentHashMap<String, ConcurrentLinkedQueue<Any>>()
-
-    /** Runs as each sign-in arrives, before its answer. */
-    @Volatile
-    var onLogin: () -> Unit = {}
-
-    val client: OkHttpClient = OkHttpClient.Builder()
-        .addInterceptor { chain -> answer(chain.request()) }
-        .build()
-
-    fun answer(endpoint: String, vararg codes: Int) {
-        codes.forEach { queue(endpoint).add(it) }
-    }
-
-    fun hold(endpoint: String): Held = Held().also { queue(endpoint).add(it) }
-
-    fun received(endpoint: String): List<Received> = received.filter { it.endpoint == endpoint }
-
-    fun endpoints(): List<String> = received.map { it.endpoint }
-
-    private fun queue(endpoint: String) = queued.getOrPut(endpoint) { ConcurrentLinkedQueue() }
-
-    private fun answer(request: Request): Response {
-        val endpoint = request.method + " " + request.url.encodedPath.removePrefix("/v3")
-        received += Received(endpoint, request.header("Authorization"))
-        if (endpoint == "POST /auth/login") onLogin()
-        val code = when (val next = queued[endpoint]?.poll()) {
-            is Held -> {
-                next.arrived.complete(Unit)
-                next.await()
-            }
-            is Int -> next
-            else -> 200
-        }
-        val body = when {
-            code !in 200..299 -> """{"detail":"refused"}"""
-            endpoint == "POST /auth/login" ->
-                """{"access_token":"access-2","refresh_token":"refresh-2","expires_in":900,"device_id":"device-1"}"""
-            else -> """{"device_id":"device-1","push_token_id":1}"""
-        }
-        return Response.Builder()
-            .request(request)
-            .protocol(Protocol.HTTP_1_1)
-            .code(code)
-            .message("")
-            .body(body.toResponseBody("application/json".toMediaType()))
-            .build()
     }
 }

@@ -10,6 +10,7 @@ import org.json.JSONObject
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.ntust.app.tigerduck.BuildConfig
 import org.ntust.app.tigerduck.auth.AuthTokenManager
+import org.ntust.app.tigerduck.auth.NotSignedInException
 import org.ntust.app.tigerduck.network.resolveAnnouncementEndpoint
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.model.Assignment
@@ -51,8 +52,8 @@ class PushApiClient @Inject constructor(
 
     /**
      * Adds the Bearer Authorization header, signing in first when there is no
-     * session. Without one it throws [org.ntust.app.tigerduck.auth.NotSignedInException]
-     * and the request is not sent.
+     * session. Without one it throws [NotSignedInException] and the request
+     * is not sent.
      */
     private suspend fun Request.Builder.addAuthHeader(): Request.Builder =
         header("Authorization", authTokenManager.requireAuthHeader())
@@ -102,22 +103,23 @@ class PushApiClient @Inject constructor(
             }
         }
 
+    /**
+     * Deletes this device's row with [authHeader], the header a sign-out takes
+     * before it wipes the tokens: this fire-and-forget call runs after that.
+     * Without one nothing is sent, as a session looked up now could be the
+     * next account's, or its sign-in, and the DELETE would remove its row.
+     */
     suspend fun unregister(
         deviceId: String,
-        authHeaderOverride: String? = null,
+        authHeader: String?,
     ) = withContext(Dispatchers.IO) {
         // v3: DELETE /devices/{client_device_id}, scoped to the authed user
         // (matches iOS + the server). `deviceId` is PushIdentity.uuid().
-        // On logout the caller passes a pre-captured header because the tokens
-        // are wiped before this fire-and-forget call runs — without it there
-        // is no session to send the DELETE with, and the device row leaks.
-        val builder = Request.Builder()
+        val request = Request.Builder()
             .url("$baseUrl/devices/$deviceId")
             .delete()
-        val request = (
-            if (authHeaderOverride != null) builder.header("Authorization", authHeaderOverride)
-            else builder.addAuthHeader()
-            ).build()
+            .header("Authorization", authHeader ?: throw NotSignedInException())
+            .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 throw PushApiException("unregister failed: HTTP ${response.code}")
