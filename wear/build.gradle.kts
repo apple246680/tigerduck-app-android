@@ -79,6 +79,8 @@ android {
             isIncludeAndroidResources = true
             // As in :app: Robolectric's API 36 sandbox needs jdk.internal.access.
             all { it.jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED") }
+            // As in :app, so ReleaseLogRulesTest runs again when the R8 rules change.
+            all { it.inputs.file("proguard-rules.pro") }
         }
     }
 }

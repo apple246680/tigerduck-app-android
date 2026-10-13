@@ -137,6 +137,9 @@ android {
             // which java.base does not export. Without this, any test pinned
             // to API 36 fails before its first line runs.
             all { it.jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED") }
+            // ReleaseLogRulesTest reads the R8 rules, which are no input of the
+            // test task otherwise: a change to them alone would leave it UP-TO-DATE.
+            all { it.inputs.file("proguard-rules.pro") }
         }
     }
 
