@@ -61,6 +61,7 @@ import org.ntust.app.tigerduck.notification.AssignmentNotificationScheduler
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.SingleFlight
+import org.ntust.app.tigerduck.util.logSummary
 import java.util.Date
 import javax.inject.Inject
 import kotlin.time.Duration.Companion.minutes
@@ -922,7 +923,7 @@ class HomeViewModel @Inject constructor(
                     id.toIntOrNull() ?: return@launch, status,
                 )
             } catch (e: Exception) {
-                Log.w("HomeViewModel", "override PATCH FAILED: $id → $status", e)
+                Log.w("HomeViewModel", "override PATCH FAILED → $status: ${e.logSummary()}")
             } finally {
                 // Always release the in-flight lock — a failed PATCH must not
                 // pin this id in pendingOverrides forever, which would block it

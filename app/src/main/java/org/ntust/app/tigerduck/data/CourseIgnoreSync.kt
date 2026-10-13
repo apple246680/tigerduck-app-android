@@ -13,6 +13,7 @@ import org.ntust.app.tigerduck.push.BackendSyncResult
 import org.ntust.app.tigerduck.push.CourseOverrideResult
 import org.ntust.app.tigerduck.push.PushApiClient
 import org.ntust.app.tigerduck.push.PushApiException
+import org.ntust.app.tigerduck.util.logSummary
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
@@ -283,7 +284,7 @@ class CourseIgnoreSync internal constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.w(TAG, "course ignore PATCH failed: ${change.key}", e)
+            Log.w(TAG, "course ignore PATCH failed: ${e.logSummary()}")
             if (refuses(e)) false else null
         }
         when (stored) {
@@ -305,7 +306,7 @@ class CourseIgnoreSync internal constructor(
         val pending = dataCache.loadPendingCourseIgnores()
         val stored = pending.find { it.isSameChange(change) } ?: return@withLock
         val counted = stored.copy(attempts = stored.attempts + 1)
-        if (counted.isParked) Log.w(TAG, "course ignore parked after $MAX_ATTEMPTS refusals: ${change.key}")
+        if (counted.isParked) Log.w(TAG, "course ignore parked after $MAX_ATTEMPTS refusals")
         dataCache.savePendingCourseIgnores(pending.map { if (it === stored) counted else it }, generation)
     }
 
@@ -334,7 +335,7 @@ class CourseIgnoreSync internal constructor(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    Log.w(TAG, "moodle_course_id fill-in failed: $semester:$courseNo", e)
+                    Log.w(TAG, "moodle_course_id fill-in failed for $semester: ${e.logSummary()}")
                 }
             }
         }

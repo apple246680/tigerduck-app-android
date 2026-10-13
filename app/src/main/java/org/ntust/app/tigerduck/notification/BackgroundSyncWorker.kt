@@ -42,6 +42,7 @@ import org.ntust.app.tigerduck.network.SemesterCatalog
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
+import org.ntust.app.tigerduck.util.logSummary
 import org.ntust.app.tigerduck.util.toCreditsOrZero
 
 enum class SyncSource { NONE, BACKEND, LOCAL }
@@ -394,7 +395,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
                                 )
                             }
                         } catch (e: Exception) {
-                            Log.w(TAG, "Course lookup failed for $courseNo", e)
+                            Log.w(TAG, "Course lookup failed: ${e.logSummary()}")
                             CourseService.fallbackCourseFromMoodle(courseNo, moodleByNo[courseNo])
                         }
                     }

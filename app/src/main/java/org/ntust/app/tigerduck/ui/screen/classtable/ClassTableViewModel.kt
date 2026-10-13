@@ -55,6 +55,7 @@ import org.ntust.app.tigerduck.network.model.MoodleEnrolledCourse
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.SingleFlight
+import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
 
 /**
@@ -833,7 +834,7 @@ class ClassTableViewModel @Inject constructor(
                     locale = locale,
                 )
             } catch (e: Exception) {
-                Log.w("ClassTableVM", "course override FAILED: $courseNo", e)
+                Log.w("ClassTableVM", "course override FAILED: ${e.logSummary()}")
             }
         }
     }
