@@ -16,7 +16,11 @@ import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore
 import org.ntust.app.tigerduck.network.resolveAnnouncementEndpoint
 import org.ntust.app.tigerduck.push.currentDeviceModel
+import org.ntust.app.tigerduck.util.logSummary
 import java.io.IOException
+import java.net.ConnectException
+import java.net.NoRouteToHostException
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -44,7 +48,8 @@ class AuthTokenManager(
         .callTimeout(REFRESH_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .build()
 
-    // When a refresh last got a 429 or a 5xx; read and written under refreshMutex.
+    // When a refresh last got a 429 or a 5xx, or could not be sent; read and
+    // written under refreshMutex.
     private var refreshPausedAt: Long? = null
 
     // Held from reading generation through the token write that depends on
@@ -256,10 +261,22 @@ class AuthTokenManager(
                 RefreshOutcome.Refreshed(newAccess)
             }
         } catch (e: IOException) {
-            Log.w(TAG, "refresh got no reply: ${e.javaClass.simpleName}")
-            RefreshOutcome.NoReply
+            if (e.wasNeverSent()) {
+                Log.w(TAG, "refresh not sent: ${e.logSummary()}; keeping the tokens")
+                RefreshOutcome.Unavailable
+            } else {
+                Log.w(TAG, "refresh got no reply: ${e.javaClass.simpleName}")
+                RefreshOutcome.NoReply
+            }
         }
     }
+
+    // OkHttp 5 raises these before it writes the request: the DNS lookup's
+    // UnknownHostException as is, and a refused or unreachable connect as a
+    // ConnectException or NoRouteToHostException. A timeout or a reset may
+    // come after the token went out, so either stays a NoReply.
+    private fun IOException.wasNeverSent(): Boolean =
+        this is UnknownHostException || this is ConnectException || this is NoRouteToHostException
 
     private sealed interface RefreshOutcome {
         // Not a data class, whose toString() would print the token.
@@ -268,7 +285,10 @@ class AuthTokenManager(
         /** No reply came back, so the backend may or may not have rotated the token. */
         data object NoReply : RefreshOutcome
 
-        /** A 429 or a 5xx: the backend turned the refresh away, so the token is kept for a later one. */
+        /**
+         * A 429 or a 5xx, or a send that never left the device: the backend did
+         * not take the refresh, so the token is kept for a later one.
+         */
         data object Unavailable : RefreshOutcome
 
         /** Anything else, a 401 among them: the app signs in again, as after every failed refresh before. */
