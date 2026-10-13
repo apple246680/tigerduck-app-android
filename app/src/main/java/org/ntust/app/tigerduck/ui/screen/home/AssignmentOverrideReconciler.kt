@@ -50,6 +50,9 @@ object AssignmentOverrideReconciler {
     // localization change and not this refactor's business.
     private const val KIND_ASSIGNMENT = "作業"
 
+    /** The re-enable conflict category these overrides belong to. */
+    private const val REENABLE_CATEGORY = "assignments"
+
     /**
      * What this device should end up with, plus anything the user has to
      * decide. [ignored] and [completed] are safe to write immediately; the
@@ -180,6 +183,32 @@ object AssignmentOverrideReconciler {
             inFlightCompleted.filter { it in pendingOverrides },
         conflicts = emptyList(),
     )
+
+    /**
+     * The status to send for each id when, with sync back on, the user keeps
+     * this device's overrides: this device's own, then [STATUS_NONE] for an
+     * id only the server marks, which the next full sync would otherwise take
+     * as another device's mark and bring back. With empty server sets, as
+     * when they could not be fetched, only this device's overrides go.
+     */
+    fun keepLocal(
+        localIgnored: Set<String>,
+        localCompleted: Set<String>,
+        serverIgnored: Set<String>,
+        serverCompleted: Set<String>,
+    ): Map<String, String> =
+        localIgnored.associateWith { STATUS_IGNORED } +
+            localCompleted.associateWith { STATUS_COMPLETED } +
+            (serverIgnored + serverCompleted - localIgnored - localCompleted).associateWith { STATUS_NONE }
+
+    /**
+     * Whether a full sync leaves this device's overrides as they are: from
+     * turning the Assignments sync back on until the re-enable check finds
+     * no difference or the user's answer to it has been applied. Taking the
+     * server's set in that window would answer for the user.
+     */
+    fun isHeldForReenable(pendingConflictCategories: Set<String>): Boolean =
+        REENABLE_CATEGORY in pendingConflictCategories
 
     private fun statusOf(id: String, ignored: Set<String>, completed: Set<String>): String = when (id) {
         in ignored -> STATUS_IGNORED
