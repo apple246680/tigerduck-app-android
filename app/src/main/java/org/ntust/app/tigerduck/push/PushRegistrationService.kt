@@ -193,6 +193,19 @@ class PushRegistrationService @Inject constructor(
         }
     }
 
+    /**
+     * Waits until no registration is debouncing or running on [scope],
+     * including one started while it waits. For tests, which cannot reach
+     * those jobs otherwise.
+     */
+    internal suspend fun awaitRegistrations() {
+        while (true) {
+            val job = mutex.withLock { debounceJob } ?: return
+            job.join()
+            if (mutex.withLock { debounceJob === job }) return
+        }
+    }
+
     fun unregister(authHeaderOverride: String? = null) {
         // The demo account registered nothing, so there is nothing to delete
         // and no server to tell. Read now rather than in the coroutine:
@@ -579,11 +592,31 @@ class PushRegistrationService @Inject constructor(
      * and the network boundary is guarded once, for this and
      * [updateSyncPreferences] together, inside
      * [PushApiClient.updateDevicePreferences] — see `preferencesPatchBlockedOnFdroid`.
+     *
+     * Turning TigerSync on is how a user restarts sync, and the PATCH registers
+     * nothing, so a failed registration, whose error stays on the status card
+     * until one lands, is made again with the retry's backoff started over.
+     * Also after a refused PATCH: the server answers 404 for a device it holds
+     * no row for, and only a registration adds one. The refusal is still
+     * thrown, as `SettingsViewModel.pushCloudSyncEnabled` records the switch
+     * only when this returns.
      */
     suspend fun updateCloudSyncEnabled(enabled: Boolean) {
         if (fixtures.demoMode) return
         val deviceId = identity.uuid()
-        api.updateDevicePreferences(deviceId, cloudSyncEnabled = enabled)
+        val refusal = try {
+            api.updateDevicePreferences(deviceId, cloudSyncEnabled = enabled)
+            null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            e
+        }
+        if (enabled && _diagnostic.value.lastError != null) {
+            mutex.withLock { consecutiveRegistrationFailures = 0 }
+            scheduleRegister()
+        }
+        if (refusal != null) throw refusal
     }
 
     /** See [updateCloudSyncEnabled]'s note on where the fdroid guard lives. */
@@ -632,9 +665,8 @@ class PushRegistrationService @Inject constructor(
  * site, [PushRegistrationService.isServerPushOptedOut]. Tests pass it
  * explicitly instead, for the same reason
  * [org.ntust.app.tigerduck.data.preferences.effectiveCloudSyncEnabled] does:
- * this module's tests can't construct [PushRegistrationService] (real OkHttp
- * / Keystore dependencies), and a literal expectation on `BuildConfig.FLAVOR`
- * would only hold under one Gradle variant's unit-test task.
+ * a literal expectation on `BuildConfig.FLAVOR` would only hold under one
+ * Gradle variant's unit-test task.
  */
 internal fun effectiveServerPushOptedOut(storedOptOut: Boolean, flavor: String = BuildConfig.FLAVOR): Boolean =
     storedOptOut || flavor.equals("fdroid", ignoreCase = true)
@@ -701,11 +733,7 @@ internal data class RegistrationAttemptState(
  *
  * Extracted as a pure function, like [applyOptOutIfAccepted] and
  * [isRegistrationRetryDue] itself, so this state→flag mapping is testable
- * without [PushRegistrationService], which this module cannot construct
- * (real OkHttp / Android-Keystore dependencies, and neither Robolectric nor
- * a mocking library here). Only the mapping: the wiring that feeds it — the
- * `.also { recordRegistrationAttempt(...) }` on each registration path —
- * still has no test.
+ * on its own.
  */
 internal fun RegistrationAttemptState.afterRegistrationAttempt(
     landed: Boolean,
