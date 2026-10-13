@@ -10,7 +10,7 @@ import org.ntust.app.tigerduck.ui.screen.home.AssignmentOverrideReconciler.STATU
 class KeptMarksTest {
 
     @Test
-    fun `each mark goes out as this phone has it then`() = runTest {
+    fun `each mark ends as this phone has it after taps made while they go out`() = runTest {
         var marks = mapOf("1" to STATUS_IGNORED, "2" to STATUS_NONE, "3" to STATUS_COMPLETED)
         val sent = mutableListOf<Pair<Int, String>>()
 
@@ -24,7 +24,28 @@ class KeptMarksTest {
             },
         )
 
-        assertEquals(listOf(1 to STATUS_IGNORED, 2 to STATUS_COMPLETED), sent)
+        assertEquals(
+            listOf(
+                1 to STATUS_IGNORED, 2 to STATUS_NONE, 3 to STATUS_COMPLETED,
+                2 to STATUS_COMPLETED, 3 to STATUS_NONE,
+            ),
+            sent,
+        )
+    }
+
+    @Test
+    fun `the marks are read again only until nothing has changed`() = runTest {
+        val marks = (1..200).associate { it.toString() to STATUS_IGNORED }
+        var reads = 0
+        var requests = 0
+
+        sendKeptMarks(
+            marksNow = { reads++; marks },
+            send = { _, _ -> requests++ },
+        )
+
+        assertEquals(200, requests)
+        assertEquals(2, reads)
     }
 
     @Test
