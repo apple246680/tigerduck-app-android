@@ -230,7 +230,7 @@ class FcmService : FirebaseMessagingService() {
         // overwrite each other on a 32-bit hash collision.
         runCatching { manager.notify(notificationId, NOTIFY_ID_SERVER_POPUP, notification) }
             .onSuccess { NotificationGroup.OTHER.postSummary(this) }
-            .onFailure { Log.w(TAG, "notify failed for popup $notificationId: ${it.logSummary()}") }
+            .onFailure { Log.w(TAG, "notify failed for a server popup: ${it.logSummary()}") }
     }
 
     /**
