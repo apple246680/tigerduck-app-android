@@ -28,6 +28,7 @@ class AuthTokenManager(
     private val httpClient: OkHttpClient,
     private val prefs: AppPreferences,
     private val deviceUuid: String,
+    private val now: () -> Long = System::currentTimeMillis,
 ) {
     private val refreshMutex = Mutex()
     private val jsonType = "application/json".toMediaType()
@@ -41,6 +42,9 @@ class AuthTokenManager(
         .retryOnConnectionFailure(false)
         .callTimeout(REFRESH_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .build()
+
+    // When a refresh last got a 429 or a 5xx; read and written under refreshMutex.
+    private var refreshPausedAt: Long? = null
 
     // Resolve per-call so the debug API-endpoint override applies immediately,
     // matching PushApiClient — pinning at construction made login/refresh
@@ -96,7 +100,7 @@ class AuthTokenManager(
             val accessToken = result.getString("access_token")
             val refreshToken = result.getString("refresh_token")
             val expiresIn = result.getInt("expires_in")
-            tokens.save(accessToken, refreshToken, System.currentTimeMillis() + expiresIn * 1000L)
+            tokens.save(accessToken, refreshToken, now() + expiresIn * 1000L)
             LoginResult(
                 accessToken = accessToken,
                 deviceId = result.getString("device_id"),
@@ -111,7 +115,7 @@ class AuthTokenManager(
     private suspend fun validAccessToken(): String? {
         val access = tokens.accessToken ?: return null
         val expiresAt = tokens.expiresAt
-        if (System.currentTimeMillis() < expiresAt - 30_000) return access
+        if (now() < expiresAt - 30_000) return access
         return refresh()
     }
 
@@ -119,9 +123,12 @@ class AuthTokenManager(
         // Double-check after acquiring lock
         val access = tokens.accessToken
         val expiresAt = tokens.expiresAt
-        if (access != null && System.currentTimeMillis() < expiresAt - 30_000) return access
+        if (access != null && now() < expiresAt - 30_000) return access
 
         val refreshToken = tokens.refreshToken ?: return null
+        // Expires within 30 s, but works until then.
+        val stillValid = access?.takeIf { now() < expiresAt }
+        if (isRefreshPaused()) return stillValid
         val outcome = try {
             withContext(Dispatchers.IO) { sendWithOneResend(refreshToken) }
         } catch (e: CancellationException) {
@@ -130,10 +137,27 @@ class AuthTokenManager(
             Log.w(TAG, "refresh failed: ${e.javaClass.simpleName}")
             RefreshOutcome.Refused
         }
-        if (outcome is RefreshOutcome.Refreshed) return outcome.accessToken
+        when (outcome) {
+            is RefreshOutcome.Refreshed -> {
+                refreshPausedAt = null
+                return outcome.accessToken
+            }
+            RefreshOutcome.Unavailable -> {
+                refreshPausedAt = now()
+                return stillValid
+            }
+            RefreshOutcome.NoReply, RefreshOutcome.Refused -> Unit
+        }
         if (onRefreshFailed?.invoke() == true) return tokens.accessToken
         logout()
         null
+    }
+
+    // Measured from the failure rather than to a deadline, so a clock set back
+    // does not stretch the pause.
+    private fun isRefreshPaused(): Boolean {
+        val pausedAt = refreshPausedAt ?: return false
+        return now() - pausedAt in 0 until REFRESH_PAUSE_MS
     }
 
     /**
@@ -161,12 +185,16 @@ class AuthTokenManager(
             .build()
         return try {
             refreshClient.newCall(request).execute().use { response ->
+                if (response.code == 429 || response.code >= 500) {
+                    Log.w(TAG, "refresh got HTTP ${response.code}; keeping the tokens")
+                    return@use RefreshOutcome.Unavailable
+                }
                 if (!response.isSuccessful) return@use RefreshOutcome.Refused
                 val result = JSONObject(response.body.string())
                 val newAccess = result.getString("access_token")
                 val newRefresh = result.getString("refresh_token")
                 val expiresIn = result.getInt("expires_in")
-                tokens.save(newAccess, newRefresh, System.currentTimeMillis() + expiresIn * 1000L)
+                tokens.save(newAccess, newRefresh, now() + expiresIn * 1000L)
                 RefreshOutcome.Refreshed(newAccess)
             }
         } catch (e: IOException) {
@@ -182,6 +210,10 @@ class AuthTokenManager(
         /** No reply came back, so the backend may or may not have rotated the token. */
         data object NoReply : RefreshOutcome
 
+        /** A 429 or a 5xx: the backend turned the refresh away, so the token is kept for a later one. */
+        data object Unavailable : RefreshOutcome
+
+        /** Anything else, a 401 among them: the app signs in again, as after every failed refresh before. */
         data object Refused : RefreshOutcome
     }
 
@@ -191,5 +223,8 @@ class AuthTokenManager(
     private companion object {
         const val TAG = "AuthTokenManager"
         const val REFRESH_TIMEOUT_SECONDS = 20L
+
+        // The backend limits refreshes per IP over a minute.
+        const val REFRESH_PAUSE_MS = 60_000L
     }
 }

@@ -47,6 +47,7 @@ class AuthTokenManagerRefreshTest {
     private lateinit var context: Application
     private lateinit var file: SavesRecorder
     private lateinit var tokens: V3TokenStore
+    private var clock = 1_800_000_000_000L
 
     /** The refresh tokens the fake backend received, in order. */
     private val sentRefreshTokens = mutableListOf<String>()
@@ -55,15 +56,21 @@ class AuthTokenManagerRefreshTest {
     @Before
     fun setUp() {
         context = RuntimeEnvironment.getApplication()
+        storePair(expiresAt = 0L)
+    }
+
+    /** Puts "access-1" and "refresh-1" on disk and starts counting saves afresh. */
+    private fun storePair(expiresAt: Long) {
         val prefs = context.getSharedPreferences("v3-tokens-test", Context.MODE_PRIVATE)
-        // Expired, so the next authHeader() refreshes.
         prefs.edit()
             .putString(KEY_ACCESS_TOKEN, "access-1")
             .putString(KEY_REFRESH_TOKEN, "refresh-1")
-            .putLong(KEY_EXPIRES_AT, 0L)
+            .putLong(KEY_EXPIRES_AT, expiresAt)
             .commit()
         file = SavesRecorder(prefs)
         tokens = V3TokenStore(file)
+        sentRefreshTokens.clear()
+        relogins = 0
     }
 
     @Test
@@ -113,12 +120,94 @@ class AuthTokenManagerRefreshTest {
     }
 
     @Test
+    fun `a lost reply and then a 5xx signs in again`() = runTest {
+        val manager = manager(Reply.Lost, Reply.Status(503))
+
+        assertNull(manager.authHeader())
+
+        // The first send may have rotated the token, and a later refresh would send it after the grace.
+        assertEquals(listOf("refresh-1", "refresh-1"), sentRefreshTokens)
+        assertEquals(1, relogins)
+        assertNull(tokens.refreshToken)
+    }
+
+    @Test
+    fun `a 429 or a 5xx keeps the pair without signing in again`() = runTest {
+        for (code in listOf(429, 500, 502, 503, 504)) {
+            storePair(expiresAt = 0L)
+            val manager = manager(Reply.Status(code))
+
+            assertNull("HTTP $code", manager.authHeader())
+
+            assertEquals("HTTP $code", listOf("refresh-1"), sentRefreshTokens)
+            assertEquals("HTTP $code", 0, relogins)
+            assertEquals("HTTP $code", "access-1", tokens.accessToken)
+            assertEquals("HTTP $code", "refresh-1", tokens.refreshToken)
+        }
+    }
+
+    @Test
+    fun `an access token not yet expired is still used after a 429`() = runTest {
+        storePair(expiresAt = clock + 10_000)
+        val manager = manager(Reply.Status(429))
+
+        assertEquals("Bearer access-1", manager.authHeader())
+
+        assertEquals(listOf("refresh-1"), sentRefreshTokens)
+    }
+
+    @Test
+    fun `after a 429 or a 5xx the next refresh waits a minute and sends the kept token`() = runTest {
+        val manager = manager(Reply.Status(503), Reply.Pair("access-2", "refresh-2"))
+        assertNull(manager.authHeader())
+
+        clock += 59_000
+        assertNull(manager.authHeader())
+        assertEquals(listOf("refresh-1"), sentRefreshTokens)
+
+        clock += 1_000
+        assertEquals("Bearer access-2", manager.authHeader())
+        assertEquals(listOf("refresh-1", "refresh-1"), sentRefreshTokens)
+        assertEquals("refresh-2", tokens.refreshToken)
+    }
+
+    @Test
+    fun `a clock set back does not stretch the wait`() = runTest {
+        val manager = manager(Reply.Status(429), Reply.Pair("access-2", "refresh-2"))
+        assertNull(manager.authHeader())
+
+        clock -= 3_600_000
+
+        assertEquals("Bearer access-2", manager.authHeader())
+    }
+
+    @Test
+    fun `a 401 signs in again as before`() = runTest {
+        val manager = manager(Reply.Status(401), reloginSucceeds = true)
+
+        assertEquals("Bearer access-relogin", manager.authHeader())
+
+        assertEquals(listOf("refresh-1"), sentRefreshTokens)
+        assertEquals(1, relogins)
+    }
+
+    @Test
+    fun `a 401 whose sign-in fails drops the pair as before`() = runTest {
+        val manager = manager(Reply.Status(401))
+
+        assertNull(manager.authHeader())
+
+        assertEquals(1, relogins)
+        assertNull(tokens.refreshToken)
+    }
+
+    @Test
     fun `OkHttp does not send a refresh again on its own`() = runTest {
         // The sign-in leaves its connection in the pool, and the refresh goes out on it. OkHttp
         // resends a request that failed on a pooled connection unless told not to.
         LoopbackBackend(listOf(pairJson("access-2", "refresh-2", expiresIn = 0))).use { backend ->
             val prefs = AppPreferences(context).apply { announcementApiBaseUrlOverride = backend.baseUrl }
-            val manager = AuthTokenManager(tokens, OkHttpClient(), prefs, deviceUuid = "device-1")
+            val manager = AuthTokenManager(tokens, OkHttpClient(), prefs, "device-1", now = { clock })
             manager.login("B00000000", "password", moodleToken = "moodle", moodlePrivateToken = null)
 
             assertNull(manager.authHeader())
@@ -132,13 +221,12 @@ class AuthTokenManagerRefreshTest {
         httpClient = backend(*replies),
         prefs = AppPreferences(context),
         deviceUuid = "device-1",
+        now = { clock },
     ).apply {
         // Stands in for AuthService.attemptRelogin, which signs in through login().
         onRefreshFailed = {
             relogins++
-            if (reloginSucceeds) {
-                tokens.save("access-relogin", "refresh-relogin", System.currentTimeMillis() + 900_000)
-            }
+            if (reloginSucceeds) tokens.save("access-relogin", "refresh-relogin", clock + 900_000)
             reloginSucceeds
         }
     }
