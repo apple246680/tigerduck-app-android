@@ -181,6 +181,18 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
         get() = prefs.getStringSet("pendingConflictCategories", emptySet()) ?: emptySet()
         set(value) = prefs.edit().putStringSet("pendingConflictCategories", value).apply()
 
+    /**
+     * The re-enable check's categories, named as in [pendingConflictCategories],
+     * whose data a full sync has applied on this phone for the signed-in
+     * account. Only these are marked for the check when switched back on: for
+     * any other, the phone holds none of the account's data to compare. Added
+     * to by `HomeBackendSync.pull`, filled by `DataMigration.migrate3to4`, and
+     * cleared at sign-out by [clearSyncStamps].
+     */
+    var syncedCategories: Set<String>
+        get() = prefs.getStringSet("syncedCategories", emptySet()) ?: emptySet()
+        set(value) = prefs.edit().putStringSet("syncedCategories", value).apply()
+
     var hasCompletedOnboarding: Boolean
         get() = prefs.getBoolean("hasCompletedOnboarding", false)
         set(value) = prefs.edit().putBoolean("hasCompletedOnboarding", value).apply()
@@ -591,15 +603,17 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
     }
 
     /**
-     * On sign-out, this stamp and the background worker's two below: what
-     * they dated belonged to the account that left, and the next account's
-     * worker must not wait out the old one's hour before its first sync.
+     * On sign-out, this stamp, the background worker's two below and
+     * [syncedCategories]: what they record belonged to the account that
+     * left, and the next account's worker must not wait out the old one's
+     * hour before its first sync.
      */
     fun clearSyncStamps() {
         prefs.edit()
             .remove("schoolDataSyncedAtMs")
             .remove("backgroundOverridesSyncedAtMs")
             .remove("backgroundCoursesSyncedAtMs")
+            .remove("syncedCategories")
             .apply()
         _schoolDataSyncedAtMs.value = 0L
     }

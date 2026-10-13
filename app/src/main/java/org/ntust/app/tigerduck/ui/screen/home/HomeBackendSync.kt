@@ -54,6 +54,7 @@ import org.ntust.app.tigerduck.ui.component.ServerFailureSimulator
 import org.ntust.app.tigerduck.ui.component.ServerKind
 import org.ntust.app.tigerduck.ui.component.ServerStatus
 import org.ntust.app.tigerduck.ui.component.ServerStatusTracker
+import org.ntust.app.tigerduck.ui.screen.settings.categoriesSwitchedOn
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.logSummary
 import org.ntust.app.tigerduck.widget.WidgetUpdater
@@ -132,16 +133,22 @@ class HomeBackendSync @Inject constructor(
         }
         try {
             if (BuildConfig.DEBUG) ServerFailureSimulator.check(ServerKind.BACKEND)
+            val account = authService.storedStudentId
             val generation = courseIgnoreSync.currentGeneration()
             // Unsent course-ignore changes go first, so the snapshot has them.
             courseIgnoreSync.retryPending()
             val result = syncApiClient.fetchFullSync()
             syncAssignmentOverrides(state, result)
+            // One reading of the switches, for the course steps below and for what
+            // this sync records as synced: one flipped meanwhile counts from the next.
+            val switchedOn = categoriesSwitchedOn(prefs)
             courseIgnoreSync.applySnapshot(result, generation)?.let { state.ignoredCourseKeys.value = it }
             // Course overrides and deletion detection always run regardless
             // of whether this was a first-time migration.
-            if (result.courseOverrides.isNotEmpty() && (prefs.syncCourseColors || prefs.syncCourseNames)) {
-                applyCourseOverrides(state, result.courseOverrides)
+            val syncColors = "course_colors" in switchedOn
+            val syncNames = "course_names" in switchedOn
+            if (result.courseOverrides.isNotEmpty() && (syncColors || syncNames)) {
+                applyCourseOverrides(state, result.courseOverrides, syncColors, syncNames)
             }
             applyCourseReset(result)
             // Not gated on any of the per-category sync toggles: a holiday
@@ -150,8 +157,11 @@ class HomeBackendSync @Inject constructor(
             // it. Null means an older backend that does not send the
             // section, so the local set stands.
             result.holidayOverrides?.let(academicCalendar::applySyncedOverrides)
-            syncCourseList(result)
+            syncCourseList(result, syncCourses = "courses" in switchedOn)
             markCourseSyncAt()
+            // Only for the account this sync was for: recorded after a sign-out,
+            // it would mark the next account's categories before their first sync.
+            if (authService.isStillSignedInAs(account)) prefs.syncedCategories += switchedOn
             state.lastKnownRevision = result.currentRevision
             ServerStatusTracker.set(ServerStatus.OK, ServerKind.BACKEND)
             prefs.setLastSyncSource(SyncSource.BACKEND)
@@ -335,6 +345,8 @@ class HomeBackendSync @Inject constructor(
     private suspend fun applyCourseOverrides(
         state: HomeSyncState,
         overrides: List<CourseOverrideResult>,
+        syncColors: Boolean = prefs.syncCourseColors,
+        syncNames: Boolean = prefs.syncCourseNames,
     ) {
         // The early return on an empty course list also skips the custom-name
         // merge below. That coupling predates this refactor and is preserved
@@ -346,13 +358,13 @@ class HomeBackendSync @Inject constructor(
         CourseSyncReconciler.mergeCustomNames(
             existing = dataCache.loadCourseCustomNames(),
             overrides = overrides,
-            syncNames = prefs.syncCourseNames,
+            syncNames = syncNames,
         )?.let { dataCache.saveCourseCustomNames(it) }
 
         CourseSyncReconciler.applyColorOverrides(
             courses = courses,
             overrides = overrides,
-            syncColors = prefs.syncCourseColors,
+            syncColors = syncColors,
         )?.let { updated ->
             Log.i(TAG, "[sync-color] applying ${updated.count { c -> c.customColorHex != null }} custom colors")
             state.allCourses.value = updated
@@ -395,8 +407,8 @@ class HomeBackendSync @Inject constructor(
      * knows none for that term but this device does, we upload. Reading an
      * empty term as "the server says you have no courses" would delete them.
      */
-    private suspend fun syncCourseList(result: BackendSyncResult) {
-        if (!prefs.syncCourses) return
+    private suspend fun syncCourseList(result: BackendSyncResult, syncCourses: Boolean) {
+        if (!syncCourses) return
 
         val resetAt = dataCache.loadSemesterResetAt()
         val semesters = CourseSyncReconciler.semestersToReconcile(
