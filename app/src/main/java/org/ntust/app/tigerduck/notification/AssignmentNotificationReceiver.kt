@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
+import org.ntust.app.tigerduck.data.preferences.AssignmentReminderPrefs
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
@@ -51,15 +52,9 @@ class AssignmentNotificationReceiver : BroadcastReceiver() {
 
         // Every path that turns reminders off cancels the alarms already
         // armed, but one armed in a race with that cancel would still fire
-        // here. The switch has the last word, so it is read again at fire time.
-        if (!appPreferences.notifyAssignments) return
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            return
-        }
+        // here. The switch has the last word, so it is read at fire time, and
+        // again before posting.
+        if (!mayPost(context, appPreferences)) return
 
         // The assignment may have been handed in since this was armed: on the
         // web, on another device or by a teammate. Shown only when the cache
@@ -67,12 +62,11 @@ class AssignmentNotificationReceiver : BroadcastReceiver() {
         val pending = goAsync()
         appScope.launch(Dispatchers.IO) {
             try {
-                val verdict = withTimeoutOrNull(CHECK_BUDGET_MS) {
-                    reminderCheck.verdict(assignmentId, armedDueAtMs)
-                } ?: ReminderVerdict.Drop(ReminderDropReason.TIMED_OUT)
-                if (verdict is ReminderVerdict.Drop) {
-                    Log.i(TAG, "reminder dropped: ${verdict.reason}")
-                } else {
+                remindIfStillDue(
+                    context,
+                    appPreferences,
+                    verdict = { reminderCheck.verdict(assignmentId, armedDueAtMs) },
+                ) {
                     notificationChannels.ensureRegistered()
                     post(context, title, courseName, assignmentId, offset)
                 }
@@ -109,6 +103,40 @@ class AssignmentNotificationReceiver : BroadcastReceiver() {
         // Epoch milliseconds of the due date the reminder was armed for;
         // absent on alarms armed by a version without it.
         const val EXTRA_DUE_AT = "due_at"
+
+        /**
+         * Runs [post] once [verdict], given [CHECK_BUDGET_MS], says the reminder
+         * is still due, and the switch and the permission still allow it: either
+         * can be turned off in the seconds the check takes. Anything else drops
+         * it. Returns what was decided.
+         */
+        internal suspend fun remindIfStillDue(
+            context: Context,
+            prefs: AssignmentReminderPrefs,
+            verdict: suspend () -> ReminderVerdict,
+            post: () -> Unit,
+        ): ReminderVerdict {
+            val checked = withTimeoutOrNull(CHECK_BUDGET_MS) { verdict() }
+                ?: ReminderVerdict.Drop(ReminderDropReason.TIMED_OUT)
+            val decided = if (checked == ReminderVerdict.Show && !mayPost(context, prefs)) {
+                ReminderVerdict.Drop(ReminderDropReason.TURNED_OFF)
+            } else {
+                checked
+            }
+            if (decided is ReminderVerdict.Drop) {
+                Log.i(TAG, "reminder dropped: ${decided.reason}")
+            } else {
+                post()
+            }
+            return decided
+        }
+
+        /** The reminder switch is on, and the app may post notifications. */
+        private fun mayPost(context: Context, prefs: AssignmentReminderPrefs): Boolean =
+            prefs.notifyAssignments &&
+                (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+                    PackageManager.PERMISSION_GRANTED)
 
         /**
          * Post the reminder, past every check onReceive makes first; the

@@ -42,6 +42,9 @@ enum class ReminderDropReason {
 
     /** The whole check ran past its budget; the receiver's own reason. */
     TIMED_OUT,
+
+    /** Reminders or notifications were turned off while the check ran; the receiver's own reason. */
+    TURNED_OFF,
 }
 
 sealed interface ReminderVerdict {
