@@ -191,8 +191,7 @@ class SettingsViewModel @Inject constructor(
     val reenableConflict: StateFlow<ReenableConflict?> = _reenableConflict
 
     fun markCategoryReenabled(category: String) {
-        prefs.pendingConflictCategories = prefs.pendingConflictCategories + category
-        Log.i(TAG, "[reenable] marked category=$category pending=${prefs.pendingConflictCategories}")
+        markForReenableCheck(prefs, category, signedIn = authService.authState.value)
     }
 
     fun checkPendingConflicts() {

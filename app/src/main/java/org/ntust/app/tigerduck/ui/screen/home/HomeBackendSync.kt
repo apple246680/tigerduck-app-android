@@ -132,6 +132,7 @@ class HomeBackendSync @Inject constructor(
         }
         try {
             if (BuildConfig.DEBUG) ServerFailureSimulator.check(ServerKind.BACKEND)
+            val account = authService.storedStudentId
             val generation = courseIgnoreSync.currentGeneration()
             // Unsent course-ignore changes go first, so the snapshot has them.
             courseIgnoreSync.retryPending()
@@ -152,6 +153,9 @@ class HomeBackendSync @Inject constructor(
             result.holidayOverrides?.let(academicCalendar::applySyncedOverrides)
             syncCourseList(result)
             markCourseSyncAt()
+            // Only for the account this sync was for: stamped after a sign-out,
+            // it would mark the next account's categories before its first sync.
+            if (authService.isStillSignedInAs(account)) prefs.hasSyncedAccount = true
             state.lastKnownRevision = result.currentRevision
             ServerStatusTracker.set(ServerStatus.OK, ServerKind.BACKEND)
             prefs.setLastSyncSource(SyncSource.BACKEND)

@@ -181,6 +181,17 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
         get() = prefs.getStringSet("pendingConflictCategories", emptySet()) ?: emptySet()
         set(value) = prefs.edit().putStringSet("pendingConflictCategories", value).apply()
 
+    /**
+     * Whether a full sync has applied the signed-in account's data on this
+     * phone. Until one has, a category switched back on is not marked for
+     * the re-enable check: the phone holds none of the account's data to
+     * compare. Set by `HomeBackendSync.pull`, cleared at sign-out by
+     * [clearSyncStamps].
+     */
+    var hasSyncedAccount: Boolean
+        get() = prefs.getBoolean("hasSyncedAccount", false)
+        set(value) = prefs.edit().putBoolean("hasSyncedAccount", value).apply()
+
     var hasCompletedOnboarding: Boolean
         get() = prefs.getBoolean("hasCompletedOnboarding", false)
         set(value) = prefs.edit().putBoolean("hasCompletedOnboarding", value).apply()
@@ -591,15 +602,17 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
     }
 
     /**
-     * On sign-out, this stamp and the background worker's two below: what
-     * they dated belonged to the account that left, and the next account's
-     * worker must not wait out the old one's hour before its first sync.
+     * On sign-out, this stamp, the background worker's two below and
+     * [hasSyncedAccount]: what they record belonged to the account that
+     * left, and the next account's worker must not wait out the old one's
+     * hour before its first sync.
      */
     fun clearSyncStamps() {
         prefs.edit()
             .remove("schoolDataSyncedAtMs")
             .remove("backgroundOverridesSyncedAtMs")
             .remove("backgroundCoursesSyncedAtMs")
+            .remove("hasSyncedAccount")
             .apply()
         _schoolDataSyncedAtMs.value = 0L
     }
