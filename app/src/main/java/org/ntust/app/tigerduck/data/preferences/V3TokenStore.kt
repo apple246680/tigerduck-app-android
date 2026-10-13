@@ -18,7 +18,8 @@ class V3TokenStore internal constructor(private val prefs: SharedPreferences) {
      * when this returns. The backend rotates the refresh token on every
      * refresh and revokes the device's sessions when the old one comes back
      * later; a pair still queued by `apply()` when the process dies would
-     * bring the old one back on the next launch.
+     * bring the old one back on the next launch. A commit the disk refuses
+     * still leaves the pair in memory, and this process keeps using it.
      */
     fun save(accessToken: String, refreshToken: String, expiresAt: Long) {
         val written = prefs.edit()
