@@ -19,6 +19,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.shared.clock.AppClock
+import org.ntust.app.tigerduck.util.logSummary
 import org.ntust.app.tigerduck.widget.receivers.NextClassDarkWidget
 import org.ntust.app.tigerduck.widget.receivers.NextClassDarkWidgetReceiver
 import org.ntust.app.tigerduck.widget.receivers.NextClassLightWidget
@@ -146,7 +147,7 @@ class WidgetUpdater @Inject constructor(
                 // hit ANR when a single Glance IPC stalls right at the edge.
                 withTimeout(8_000) { updateAll() }
             } catch (e: Exception) {
-                Log.w("WidgetUpdater", "Boundary widget update failed", e)
+                Log.w("WidgetUpdater", "Boundary widget update failed: ${e.logSummary()}")
             } finally {
                 val finishers = boundaryLock.withLock {
                     boundaryInFlight = false

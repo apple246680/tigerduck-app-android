@@ -72,3 +72,14 @@
 -dontwarn org.graalvm.nativeimage.hosted.Feature$IsInConfigurationAccess
 -dontwarn org.graalvm.nativeimage.hosted.Feature
 -dontwarn org.graalvm.nativeimage.hosted.RuntimeReflection
+
+# Release builds drop Log.v, Log.d and Log.i. Logcat is open to adb and to
+# every bug report, and those lines print course numbers, ids and server
+# replies. Log.w and Log.e stay, so they name an exception by its class and
+# never print its message. Without "return 0", R8 keeps a call whose result
+# the compiled Kotlin still reads, such as the last line of an if-else branch.
+-assumenosideeffects class android.util.Log {
+    public static int v(...) return 0;
+    public static int d(...) return 0;
+    public static int i(...) return 0;
+}

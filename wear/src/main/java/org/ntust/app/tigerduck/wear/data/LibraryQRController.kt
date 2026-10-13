@@ -93,7 +93,7 @@ class LibraryQRController(
             // Surface the real reason (network failure, server message, etc.)
             // rather than a generic string — diagnosing a watch-only failure
             // from logcat alone is painful and the screen has room for it.
-            android.util.Log.w("LibraryQRController", "QR refresh failed", e)
+            android.util.Log.w("LibraryQRController", "QR refresh failed: ${e.javaClass.simpleName}")
             _error.value = e.message?.takeUnless { it.isBlank() }
                 ?: e::class.simpleName
                         ?: "QR fetch failed"

@@ -29,6 +29,7 @@ import org.ntust.app.tigerduck.util.SharedFetch
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
+import org.ntust.app.tigerduck.util.logSummary
 import org.ntust.app.tigerduck.util.toCreditsOrZero
 
 /**
@@ -356,7 +357,7 @@ class CourseService @Inject constructor(
         // partially-applied result then renders as a blank timetable row.
         throw e
     } catch (e: Exception) {
-        Log.e(TAG_LOOKUP, "Failed to lookup course $courseNo", e)
+        Log.e(TAG_LOOKUP, "Failed to look up a course: ${e.logSummary()}")
         fallbackCourseFromMoodle(courseNo, moodle)
     }
 

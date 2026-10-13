@@ -55,6 +55,7 @@ import org.ntust.app.tigerduck.ui.component.ServerKind
 import org.ntust.app.tigerduck.ui.component.ServerStatus
 import org.ntust.app.tigerduck.ui.component.ServerStatusTracker
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
+import org.ntust.app.tigerduck.util.logSummary
 import org.ntust.app.tigerduck.widget.WidgetUpdater
 import javax.inject.Inject
 
@@ -194,7 +195,7 @@ class HomeBackendSync @Inject constructor(
                 runCatching { notificationSettingsSync.pullNow() }
                     .onFailure { e ->
                         if (e is CancellationException) throw e
-                        Log.w(TAG, "[Sync] notification settings pull failed", e)
+                        Log.w(TAG, "[Sync] notification settings pull failed: ${e.logSummary()}")
                     }
             }
         } catch (e: CancellationException) {
@@ -216,7 +217,7 @@ class HomeBackendSync @Inject constructor(
                     pull(state, retried = true)
                 }
             }
-            Log.w(TAG, "[Sync] override sync failed", e)
+            Log.w(TAG, "[Sync] override sync failed: ${e.logSummary()}")
         }
     }
 
@@ -452,7 +453,7 @@ class HomeBackendSync @Inject constructor(
                             updatedKnown[semester] = (outcome.serverKnownNos + accepted).sorted()
                         }
                     }
-                    .onFailure { e -> Log.w(TAG, "[Sync] $semester: auto-upload failed", e) }
+                    .onFailure { e -> Log.w(TAG, "[Sync] $semester: auto-upload failed: ${e.logSummary()}") }
                 Log.i(TAG, "[Sync] $semester: server empty, uploaded ${outcome.toUpload.size} local courses")
                 continue
             }

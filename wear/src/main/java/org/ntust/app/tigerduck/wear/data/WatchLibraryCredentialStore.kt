@@ -198,7 +198,7 @@ class WatchLibraryCredentialStore(context: Context) : LibraryCredentialStore {
             return try {
                 attempt()
             } catch (e: Exception) {
-                Log.w(TAG, "EncryptedSharedPreferences unusable; resetting", e)
+                Log.w(TAG, "EncryptedSharedPreferences unusable; resetting: ${e.javaClass.simpleName}")
                 runCatching { appContext.deleteSharedPreferences(PREFS_NAME) }
                 try {
                     attempt()
@@ -207,7 +207,7 @@ class WatchLibraryCredentialStore(context: Context) : LibraryCredentialStore {
                     // means the keystore itself is unusable — surface a typed,
                     // logged error instead of whatever raw exception attempt()
                     // happened to throw.
-                    Log.e(TAG, "EncryptedSharedPreferences retry failed", retry)
+                    Log.e(TAG, "EncryptedSharedPreferences retry failed: ${retry.javaClass.simpleName}")
                     throw SecurityException("Cannot create encrypted credential storage", retry)
                 }
             }

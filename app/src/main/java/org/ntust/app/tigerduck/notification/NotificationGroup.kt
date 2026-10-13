@@ -10,6 +10,7 @@ import androidx.annotation.StringRes
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import org.ntust.app.tigerduck.R
+import org.ntust.app.tigerduck.util.logSummary
 
 /**
  * The stacks TigerDuck's notifications sort into in the shade: classes about
@@ -110,7 +111,7 @@ enum class NotificationGroup(
         // Tagged, so the id cannot collide with any untagged one the posters
         // pick for themselves.
         runCatching { manager.notify(SUMMARY_TAG, summaryId, builder.build()) }
-            .onFailure { Log.w(TAG, "notify failed for the $key summary", it) }
+            .onFailure { Log.w(TAG, "notify failed for the $key summary: ${it.logSummary()}") }
     }
 
     /** Cancel one notification in this stack, and the summary with it if nothing else is left. */

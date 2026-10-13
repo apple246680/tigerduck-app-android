@@ -38,6 +38,7 @@ import org.ntust.app.tigerduck.network.NetworkChecker
 import org.ntust.app.tigerduck.notification.SyncSource
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.util.SingleFlight
+import org.ntust.app.tigerduck.util.logSummary
 import org.ntust.app.tigerduck.widget.WidgetUpdater
 import java.util.Calendar
 import java.util.Date
@@ -195,7 +196,7 @@ class CalendarViewModel @Inject constructor(
                 .onFailure { e ->
                     if (e is kotlinx.coroutines.CancellationException) throw e
                     android.util.Log.w(
-                        "CalendarViewModel", "holiday override upload failed", e
+                        "CalendarViewModel", "holiday override upload failed: ${e.logSummary()}"
                     )
                 }
         }

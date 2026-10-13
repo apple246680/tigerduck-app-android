@@ -6,6 +6,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.ntust.app.tigerduck.data.model.CalendarEvent
 import org.ntust.app.tigerduck.data.model.EventSource
+import org.ntust.app.tigerduck.util.logSummary
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -70,7 +71,7 @@ class CalendarService @Inject constructor(
         } catch (e: Exception) {
             // Degrading to "no calendar" is the right UX, but log it —
             // otherwise a format drift on the calendar page is invisible.
-            android.util.Log.w("CalendarService", "Failed to fetch calendar URLs", e)
+            android.util.Log.w("CalendarService", "Failed to fetch calendar URLs: ${e.logSummary()}")
             emptyMap()
         }
     }
@@ -94,7 +95,7 @@ class CalendarService @Inject constructor(
             }
             parseICS(icsString)
         } catch (e: Exception) {
-            android.util.Log.w("CalendarService", "Failed to fetch/parse ICS", e)
+            android.util.Log.w("CalendarService", "Failed to fetch/parse ICS: ${e.logSummary()}")
             emptyList()
         }
     }

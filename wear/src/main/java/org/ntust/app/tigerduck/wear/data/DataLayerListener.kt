@@ -57,7 +57,7 @@ class DataLayerListener : WearableListenerService() {
             // (decompress() throws ZipException). Skip this packet rather than
             // letting the exception escape the SupervisorJob's launch and crash
             // the service via the thread's uncaught-exception handler.
-            Log.e(TAG, "failed to persist snapshot", e)
+            Log.e(TAG, "failed to persist snapshot: ${e.javaClass.simpleName}")
             return
         }
         Log.d(TAG, "received snapshot, lag=${System.currentTimeMillis() - syncedAt} ms")

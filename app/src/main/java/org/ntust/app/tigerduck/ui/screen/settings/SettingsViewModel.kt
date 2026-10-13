@@ -45,6 +45,7 @@ import org.ntust.app.tigerduck.push.SyncApiClient
 import org.ntust.app.tigerduck.ui.AppState
 import org.ntust.app.tigerduck.ui.component.ServerStatusTracker
 import org.ntust.app.tigerduck.ui.screen.home.AssignmentOverrideReconciler
+import org.ntust.app.tigerduck.util.logSummary
 import org.ntust.app.tigerduck.wear.WearScheduleBridge
 import javax.inject.Inject
 
@@ -147,7 +148,7 @@ class SettingsViewModel @Inject constructor(
                     .onSuccess { prefs.cloudSyncEnabled = true }
                     .onFailure {
                         ServerStatusTracker.setCloudSyncEnabled(false)
-                        Log.w(TAG, "enabling cloud sync failed", it)
+                        Log.w(TAG, "enabling cloud sync failed: ${it.logSummary()}")
                     }
             }
         } else {
@@ -163,7 +164,7 @@ class SettingsViewModel @Inject constructor(
             // in as Minimal.
             viewModelScope.launch {
                 runCatching { pushRegistration.updateCloudSyncEnabled(false) }
-                    .onFailure { Log.w(TAG, "disabling cloud sync: server update failed (non-fatal)", it) }
+                    .onFailure { Log.w(TAG, "disabling cloud sync: server update failed (non-fatal): ${it.logSummary()}") }
             }
         }
     }
@@ -320,7 +321,7 @@ class SettingsViewModel @Inject constructor(
                     prefs.pendingConflictCategories = prefs.pendingConflictCategories - pending
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "[reenable] checkPendingConflicts FAILED — pending kept for retry", e)
+                Log.e(TAG, "[reenable] checkPendingConflicts FAILED — pending kept for retry: ${e.logSummary()}")
             }
         }
     }

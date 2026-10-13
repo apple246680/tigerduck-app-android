@@ -27,6 +27,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.cancellation.CancellationException
 import org.ntust.app.tigerduck.auth.AuthTokenManager
+import org.ntust.app.tigerduck.util.logSummary
 
 @Singleton
 class AuthService @Inject constructor(
@@ -116,7 +117,7 @@ class AuthService @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                android.util.Log.w("AuthService", "auto-relogin: Moodle token harvest failed; using stored", e)
+                android.util.Log.w("AuthService", "auto-relogin: Moodle token harvest failed; using stored: ${e.logSummary()}")
                 credentials.moodleToken
             }
         } else {
@@ -142,7 +143,7 @@ class AuthService @Inject constructor(
             true
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            android.util.Log.w("AuthService", "auto-relogin failed", e)
+            android.util.Log.w("AuthService", "auto-relogin failed: ${e.logSummary()}")
             false
         }
     }
@@ -177,7 +178,7 @@ class AuthService @Inject constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            android.util.Log.w("AuthService", "v3 migration: Moodle token harvest failed", e)
+            android.util.Log.w("AuthService", "v3 migration: Moodle token harvest failed: ${e.logSummary()}")
             credentials.moodleToken ?: return
         }
         runCatching {
@@ -195,7 +196,7 @@ class AuthService @Inject constructor(
             notificationSettingsSync.pushIfUnconfirmed()
         }.onFailure { e ->
             if (e is CancellationException) throw e
-            android.util.Log.w("AuthService", "v3 migration: login failed", e)
+            android.util.Log.w("AuthService", "v3 migration: login failed: ${e.logSummary()}")
         }
     }
 
@@ -239,7 +240,7 @@ class AuthService @Inject constructor(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    android.util.Log.w("AuthService", "Moodle token harvest failed; using stored", e)
+                    android.util.Log.w("AuthService", "Moodle token harvest failed; using stored: ${e.logSummary()}")
                     credentials.moodleToken
                 }
                 runCatching {
@@ -251,7 +252,7 @@ class AuthService @Inject constructor(
                             )
                 }.onFailure { e ->
                     if (e is CancellationException) throw e
-                    android.util.Log.w("AuthService", "v3 login failed (best-effort)", e)
+                    android.util.Log.w("AuthService", "v3 login failed (best-effort): ${e.logSummary()}")
                 }
                 runCatching { pushRegistration.onSignedIn() }
                     .onFailure { e -> if (e is CancellationException) throw e }
@@ -326,7 +327,7 @@ class AuthService @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                android.util.Log.w("AuthService", "Library login failed (best-effort)", e)
+                android.util.Log.w("AuthService", "Library login failed (best-effort): ${e.logSummary()}")
             }
         }
         return success
@@ -373,12 +374,12 @@ class AuthService @Inject constructor(
         // into the next account on the same device.
         appScope.launch {
             runCatching { dataCache.clearAllUserData() }
-                .onFailure { android.util.Log.w("AuthService", "clearAllUserData failed on logout", it) }
+                .onFailure { android.util.Log.w("AuthService", "clearAllUserData failed on logout: ${it.logSummary()}") }
             // Bulletins are school-wide rather than private, but the read-state
             // store is already cleared above — clear the content snapshot too
             // so the next session starts coherent instead of half-stale.
             runCatching { bulletinCache.clear() }
-                .onFailure { android.util.Log.w("AuthService", "bulletinCache.clear failed on logout", it) }
+                .onFailure { android.util.Log.w("AuthService", "bulletinCache.clear failed on logout: ${it.logSummary()}") }
         }
     }
 

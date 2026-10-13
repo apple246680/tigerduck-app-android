@@ -55,6 +55,7 @@ import org.ntust.app.tigerduck.network.model.MoodleEnrolledCourse
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.SingleFlight
+import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
 
 /**
@@ -783,9 +784,9 @@ class ClassTableViewModel @Inject constructor(
             widgetUpdater.requestUpdate()
             val courseKey = "client:$semester:$courseNo"
             runCatching { pushApiClient.deleteCourse(courseKey) }
-                .onFailure { e -> Log.w("ClassTable", "deleteCourse backend failed", e) }
+                .onFailure { e -> Log.w("ClassTable", "deleteCourse backend failed: ${e.logSummary()}") }
             runCatching { pushApiClient.uploadCourses(updated, semester) }
-                .onFailure { e -> Log.w("ClassTable", "uploadCourses after delete failed", e) }
+                .onFailure { e -> Log.w("ClassTable", "uploadCourses after delete failed: ${e.logSummary()}") }
         }
         TigerDuckTheme.buildCourseColorMap(updated)
     }
@@ -833,7 +834,7 @@ class ClassTableViewModel @Inject constructor(
                     locale = locale,
                 )
             } catch (e: Exception) {
-                Log.w("ClassTableVM", "course override FAILED: $courseNo", e)
+                Log.w("ClassTableVM", "course override FAILED: ${e.logSummary()}")
             }
         }
     }
@@ -938,7 +939,7 @@ class ClassTableViewModel @Inject constructor(
         val lifted = CourseTombstoneKeys.entriesResetting(semester, stored)
         if (lifted.isNotEmpty()) dataCache.saveDeletedCourseNos(stored - lifted)
         val deleted = runCatching { pushApiClient.deleteAllCourses(semester) }
-            .onFailure { Log.w("ClassTableVM", "deleteAllCourses failed (non-fatal)", it) }
+            .onFailure { Log.w("ClassTableVM", "deleteAllCourses failed (non-fatal): ${it.logSummary()}") }
             .isSuccess
         if (deleted) {
             // Only once the server has forgotten the term. Wiping
@@ -1046,7 +1047,7 @@ class ClassTableViewModel @Inject constructor(
                         try {
                             courseService.fetchEnrolledCourseNos(studentId, password)
                         } catch (e: Exception) {
-                            Log.e("ClassTableVM", "Failed to fetch course list", e)
+                            Log.e("ClassTableVM", "Failed to fetch course list: ${e.logSummary()}")
                             emptyList()
                         }
                     } else emptyList()
@@ -1055,7 +1056,7 @@ class ClassTableViewModel @Inject constructor(
                     try {
                         moodleService.fetchEnrolledCourses()
                     } catch (e: Exception) {
-                        Log.e("ClassTableVM", "Failed to fetch Moodle enrolled courses", e)
+                        Log.e("ClassTableVM", "Failed to fetch Moodle enrolled courses: ${e.logSummary()}")
                         emptyList<MoodleEnrolledCourse>()
                     }
                 }
@@ -1132,7 +1133,7 @@ class ClassTableViewModel @Inject constructor(
                             }
                             dataCache.saveCourses(merged, semester)
                             runCatching { pushApiClient.uploadCourses(merged, semester) }
-                                .onFailure { Log.w("ClassTableVM", "uploadCourses failed (non-fatal)", it) }
+                                .onFailure { Log.w("ClassTableVM", "uploadCourses failed (non-fatal): ${it.logSummary()}") }
                             widgetUpdater.requestUpdate()
                         }
                     }
@@ -1166,7 +1167,7 @@ class ClassTableViewModel @Inject constructor(
                                 liveActivityManager.refresh()
                             }
                         } catch (e: Exception) {
-                            Log.e("ClassTableVM", "Failed to fetch assignments", e)
+                            Log.e("ClassTableVM", "Failed to fetch assignments: ${e.logSummary()}")
                         }
                     }
                 } else null
@@ -1188,7 +1189,7 @@ class ClassTableViewModel @Inject constructor(
             // no CoroutineExceptionHandler anywhere in the app, that reached
             // the default uncaught handler and killed the process instead of
             // failing one refresh. This is the only boundary in that path.
-            Log.e("ClassTableVM", "fetchData failed", e)
+            Log.e("ClassTableVM", "fetchData failed: ${e.logSummary()}")
         } finally {
             _isLoading.value = false
         }

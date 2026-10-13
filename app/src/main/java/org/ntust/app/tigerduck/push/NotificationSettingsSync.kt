@@ -78,6 +78,7 @@ import org.ntust.app.tigerduck.liveactivity.LiveActivitySyncUpdate
 import org.ntust.app.tigerduck.liveactivity.LiveActivitySyncValues
 import org.ntust.app.tigerduck.notification.AssignmentNotificationScheduler
 import org.ntust.app.tigerduck.notification.AssignmentReminderOffset
+import org.ntust.app.tigerduck.util.logSummary
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -1109,7 +1110,7 @@ class NotificationSettingsSync internal constructor(
                     },
                     onFailure = { e ->
                         if (e is CancellationException) throw e
-                        Log.w(TAG, "notification settings push failed", e)
+                        Log.w(TAG, "notification settings push failed: ${e.logSummary()}")
                         consecutiveFailures++
                         // Re-enqueue for another attempt, bounded and spaced
                         // out: a persistent failure (offline, server down)
@@ -1352,7 +1353,7 @@ class NotificationSettingsSync internal constructor(
                 isLocalDirty = { liveActivityPreferences.hasUnconfirmedSyncEdit },
                 onLocalDirty = { pushIfUnconfirmed() },
                 isCurrentGeneration = isCurrentGeneration,
-                onFailure = { e -> Log.w(TAG, "pulling live_activity settings failed", e) },
+                onFailure = { e -> Log.w(TAG, "pulling live_activity settings failed: ${e.logSummary()}") },
             )
 
             val cloudSync = cloudSyncEnabled()
@@ -1370,7 +1371,7 @@ class NotificationSettingsSync internal constructor(
                 isCurrentGeneration = isCurrentGeneration,
                 onFailure = { e ->
                     assignmentReadFailed = true
-                    Log.w(TAG, "pulling assignment settings failed", e)
+                    Log.w(TAG, "pulling assignment settings failed: ${e.logSummary()}")
                 },
             )
             if (pulled != null && pulled != expected) {

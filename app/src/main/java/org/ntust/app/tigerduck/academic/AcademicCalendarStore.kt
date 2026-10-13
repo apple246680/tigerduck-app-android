@@ -23,6 +23,7 @@ import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.network.model.AcademicCalendarDto
 import org.ntust.app.tigerduck.network.resolveAnnouncementEndpoint
 import org.ntust.app.tigerduck.ui.component.ServerStatusTracker
+import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -141,7 +142,7 @@ class AcademicCalendarStore @Inject constructor(
             }.getOrElse { e ->
                 if (e is CancellationException) throw e
                 ServerStatusTracker.noteBackendReachable(false)
-                Log.w(TAG, "academic calendar refresh failed", e)
+                Log.w(TAG, "academic calendar refresh failed: ${e.logSummary()}")
                 false
             }
         }
@@ -178,7 +179,7 @@ class AcademicCalendarStore @Inject constructor(
             // A payload this build cannot read is worse than none: it would
             // pin a stale calendar forever. Drop it and let the next refresh
             // repopulate.
-            Log.w(TAG, "cached academic calendar unreadable; discarding", it)
+            Log.w(TAG, "cached academic calendar unreadable; discarding: ${it.logSummary()}")
             prefs.edit().remove(KEY_PAYLOAD).remove(KEY_ETAG).apply()
             AcademicCalendar.EMPTY
         }
