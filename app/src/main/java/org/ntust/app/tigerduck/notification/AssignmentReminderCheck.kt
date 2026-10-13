@@ -6,6 +6,7 @@ import org.ntust.app.tigerduck.data.CourseIgnores
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.network.MoodleService
 import org.ntust.app.tigerduck.network.MoodleWebserviceError
+import org.ntust.app.tigerduck.network.SubmissionStatusProbe
 import org.ntust.app.tigerduck.util.logSummary
 import java.util.Date
 import javax.inject.Inject
@@ -21,27 +22,17 @@ import javax.inject.Singleton
 class AssignmentReminderCheck @Inject constructor(
     private val dataCache: DataCache,
     private val scheduler: AssignmentNotificationScheduler,
-    // Lazy: building it opens the encrypted credential store, which then
-    // happens off the main thread and only once the cache has passed.
-    private val moodleService: dagger.Lazy<MoodleService>,
+    private val statusProbe: SubmissionStatusProbe,
 ) {
 
-    suspend fun verdict(assignmentId: String, armedDueAtMs: Long?): ReminderVerdict =
-        verdict(assignmentId, armedDueAtMs, ::askMoodle)
-
-    /** [verdict], with Moodle's answer from [ask]. */
-    internal suspend fun verdict(
-        assignmentId: String,
-        armedDueAtMs: Long?,
-        ask: suspend (moodleId: Int) -> ReminderStatusAnswer,
-    ): ReminderVerdict {
+    suspend fun verdict(assignmentId: String, armedDueAtMs: Long?): ReminderVerdict {
         // A sign-out while this runs wipes the data; nothing is written back after it.
         val generation = dataCache.userDataGeneration
         val cached = cached(assignmentId)
         AssignmentReminderPolicy.cacheDrop(cached, armedDueAtMs)?.let { return ReminderVerdict.Drop(it) }
 
         val moodleId = assignmentId.toIntOrNull()
-        val answer = moodleId?.let { ask(it) } ?: ReminderStatusAnswer.NoAnswer
+        val answer = moodleId?.let { askMoodle(it) } ?: ReminderStatusAnswer.NoAnswer
         if (moodleId != null && answer is ReminderStatusAnswer.Answered) {
             val (submitted, submittedAt) =
                 MoodleService.submissionState(moodleId, emptyMap(), answer.lastAttempt)
@@ -77,7 +68,7 @@ class AssignmentReminderCheck @Inject constructor(
     }
 
     private suspend fun askMoodle(moodleId: Int): ReminderStatusAnswer = try {
-        moodleService.get().submissionStatusWithStoredToken(moodleId)
+        statusProbe.status(moodleId)
             ?.let { ReminderStatusAnswer.Answered(it.lastattempt) }
             ?: ReminderStatusAnswer.NoToken
     } catch (e: CancellationException) {

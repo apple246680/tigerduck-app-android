@@ -3,7 +3,12 @@ package org.ntust.app.tigerduck.notification
 import android.app.AlarmManager
 import android.app.Application
 import kotlinx.coroutines.runBlocking
+import okhttp3.FormBody
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
@@ -13,8 +18,7 @@ import org.ntust.app.tigerduck.data.CourseIgnores
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
-import org.ntust.app.tigerduck.network.model.MoodleSubmission
-import org.ntust.app.tigerduck.network.model.MoodleSubmissionLastAttempt
+import org.ntust.app.tigerduck.network.SubmissionStatusProbe
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
@@ -33,7 +37,13 @@ class AssignmentReminderCheckTest {
     private lateinit var scheduler: AssignmentNotificationScheduler
     private lateinit var check: AssignmentReminderCheck
 
-    private val asked = mutableListOf<Int>()
+    private var storedToken: String? = "stored-token"
+
+    /** The fake Moodle's answer to a status call, or its throw. */
+    private var moodle: () -> String = { error("no answer set") }
+
+    /** The assignid of every status call that went out. */
+    private val asked = mutableListOf<String>()
 
     @Before
     fun setUp() {
@@ -41,7 +51,19 @@ class AssignmentReminderCheckTest {
         dataCache =
             DataCache(context, AcademicCalendarStore(context, OkHttpClient(), AppPreferences(context)))
         scheduler = AssignmentNotificationScheduler(context)
-        check = AssignmentReminderCheck(dataCache, scheduler) { error("the tests answer for Moodle") }
+        // Answers in place of the network: the interceptor never calls proceed().
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            val form = chain.request().body as FormBody
+            asked += (0 until form.size).first { form.name(it) == "assignid" }.let(form::value)
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("")
+                .body(moodle().toResponseBody("application/json".toMediaType()))
+                .build()
+        }.build()
+        check = AssignmentReminderCheck(dataCache, scheduler, SubmissionStatusProbe({ storedToken }, client))
     }
 
     private fun dueInThreeDays(id: String) = Assignment(
@@ -52,16 +74,14 @@ class AssignmentReminderCheckTest {
         dueDate = Date(AppClock.nowMillis() + 3 * DAY_MS),
     )
 
-    private fun answering(own: String?, team: String? = null): suspend (Int) -> ReminderStatusAnswer = { id ->
-        asked += id
-        ReminderStatusAnswer.Answered(
-            MoodleSubmissionLastAttempt(
-                submission = own?.let { MoodleSubmission(it, SUBMITTED_AT_SECONDS) },
-                teamsubmission = team?.let { MoodleSubmission(it, SUBMITTED_AT_SECONDS) },
-                submissionsenabled = true,
-                locked = false,
-            )
-        )
+    /** A status answer with the student's and the team's record, each left out when null. */
+    private fun answer(own: String?, team: String? = null): String {
+        fun record(status: String) = """{"status":"$status","timemodified":$SUBMITTED_AT_SECONDS}"""
+        val records = listOfNotNull(
+            own?.let { "\"submission\":${record(it)}," },
+            team?.let { "\"teamsubmission\":${record(it)}," },
+        ).joinToString("")
+        return """{"lastattempt":{$records"submissionsenabled":true,"locked":false},"warnings":[]}"""
     }
 
     /** The assignment id of every armed reminder, one per alarm. */
@@ -86,10 +106,12 @@ class AssignmentReminderCheckTest {
         val assignment = dueInThreeDays("20977")
         armAll(assignment)
 
-        val verdict = check.verdict("20977", assignment.dueDate.time, answering(own = "new"))
+        moodle = { answer(own = "new") }
+
+        val verdict = check.verdict("20977", assignment.dueDate.time)
 
         assertEquals(ReminderVerdict.Show, verdict)
-        assertEquals(listOf(20977), asked)
+        assertEquals(listOf("20977"), asked)
         assertEquals(listOf(assignment), dataCache.loadAssignments())
         assertEquals(listOf("20977", "20977"), armedIds())
     }
@@ -99,7 +121,9 @@ class AssignmentReminderCheckTest {
         val assignment = dueInThreeDays("20977")
         armAll(assignment)
 
-        val verdict = check.verdict("20977", assignment.dueDate.time, answering(own = null))
+        moodle = { answer(own = null) }
+
+        val verdict = check.verdict("20977", assignment.dueDate.time)
 
         assertEquals(ReminderVerdict.Show, verdict)
         assertEquals(listOf(assignment), dataCache.loadAssignments())
@@ -113,9 +137,9 @@ class AssignmentReminderCheckTest {
             val other = dueInThreeDays("20978")
             armAll(assignment, other)
 
-            val verdict = check.verdict(
-                "20977", assignment.dueDate.time, answering(own = null, team = "submitted"),
-            )
+            moodle = { answer(own = null, team = "submitted") }
+
+            val verdict = check.verdict("20977", assignment.dueDate.time)
 
             assertEquals(ReminderVerdict.Drop(ReminderDropReason.SUBMITTED_ON_MOODLE), verdict)
             assertEquals(
@@ -136,7 +160,7 @@ class AssignmentReminderCheckTest {
         dataCache.saveAssignments(listOf(marked, ofIgnoredCourse, moved))
         dataCache.saveMarkedCompletedAssignments(setOf("20977"))
         dataCache.saveIgnoredCourses(setOf(CourseIgnores.key(dataCache.currentSemesterCode(), "IGNORED")))
-        val ask = answering(own = "new")
+        moodle = { answer(own = "new") }
 
         assertEquals(
             listOf(
@@ -146,13 +170,13 @@ class AssignmentReminderCheckTest {
                 ReminderVerdict.Drop(ReminderDropReason.NOT_IN_CACHE),
             ),
             listOf(
-                check.verdict("20977", marked.dueDate.time, ask),
-                check.verdict("20978", ofIgnoredCourse.dueDate.time, ask),
-                check.verdict("20979", moved.dueDate.time - DAY_MS, ask),
-                check.verdict("20980", null, ask),
+                check.verdict("20977", marked.dueDate.time),
+                check.verdict("20978", ofIgnoredCourse.dueDate.time),
+                check.verdict("20979", moved.dueDate.time - DAY_MS),
+                check.verdict("20980", null),
             ),
         )
-        assertEquals(emptyList<Int>(), asked)
+        assertEquals(emptyList<String>(), asked)
     }
 
     @Test
@@ -160,10 +184,12 @@ class AssignmentReminderCheckTest {
         val manual = dueInThreeDays("manual-1")
         dataCache.saveAssignments(listOf(manual))
 
-        val verdict = check.verdict("manual-1", manual.dueDate.time, answering(own = "new"))
+        moodle = { answer(own = "new") }
+
+        val verdict = check.verdict("manual-1", manual.dueDate.time)
 
         assertEquals(ReminderVerdict.Drop(ReminderDropReason.NO_ANSWER), verdict)
-        assertEquals(emptyList<Int>(), asked)
+        assertEquals(emptyList<String>(), asked)
     }
 
     @Test
@@ -171,14 +197,16 @@ class AssignmentReminderCheckTest {
         runBlocking {
             val assignment = dueInThreeDays("20977")
             dataCache.saveAssignments(listOf(assignment))
-            val submitted = answering(own = "submitted")
-
-            check.verdict("20977", assignment.dueDate.time) { id ->
-                dataCache.clearAllUserData()
-                // The next account, with the same assignment still to do.
-                dataCache.saveAssignments(listOf(assignment))
-                submitted(id)
+            moodle = {
+                runBlocking {
+                    dataCache.clearAllUserData()
+                    // The next account, with the same assignment still to do.
+                    dataCache.saveAssignments(listOf(assignment))
+                }
+                answer(own = "submitted")
             }
+
+            check.verdict("20977", assignment.dueDate.time)
 
             assertEquals(listOf(assignment), dataCache.loadAssignments())
         }

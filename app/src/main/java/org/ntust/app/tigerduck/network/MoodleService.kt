@@ -24,7 +24,6 @@ import org.ntust.app.tigerduck.network.model.MoodleSubmissionLastAttempt
 import org.ntust.app.tigerduck.network.model.MoodleSubmissionStatusEnvelope
 import org.ntust.app.tigerduck.util.SharedFetch
 import java.util.Date
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -40,7 +39,7 @@ class MoodleService @Inject constructor(
 ) {
     private val client: OkHttpClient get() = sessionManager.client
     private val gson = Gson()
-    private val webserviceUrl = "https://moodle2.ntust.edu.tw/webservice/rest/server.php"
+    private val webserviceUrl = WEBSERVICE_URL
 
     // The site-info user id, with the wstoken it was asked with. A token is
     // one account's, so a different token is asked again: kept on its own,
@@ -68,12 +67,6 @@ class MoodleService @Inject constructor(
         /** Submissions the cache had confirmed, not asked about — see [confirmedSubmissions]. */
         val confirmed: Map<Int, Date>,
     )
-
-    // The reminder check's call has to end inside its receiver's 8-second
-    // budget, which the shared client's 15-second timeouts would outlast.
-    private val reminderCheckClient: OkHttpClient by lazy {
-        client.newBuilder().callTimeout(REMINDER_CHECK_TIMEOUT_SECONDS, TimeUnit.SECONDS).build()
-    }
 
     // Refreshes in progress that every assignment round starting meanwhile
     // asks Moodle about every submission for — see recheckingSubmissions.
@@ -374,32 +367,9 @@ class MoodleService @Inject constructor(
     private fun callGetSubmissionStatus(
         token: String,
         assignId: Int,
-        userId: Int?,
-        httpClient: OkHttpClient = client,
-    ): MoodleSubmissionStatusEnvelope = requestSubmissionStatus(
-        httpClient,
-        "$webserviceUrl?moodlewsrestformat=json&wsfunction=mod_assign_get_submission_status&wstoken=$token",
-        assignId,
-        userId,
-    )
-
-    /**
-     * Moodle's status of assignment [assignId] from one call with the stored
-     * wstoken, for a reminder about to show; null when there is no token, or
-     * it changed while the call ran. It never signs in or refreshes the token:
-     * nobody asked for an SSO sign-in there (issue #212). No user id, which
-     * Moodle reads as the token's own account, so no site-info call goes
-     * first. Throws for anything but an answer, and
-     * [MoodleWebserviceError.InvalidToken] when the token is rejected.
-     */
-    suspend fun submissionStatusWithStoredToken(assignId: Int): MoodleSubmissionStatusEnvelope? =
-        withContext(Dispatchers.IO) {
-            val token = tokenService.currentToken()?.takeIf { it.isNotEmpty() }
-                ?: return@withContext null
-            val status = callGetSubmissionStatus(token, assignId, userId = null, reminderCheckClient)
-            // Signed out meanwhile: the answer is about the account that left.
-            status.takeIf { tokenService.currentToken() == token }
-        }
+        userId: Int,
+    ): MoodleSubmissionStatusEnvelope =
+        requestSubmissionStatus(client, submissionStatusUrl(token), assignId, userId)
 
     /**
      * Moodle course fullname is typically "1142 PE139B022 課程名稱 / English".
@@ -417,7 +387,11 @@ class MoodleService @Inject constructor(
     companion object {
         private val decodeGson = Gson()
 
-        private const val REMINDER_CHECK_TIMEOUT_SECONDS = 6L
+        private const val WEBSERVICE_URL = "https://moodle2.ntust.edu.tw/webservice/rest/server.php"
+
+        /** The `mod_assign_get_submission_status` endpoint under [token]. */
+        internal fun submissionStatusUrl(token: String): String =
+            "$WEBSERVICE_URL?moodlewsrestformat=json&wsfunction=mod_assign_get_submission_status&wstoken=$token"
 
         /**
          * The `mod_assign_get_assignments` form for [courseIds]. It asks only
