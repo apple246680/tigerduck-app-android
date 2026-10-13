@@ -24,6 +24,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import java.io.IOException
 import java.util.Date
 
 /** What the check does with the cache and the armed reminders around Moodle's answer. */
@@ -210,6 +211,48 @@ class AssignmentReminderCheckTest {
 
             assertEquals(listOf(assignment), dataCache.loadAssignments())
         }
+
+    // --- no answer from Moodle --------------------------------------------
+
+    @Test
+    fun `a rejected token drops the reminder`() = runBlocking {
+        val assignment = dueInThreeDays("20977")
+        dataCache.saveAssignments(listOf(assignment))
+        moodle = {
+            """{"exception":"moodle_exception","errorcode":"invalidtoken",""" +
+                """"message":"Invalid token - token not found"}"""
+        }
+
+        assertEquals(
+            ReminderVerdict.Drop(ReminderDropReason.TOKEN_REJECTED),
+            check.verdict("20977", assignment.dueDate.time),
+        )
+    }
+
+    @Test
+    fun `no stored token drops the reminder without a request`() = runBlocking {
+        val assignment = dueInThreeDays("20977")
+        dataCache.saveAssignments(listOf(assignment))
+        storedToken = null
+
+        assertEquals(
+            ReminderVerdict.Drop(ReminderDropReason.NO_TOKEN),
+            check.verdict("20977", assignment.dueDate.time),
+        )
+        assertEquals(emptyList<String>(), asked)
+    }
+
+    @Test
+    fun `no connection drops the reminder`() = runBlocking {
+        val assignment = dueInThreeDays("20977")
+        dataCache.saveAssignments(listOf(assignment))
+        moodle = { throw IOException("unreachable") }
+
+        assertEquals(
+            ReminderVerdict.Drop(ReminderDropReason.NO_ANSWER),
+            check.verdict("20977", assignment.dueDate.time),
+        )
+    }
 
     private companion object {
         const val DAY_MS = 24 * 60 * 60 * 1000L
