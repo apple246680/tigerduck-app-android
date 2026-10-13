@@ -1,6 +1,8 @@
 package org.ntust.app.tigerduck.auth
 
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -11,23 +13,39 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import org.ntust.app.tigerduck.BuildConfig
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
-import org.ntust.app.tigerduck.data.preferences.CredentialManager
+import org.ntust.app.tigerduck.data.preferences.V3TokenStore
 import org.ntust.app.tigerduck.network.resolveAnnouncementEndpoint
 import org.ntust.app.tigerduck.push.currentDeviceModel
+import java.io.IOException
+import java.util.concurrent.TimeUnit
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Manages v3 JWT access and refresh tokens.
- * Tokens are stored in EncryptedSharedPreferences via CredentialManager.
+ * Tokens are stored in EncryptedSharedPreferences via [V3TokenStore].
  */
 class AuthTokenManager(
-    private val credentials: CredentialManager,
+    private val tokens: V3TokenStore,
     private val httpClient: OkHttpClient,
     private val prefs: AppPreferences,
     private val deviceUuid: String,
+    private val now: () -> Long = System::currentTimeMillis,
 ) {
     private val refreshMutex = Mutex()
     private val jsonType = "application/json".toMediaType()
     var onRefreshFailed: (suspend () -> Boolean)? = null
+
+    // OkHttp sends a failed request again on its own, up to three sends of one
+    // refresh token in all, and the backend takes a third send as reuse. The
+    // timeout keeps the two sends [sendWithOneResend] makes inside the
+    // backend's 60 s grace.
+    private val refreshClient = httpClient.newBuilder()
+        .retryOnConnectionFailure(false)
+        .callTimeout(REFRESH_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .build()
+
+    // When a refresh last got a 429 or a 5xx; read and written under refreshMutex.
+    private var refreshPausedAt: Long? = null
 
     // Resolve per-call so the debug API-endpoint override applies immediately,
     // matching PushApiClient — pinning at construction made login/refresh
@@ -36,7 +54,7 @@ class AuthTokenManager(
     private val baseUrl: String
         get() = resolveAnnouncementEndpoint(prefs).url.trimEnd('/')
 
-    val isLoggedIn: Boolean get() = credentials.v3RefreshToken != null
+    val isLoggedIn: Boolean get() = tokens.refreshToken != null
 
     suspend fun authHeader(): String? {
         val access = validAccessToken() ?: return null
@@ -50,7 +68,7 @@ class AuthTokenManager(
      * forget device-unregister DELETE can still authenticate.
      */
     fun currentAuthHeader(): String? =
-        credentials.v3AccessToken?.let { "Bearer $it" }
+        tokens.accessToken?.let { "Bearer $it" }
 
     suspend fun login(
         studentId: String,
@@ -83,9 +101,7 @@ class AuthTokenManager(
             val accessToken = result.getString("access_token")
             val refreshToken = result.getString("refresh_token")
             val expiresIn = result.getInt("expires_in")
-            credentials.v3AccessToken = accessToken
-            credentials.v3RefreshToken = refreshToken
-            credentials.v3TokenExpiresAt = System.currentTimeMillis() + expiresIn * 1000L
+            tokens.save(accessToken, refreshToken, now() + expiresIn * 1000L)
             LoginResult(
                 accessToken = accessToken,
                 deviceId = result.getString("device_id"),
@@ -94,25 +110,79 @@ class AuthTokenManager(
     }
 
     fun logout() {
-        credentials.v3AccessToken = null
-        credentials.v3RefreshToken = null
-        credentials.v3TokenExpiresAt = 0L
+        tokens.clear()
     }
 
     private suspend fun validAccessToken(): String? {
-        val access = credentials.v3AccessToken ?: return null
-        val expiresAt = credentials.v3TokenExpiresAt
-        if (System.currentTimeMillis() < expiresAt - 30_000) return access
+        val access = tokens.accessToken ?: return null
+        val expiresAt = tokens.expiresAt
+        if (now() < expiresAt - 30_000) return access
         return refresh()
     }
 
     private suspend fun refresh(): String? = refreshMutex.withLock {
         // Double-check after acquiring lock
-        val access = credentials.v3AccessToken
-        val expiresAt = credentials.v3TokenExpiresAt
-        if (access != null && System.currentTimeMillis() < expiresAt - 30_000) return access
+        val access = tokens.accessToken
+        val expiresAt = tokens.expiresAt
+        if (access != null && now() < expiresAt - 30_000) return access
 
-        val refreshToken = credentials.v3RefreshToken ?: return null
+        val refreshToken = tokens.refreshToken ?: return null
+        // No header rather than the access token in its last seconds, which
+        // would draw a 401, and Home answers a 401 with a relogin.
+        if (isRefreshPaused()) return null
+        // Finishes even when the caller is cancelled: stopped between a send
+        // and what follows it, a token the backend may have rotated would stay
+        // on disk for the next refresh.
+        withContext(NonCancellable) { refreshAndSettle(refreshToken) }
+    }
+
+    private suspend fun refreshAndSettle(refreshToken: String): String? {
+        val outcome = try {
+            withContext(Dispatchers.IO) { sendWithOneResend(refreshToken) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "refresh failed: ${e.javaClass.simpleName}")
+            RefreshOutcome.Refused
+        }
+        when (outcome) {
+            is RefreshOutcome.Refreshed -> {
+                refreshPausedAt = null
+                return outcome.accessToken
+            }
+            RefreshOutcome.Unavailable -> {
+                refreshPausedAt = now()
+                return null
+            }
+            RefreshOutcome.NoReply, RefreshOutcome.Refused -> Unit
+        }
+        if (onRefreshFailed?.invoke() == true) return tokens.accessToken
+        withContext(Dispatchers.IO) { logout() }
+        return null
+    }
+
+    // Measured from the failure rather than to a deadline, so a clock set back
+    // does not stretch the pause.
+    private fun isRefreshPaused(): Boolean {
+        val pausedAt = refreshPausedAt ?: return false
+        return now() - pausedAt in 0 until REFRESH_PAUSE_MS
+    }
+
+    /**
+     * Sends [refreshToken], and once more at once if no reply came back.
+     *
+     * A send whose reply is lost may still have rotated the token. Within 60 s
+     * of a rotation the backend answers the old token once more with a fresh
+     * pair, and takes any later send of it as reuse, so a resend that fails
+     * too is a failed refresh, never a token kept for later.
+     */
+    private fun sendWithOneResend(refreshToken: String): RefreshOutcome {
+        val first = send(refreshToken)
+        if (first != RefreshOutcome.NoReply) return first
+        return send(refreshToken) as? RefreshOutcome.Refreshed ?: RefreshOutcome.Refused
+    }
+
+    private fun send(refreshToken: String): RefreshOutcome {
         val json = JSONObject().apply {
             put("refresh_token", refreshToken)
         }
@@ -122,34 +192,47 @@ class AuthTokenManager(
             .post(body)
             .build()
         return try {
-            withContext(Dispatchers.IO) {
-                httpClient.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        if (onRefreshFailed?.invoke() == true) {
-                            return@use credentials.v3AccessToken
-                        }
-                        logout()
-                        return@use null
-                    }
-                    val result = JSONObject(response.body.string())
-                    val newAccess = result.getString("access_token")
-                    val newRefresh = result.getString("refresh_token")
-                    val expiresIn = result.getInt("expires_in")
-                    credentials.v3AccessToken = newAccess
-                    credentials.v3RefreshToken = newRefresh
-                    credentials.v3TokenExpiresAt = System.currentTimeMillis() + expiresIn * 1000L
-                    newAccess
+            refreshClient.newCall(request).execute().use { response ->
+                if (response.code == 429 || response.code >= 500) {
+                    Log.w(TAG, "refresh got HTTP ${response.code}; keeping the tokens")
+                    return@use RefreshOutcome.Unavailable
                 }
+                if (!response.isSuccessful) return@use RefreshOutcome.Refused
+                val result = JSONObject(response.body.string())
+                val newAccess = result.getString("access_token")
+                val newRefresh = result.getString("refresh_token")
+                val expiresIn = result.getInt("expires_in")
+                tokens.save(newAccess, newRefresh, now() + expiresIn * 1000L)
+                RefreshOutcome.Refreshed(newAccess)
             }
-        } catch (e: Exception) {
-            if (onRefreshFailed?.invoke() == true) {
-                return credentials.v3AccessToken
-            }
-            logout()
-            null
+        } catch (e: IOException) {
+            Log.w(TAG, "refresh got no reply: ${e.javaClass.simpleName}")
+            RefreshOutcome.NoReply
         }
+    }
+
+    private sealed interface RefreshOutcome {
+        // Not a data class, whose toString() would print the token.
+        class Refreshed(val accessToken: String) : RefreshOutcome
+
+        /** No reply came back, so the backend may or may not have rotated the token. */
+        data object NoReply : RefreshOutcome
+
+        /** A 429 or a 5xx: the backend turned the refresh away, so the token is kept for a later one. */
+        data object Unavailable : RefreshOutcome
+
+        /** Anything else, a 401 among them: the app signs in again, as after every failed refresh before. */
+        data object Refused : RefreshOutcome
     }
 
     data class LoginResult(val accessToken: String, val deviceId: String)
     class AuthException(message: String) : Exception(message)
+
+    private companion object {
+        const val TAG = "AuthTokenManager"
+        const val REFRESH_TIMEOUT_SECONDS = 20L
+
+        // The backend limits refreshes per IP over a minute.
+        const val REFRESH_PAUSE_MS = 60_000L
+    }
 }

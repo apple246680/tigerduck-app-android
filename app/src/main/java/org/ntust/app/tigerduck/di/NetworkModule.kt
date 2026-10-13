@@ -68,7 +68,7 @@ object NetworkModule {
         identity: PushIdentity,
         prefs: AppPreferences,
     ): AuthTokenManager = AuthTokenManager(
-        credentials = credentials,
+        tokens = credentials.v3Tokens,
         httpClient = httpClient,
         prefs = prefs,
         deviceUuid = identity.uuid(),
