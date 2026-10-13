@@ -105,6 +105,9 @@ class AuthService @Inject constructor(
 
     suspend fun attemptRelogin(): Boolean {
         if (demoAccount.isActive) return false
+        // Read before the credentials: a sign-out during the harvest below then
+        // keeps the login from storing the departing account's pair.
+        val signIn = authTokenManager.signInGeneration
         val studentId = credentials.ntustStudentId ?: return false
         val password = credentials.ntustPassword
         // Harvest a FRESH Moodle token before the v3 login — the backend
@@ -130,6 +133,7 @@ class AuthService @Inject constructor(
                 password = password ?: "",
                 moodleToken = moodleToken,
                 moodlePrivateToken = null,
+                signInGeneration = signIn,
             )
             android.util.Log.i("AuthService", "auto-relogin: v3 JWT refreshed")
             runCatching { pushRegistration.onSignedIn() }
@@ -170,6 +174,8 @@ class AuthService @Inject constructor(
     suspend fun migrateToV3IfNeeded() {
         if (demoAccount.isActive) return
         if (authTokenManager.isLoggedIn) return
+        // Before the credentials, as in attemptRelogin().
+        val signIn = authTokenManager.signInGeneration
         val studentId = credentials.ntustStudentId ?: return
         val password = credentials.ntustPassword ?: return
         android.util.Log.i("AuthService", "v3 migration: has creds but no JWT, attempting silent login")
@@ -187,6 +193,7 @@ class AuthService @Inject constructor(
                 password = password,
                 moodleToken = moodleToken,
                 moodlePrivateToken = null,
+                signInGeneration = signIn,
             )
         }.onSuccess {
             android.util.Log.i("AuthService", "v3 migration: JWT obtained")
@@ -222,6 +229,9 @@ class AuthService @Inject constructor(
             val success = performSsoLoginUnlocked(normalizedId, password, signingIn = true)
 
             if (success) {
+                // Before the credentials are stored: a sign-out from here on
+                // keeps the v3 login below from storing a pair.
+                val signIn = authTokenManager.signInGeneration
                 credentials.ntustStudentId = normalizedId
                 credentials.ntustPassword = password
                 _authState.value = true
@@ -249,7 +259,8 @@ class AuthService @Inject constructor(
                         password = password,
                         moodleToken = moodleToken,
                         moodlePrivateToken = null,
-                            )
+                        signInGeneration = signIn,
+                    )
                 }.onFailure { e ->
                     if (e is CancellationException) throw e
                     android.util.Log.w("AuthService", "v3 login failed (best-effort): ${e.logSummary()}")
