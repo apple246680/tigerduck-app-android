@@ -132,7 +132,10 @@ class ImportedClassTableStore internal constructor(
         loadIfNeeded()
         val account = signedInStudentId()
         if (account != null) accountDidSignInLocked(account)
-        val terms = code.terms.map { ImportedPerson.Term(it.semester, it.courseNos, courses[it.semester].orEmpty()) }
+        // Copies, so a caller reusing its lists cannot change what the store holds and wrote.
+        val terms = code.terms.map {
+            ImportedPerson.Term(it.semester, it.courseNos.toList(), courses[it.semester].orEmpty().toList())
+        }
         // The file keeps milliseconds, so the person read back equals this one.
         val at = importedAt.truncatedTo(ChronoUnit.MILLIS)
 

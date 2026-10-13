@@ -171,6 +171,22 @@ class ImportedClassTableStoreTest {
     }
 
     @Test
+    fun `lists the caller changes after an import do not change the person imported`() = runTest {
+        val store = store()
+        val courseNos = mutableListOf("CS1010001")
+        val courses = mutableListOf(Course(courseNo = "CS1010001", courseName = "Circuits"))
+
+        store.add(code("B11300001", Term("1151", courseNos)), "Ming", mapOf("1151" to courses))
+        courseNos.clear()
+        courses.clear()
+
+        val term = store.tables.value.people.single().terms.single()
+        assertEquals(listOf("CS1010001"), term.courseNos)
+        assertEquals(listOf("Circuits"), term.courses.map { it.courseName })
+        assertEquals(store.tables.value.people, store().load().people)
+    }
+
+    @Test
     fun `a file that does not decode, as one from a later layout might not, is not written over`() = runTest {
         for (kept in listOf(
             """{"version":1,"people":"written by a later version"}""",
