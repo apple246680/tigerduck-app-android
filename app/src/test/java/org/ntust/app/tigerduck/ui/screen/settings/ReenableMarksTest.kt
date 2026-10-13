@@ -15,9 +15,9 @@ import org.robolectric.annotation.Config
 
 /**
  * [markForReenableCheck]: which categories switched back on wait for the
- * re-enable check. A phone that has not synced the signed-in account holds
- * none of its data, so the check has nothing to compare there, and Use Local
- * would send the emptied caches over the server's.
+ * re-enable check. A phone that has not synced a category of the signed-in
+ * account holds none of its data, so the check has nothing to compare there,
+ * and Use Local would send the emptied caches over the server's.
  */
 @RunWith(RobolectricTestRunner::class)
 // A plain Application: the real one is a Hilt app these tests do not need.
@@ -31,23 +31,26 @@ class ReenableMarksTest {
         prefs = AppPreferences(RuntimeEnvironment.getApplication())
     }
 
+    // What HomeBackendSync.pull records once a full sync has run.
+    private fun syncFully() = recordSyncedCategories(prefs, categoriesSwitchedOn(prefs))
+
     // What turning TigerSync on does with every category's switch on.
     private fun turnTigerSyncOn(signedIn: Boolean = true) {
-        for (category in CATEGORIES) markForReenableCheck(prefs, category, signedIn)
+        for (category in REENABLE_CATEGORIES) markForReenableCheck(prefs, category, signedIn)
     }
 
     @Test
     fun `a phone that has synced the account marks every category switched back on`() {
-        prefs.hasSyncedAccount = true
+        syncFully()
 
         turnTigerSyncOn()
 
-        assertEquals(CATEGORIES, prefs.pendingConflictCategories)
+        assertEquals(REENABLE_CATEGORIES, prefs.pendingConflictCategories)
     }
 
     @Test
     fun `after a sign-out, the next sign-in marks nothing and its first sync takes the server's marks`() {
-        prefs.hasSyncedAccount = true
+        syncFully()
         // What AuthService.logout clears.
         prefs.clearSyncStamps()
 
@@ -58,9 +61,35 @@ class ReenableMarksTest {
     }
 
     @Test
+    fun `a category switched off in every sync since the sign-in is left to its first sync`() {
+        prefs.syncCourses = false
+        prefs.syncCourseColors = false
+        syncFully()
+
+        // Courses back on, which takes their colours with them.
+        prefs.syncCourses = true
+        prefs.syncCourseColors = true
+        turnTigerSyncOn()
+
+        assertEquals(setOf("course_names", "assignments"), prefs.pendingConflictCategories)
+    }
+
+    @Test
+    fun `a category switched on or off while a sync runs is not counted as synced by it`() {
+        prefs.syncCourses = false
+        val switchedOnBefore = categoriesSwitchedOn(prefs)
+
+        prefs.syncCourses = true
+        prefs.syncCourseNames = false
+        recordSyncedCategories(prefs, switchedOnBefore)
+
+        assertEquals(setOf("course_colors", "assignments"), prefs.syncedCategories)
+    }
+
+    @Test
     fun `signed out, nothing is marked for whoever signs in next`() {
         // As after a sync, so the sign-in alone decides.
-        prefs.hasSyncedAccount = true
+        syncFully()
 
         turnTigerSyncOn(signedIn = false)
 
@@ -71,12 +100,14 @@ class ReenableMarksTest {
     fun `an install signed in at the update keeps its re-enable checks`() {
         // Left by an older build, its check not run yet.
         prefs.pendingConflictCategories = setOf("assignments")
+        // Off at the update, with whatever this phone changed since.
+        prefs.syncCourses = false
 
         DataMigration.settleReenableCheck(prefs, signedIn = true)
         assertEquals(setOf("assignments"), prefs.pendingConflictCategories)
 
         turnTigerSyncOn()
-        assertEquals(CATEGORIES, prefs.pendingConflictCategories)
+        assertEquals(REENABLE_CATEGORIES, prefs.pendingConflictCategories)
     }
 
     @Test
@@ -98,9 +129,5 @@ class ReenableMarksTest {
 
         assertEquals(emptySet<String>(), prefs.pendingConflictCategories)
         assertFalse(AssignmentOverrideReconciler.isHeldForReenable(prefs.pendingConflictCategories))
-    }
-
-    private companion object {
-        val CATEGORIES = setOf("courses", "course_colors", "course_names", "assignments")
     }
 }

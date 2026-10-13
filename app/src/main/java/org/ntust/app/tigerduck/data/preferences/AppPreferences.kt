@@ -182,15 +182,16 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
         set(value) = prefs.edit().putStringSet("pendingConflictCategories", value).apply()
 
     /**
-     * Whether a full sync has applied the signed-in account's data on this
-     * phone. Until one has, a category switched back on is not marked for
-     * the re-enable check: the phone holds none of the account's data to
-     * compare. Set by `HomeBackendSync.pull` and `DataMigration.migrate3to4`,
+     * The re-enable check's categories, named as in [pendingConflictCategories],
+     * whose data a full sync has applied on this phone for the signed-in
+     * account. Only these are marked for the check when switched back on: for
+     * any other, the phone holds none of the account's data to compare. Added
+     * to by `HomeBackendSync.pull`, filled by `DataMigration.migrate3to4`, and
      * cleared at sign-out by [clearSyncStamps].
      */
-    var hasSyncedAccount: Boolean
-        get() = prefs.getBoolean("hasSyncedAccount", false)
-        set(value) = prefs.edit().putBoolean("hasSyncedAccount", value).apply()
+    var syncedCategories: Set<String>
+        get() = prefs.getStringSet("syncedCategories", emptySet()) ?: emptySet()
+        set(value) = prefs.edit().putStringSet("syncedCategories", value).apply()
 
     var hasCompletedOnboarding: Boolean
         get() = prefs.getBoolean("hasCompletedOnboarding", false)
@@ -603,7 +604,7 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
 
     /**
      * On sign-out, this stamp, the background worker's two below and
-     * [hasSyncedAccount]: what they record belonged to the account that
+     * [syncedCategories]: what they record belonged to the account that
      * left, and the next account's worker must not wait out the old one's
      * hour before its first sync.
      */
@@ -612,7 +613,7 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
             .remove("schoolDataSyncedAtMs")
             .remove("backgroundOverridesSyncedAtMs")
             .remove("backgroundCoursesSyncedAtMs")
-            .remove("hasSyncedAccount")
+            .remove("syncedCategories")
             .apply()
         _schoolDataSyncedAtMs.value = 0L
     }

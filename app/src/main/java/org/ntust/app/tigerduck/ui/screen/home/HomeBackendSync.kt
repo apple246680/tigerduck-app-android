@@ -54,6 +54,8 @@ import org.ntust.app.tigerduck.ui.component.ServerFailureSimulator
 import org.ntust.app.tigerduck.ui.component.ServerKind
 import org.ntust.app.tigerduck.ui.component.ServerStatus
 import org.ntust.app.tigerduck.ui.component.ServerStatusTracker
+import org.ntust.app.tigerduck.ui.screen.settings.categoriesSwitchedOn
+import org.ntust.app.tigerduck.ui.screen.settings.recordSyncedCategories
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.logSummary
 import org.ntust.app.tigerduck.widget.WidgetUpdater
@@ -133,6 +135,7 @@ class HomeBackendSync @Inject constructor(
         try {
             if (BuildConfig.DEBUG) ServerFailureSimulator.check(ServerKind.BACKEND)
             val account = authService.storedStudentId
+            val switchedOn = categoriesSwitchedOn(prefs)
             val generation = courseIgnoreSync.currentGeneration()
             // Unsent course-ignore changes go first, so the snapshot has them.
             courseIgnoreSync.retryPending()
@@ -153,9 +156,9 @@ class HomeBackendSync @Inject constructor(
             result.holidayOverrides?.let(academicCalendar::applySyncedOverrides)
             syncCourseList(result)
             markCourseSyncAt()
-            // Only for the account this sync was for: stamped after a sign-out,
-            // it would mark the next account's categories before its first sync.
-            if (authService.isStillSignedInAs(account)) prefs.hasSyncedAccount = true
+            // Only for the account this sync was for: recorded after a sign-out,
+            // it would mark the next account's categories before their first sync.
+            if (authService.isStillSignedInAs(account)) recordSyncedCategories(prefs, switchedOn)
             state.lastKnownRevision = result.currentRevision
             ServerStatusTracker.set(ServerStatus.OK, ServerKind.BACKEND)
             prefs.setLastSyncSource(SyncSource.BACKEND)

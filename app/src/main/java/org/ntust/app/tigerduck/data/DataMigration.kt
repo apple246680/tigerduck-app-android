@@ -5,6 +5,7 @@ import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
+import org.ntust.app.tigerduck.ui.screen.settings.REENABLE_CATEGORIES
 import org.ntust.app.tigerduck.util.logSummary
 import java.io.File
 import javax.inject.Inject
@@ -162,12 +163,12 @@ class DataMigration @Inject constructor(
     }
 
     /**
-     * Seeds the re-enable check's record ([AppPreferences.hasSyncedAccount]),
+     * Seeds the re-enable check's record ([AppPreferences.syncedCategories]),
      * which no earlier build kept. An install signed in at this update counts
-     * as synced, so turning TigerSync back on still asks the question rather
-     * than let the first sync take the server's data over changes made here
-     * while it was off. Signed out, a check an older build left pending would
-     * wait for whoever signs in next, so it is dropped.
+     * as synced in every category, so switching one back on still asks the
+     * question rather than let the first sync take the server's data over
+     * changes made here while it was off. Signed out, a check an older build
+     * left pending would wait for whoever signs in next, so it is dropped.
      */
     private fun migrate3to4() {
         settleReenableCheck(prefs, signedIn = credentials.ntustStudentId != null)
@@ -225,7 +226,7 @@ class DataMigration @Inject constructor(
          */
         internal fun settleReenableCheck(prefs: AppPreferences, signedIn: Boolean) {
             if (signedIn) {
-                prefs.hasSyncedAccount = true
+                prefs.syncedCategories = REENABLE_CATEGORIES
             } else {
                 prefs.pendingConflictCategories = emptySet()
             }
