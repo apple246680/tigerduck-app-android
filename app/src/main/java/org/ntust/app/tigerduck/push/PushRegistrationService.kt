@@ -331,50 +331,48 @@ class PushRegistrationService @Inject constructor(
         }
         // Snapshot token under the mutex so a concurrent token rotation or
         // updateServerPushOptOut can't flip state between read and POST.
-        val (token, signedIn) = mutex.withLock {
+        val token = mutex.withLock {
             // An unregister in flight is not an attempt at anything: the row
             // is being deleted on purpose, nothing is owed while it is, and
             // moving the retry's clock here would space out the registration
             // the next sign-in asks for.
             if (isUnregistering) return false
             registrationsRunning++
-            fcmToken to authTokenManager.isLoggedIn
+            fcmToken
         }
-        var landed = false
+        var pass: RegistrationPass? = null
         try {
-            landed = registerWith(token)
-            return landed
+            return registerWith(token).also { pass = it }.landed
         } finally {
             // Also after an unregister cancelled this pass, or the count stays up.
-            withContext(NonCancellable) { endRegistration(token, signedIn, landed) }
+            withContext(NonCancellable) { endRegistration(token, pass) }
         }
     }
 
     /**
-     * Ends a [performRegister] pass that started with [token] and [signedIn].
-     * A registration asked for while it ran starts now, unless the pass landed
-     * and nothing it registered has changed since: so a failure is followed at
-     * once rather than after the retry's backoff, and a token or sign-in that
-     * arrived during the pass is still registered.
+     * Ends a [performRegister] pass that sent [token]. A registration asked
+     * for while it ran starts now, unless [pass] covered it: so a failure is
+     * followed at once rather than after the retry's backoff, and a token or
+     * sign-in that arrived during the pass is still registered.
      */
-    private suspend fun endRegistration(token: String?, signedIn: Boolean, landed: Boolean) {
+    private suspend fun endRegistration(token: String?, pass: RegistrationPass?) {
         mutex.withLock {
             registrationsRunning--
             if (registrationsRunning > 0 || !registrationAskedWhileRunning) return@withLock
             registrationAskedWhileRunning = false
-            val unchanged = token == fcmToken && (signedIn || !authTokenManager.isLoggedIn)
-            if (landed && unchanged) registrationOwed = false else requestRegistration()
+            val covered = pass?.covers(token, fcmToken, authTokenManager.isLoggedIn) == true
+            if (covered) registrationOwed = false else requestRegistration()
         }
     }
 
-    private suspend fun registerWith(token: String?): Boolean {
+    private suspend fun registerWith(token: String?): RegistrationPass {
         if (token == null) {
             // No token in this process — the fetch has never succeeded. This
             // pass failed as surely as a rejected POST does, so it has to
             // climb the same backoff; without it the retry spins on every
             // trigger for as long as the device stays offline.
             recordRegistrationAttempt(landed = false)
-            return false
+            return RegistrationPass(landed = false)
         }
         // Nothing identifying leaves the device until the user has been
         // through onboarding and seen the privacy page. `fcmBootstrap.start()`
@@ -394,7 +392,7 @@ class PushRegistrationService @Inject constructor(
         // right: this process did just run the registration path.
         if (!appPreferences.hasCompletedOnboarding) {
             recordRegistrationAttempt(landed = false, countsAsFailure = false)
-            return false
+            return RegistrationPass(landed = false)
         }
         val clientDeviceId = identity.uuid()
         // Announce the hardware first, every time, signed in or not. The two
@@ -418,7 +416,8 @@ class PushRegistrationService @Inject constructor(
                     lastError = announceError?.let { e -> e.message ?: e::class.java.simpleName },
                 )
             }
-            return (announceError == null).also { recordRegistrationAttempt(landed = it) }
+            recordRegistrationAttempt(landed = announceError == null)
+            return RegistrationPass(landed = announceError == null)
         }
         return runCatching {
             api.register(
@@ -450,7 +449,10 @@ class PushRegistrationService @Inject constructor(
                 updateDiagnostic { it.copy(lastError = e.message ?: e::class.java.simpleName) }
                 false
             },
-        ).also { recordRegistrationAttempt(landed = it) }
+        ).let { landed ->
+            recordRegistrationAttempt(landed = landed)
+            RegistrationPass(landed, withAccount = true)
+        }
     }
 
     /**
@@ -792,6 +794,22 @@ internal fun RegistrationAttemptState.afterRegistrationAttempt(
     countsAsFailure -> copy(consecutiveFailures = consecutiveFailures + 1)
     else -> this
 }
+
+/**
+ * One pass through the registration path: whether it [landed], and whether it
+ * went [withAccount], registering the signed-in account as well as announcing
+ * the device.
+ */
+internal data class RegistrationPass(val landed: Boolean, val withAccount: Boolean = false)
+
+/**
+ * Whether this pass already did what a registration asked for while it ran
+ * would do, so that none follows it: it landed, [sentToken] is still the
+ * token held, and it registered the account if one is signed in now. A pass
+ * made signed out lands with the device announced alone.
+ */
+internal fun RegistrationPass.covers(sentToken: String?, tokenNow: String?, signedInNow: Boolean): Boolean =
+    landed && sentToken == tokenNow && (withAccount || !signedInNow)
 
 /**
  * What a registration request does: the bookkeeping it leaves behind, and

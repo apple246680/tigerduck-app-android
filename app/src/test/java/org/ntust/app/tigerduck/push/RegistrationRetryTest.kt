@@ -163,4 +163,36 @@ class RegistrationRetryTest {
             registrationRetryBackoffMillis(100),
         )
     }
+
+    // RegistrationPass.covers: whether a registration asked for while one ran still goes out.
+
+    @Test
+    fun `a sign-in after a signed-out pass announced the device is still registered`() {
+        val announced = RegistrationPass(landed = true)
+
+        assertFalse(
+            "the account was signed in after the pass chose to announce the device alone",
+            announced.covers(sentToken = "fcm-1", tokenNow = "fcm-1", signedInNow = true),
+        )
+        assertTrue(
+            "still signed out, there is nothing more to register",
+            announced.covers(sentToken = "fcm-1", tokenNow = "fcm-1", signedInNow = false),
+        )
+    }
+
+    @Test
+    fun `a pass that registered the current token and account covers a request made while it ran`() {
+        val registered = RegistrationPass(landed = true, withAccount = true)
+
+        assertTrue(registered.covers(sentToken = "fcm-1", tokenNow = "fcm-1", signedInNow = true))
+        assertFalse(
+            "a token that arrived during the pass is registered after it",
+            registered.covers(sentToken = "fcm-1", tokenNow = "fcm-2", signedInNow = true),
+        )
+        assertFalse(
+            "a failed pass is followed at once, not after the backoff",
+            RegistrationPass(landed = false, withAccount = true)
+                .covers(sentToken = "fcm-1", tokenNow = "fcm-1", signedInNow = true),
+        )
+    }
 }

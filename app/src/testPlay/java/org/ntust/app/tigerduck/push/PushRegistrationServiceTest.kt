@@ -47,6 +47,7 @@ class PushRegistrationServiceTest {
 
     private lateinit var context: Application
     private lateinit var prefs: AppPreferences
+    private lateinit var tokens: V3TokenStore
     private val backend = FakeBackend()
 
     @Before
@@ -54,12 +55,16 @@ class PushRegistrationServiceTest {
         context = RuntimeEnvironment.getApplication()
         prefs = AppPreferences(context)
         prefs.hasCompletedOnboarding = true
+        tokens = V3TokenStore(context.getSharedPreferences("v3-tokens-test", Context.MODE_PRIVATE))
     }
 
-    /** Signed in, with an access token that needs no refresh. */
-    private fun TestScope.service(): PushRegistrationService {
-        val tokens = V3TokenStore(context.getSharedPreferences("v3-tokens-test", Context.MODE_PRIVATE))
+    /** A session whose access token needs no refresh. */
+    private fun signIn() {
         tokens.save("access-1", "refresh-1", expiresAt = Long.MAX_VALUE)
+    }
+
+    private fun TestScope.service(signedIn: Boolean = true): PushRegistrationService {
+        if (signedIn) signIn()
         val auth = AuthTokenManager(tokens, backend.client, prefs, deviceUuid = "device-1")
         return PushRegistrationService(
             context = context,
@@ -190,10 +195,29 @@ class PushRegistrationServiceTest {
         held.release(200)
         service.awaitRegistrations()
 
-        val tokens = backend.received(REGISTER).map {
+        val sent = backend.received(REGISTER).map {
             JSONObject(it.body).getJSONObject("push_token").getString("token_value")
         }
-        assertEquals(listOf("fcm-1", "fcm-2"), tokens)
+        assertEquals(listOf("fcm-1", "fcm-2"), sent)
+    }
+
+    @Test
+    fun `a sign-in while a signed-out registration is on the wire registers the account once`() = runTest {
+        val service = service(signedIn = false)
+        val held = backend.hold(ANNOUNCE)
+        service.update("fcm-1")
+        held.arrived.await()
+
+        signIn()
+        service.onSignedIn()
+        held.release(200)
+        service.awaitRegistrations()
+
+        // The pass reads the session after its announce, so it registers the account itself.
+        val registrations = backend.received(REGISTER)
+        assertEquals(1, registrations.size)
+        assertEquals("Bearer access-1", registrations.single().authorization)
+        assertTrue(service.diagnostic.value.isRegistered)
     }
 
     private companion object {
@@ -209,7 +233,7 @@ class PushRegistrationServiceTest {
  * [Held] answer keeps its request waiting until the test releases it.
  */
 private class FakeBackend {
-    class Received(val endpoint: String, val body: String)
+    class Received(val endpoint: String, val body: String, val authorization: String?)
 
     class Held {
         val arrived = CompletableDeferred<Unit>()
@@ -249,7 +273,7 @@ private class FakeBackend {
             else -> path
         }
         val body = request.body?.let { Buffer().also(it::writeTo).readUtf8() }.orEmpty()
-        received += Received(endpoint, body)
+        received += Received(endpoint, body, request.header("Authorization"))
         val code = when (val next = queued[endpoint]?.poll()) {
             is Held -> {
                 next.arrived.complete(Unit)
