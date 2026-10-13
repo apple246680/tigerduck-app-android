@@ -68,11 +68,14 @@ class ReenableMarksTest {
     }
 
     @Test
-    fun `an install signed in at the update still marks every category switched back on`() {
+    fun `an install signed in at the update keeps its re-enable checks`() {
+        // Left by an older build, its check not run yet.
+        prefs.pendingConflictCategories = setOf("assignments")
+
         DataMigration.settleReenableCheck(prefs, signedIn = true)
+        assertEquals(setOf("assignments"), prefs.pendingConflictCategories)
 
         turnTigerSyncOn()
-
         assertEquals(CATEGORIES, prefs.pendingConflictCategories)
     }
 

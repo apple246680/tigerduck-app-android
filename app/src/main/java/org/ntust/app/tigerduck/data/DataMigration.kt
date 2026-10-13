@@ -162,7 +162,7 @@ class DataMigration @Inject constructor(
     }
 
     /**
-     * Starts the re-enable check's record ([AppPreferences.hasSyncedAccount]),
+     * Seeds the re-enable check's record ([AppPreferences.hasSyncedAccount]),
      * which no earlier build kept. An install signed in at this update counts
      * as synced, so turning TigerSync back on still asks the question rather
      * than let the first sync take the server's data over changes made here
@@ -219,7 +219,10 @@ class DataMigration @Inject constructor(
                 }
         }
 
-        /** [migrate3to4], here so a test can run it without a [CredentialManager]. */
+        /**
+         * [migrate3to4]'s work, here so a test can run it: this class needs a
+         * [CredentialManager], which needs the Android Keystore.
+         */
         internal fun settleReenableCheck(prefs: AppPreferences, signedIn: Boolean) {
             if (signedIn) {
                 prefs.hasSyncedAccount = true
