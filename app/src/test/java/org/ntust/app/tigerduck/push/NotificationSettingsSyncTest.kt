@@ -1060,9 +1060,9 @@ class NotificationSettingsSyncTest {
         val device = Device(backgroundScope)
         device.signIn("A")
         device.server("A").document = json("""{"live_activity": {"class_preparing_lead_seconds": 3600}}""")
-        // A lapsed refresh token sends AuthTokenManager.authHeader() into
-        // AuthService.attemptRelogin while the pull's own request is being
-        // built, and the relogin ends with the catch-up every sign-in makes.
+        // A lapsed refresh token sends AuthTokenManager.authHeader() into the
+        // automatic sign-in while the pull's own request is being built, and
+        // the sign-in ends with the catch-up every sign-in makes.
         device.server("A").beforeRead = { device.sync.pushIfUnconfirmed() }
 
         val pulled = device.sync.pullNow()

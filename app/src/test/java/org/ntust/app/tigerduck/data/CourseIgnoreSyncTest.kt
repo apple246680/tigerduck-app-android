@@ -13,6 +13,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.ntust.app.tigerduck.academic.AcademicCalendarStore
+import org.ntust.app.tigerduck.auth.NotSignedInException
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.push.BackendSyncResult
@@ -498,13 +499,14 @@ class CourseIgnoreSyncTest {
     }
 
     @Test
-    fun `no network, a session to renew or a server that is down is not a refusal`() = runTest {
+    fun `no network, no session or one to renew, or a server that is down is not a refusal`() = runTest {
         answer = { throw java.io.IOException("offline") }
         setIgnored("AAA")
         repeat(CourseIgnoreSync.MAX_ATTEMPTS + 1) { sync.retryPending() }
 
         assertEquals(CourseIgnoreSync.MAX_ATTEMPTS + 2, sent.size)
         assertFalse(CourseIgnoreSync.refuses(PushApiException("unauthorized", 401)))
+        assertFalse(CourseIgnoreSync.refuses(NotSignedInException()))
         assertFalse(CourseIgnoreSync.refuses(PushApiException("unavailable", 503)))
         assertTrue(CourseIgnoreSync.refuses(PushApiException("not found", 404)))
         assertTrue(CourseIgnoreSync.refuses(IllegalStateException("bad body")))

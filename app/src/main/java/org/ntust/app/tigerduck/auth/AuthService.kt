@@ -28,6 +28,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.cancellation.CancellationException
 import org.ntust.app.tigerduck.auth.AuthTokenManager
+import org.ntust.app.tigerduck.auth.AuthTokenManager.SignInAttempt
 import org.ntust.app.tigerduck.util.logSummary
 
 @Singleton
@@ -99,60 +100,42 @@ class AuthService @Inject constructor(
 
     private val loginMutex = Mutex()
 
-    init {
-        authTokenManager.onRefreshFailed = {
-            attemptRelogin()
-        }
-    }
-
-    suspend fun attemptRelogin(): Boolean {
-        if (demoAccount.isActive) return false
-        // Read before the credentials: a sign-out during the harvest below then
-        // keeps the login from storing the departing account's pair.
-        val signIn = authTokenManager.signInGeneration
-        val studentId = credentials.ntustStudentId ?: return false
-        val password = credentials.ntustPassword
-        // Harvest a FRESH Moodle token before the v3 login — the backend
-        // verifies it against moodle2, and the stored one may be stale, which
-        // gets the login rejected with 401 invalid_token (see login()).
-        // Best-effort: fall back to the stored token if the harvest fails.
-        val moodleToken = if (password != null) {
-            try {
-                moodleTokenService.obtainToken(studentId, password)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                android.util.Log.w("AuthService", "auto-relogin: Moodle token harvest failed; using stored: ${e.logSummary()}")
-                credentials.moodleToken
+    // The automatic backend sign-in, after a refused refresh and whenever
+    // something finds no session.
+    private val storedAccountSignIn = StoredAccountSignIn(
+        tokens = authTokenManager,
+        isDemo = { demoAccount.isActive },
+        studentId = { credentials.ntustStudentId },
+        password = { credentials.ntustPassword },
+        storedMoodleToken = { credentials.moodleToken },
+        // Unlike obtainToken(), stores no token once the account has signed
+        // out, so a sign-out during the harvest leaves none for the next one.
+        harvestMoodleToken = { moodleTokenService.refreshToken() },
+        afterSignIn = {
+            appScope.launch {
+                runCatching { pushRegistration.onSignedIn() }
+                    .onFailure { e -> android.util.Log.w("AuthService", "registration after auto sign-in failed: ${e.logSummary()}") }
             }
-        } else {
-            credentials.moodleToken
-        }
-        if (moodleToken.isNullOrEmpty()) return false
-        return try {
-            authTokenManager.login(
-                studentId = studentId,
-                password = password ?: "",
-                moodleToken = moodleToken,
-                moodlePrivateToken = null,
-                signInGeneration = signIn,
-            )
-            android.util.Log.i("AuthService", "auto-relogin: v3 JWT refreshed")
-            runCatching { pushRegistration.onSignedIn() }
             // Deliver a live_activity edit that is still unconfirmed: one made
             // while signed out, or while the v3 JWT had lapsed. With nothing
             // pending this sends nothing, so this device's values never
             // overwrite what another device wrote. It must not mark anything
-            // either, because this relogin can run from inside a pull's own
+            // either, because this sign-in can run from inside a pull's own
             // request — see NotificationSettingsSync.pushIfUnconfirmed.
             notificationSettingsSync.pushIfUnconfirmed()
-            true
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            android.util.Log.w("AuthService", "auto-relogin failed: ${e.logSummary()}")
-            false
-        }
+        },
+    )
+
+    init {
+        authTokenManager.signInWithStoredAccount = storedAccountSignIn::signIn
     }
+
+    /**
+     * Signs in to the backend again after it refused the session, as the
+     * automatic sign-in: it shares an attempt that is under way, and makes
+     * none in the pause after one that failed. Says whether it signed in.
+     */
+    suspend fun attemptRelogin(): Boolean = authTokenManager.signInAgain()
 
     val storedStudentId: String? get() = credentials.ntustStudentId
 
@@ -166,48 +149,6 @@ class AuthService @Inject constructor(
         authState.value && storedStudentId == studentId
     internal val storedPassword: String? get() = credentials.ntustPassword
     val storedMoodleToken: String? get() = credentials.moodleToken
-
-    /**
-     * Upgrade migration: users upgrading from v2 have stored NTUST credentials
-     * but no v3 JWT. Detect this and silently perform the v3 login so push
-     * registration works without requiring a manual log-out/log-in cycle.
-     * Safe to call on every launch — no-ops if already signed in or no creds.
-     */
-    suspend fun migrateToV3IfNeeded() {
-        if (demoAccount.isActive) return
-        if (authTokenManager.isLoggedIn) return
-        // Before the credentials, as in attemptRelogin().
-        val signIn = authTokenManager.signInGeneration
-        val studentId = credentials.ntustStudentId ?: return
-        val password = credentials.ntustPassword ?: return
-        android.util.Log.i("AuthService", "v3 migration: has creds but no JWT, attempting silent login")
-        val moodleToken = try {
-            moodleTokenService.obtainToken(studentId, password)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            android.util.Log.w("AuthService", "v3 migration: Moodle token harvest failed: ${e.logSummary()}")
-            credentials.moodleToken ?: return
-        }
-        runCatching {
-            authTokenManager.login(
-                studentId = studentId,
-                password = password,
-                moodleToken = moodleToken,
-                moodlePrivateToken = null,
-                signInGeneration = signIn,
-            )
-        }.onSuccess {
-            android.util.Log.i("AuthService", "v3 migration: JWT obtained")
-            runCatching { pushRegistration.onSignedIn() }
-                .onFailure { e -> if (e is CancellationException) throw e }
-            // Same catch-up as attemptRelogin(), for the v2->v3 migration.
-            notificationSettingsSync.pushIfUnconfirmed()
-        }.onFailure { e ->
-            if (e is CancellationException) throw e
-            android.util.Log.w("AuthService", "v3 migration: login failed: ${e.logSummary()}")
-        }
-    }
 
     suspend fun login(studentId: String, password: String): Boolean = loginMutex.withLock {
         _isLoggingIn.value = true
@@ -232,48 +173,55 @@ class AuthService @Inject constructor(
             val success = performSsoLoginUnlocked(normalizedId, password, signingIn = true)
 
             if (success) {
-                // Before the credentials are stored: a sign-out from here on
-                // keeps the v3 login below from storing a pair.
-                val signIn = authTokenManager.signInGeneration
-                credentials.ntustStudentId = normalizedId
-                credentials.ntustPassword = password
-                // Before the class table can show: another account must not inherit what the last
-                // one imported, whether imported while signed out or left by a wipe that never ran.
-                importedClassTables.accountDidSignIn(normalizedId)
-                _authState.value = true
-                // Best-effort: v3 JWT login failures must not block the SSO
-                // session — the push system falls back to the shared secret if
-                // no Bearer token is available.
-                // Harvest a FRESH Moodle token before the v3 login. The backend
-                // verifies it against moodle2, and the stored token is stale or
-                // empty right after SSO (especially on a fresh install) — which
-                // makes the backend reject the login with 401 invalid_token.
-                // iOS does the same obtain-then-login. Best-effort: fall back to
-                // any stored token, and never let a harvest failure block the
-                // SSO session.
-                val moodleToken = try {
-                    moodleTokenService.obtainToken(normalizedId, password)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    android.util.Log.w("AuthService", "Moodle token harvest failed; using stored: ${e.logSummary()}")
-                    credentials.moodleToken
-                }
-                runCatching {
-                    authTokenManager.login(
-                        studentId = normalizedId,
-                        password = password,
-                        moodleToken = moodleToken,
-                        moodlePrivateToken = null,
-                        signInGeneration = signIn,
-                    )
-                }.onFailure { e ->
-                    if (e is CancellationException) throw e
-                    android.util.Log.w("AuthService", "v3 login failed (best-effort): ${e.logSummary()}")
+                // Registered before authState flips: an automatic sign-in it
+                // sets off, such as Home's pull, waits for this one instead of
+                // logging in too. signIn is read before the credentials are
+                // stored, so a sign-out from here on keeps the v3 login below
+                // from storing a pair.
+                authTokenManager.signInInteractively { signIn ->
+                    credentials.ntustStudentId = normalizedId
+                    credentials.ntustPassword = password
+                    // Before the class table can show: another account must not inherit what the last
+                    // one imported, whether imported while signed out or left by a wipe that never ran.
+                    importedClassTables.accountDidSignIn(normalizedId)
+                    _authState.value = true
+                    // Best-effort: v3 JWT login failures must not block the SSO
+                    // session. The automatic sign-in tries again later; this one
+                    // never waits for its pause.
+                    // Harvest a FRESH Moodle token before the v3 login. The backend
+                    // verifies it against moodle2, and the stored token is stale or
+                    // empty right after SSO (especially on a fresh install) — which
+                    // makes the backend reject the login with 401 invalid_token.
+                    // iOS does the same obtain-then-login. Best-effort: fall back to
+                    // any stored token, and never let a harvest failure block the
+                    // SSO session.
+                    val moodleToken = try {
+                        moodleTokenService.obtainToken(normalizedId, password)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        android.util.Log.w("AuthService", "Moodle token harvest failed; using stored: ${e.logSummary()}")
+                        credentials.moodleToken
+                    }
+                    try {
+                        authTokenManager.login(
+                            studentId = normalizedId,
+                            password = password,
+                            moodleToken = moodleToken,
+                            moodlePrivateToken = null,
+                            signInGeneration = signIn,
+                        )
+                        SignInAttempt.SIGNED_IN
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        android.util.Log.w("AuthService", "v3 login failed (best-effort): ${e.logSummary()}")
+                        SignInAttempt.FAILED
+                    }
                 }
                 runCatching { pushRegistration.onSignedIn() }
                     .onFailure { e -> if (e is CancellationException) throw e }
-                // Same catch-up as attemptRelogin(), for a fresh SSO login.
+                // Same catch-up as the automatic sign-in, for a fresh SSO login.
                 notificationSettingsSync.pushIfUnconfirmed()
             }
 
@@ -355,7 +303,7 @@ class AuthService @Inject constructor(
         // authTokenManager.logout() both null the v3 access token, and
         // pushRegistration.unregister() runs its DELETE fire-and-forget on its
         // own scope — so without a captured header the device-unregister call
-        // would go out unauthenticated, 401, and leak the device row.
+        // would find no session to go out with, and leak the device row.
         val authHeader = authTokenManager.currentAuthHeader()
         credentials.clearNtustCredentials()
         credentials.clearLibraryCredentials()

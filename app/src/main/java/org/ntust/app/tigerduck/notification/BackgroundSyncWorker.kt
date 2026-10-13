@@ -156,10 +156,10 @@ class BackgroundSyncWorker @AssistedInject constructor(
             prefs.setLastSyncSource(SyncSource.NONE)
             return
         }
-        // No v3 JWT yet (silent migration pending or failed): NONE, not LOCAL —
+        // No v3 JWT, and signing in got none: NONE, not LOCAL —
         // LOCAL would light the "sync from local only" indicator even though no
-        // sync was ever attempted. Mirrors HomeViewModel.syncOverridesFromBackend.
-        if (!authTokenManager.isLoggedIn) {
+        // sync was ever attempted. Mirrors HomeBackendSync.pull.
+        if (!authTokenManager.signInIfSignedOut()) {
             prefs.setLastSyncSource(SyncSource.NONE)
             return
         }

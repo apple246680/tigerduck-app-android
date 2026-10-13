@@ -225,7 +225,8 @@ class PushRegistrationService @Inject constructor(
         }
     }
 
-    fun unregister(authHeaderOverride: String? = null) {
+    /** [authHeader] is the one a sign-out takes before it wipes the tokens; see [PushApiClient.unregister]. */
+    fun unregister(authHeader: String?) {
         // The demo account registered nothing, so there is nothing to delete
         // and no server to tell. Read now rather than in the coroutine:
         // sign-out leaves demo mode straight after calling this.
@@ -250,7 +251,7 @@ class PushRegistrationService @Inject constructor(
             }
             val deviceId = identity.uuid()
             try {
-                runCatching { api.unregister(deviceId, authHeaderOverride) }
+                runCatching { api.unregister(deviceId, authHeader) }
                     .onFailure { e ->
                         if (e is CancellationException) throw e
                         Log.w(TAG, "unregister failed: ${e.logSummary()}")
@@ -410,8 +411,9 @@ class PushRegistrationService @Inject constructor(
 
         // Without an account there is no second registration to make. The
         // backend links the two rows on sign-in and unlinks them on sign-out,
-        // so nothing is delivered twice either way.
-        if (!authTokenManager.isLoggedIn) {
+        // so nothing is delivered twice either way. An account whose session
+        // is gone signs in first.
+        if (!authTokenManager.signInIfSignedOut()) {
             updateDiagnostic {
                 it.copy(
                     hasFcmToken = true,
@@ -569,6 +571,9 @@ class PushRegistrationService @Inject constructor(
             return true
         }
         val deviceId = identity.uuid()
+        // An account whose session is gone signs in first, as its row is the
+        // one that decides. Outside the mutex, which registrations wait on.
+        val signedIn = authTokenManager.signInIfSignedOut()
         // Hold the mutex across the PATCH AND the pref write so a concurrent
         // performRegister (which snapshots under the same mutex) can't read
         // an in-flight value, and so rapid toggle taps serialize their
@@ -587,7 +592,7 @@ class PushRegistrationService @Inject constructor(
             // the first announce will carry it.
             val token = if (isUnregistering) null else fcmToken
             val failure = applyOptOutIfAccepted(prefs, KEY_SERVER_PUSH_OPT_OUT, optOut) {
-                if (authTokenManager.isLoggedIn) {
+                if (signedIn) {
                     api.updateDevicePreferences(deviceId, serverPushEnabled = !optOut)
                 } else if (token != null) {
                     api.registerAnonymous(

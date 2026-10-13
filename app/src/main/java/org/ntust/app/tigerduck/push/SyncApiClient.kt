@@ -99,8 +99,7 @@ class SyncApiClient @Inject constructor(
     private val client = baseClient.newBuilder().build()
 
     suspend fun fetchRevision(): Long = withContext(Dispatchers.IO) {
-        val authHeader = authTokenManager.authHeader()
-            ?: throw PushApiException("not authenticated")
+        val authHeader = authTokenManager.requireAuthHeader()
         val request = Request.Builder()
             .url("$baseUrl/sync/revision")
             .get()
@@ -116,8 +115,7 @@ class SyncApiClient @Inject constructor(
     }
 
     suspend fun fetchFullSync(): BackendSyncResult = withContext(Dispatchers.IO) {
-        val authHeader = authTokenManager.authHeader()
-            ?: throw PushApiException("not authenticated")
+        val authHeader = authTokenManager.requireAuthHeader()
         val fetchedAtMs = System.currentTimeMillis()
         val request = Request.Builder()
             .url("$baseUrl/sync/full")

@@ -23,6 +23,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.ntust.app.tigerduck.auth.AuthTokenManager.SignInAttempt
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore.Companion.KEY_ACCESS_TOKEN
@@ -258,11 +259,11 @@ class AuthTokenManagerRefreshTest {
     fun `a caller cancelled during the sign-in after a failed resend still drops the token`() = runTest {
         val manager = manager(Reply.Lost, Reply.Lost)
         lateinit var caller: Job
-        manager.onRefreshFailed = {
+        manager.signInWithStoredAccount = {
             relogins++
             caller.cancel()
             delay(1_000)
-            false
+            SignInAttempt.FAILED
         }
 
         caller = launch { manager.authHeader() }
@@ -365,12 +366,12 @@ class AuthTokenManagerRefreshTest {
         for (signedIn in listOf(false, true)) {
             storePair(expiresAt = 0L)
             val manager = manager(Reply.Status(401))
-            manager.onRefreshFailed = {
+            manager.signInWithStoredAccount = {
                 relogins++
                 manager.logout()
                 // The next account signs in before this sign-in returns.
                 tokens.save("access-b", "refresh-b", clock + 900_000)
-                signedIn
+                if (signedIn) SignInAttempt.SIGNED_IN else SignInAttempt.FAILED
             }
 
             // Neither its token for the old caller nor a clear of its pair.
@@ -459,9 +460,9 @@ class AuthTokenManagerRefreshTest {
             .apply(configure)
             .build()
         return AuthTokenManager(tokens, client, prefs, "device-1", now = { clock }).apply {
-            onRefreshFailed = {
+            signInWithStoredAccount = {
                 relogins++
-                false
+                SignInAttempt.FAILED
             }
         }
     }
@@ -473,11 +474,11 @@ class AuthTokenManagerRefreshTest {
         deviceUuid = "device-1",
         now = { clock },
     ).apply {
-        // Stands in for AuthService.attemptRelogin, which signs in through login().
-        onRefreshFailed = {
+        // Stands in for AuthService's automatic sign-in, which signs in through login().
+        signInWithStoredAccount = {
             relogins++
             if (reloginSucceeds) tokens.save("access-relogin", "refresh-relogin", clock + 900_000)
-            reloginSucceeds
+            if (reloginSucceeds) SignInAttempt.SIGNED_IN else SignInAttempt.FAILED
         }
     }
 

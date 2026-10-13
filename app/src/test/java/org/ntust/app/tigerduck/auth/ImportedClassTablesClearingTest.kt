@@ -8,8 +8,8 @@ import java.io.File
 /**
  * When the class tables imported from share codes go: at the user's own sign-out, and when
  * another student ID signs in. Everything else that signs in reuses the stored credentials and
- * keeps them: [AuthService.attemptRelogin] after the backend session lapses,
- * [AuthService.migrateToV3IfNeeded], and [AuthService.ensureAuthenticated] when the SSO session
+ * keeps them: [AuthService.attemptRelogin] after the backend session lapses, [StoredAccountSignIn]
+ * when there is no backend session, and [AuthService.ensureAuthenticated] when the SSO session
  * expires. Nothing signs the user out on its own; only [AuthService.logout] clears the stored
  * student ID. AuthService needs the Android Keystore, so this reads its source;
  * ImportedClassTableStoreTest covers what the two calls do.

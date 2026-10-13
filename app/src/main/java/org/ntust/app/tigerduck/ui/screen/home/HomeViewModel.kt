@@ -573,12 +573,12 @@ class HomeViewModel @Inject constructor(
                     Log.d("RevisionPoll", "[poll] tick skipped — cloudSyncEnabled=false")
                     continue
                 }
-                if (!authTokenManager.isLoggedIn) {
-                    Log.d("RevisionPoll", "[poll] tick skipped — not logged in")
-                    continue
-                }
                 if (!networkChecker.isAvailable()) {
                     Log.d("RevisionPoll", "[poll] tick skipped — no network")
+                    continue
+                }
+                if (!authTokenManager.signInIfSignedOut()) {
+                    Log.d("RevisionPoll", "[poll] tick skipped — not logged in")
                     continue
                 }
                 Log.d("RevisionPoll", "[poll] tick — fetching revision (lastKnown=${syncState.lastKnownRevision})")
