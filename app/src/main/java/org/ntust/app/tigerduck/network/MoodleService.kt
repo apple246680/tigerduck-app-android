@@ -24,6 +24,7 @@ import org.ntust.app.tigerduck.network.model.MoodleSubmissionLastAttempt
 import org.ntust.app.tigerduck.network.model.MoodleSubmissionStatusEnvelope
 import org.ntust.app.tigerduck.util.SharedFetch
 import java.util.Date
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -67,6 +68,12 @@ class MoodleService @Inject constructor(
         /** Submissions the cache had confirmed, not asked about — see [confirmedSubmissions]. */
         val confirmed: Map<Int, Date>,
     )
+
+    // The reminder check's call has to end inside its receiver's 8-second
+    // budget, which the shared client's 15-second timeouts would outlast.
+    private val reminderCheckClient: OkHttpClient by lazy {
+        client.newBuilder().callTimeout(REMINDER_CHECK_TIMEOUT_SECONDS, TimeUnit.SECONDS).build()
+    }
 
     // Refreshes in progress that every assignment round starting meanwhile
     // asks Moodle about every submission for — see recheckingSubmissions.
@@ -367,21 +374,32 @@ class MoodleService @Inject constructor(
     private fun callGetSubmissionStatus(
         token: String,
         assignId: Int,
-        userId: Int
-    ): MoodleSubmissionStatusEnvelope {
-        val url =
-            "$webserviceUrl?moodlewsrestformat=json&wsfunction=mod_assign_get_submission_status&wstoken=$token"
-        val form = FormBody.Builder()
-            .add("assignid", assignId.toString())
-            .add("userid", userId.toString())
-            .build()
-        val req = Request.Builder().url(url).post(form).build()
-        val body = client.newCall(req).execute().use { response ->
-            if (!response.isSuccessful) throw MoodleWebserviceError.HttpStatus(response.code)
-            response.body.string()
+        userId: Int?,
+        httpClient: OkHttpClient = client,
+    ): MoodleSubmissionStatusEnvelope = requestSubmissionStatus(
+        httpClient,
+        "$webserviceUrl?moodlewsrestformat=json&wsfunction=mod_assign_get_submission_status&wstoken=$token",
+        assignId,
+        userId,
+    )
+
+    /**
+     * Moodle's status of assignment [assignId] from one call with the stored
+     * wstoken, for a reminder about to show; null when there is no token, or
+     * it changed while the call ran. It never signs in or refreshes the token:
+     * nobody asked for an SSO sign-in there (issue #212). No user id, which
+     * Moodle reads as the token's own account, so no site-info call goes
+     * first. Throws for anything but an answer, and
+     * [MoodleWebserviceError.InvalidToken] when the token is rejected.
+     */
+    suspend fun submissionStatusWithStoredToken(assignId: Int): MoodleSubmissionStatusEnvelope? =
+        withContext(Dispatchers.IO) {
+            val token = tokenService.currentToken()?.takeIf { it.isNotEmpty() }
+                ?: return@withContext null
+            val status = callGetSubmissionStatus(token, assignId, userId = null, reminderCheckClient)
+            // Signed out meanwhile: the answer is about the account that left.
+            status.takeIf { tokenService.currentToken() == token }
         }
-        return decodeSubmissionStatus(body)
-    }
 
     /**
      * Moodle course fullname is typically "1142 PE139B022 課程名稱 / English".
@@ -398,6 +416,8 @@ class MoodleService @Inject constructor(
 
     companion object {
         private val decodeGson = Gson()
+
+        private const val REMINDER_CHECK_TIMEOUT_SECONDS = 6L
 
         /**
          * The `mod_assign_get_assignments` form for [courseIds]. It asks only
@@ -489,6 +509,28 @@ class MoodleService @Inject constructor(
             val submittedAt = (handedIn ?: lastAttempt?.submission)?.timemodified
                 ?.takeIf { it > 0 }?.let { Date(it * 1000) }
             return (handedIn != null) to submittedAt
+        }
+
+        /**
+         * `mod_assign_get_submission_status` for [assignId] at [url], through
+         * [client]: for [userId], or without one for the token's own account.
+         */
+        internal fun requestSubmissionStatus(
+            client: OkHttpClient,
+            url: String,
+            assignId: Int,
+            userId: Int?,
+        ): MoodleSubmissionStatusEnvelope {
+            val form = FormBody.Builder()
+                .add("assignid", assignId.toString())
+                .apply { if (userId != null) add("userid", userId.toString()) }
+                .build()
+            val req = Request.Builder().url(url).post(form).build()
+            val body = client.newCall(req).execute().use { response ->
+                if (!response.isSuccessful) throw MoodleWebserviceError.HttpStatus(response.code)
+                response.body.string()
+            }
+            return decodeSubmissionStatus(body)
         }
 
         /**

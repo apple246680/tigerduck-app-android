@@ -90,6 +90,12 @@ data class MoodleSubmissionLastAttempt(
     val submission: MoodleSubmission? = null,
     /** A team assignment's own submission, the one a teammate hands in. */
     val teamsubmission: MoodleSubmission? = null,
+    /** False when the assignment takes no submissions. */
+    val submissionsenabled: Boolean? = null,
+    /** True when the student's submissions are locked. */
+    val locked: Boolean? = null,
+    /** The due date of the student's extension, epoch seconds; null or 0 without one. */
+    val extensionduedate: Long? = null,
     val gradingstatus: String? = null
 ) {
     // Computed only, like MoodleEnrolledCourse's: Gson leaves a backing field null.
