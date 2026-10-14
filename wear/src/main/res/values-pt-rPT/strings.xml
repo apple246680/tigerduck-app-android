@@ -131,7 +131,7 @@
     <string name="bulletin_rule_delete_action">Eliminar regra</string>
     <string name="bulletin_rule_dept_and_tag_title">Dept + Categoria (%1$s)</string>
     <string name="bulletin_rule_dept_only_title">Departamento específico</string>
-    <string name="bulletin_rule_dept_prefix">Dep.: </string>
+    <string name="bulletin_rule_dept_prefix">Dep.:\u0020</string>
     <string name="bulletin_rule_disabled_badge">Desativada</string>
     <string name="bulletin_rule_edit_title">Editar regra</string>
     <string name="bulletin_rule_editor_dept_section">Departamento</string>
@@ -143,11 +143,11 @@
     <string name="bulletin_rule_editor_name_section">Nome</string>
     <string name="bulletin_rule_editor_selected_count">%1$d selecionado(s)</string>
     <string name="bulletin_rule_editor_tag_section">Categoria</string>
-    <string name="bulletin_rule_filter_separator">, </string>
-    <string name="bulletin_rule_join_and"> e </string>
-    <string name="bulletin_rule_join_or"> ou </string>
+    <string name="bulletin_rule_filter_separator">,\u0020</string>
+    <string name="bulletin_rule_join_and">\u0020e\u0020</string>
+    <string name="bulletin_rule_join_or">\u0020ou\u0020</string>
     <string name="bulletin_rule_tag_only_title">Categoria específica</string>
-    <string name="bulletin_rule_tags_prefix">Categoria: </string>
+    <string name="bulletin_rule_tags_prefix">Categoria:\u0020</string>
     <string name="bulletin_rules_footer">Cada regra pode filtrar por departamento, categoria e modo de combinação. Deixe em branco para corresponder a tudo nessa dimensão. Máximo de 32 regras.</string>
     <string name="bulletin_rules_header">Regras de notificação</string>
     <string name="bulletin_rules_load_failed">Falha ao carregar</string>
@@ -165,7 +165,7 @@
     <string name="bulletin_taxonomy_picker_hint">Não selecionar nada significa \"corresponder a tudo\" para esta dimensão.</string>
     <string name="bulletin_unread_dot_label">Não lido</string>
     <string name="bulletin_withdrawn_badge">Retirado</string>
-    <string name="calendar_date_today_suffix"> (Hoje)</string>
+    <string name="calendar_date_today_suffix">\u0020(Hoje)</string>
     <string name="calendar_holiday_notify_description">Os lembretes de aulas estão desativados durante este feriado. Ativa-os para continuares a recebê-los.</string>
     <string name="calendar_holiday_notify_title">Ainda tens aulas?</string>
     <string name="calendar_month_year">%1$d/%2$d</string>
@@ -662,7 +662,7 @@
     <string name="refreshing_message">A atualizar… aguarda um momento</string>
     <string name="school_mail_account_title">Correio universitário</string>
     <string name="school_mail_add_attachment">Anexar ficheiro</string>
-    <string name="school_mail_attachment_share">Share</string>
+    <string name="school_mail_attachment_share">Partilhar ou guardar</string>
     <string name="school_mail_attachments">Anexos</string>
     <string name="school_mail_auth_failed_banner">Não foi possível iniciar sessão no correio universitário. Inicia sessão novamente.</string>
     <string name="school_mail_auth_failed_notification_text">Abre o TigerDuck para iniciar sessão novamente.</string>
@@ -767,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Adicionar Cc/Cco</string>
     <string name="school_mail_sign_in_note">O teu número de estudante e palavra-passe devem ser os mesmos do sistema da universidade. O TigerDuck só guarda esta palavra-passe encriptada neste dispositivo e nunca a carrega para a internet.</string>
     <string name="school_mail_sign_in_prompt_title">Iniciar sessão no correio universitário</string>
+    <string name="school_mail_source_failed">Não foi possível carregar o código-fonte.</string>
     <string name="school_mail_subject">Assunto</string>
     <string name="school_mail_to">Para</string>
     <string name="school_mail_too_large">Os anexos excedem o limite de 50 MB</string>

@@ -131,7 +131,7 @@
     <string name="bulletin_rule_delete_action">Διαγραφή κανόνα</string>
     <string name="bulletin_rule_dept_and_tag_title">Τμήμα + Κατηγορία (%1$s)</string>
     <string name="bulletin_rule_dept_only_title">Συγκεκριμένο τμήμα</string>
-    <string name="bulletin_rule_dept_prefix">Τμήμα: </string>
+    <string name="bulletin_rule_dept_prefix">Τμήμα:\u0020</string>
     <string name="bulletin_rule_disabled_badge">Ανάπηρος</string>
     <string name="bulletin_rule_edit_title">Επεξεργασία κανόνα</string>
     <string name="bulletin_rule_editor_dept_section">Τμήμα</string>
@@ -143,11 +143,11 @@
     <string name="bulletin_rule_editor_name_section">Ονομα</string>
     <string name="bulletin_rule_editor_selected_count">Επιλέχθηκε το %1$d</string>
     <string name="bulletin_rule_editor_tag_section">Κατηγορία</string>
-    <string name="bulletin_rule_filter_separator">, </string>
-    <string name="bulletin_rule_join_and"> και </string>
-    <string name="bulletin_rule_join_or"> ή </string>
+    <string name="bulletin_rule_filter_separator">,\u0020</string>
+    <string name="bulletin_rule_join_and">\u0020και\u0020</string>
+    <string name="bulletin_rule_join_or">\u0020ή\u0020</string>
     <string name="bulletin_rule_tag_only_title">Συγκεκριμένη κατηγορία</string>
-    <string name="bulletin_rule_tags_prefix">Κατηγορία: </string>
+    <string name="bulletin_rule_tags_prefix">Κατηγορία:\u0020</string>
     <string name="bulletin_rules_footer">Κάθε κανόνας μπορεί να φιλτράρει ανά τμήμα, κατηγορία και λειτουργία συνδυασμού. Αφήστε το κενό για να ταιριάζει με τα πάντα σε αυτή τη διάσταση. Το πολύ 32 κανόνες.</string>
     <string name="bulletin_rules_header">Κανόνες ειδοποίησης</string>
     <string name="bulletin_rules_load_failed">Η φόρτωση απέτυχε</string>
@@ -165,7 +165,7 @@
     <string name="bulletin_taxonomy_picker_hint">Η επιλογή τίποτα σημαίνει \"ταίριασμα όλων\" για αυτήν τη διάσταση.</string>
     <string name="bulletin_unread_dot_label">Αδιάβαστος</string>
     <string name="bulletin_withdrawn_badge">Αποτραβηγμένος</string>
-    <string name="calendar_date_today_suffix"> (Σήμερα)</string>
+    <string name="calendar_date_today_suffix">\u0020(Σήμερα)</string>
     <string name="calendar_holiday_notify_description">Οι υπενθυμίσεις μαθημάτων είναι απενεργοποιημένες σε αυτή την αργία. Ενεργοποιήστε το για να συνεχίσετε να τις λαμβάνετε.</string>
     <string name="calendar_holiday_notify_title">Έχετε ακόμα μάθημα;</string>
     <string name="calendar_month_year">%1$d/%2$d</string>
@@ -662,7 +662,7 @@
     <string name="refreshing_message">Ανανέωση… παρακαλώ περιμένετε</string>
     <string name="school_mail_account_title">Πανεπιστημιακό email</string>
     <string name="school_mail_add_attachment">Επισύναψη αρχείου</string>
-    <string name="school_mail_attachment_share">Share</string>
+    <string name="school_mail_attachment_share">Κοινή χρήση ή αποθήκευση</string>
     <string name="school_mail_attachments">Συνημμένα</string>
     <string name="school_mail_auth_failed_banner">Η σύνδεση στο πανεπιστημιακό email απέτυχε. Συνδέσου ξανά.</string>
     <string name="school_mail_auth_failed_notification_text">Άνοιξε το TigerDuck για να συνδεθείς ξανά.</string>
@@ -767,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Προσθήκη Κοιν./Κρυφή κοιν.</string>
     <string name="school_mail_sign_in_note">Ο αριθμός μητρώου και ο κωδικός πρόσβασής σου πρέπει να είναι ίδιοι με αυτούς του συστήματος του πανεπιστημίου. Το TigerDuck αποθηκεύει αυτόν τον κωδικό κρυπτογραφημένο μόνο σε αυτήν τη συσκευή και δεν τον μεταφορτώνει ποτέ.</string>
     <string name="school_mail_sign_in_prompt_title">Σύνδεση στο πανεπιστημιακό email</string>
+    <string name="school_mail_source_failed">Δεν ήταν δυνατή η φόρτωση του πηγαίου κώδικα.</string>
     <string name="school_mail_subject">Θέμα</string>
     <string name="school_mail_to">Προς</string>
     <string name="school_mail_too_large">Τα συνημμένα υπερβαίνουν το όριο των 50 MB</string>

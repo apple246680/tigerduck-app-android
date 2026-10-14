@@ -131,7 +131,7 @@
     <string name="bulletin_rule_delete_action">حذف القاعدة</string>
     <string name="bulletin_rule_dept_and_tag_title">القسم + الفئة (%1$s)</string>
     <string name="bulletin_rule_dept_only_title">قسم محدد</string>
-    <string name="bulletin_rule_dept_prefix">قسم: </string>
+    <string name="bulletin_rule_dept_prefix">قسم:\u0020</string>
     <string name="bulletin_rule_disabled_badge">عاجز</string>
     <string name="bulletin_rule_edit_title">تحرير القاعدة</string>
     <string name="bulletin_rule_editor_dept_section">قسم</string>
@@ -143,11 +143,11 @@
     <string name="bulletin_rule_editor_name_section">اسم</string>
     <string name="bulletin_rule_editor_selected_count">تم تحديد %1$d</string>
     <string name="bulletin_rule_editor_tag_section">فئة</string>
-    <string name="bulletin_rule_filter_separator">، </string>
-    <string name="bulletin_rule_join_and"> و </string>
-    <string name="bulletin_rule_join_or"> أو </string>
+    <string name="bulletin_rule_filter_separator">،\u0020</string>
+    <string name="bulletin_rule_join_and">\u0020و\u0020</string>
+    <string name="bulletin_rule_join_or">\u0020أو\u0020</string>
     <string name="bulletin_rule_tag_only_title">فئة محددة</string>
-    <string name="bulletin_rule_tags_prefix">فئة: </string>
+    <string name="bulletin_rule_tags_prefix">فئة:\u0020</string>
     <string name="bulletin_rules_footer">يمكن تصفية كل قاعدة حسب القسم والفئة ووضع المجموعة. اتركه فارغًا لمطابقة كل شيء في هذا البعد. الحد الأقصى 32 قواعد.</string>
     <string name="bulletin_rules_header">قواعد الإخطار</string>
     <string name="bulletin_rules_load_failed">فشل التحميل</string>
@@ -165,7 +165,7 @@
     <string name="bulletin_taxonomy_picker_hint">عدم تحديد أي شيء يعني \"مطابقة الكل\" لهذا البُعد.</string>
     <string name="bulletin_unread_dot_label">غير مقروءة</string>
     <string name="bulletin_withdrawn_badge">انسحبت</string>
-    <string name="calendar_date_today_suffix"> (اليوم)</string>
+    <string name="calendar_date_today_suffix">\u0020(اليوم)</string>
     <string name="calendar_holiday_notify_description">تذكيرات المحاضرات معطّلة خلال هذه العطلة. فعّل هذا الخيار للاستمرار في تلقّيها.</string>
     <string name="calendar_holiday_notify_title">هل لا تزال لديك محاضرة؟</string>
     <string name="calendar_month_year">%1$d/%2$d</string>
@@ -662,7 +662,7 @@
     <string name="refreshing_message">جارٍ التحديث… انتظر قليلًا</string>
     <string name="school_mail_account_title">البريد المدرسي</string>
     <string name="school_mail_add_attachment">إرفاق ملف</string>
-    <string name="school_mail_attachment_share">Share</string>
+    <string name="school_mail_attachment_share">مشاركة أو حفظ</string>
     <string name="school_mail_attachments">المرفقات</string>
     <string name="school_mail_auth_failed_banner">فشل تسجيل الدخول إلى البريد المدرسي. سجّل الدخول مرة أخرى.</string>
     <string name="school_mail_auth_failed_notification_text">افتح TigerDuck لتسجيل الدخول مرة أخرى.</string>
@@ -767,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">إضافة نسخة/نسخة مخفية</string>
     <string name="school_mail_sign_in_note">يجب أن يكون رقم الطالب وكلمة المرور مطابقين لبيانات النظام الجامعي. يخزّن TigerDuck كلمة المرور هذه مشفّرة على هذا الجهاز فقط ولا يرفعها أبدًا.</string>
     <string name="school_mail_sign_in_prompt_title">تسجيل الدخول إلى البريد المدرسي</string>
+    <string name="school_mail_source_failed">تعذّر تحميل المصدر.</string>
     <string name="school_mail_subject">الموضوع</string>
     <string name="school_mail_to">إلى</string>
     <string name="school_mail_too_large">المرفقات تتجاوز الحد الأقصى البالغ 50 ميغابايت</string>

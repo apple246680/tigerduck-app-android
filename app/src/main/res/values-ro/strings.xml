@@ -131,7 +131,7 @@
     <string name="bulletin_rule_delete_action">Șterge regula</string>
     <string name="bulletin_rule_dept_and_tag_title">Dept + Categorie (%1$s)</string>
     <string name="bulletin_rule_dept_only_title">Departament specific</string>
-    <string name="bulletin_rule_dept_prefix">Dept: </string>
+    <string name="bulletin_rule_dept_prefix">Dept:\u0020</string>
     <string name="bulletin_rule_disabled_badge">Dezactivat</string>
     <string name="bulletin_rule_edit_title">Editează regula</string>
     <string name="bulletin_rule_editor_dept_section">Departament</string>
@@ -143,11 +143,11 @@
     <string name="bulletin_rule_editor_name_section">Nume</string>
     <string name="bulletin_rule_editor_selected_count">%1$d selectate</string>
     <string name="bulletin_rule_editor_tag_section">Categorie</string>
-    <string name="bulletin_rule_filter_separator">, </string>
-    <string name="bulletin_rule_join_and"> și </string>
-    <string name="bulletin_rule_join_or"> sau </string>
+    <string name="bulletin_rule_filter_separator">,\u0020</string>
+    <string name="bulletin_rule_join_and">\u0020și\u0020</string>
+    <string name="bulletin_rule_join_or">\u0020sau\u0020</string>
     <string name="bulletin_rule_tag_only_title">Categorie specifică</string>
-    <string name="bulletin_rule_tags_prefix">Categorie: </string>
+    <string name="bulletin_rule_tags_prefix">Categorie:\u0020</string>
     <string name="bulletin_rules_footer">Fiecare regulă poate filtra după departament, categorie și un mod de combinare. Lasă gol pentru a include tot la acea dimensiune. Maximum 32 de reguli.</string>
     <string name="bulletin_rules_header">Reguli de notificare</string>
     <string name="bulletin_rules_load_failed">Încărcarea a eșuat</string>
@@ -165,7 +165,7 @@
     <string name="bulletin_taxonomy_picker_hint">Dacă nu selectezi nimic, înseamnă „toate” pentru această dimensiune.</string>
     <string name="bulletin_unread_dot_label">Necitit</string>
     <string name="bulletin_withdrawn_badge">Retras</string>
-    <string name="calendar_date_today_suffix"> (Azi)</string>
+    <string name="calendar_date_today_suffix">\u0020(Azi)</string>
     <string name="calendar_holiday_notify_description">Remindere pentru cursuri sunt dezactivate în această zi de sărbătoare. Activează-le ca să continui să le primești.</string>
     <string name="calendar_holiday_notify_title">Mai ai curs?</string>
     <string name="calendar_month_year">%1$d/%2$d</string>
@@ -662,7 +662,7 @@
     <string name="refreshing_message">Se actualizează… așteaptă puțin</string>
     <string name="school_mail_account_title">E-mail universitar</string>
     <string name="school_mail_add_attachment">Atașează un fișier</string>
-    <string name="school_mail_attachment_share">Share</string>
+    <string name="school_mail_attachment_share">Distribuie sau salvează</string>
     <string name="school_mail_attachments">Atașamente</string>
     <string name="school_mail_auth_failed_banner">Conectarea la e-mailul universitar a eșuat. Conectează-te din nou.</string>
     <string name="school_mail_auth_failed_notification_text">Deschide TigerDuck pentru a te conecta din nou.</string>
@@ -767,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Adaugă Cc/Bcc</string>
     <string name="school_mail_sign_in_note">Numărul de matricol și parola ta trebuie să fie aceleași ca în sistemul universitar. TigerDuck stochează această parolă doar criptată pe acest dispozitiv și nu o încarcă niciodată online.</string>
     <string name="school_mail_sign_in_prompt_title">Conectează-te la e-mailul universitar</string>
+    <string name="school_mail_source_failed">Sursa nu a putut fi încărcată.</string>
     <string name="school_mail_subject">Subiect</string>
     <string name="school_mail_to">Către</string>
     <string name="school_mail_too_large">Atașamentele depășesc limita de 50 MB</string>

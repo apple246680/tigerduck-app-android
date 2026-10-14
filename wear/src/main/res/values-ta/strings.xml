@@ -131,7 +131,7 @@
     <string name="bulletin_rule_delete_action">விதியை நீக்கு</string>
     <string name="bulletin_rule_dept_and_tag_title">துறை + வகை (%1$s)</string>
     <string name="bulletin_rule_dept_only_title">குறிப்பிட்ட துறை</string>
-    <string name="bulletin_rule_dept_prefix">துறை: </string>
+    <string name="bulletin_rule_dept_prefix">துறை:\u0020</string>
     <string name="bulletin_rule_disabled_badge">முடக்கப்பட்டது</string>
     <string name="bulletin_rule_edit_title">விதியைத் திருத்து</string>
     <string name="bulletin_rule_editor_dept_section">துறை</string>
@@ -143,11 +143,11 @@
     <string name="bulletin_rule_editor_name_section">பெயர்</string>
     <string name="bulletin_rule_editor_selected_count">%1$d தேர்ந்தெடுக்கப்பட்டது</string>
     <string name="bulletin_rule_editor_tag_section">வகை</string>
-    <string name="bulletin_rule_filter_separator">, </string>
-    <string name="bulletin_rule_join_and"> மற்றும் </string>
-    <string name="bulletin_rule_join_or"> அல்லது </string>
+    <string name="bulletin_rule_filter_separator">,\u0020</string>
+    <string name="bulletin_rule_join_and">\u0020மற்றும்\u0020</string>
+    <string name="bulletin_rule_join_or">\u0020அல்லது\u0020</string>
     <string name="bulletin_rule_tag_only_title">குறிப்பிட்ட வகை</string>
-    <string name="bulletin_rule_tags_prefix">வகை: </string>
+    <string name="bulletin_rule_tags_prefix">வகை:\u0020</string>
     <string name="bulletin_rules_footer">ஒவ்வொரு விதியும் துறை, வகை மற்றும் கலவை முறை மூலம் வடிகட்டலாம். அனைத்தையும் பொருத்த வெற்றிடமாக விடவும். அதிகபட்சம் 32 விதிகள்.</string>
     <string name="bulletin_rules_header">அறிவிப்பு விதிகள்</string>
     <string name="bulletin_rules_load_failed">ஏற்றம் தோல்வியடைந்தது</string>
@@ -165,7 +165,7 @@
     <string name="bulletin_taxonomy_picker_hint">எதுவும் தேர்வு செய்யாமல் விடுவது இந்த பரிமாணத்தில் \"அனைத்தையும் பொருத்து\" என்று அர்த்தம்.</string>
     <string name="bulletin_unread_dot_label">படிக்காதது</string>
     <string name="bulletin_withdrawn_badge">திரும்பப் பெறப்பட்டது</string>
-    <string name="calendar_date_today_suffix"> (இன்று)</string>
+    <string name="calendar_date_today_suffix">\u0020(இன்று)</string>
     <string name="calendar_holiday_notify_description">இந்த விடுமுறையின்போது வகுப்பு நினைவூட்டல்கள் ஆஃப் செய்யப்பட்டுள்ளன. அவற்றைத் தொடர்ந்து பெற இதை ஆன் செய்யவும்.</string>
     <string name="calendar_holiday_notify_title">இன்னும் வகுப்பு உள்ளதா?</string>
     <string name="calendar_month_year">%1$d/%2$d</string>
@@ -662,7 +662,7 @@
     <string name="refreshing_message">புதுப்பிக்கிறோம்… கொஞ்சம் காத்திருங்கள்</string>
     <string name="school_mail_account_title">பள்ளி மின்னஞ்சல்</string>
     <string name="school_mail_add_attachment">கோப்பை இணை</string>
-    <string name="school_mail_attachment_share">Share</string>
+    <string name="school_mail_attachment_share">பகிர் அல்லது சேமி</string>
     <string name="school_mail_attachments">இணைப்புகள்</string>
     <string name="school_mail_auth_failed_banner">பள்ளி மின்னஞ்சல் உள்நுழைவு தோல்வியடைந்தது. மீண்டும் உள்நுழைக.</string>
     <string name="school_mail_auth_failed_notification_text">மீண்டும் உள்நுழைய TigerDuck-ஐத் திறக்கவும்.</string>
@@ -767,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Cc/Bcc சேர்</string>
     <string name="school_mail_sign_in_note">உங்கள் ID மற்றும் கடவுச்சொல் கல்வி அமைப்பில் உள்ளதைப் போலவே இருக்க வேண்டும். TigerDuck இந்தக் கடவுச்சொல்லை இந்தச் சாதனத்தில் மறையாக்கம் செய்து மட்டுமே சேமிக்கும், ஒருபோதும் பதிவேற்றாது.</string>
     <string name="school_mail_sign_in_prompt_title">பள்ளி மின்னஞ்சலில் உள்நுழைக</string>
+    <string name="school_mail_source_failed">மூலத்தை ஏற்ற முடியவில்லை.</string>
     <string name="school_mail_subject">பொருள்</string>
     <string name="school_mail_to">பெறுநர்</string>
     <string name="school_mail_too_large">இணைப்புகள் 50 MB வரம்பை மீறுகின்றன</string>

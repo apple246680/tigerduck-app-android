@@ -131,7 +131,7 @@
     <string name="bulletin_rule_delete_action">Tanggalin ang panuntunan</string>
     <string name="bulletin_rule_dept_and_tag_title">Dept + Kategorya (%1$s)</string>
     <string name="bulletin_rule_dept_only_title">Tiyak na departamento</string>
-    <string name="bulletin_rule_dept_prefix">Dept: </string>
+    <string name="bulletin_rule_dept_prefix">Dept:\u0020</string>
     <string name="bulletin_rule_disabled_badge">Hindi pinagana</string>
     <string name="bulletin_rule_edit_title">I-edit ang panuntunan</string>
     <string name="bulletin_rule_editor_dept_section">Kagawaran</string>
@@ -143,11 +143,11 @@
     <string name="bulletin_rule_editor_name_section">Pangalan</string>
     <string name="bulletin_rule_editor_selected_count">%1$d ang napili</string>
     <string name="bulletin_rule_editor_tag_section">Kategorya</string>
-    <string name="bulletin_rule_filter_separator">, </string>
-    <string name="bulletin_rule_join_and"> at </string>
-    <string name="bulletin_rule_join_or"> o </string>
+    <string name="bulletin_rule_filter_separator">,\u0020</string>
+    <string name="bulletin_rule_join_and">\u0020at\u0020</string>
+    <string name="bulletin_rule_join_or">\u0020o\u0020</string>
     <string name="bulletin_rule_tag_only_title">Tukoy na kategorya</string>
-    <string name="bulletin_rule_tags_prefix">Kategorya: </string>
+    <string name="bulletin_rule_tags_prefix">Kategorya:\u0020</string>
     <string name="bulletin_rules_footer">Maaaring mag-filter ang bawat panuntunan ayon sa departamento, kategorya, at mode ng kumbinasyon. Iwanang blangko upang tumugma sa lahat ng nasa dimensyong iyon. Pinakamataas na 32 panuntunan.</string>
     <string name="bulletin_rules_header">Mga panuntunan sa pag-abiso</string>
     <string name="bulletin_rules_load_failed">Nabigo ang pag-load</string>
@@ -165,7 +165,7 @@
     <string name="bulletin_taxonomy_picker_hint">Ang pagpili ng wala ay nangangahulugang \"itugma sa lahat\" para sa dimensyong ito.</string>
     <string name="bulletin_unread_dot_label">Hindi pa nababasa</string>
     <string name="bulletin_withdrawn_badge">Binawi</string>
-    <string name="calendar_date_today_suffix"> (Ngayon)</string>
+    <string name="calendar_date_today_suffix">\u0020(Ngayon)</string>
     <string name="calendar_holiday_notify_description">Naka-off ang mga paalala ng klase sa bakasyon na ito. I-on ito para patuloy mong matanggap ang mga ito.</string>
     <string name="calendar_holiday_notify_title">May klase pa rin ba?</string>
     <string name="calendar_month_year">%1$d/%2$d</string>
@@ -662,7 +662,7 @@
     <string name="refreshing_message">Nire-refresh… sandali lang po</string>
     <string name="school_mail_account_title">Mail ng paaralan</string>
     <string name="school_mail_add_attachment">Mag-attach ng file</string>
-    <string name="school_mail_attachment_share">Share</string>
+    <string name="school_mail_attachment_share">I-share o I-save</string>
     <string name="school_mail_attachments">Mga Attachment</string>
     <string name="school_mail_auth_failed_banner">Nabigo ang sign-in sa mail ng paaralan. Mag-sign in muli.</string>
     <string name="school_mail_auth_failed_notification_text">Buksan ang TigerDuck para mag-sign in muli.</string>
@@ -767,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Magdagdag ng Cc/Bcc</string>
     <string name="school_mail_sign_in_note">Dapat magkapareho ang ID at password mo sa sistemang akademiko. Ino-encrypt lang ng TigerDuck ang password na ito at ise-save sa device na ito, at hindi kailanman ina-upload.</string>
     <string name="school_mail_sign_in_prompt_title">Mag-sign in sa mail ng paaralan</string>
+    <string name="school_mail_source_failed">Hindi ma-load ang source.</string>
     <string name="school_mail_subject">Paksa</string>
     <string name="school_mail_to">Kay</string>
     <string name="school_mail_too_large">Lumagpas sa 50 MB limit ang mga attachment</string>

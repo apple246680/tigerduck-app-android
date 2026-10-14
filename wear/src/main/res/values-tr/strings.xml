@@ -131,7 +131,7 @@
     <string name="bulletin_rule_delete_action">Kuralı sil</string>
     <string name="bulletin_rule_dept_and_tag_title">Bölüm + Kategori (%1$s)</string>
     <string name="bulletin_rule_dept_only_title">Belirli bölüm</string>
-    <string name="bulletin_rule_dept_prefix">Bölüm: </string>
+    <string name="bulletin_rule_dept_prefix">Bölüm:\u0020</string>
     <string name="bulletin_rule_disabled_badge">Devre dışı</string>
     <string name="bulletin_rule_edit_title">Kuralı düzenle</string>
     <string name="bulletin_rule_editor_dept_section">Bölüm</string>
@@ -143,11 +143,11 @@
     <string name="bulletin_rule_editor_name_section">Ad</string>
     <string name="bulletin_rule_editor_selected_count">%1$d seçildi</string>
     <string name="bulletin_rule_editor_tag_section">Kategori</string>
-    <string name="bulletin_rule_filter_separator">, </string>
-    <string name="bulletin_rule_join_and"> ve </string>
-    <string name="bulletin_rule_join_or"> veya </string>
+    <string name="bulletin_rule_filter_separator">,\u0020</string>
+    <string name="bulletin_rule_join_and">\u0020ve\u0020</string>
+    <string name="bulletin_rule_join_or">\u0020veya\u0020</string>
     <string name="bulletin_rule_tag_only_title">Belirli kategori</string>
-    <string name="bulletin_rule_tags_prefix">Kategori: </string>
+    <string name="bulletin_rule_tags_prefix">Kategori:\u0020</string>
     <string name="bulletin_rules_footer">Her kural bölüm, kategori ve kombinasyon moduna göre filtre uygulayabilir. Her boyut için her şeyi eşleştirmek istiyorsanız boş bırakın. Maksimum 32 kural.</string>
     <string name="bulletin_rules_header">Bildirim kuralları</string>
     <string name="bulletin_rules_load_failed">Yükleme başarısız</string>
@@ -165,7 +165,7 @@
     <string name="bulletin_taxonomy_picker_hint">Hiçbir şey seçmemek bu boyut için \"tümünü eşleştir\" anlamına gelir.</string>
     <string name="bulletin_unread_dot_label">Okunmamış</string>
     <string name="bulletin_withdrawn_badge">Geri çekildi</string>
-    <string name="calendar_date_today_suffix"> (Bugün)</string>
+    <string name="calendar_date_today_suffix">\u0020(Bugün)</string>
     <string name="calendar_holiday_notify_description">Bu tatilde ders hatırlatıcıları kapalı. Almaya devam etmek için bunu açın.</string>
     <string name="calendar_holiday_notify_title">Hâlâ ders var mı?</string>
     <string name="calendar_month_year">%1$d/%2$d</string>
@@ -662,7 +662,7 @@
     <string name="refreshing_message">Yenileniyor… lütfen bekleyin</string>
     <string name="school_mail_account_title">Okul postası</string>
     <string name="school_mail_add_attachment">Dosya ekle</string>
-    <string name="school_mail_attachment_share">Share</string>
+    <string name="school_mail_attachment_share">Paylaş veya Kaydet</string>
     <string name="school_mail_attachments">Ekler</string>
     <string name="school_mail_auth_failed_banner">Okul postasına giriş başarısız oldu. Yeniden giriş yapın.</string>
     <string name="school_mail_auth_failed_notification_text">Yeniden giriş yapmak için TigerDuck uygulamasını açın.</string>
@@ -767,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Cc/Bcc ekle</string>
     <string name="school_mail_sign_in_note">Öğrenci numaranız ve şifreniz okul sistemindekiyle aynı olmalıdır. TigerDuck uygulaması bu şifreyi yalnızca bu cihazda şifreli olarak saklar ve hiçbir zaman yüklemez.</string>
     <string name="school_mail_sign_in_prompt_title">Okul postasına giriş yapın</string>
+    <string name="school_mail_source_failed">Kaynak yüklenemedi.</string>
     <string name="school_mail_subject">Konu</string>
     <string name="school_mail_to">Kime</string>
     <string name="school_mail_too_large">Ekler 50 MB sınırını aşıyor</string>

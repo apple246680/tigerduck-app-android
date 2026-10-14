@@ -131,7 +131,7 @@
     <string name="bulletin_rule_delete_action">Ištrinti taisyklę</string>
     <string name="bulletin_rule_dept_and_tag_title">Padalinys + kategorija (%1$s)</string>
     <string name="bulletin_rule_dept_only_title">Konkretus padalinys</string>
-    <string name="bulletin_rule_dept_prefix">Padalinys: </string>
+    <string name="bulletin_rule_dept_prefix">Padalinys:\u0020</string>
     <string name="bulletin_rule_disabled_badge">Išjungta</string>
     <string name="bulletin_rule_edit_title">Redaguoti taisyklę</string>
     <string name="bulletin_rule_editor_dept_section">Padalinys</string>
@@ -143,11 +143,11 @@
     <string name="bulletin_rule_editor_name_section">Pavadinimas</string>
     <string name="bulletin_rule_editor_selected_count">Pasirinkta %1$d</string>
     <string name="bulletin_rule_editor_tag_section">Kategorija</string>
-    <string name="bulletin_rule_filter_separator">, </string>
-    <string name="bulletin_rule_join_and"> ir </string>
-    <string name="bulletin_rule_join_or"> arba </string>
+    <string name="bulletin_rule_filter_separator">,\u0020</string>
+    <string name="bulletin_rule_join_and">\u0020ir\u0020</string>
+    <string name="bulletin_rule_join_or">\u0020arba\u0020</string>
     <string name="bulletin_rule_tag_only_title">Konkreti kategorija</string>
-    <string name="bulletin_rule_tags_prefix">Kategorija: </string>
+    <string name="bulletin_rule_tags_prefix">Kategorija:\u0020</string>
     <string name="bulletin_rules_footer">Kiekviena taisyklė gali filtruoti pagal padalinį, kategoriją ir derinimo režimą. Palikite tuščią, kad pagal tą kriterijų tiktų viskas. Daugiausia 32 taisyklės.</string>
     <string name="bulletin_rules_header">Pranešimų taisyklės</string>
     <string name="bulletin_rules_load_failed">Nepavyko įkelti</string>
@@ -165,7 +165,7 @@
     <string name="bulletin_taxonomy_picker_hint">Nieko nepasirinkus, šis kriterijus reiškia „viskas“.</string>
     <string name="bulletin_unread_dot_label">Neskaityta</string>
     <string name="bulletin_withdrawn_badge">Atšaukta</string>
-    <string name="calendar_date_today_suffix"> (šiandien)</string>
+    <string name="calendar_date_today_suffix">\u0020(šiandien)</string>
     <string name="calendar_holiday_notify_description">Pamokų priminimai išjungti šios šventės metu. Įjunkite, kad ir toliau juos gautumėte.</string>
     <string name="calendar_holiday_notify_title">Vis dar yra pamoka?</string>
     <string name="calendar_month_year">%1$d/%2$d</string>
@@ -662,7 +662,7 @@
     <string name="refreshing_message">Atnaujinama… palaukite</string>
     <string name="school_mail_account_title">Mokyklos paštas</string>
     <string name="school_mail_add_attachment">Pridėti failą</string>
-    <string name="school_mail_attachment_share">Share</string>
+    <string name="school_mail_attachment_share">Bendrinti arba išsaugoti</string>
     <string name="school_mail_attachments">Priedai</string>
     <string name="school_mail_auth_failed_banner">Prisijungimas prie mokyklos pašto nepavyko. Prisijunkite iš naujo.</string>
     <string name="school_mail_auth_failed_notification_text">Atidarykite TigerDuck ir prisijunkite iš naujo.</string>
@@ -767,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Pridėti Cc/Bcc</string>
     <string name="school_mail_sign_in_note">Jūsų studento ID ir slaptažodis turėtų būti tokie patys kaip mokyklos sistemoje. TigerDuck šį slaptažodį saugo tik užšifruotą šiame įrenginyje ir niekada neįkelia į serverį.</string>
     <string name="school_mail_sign_in_prompt_title">Prisijunkite prie mokyklos pašto</string>
+    <string name="school_mail_source_failed">Nepavyko įkelti pirminio kodo.</string>
     <string name="school_mail_subject">Tema</string>
     <string name="school_mail_to">Kam</string>
     <string name="school_mail_too_large">Priedai viršija 50 MB ribą</string>

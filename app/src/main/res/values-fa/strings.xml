@@ -131,7 +131,7 @@
     <string name="bulletin_rule_delete_action">حذف قانون</string>
     <string name="bulletin_rule_dept_and_tag_title">گروه + دسته (%1$s)</string>
     <string name="bulletin_rule_dept_only_title">بخش خاص</string>
-    <string name="bulletin_rule_dept_prefix">بخش: </string>
+    <string name="bulletin_rule_dept_prefix">بخش:\u0020</string>
     <string name="bulletin_rule_disabled_badge">از کار افتاده است</string>
     <string name="bulletin_rule_edit_title">ویرایش قانون</string>
     <string name="bulletin_rule_editor_dept_section">بخش</string>
@@ -143,11 +143,11 @@
     <string name="bulletin_rule_editor_name_section">نام</string>
     <string name="bulletin_rule_editor_selected_count">%1$d انتخاب شد</string>
     <string name="bulletin_rule_editor_tag_section">دسته بندی</string>
-    <string name="bulletin_rule_filter_separator">, </string>
-    <string name="bulletin_rule_join_and"> و </string>
-    <string name="bulletin_rule_join_or"> یا </string>
+    <string name="bulletin_rule_filter_separator">,\u0020</string>
+    <string name="bulletin_rule_join_and">\u0020و\u0020</string>
+    <string name="bulletin_rule_join_or">\u0020یا\u0020</string>
     <string name="bulletin_rule_tag_only_title">دسته بندی خاص</string>
-    <string name="bulletin_rule_tags_prefix">دسته: </string>
+    <string name="bulletin_rule_tags_prefix">دسته:\u0020</string>
     <string name="bulletin_rules_footer">هر قانون می تواند بر اساس بخش، دسته و حالت ترکیبی فیلتر شود. برای مطابقت با همه چیز در آن بعد، خالی بگذارید. حداکثر 32 قانون</string>
     <string name="bulletin_rules_header">قوانین اطلاع رسانی</string>
     <string name="bulletin_rules_load_failed">بارگیری انجام نشد</string>
@@ -165,7 +165,7 @@
     <string name="bulletin_taxonomy_picker_hint">انتخاب هیچ چیز به معنای «تطبیق همه» برای این بعد است.</string>
     <string name="bulletin_unread_dot_label">خوانده نشده</string>
     <string name="bulletin_withdrawn_badge">برداشته شد</string>
-    <string name="calendar_date_today_suffix"> (امروز)</string>
+    <string name="calendar_date_today_suffix">\u0020(امروز)</string>
     <string name="calendar_holiday_notify_description">یادآورهای کلاس در این تعطیلی خاموش هستند. این را فعال کنید تا همچنان دریافتشان کنید.</string>
     <string name="calendar_holiday_notify_title">هنوز کلاس دارید؟</string>
     <string name="calendar_month_year">%1$d/%2$d</string>
@@ -662,7 +662,7 @@
     <string name="refreshing_message">در حال به‌روزرسانی… کمی صبر کنید</string>
     <string name="school_mail_account_title">ایمیل مدرسه</string>
     <string name="school_mail_add_attachment">پیوست کردن فایل</string>
-    <string name="school_mail_attachment_share">Share</string>
+    <string name="school_mail_attachment_share">اشتراک‌گذاری یا ذخیره</string>
     <string name="school_mail_attachments">پیوست‌ها</string>
     <string name="school_mail_auth_failed_banner">ورود به ایمیل مدرسه ناموفق بود. دوباره وارد شوید.</string>
     <string name="school_mail_auth_failed_notification_text">برای ورود دوباره، TigerDuck را باز کنید.</string>
@@ -767,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">افزودن Cc/Bcc</string>
     <string name="school_mail_sign_in_note">شماره دانشجویی و رمز عبور شما باید همان سیستم دانشگاه باشد. TigerDuck این رمز عبور را فقط به‌صورت رمزگذاری‌شده روی همین دستگاه ذخیره می‌کند و هرگز آپلود نمی‌کند.</string>
     <string name="school_mail_sign_in_prompt_title">ورود به ایمیل مدرسه</string>
+    <string name="school_mail_source_failed">بارگذاری منبع ممکن نشد.</string>
     <string name="school_mail_subject">موضوع</string>
     <string name="school_mail_to">گیرنده</string>
     <string name="school_mail_too_large">پیوست‌ها از محدودیت 50 مگابایت بیشتر است</string>

@@ -131,7 +131,7 @@
     <string name="bulletin_rule_delete_action">Изтриване на правило</string>
     <string name="bulletin_rule_dept_and_tag_title">Отдел + категория (%1$s)</string>
     <string name="bulletin_rule_dept_only_title">Конкретен отдел</string>
-    <string name="bulletin_rule_dept_prefix">Отдел: </string>
+    <string name="bulletin_rule_dept_prefix">Отдел:\u0020</string>
     <string name="bulletin_rule_disabled_badge">Забранено</string>
     <string name="bulletin_rule_edit_title">Редактиране на правило</string>
     <string name="bulletin_rule_editor_dept_section">Отдел</string>
@@ -143,11 +143,11 @@
     <string name="bulletin_rule_editor_name_section">Име</string>
     <string name="bulletin_rule_editor_selected_count">Избран %1$d</string>
     <string name="bulletin_rule_editor_tag_section">Категория</string>
-    <string name="bulletin_rule_filter_separator">, </string>
-    <string name="bulletin_rule_join_and"> и </string>
-    <string name="bulletin_rule_join_or"> или </string>
+    <string name="bulletin_rule_filter_separator">,\u0020</string>
+    <string name="bulletin_rule_join_and">\u0020и\u0020</string>
+    <string name="bulletin_rule_join_or">\u0020или\u0020</string>
     <string name="bulletin_rule_tag_only_title">Конкретна категория</string>
-    <string name="bulletin_rule_tags_prefix">категория: </string>
+    <string name="bulletin_rule_tags_prefix">категория:\u0020</string>
     <string name="bulletin_rules_footer">Всяко правило може да филтрира по отдел, категория и комбиниран режим. Оставете празно, за да съответства на всичко в това измерение. Максимум 32 правила.</string>
     <string name="bulletin_rules_header">Правила за уведомяване</string>
     <string name="bulletin_rules_load_failed">Неуспешно зареждане</string>
@@ -165,7 +165,7 @@
     <string name="bulletin_taxonomy_picker_hint">Избирането на нищо означава „съвпадение на всички“ за това измерение.</string>
     <string name="bulletin_unread_dot_label">Непрочетено</string>
     <string name="bulletin_withdrawn_badge">Оттеглено</string>
-    <string name="calendar_date_today_suffix"> (Днес)</string>
+    <string name="calendar_date_today_suffix">\u0020(Днес)</string>
     <string name="calendar_holiday_notify_description">Напомнянията за часове са изключени през този празник. Включете това, за да продължите да ги получавате.</string>
     <string name="calendar_holiday_notify_title">Имате ли все пак час?</string>
     <string name="calendar_month_year">%1$d/%2$d</string>
@@ -662,7 +662,7 @@
     <string name="refreshing_message">Опресняване… моля изчакайте</string>
     <string name="school_mail_account_title">Училищна поща</string>
     <string name="school_mail_add_attachment">Прикачи файл</string>
-    <string name="school_mail_attachment_share">Share</string>
+    <string name="school_mail_attachment_share">Сподели или запази</string>
     <string name="school_mail_attachments">Прикачени файлове</string>
     <string name="school_mail_auth_failed_banner">Влизането в училищната поща е неуспешно. Влезте отново.</string>
     <string name="school_mail_auth_failed_notification_text">Отворете TigerDuck, за да влезете отново.</string>
@@ -767,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Добави Cc/Bcc</string>
     <string name="school_mail_sign_in_note">Вашият студентски номер и парола трябва да са същите като в системата на училището. TigerDuck съхранява тази парола само криптирана на това устройство и никога не я качва в мрежата.</string>
     <string name="school_mail_sign_in_prompt_title">Влезте в училищната поща</string>
+    <string name="school_mail_source_failed">Изходният код не можа да се зареди.</string>
     <string name="school_mail_subject">Тема</string>
     <string name="school_mail_to">До</string>
     <string name="school_mail_too_large">Прикачените файлове надвишават лимита от 50 MB</string>

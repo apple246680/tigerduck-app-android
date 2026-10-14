@@ -143,9 +143,9 @@
     <string name="bulletin_rule_editor_name_section">名称</string>
     <string name="bulletin_rule_editor_selected_count">已选 %1$d 个</string>
     <string name="bulletin_rule_editor_tag_section">类别</string>
-    <string name="bulletin_rule_filter_separator">, </string>
-    <string name="bulletin_rule_join_and"> 且 </string>
-    <string name="bulletin_rule_join_or"> 或 </string>
+    <string name="bulletin_rule_filter_separator">,\u0020</string>
+    <string name="bulletin_rule_join_and">\u0020且\u0020</string>
+    <string name="bulletin_rule_join_or">\u0020或\u0020</string>
     <string name="bulletin_rule_tag_only_title">指定类别</string>
     <string name="bulletin_rule_tags_prefix">类别:</string>
     <string name="bulletin_rules_footer">每条规则可选处室、类别与组合模式。留空代表该维度不筛选。最多 32 条。</string>
@@ -165,7 +165,7 @@
     <string name="bulletin_taxonomy_picker_hint">若不选任何项目，该维度视为「全部」</string>
     <string name="bulletin_unread_dot_label">未读</string>
     <string name="bulletin_withdrawn_badge">已撤下</string>
-    <string name="calendar_date_today_suffix"> (今日)</string>
+    <string name="calendar_date_today_suffix">\u0020(今日)</string>
     <string name="calendar_holiday_notify_description">这个假日不会提醒上课。开启后仍会收到上课提醒。</string>
     <string name="calendar_holiday_notify_title">还要上课？</string>
     <string name="calendar_month_year">%1$d年%2$d月</string>
@@ -662,7 +662,7 @@
     <string name="refreshing_message">页面正在刷新，别急～</string>
     <string name="school_mail_account_title">校园邮箱</string>
     <string name="school_mail_add_attachment">添加附件</string>
-    <string name="school_mail_attachment_share">分享</string>
+    <string name="school_mail_attachment_share">分享或存储</string>
     <string name="school_mail_attachments">附件</string>
     <string name="school_mail_auth_failed_banner">校园邮箱登录失败，请重新登录。</string>
     <string name="school_mail_auth_failed_notification_text">请打开 TigerDuck 重新登录。</string>
@@ -767,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">添加抄送／密送</string>
     <string name="school_mail_sign_in_note">账号密码应与校务系统相同。此密码 TigerDuck 只会加密保存在这台设备上，不会上传。</string>
     <string name="school_mail_sign_in_prompt_title">登录校园邮箱</string>
+    <string name="school_mail_source_failed">无法加载源代码。</string>
     <string name="school_mail_subject">主题</string>
     <string name="school_mail_to">收件人</string>
     <string name="school_mail_too_large">附件超过 50 MB 上限</string>

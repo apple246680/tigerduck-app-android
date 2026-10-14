@@ -131,7 +131,7 @@
     <string name="bulletin_rule_delete_action">Izbriši pravilo</string>
     <string name="bulletin_rule_dept_and_tag_title">Odjel + Kategorija (%1$s)</string>
     <string name="bulletin_rule_dept_only_title">Određeni odjel</string>
-    <string name="bulletin_rule_dept_prefix">Odjel: </string>
+    <string name="bulletin_rule_dept_prefix">Odjel:\u0020</string>
     <string name="bulletin_rule_disabled_badge">Onemogućeno</string>
     <string name="bulletin_rule_edit_title">Uredi pravilo</string>
     <string name="bulletin_rule_editor_dept_section">Odjel</string>
@@ -143,11 +143,11 @@
     <string name="bulletin_rule_editor_name_section">Naziv</string>
     <string name="bulletin_rule_editor_selected_count">%1$d odabrano</string>
     <string name="bulletin_rule_editor_tag_section">Kategorija</string>
-    <string name="bulletin_rule_filter_separator">, </string>
-    <string name="bulletin_rule_join_and"> i </string>
-    <string name="bulletin_rule_join_or"> ili </string>
+    <string name="bulletin_rule_filter_separator">,\u0020</string>
+    <string name="bulletin_rule_join_and">\u0020i\u0020</string>
+    <string name="bulletin_rule_join_or">\u0020ili\u0020</string>
     <string name="bulletin_rule_tag_only_title">Određena kategorija</string>
-    <string name="bulletin_rule_tags_prefix">Kategorija: </string>
+    <string name="bulletin_rule_tags_prefix">Kategorija:\u0020</string>
     <string name="bulletin_rules_footer">Svako pravilo može filtrirati po odjelu, kategoriji i načinu kombiniranja. Ostavite prazno da biste obuhvatili sve u toj dimenziji. Najviše 32 pravila.</string>
     <string name="bulletin_rules_header">Pravila obavijesti</string>
     <string name="bulletin_rules_load_failed">Učitavanje nije uspjelo</string>
@@ -165,7 +165,7 @@
     <string name="bulletin_taxonomy_picker_hint">Ako ništa ne odaberete, za ovu dimenziju vrijedi „sve“.</string>
     <string name="bulletin_unread_dot_label">Nepročitano</string>
     <string name="bulletin_withdrawn_badge">Povučeno</string>
-    <string name="calendar_date_today_suffix"> (Danas)</string>
+    <string name="calendar_date_today_suffix">\u0020(Danas)</string>
     <string name="calendar_holiday_notify_description">Podsjetnici za nastavu su isključeni tijekom ovog praznika. Uključite ovo kako biste ih i dalje primali.</string>
     <string name="calendar_holiday_notify_title">Ipak imate nastavu?</string>
     <string name="calendar_month_year">%1$d/%2$d</string>
@@ -662,7 +662,7 @@
     <string name="refreshing_message">Osvježavanje… pričekajte</string>
     <string name="school_mail_account_title">Školska pošta</string>
     <string name="school_mail_add_attachment">Priloži datoteku</string>
-    <string name="school_mail_attachment_share">Share</string>
+    <string name="school_mail_attachment_share">Podijeli ili spremi</string>
     <string name="school_mail_attachments">Privici</string>
     <string name="school_mail_auth_failed_banner">Prijava u školsku poštu nije uspjela. Prijavite se ponovno.</string>
     <string name="school_mail_auth_failed_notification_text">Otvorite TigerDuck da se ponovno prijavite.</string>
@@ -767,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Dodaj Cc/Bcc</string>
     <string name="school_mail_sign_in_note">Vaš studentski broj i lozinka trebaju biti isti kao u školskom sustavu. TigerDuck tu lozinku pohranjuje samo šifrirano na ovom uređaju i nikada je ne učitava.</string>
     <string name="school_mail_sign_in_prompt_title">Prijavite se u školsku poštu</string>
+    <string name="school_mail_source_failed">Izvorni kod nije moguće učitati.</string>
     <string name="school_mail_subject">Predmet</string>
     <string name="school_mail_to">Prima</string>
     <string name="school_mail_too_large">Privici prelaze ograničenje od 50 MB</string>

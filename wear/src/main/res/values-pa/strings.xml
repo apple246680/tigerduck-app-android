@@ -131,7 +131,7 @@
     <string name="bulletin_rule_delete_action">ਨਿਯਮ ਮਿਟਾਓ</string>
     <string name="bulletin_rule_dept_and_tag_title">ਵਿਭਾਗ + ਸ਼੍ਰੇਣੀ (%1$s)</string>
     <string name="bulletin_rule_dept_only_title">ਖਾਸ ਵਿਭਾਗ</string>
-    <string name="bulletin_rule_dept_prefix">ਵਿਭਾਗ: </string>
+    <string name="bulletin_rule_dept_prefix">ਵਿਭਾਗ:\u0020</string>
     <string name="bulletin_rule_disabled_badge">ਅਯੋਗ</string>
     <string name="bulletin_rule_edit_title">ਨਿਯਮ ਸੰਪਾਦਿਤ ਕਰੋ</string>
     <string name="bulletin_rule_editor_dept_section">ਵਿਭਾਗ</string>
@@ -143,11 +143,11 @@
     <string name="bulletin_rule_editor_name_section">ਨਾਮ</string>
     <string name="bulletin_rule_editor_selected_count">%1$d ਚੁਣੇ ਗਏ</string>
     <string name="bulletin_rule_editor_tag_section">ਸ਼੍ਰੇਣੀ</string>
-    <string name="bulletin_rule_filter_separator">, </string>
-    <string name="bulletin_rule_join_and"> ਅਤੇ </string>
-    <string name="bulletin_rule_join_or"> ਜਾਂ </string>
+    <string name="bulletin_rule_filter_separator">,\u0020</string>
+    <string name="bulletin_rule_join_and">\u0020ਅਤੇ\u0020</string>
+    <string name="bulletin_rule_join_or">\u0020ਜਾਂ\u0020</string>
     <string name="bulletin_rule_tag_only_title">ਖਾਸ ਸ਼੍ਰੇਣੀ</string>
-    <string name="bulletin_rule_tags_prefix">ਸ਼੍ਰੇਣੀ: </string>
+    <string name="bulletin_rule_tags_prefix">ਸ਼੍ਰੇਣੀ:\u0020</string>
     <string name="bulletin_rules_footer">ਹਰ ਨਿਯਮ ਵਿਭਾਗ, ਸ਼੍ਰੇਣੀ ਅਤੇ ਸੁਮੇਲ ਮੋਡ ਅਨੁਸਾਰ ਫਿਲਟਰ ਕਰ ਸਕਦਾ ਹੈ। ਉਸ ਮਾਪ ਵਿੱਚ ਸਭ ਕੁਝ ਮੇਲ ਕਰਨ ਲਈ ਖਾਲੀ ਛੱਡੋ। ਵੱਧ ਤੋਂ ਵੱਧ 32 ਨਿਯਮ।</string>
     <string name="bulletin_rules_header">ਸੂਚਨਾ ਨਿਯਮ</string>
     <string name="bulletin_rules_load_failed">ਲੋਡ ਫੇਲ੍ਹ ਹੋਇਆ</string>
@@ -165,7 +165,7 @@
     <string name="bulletin_taxonomy_picker_hint">ਕੁਝ ਨਾ ਚੁਣਨ ਦਾ ਮਤਲਬ ਹੈ ਇਸ ਮਾਪ ਲਈ \"ਸਭ ਨਾਲ ਮੇਲ ਕਰੋ\"।</string>
     <string name="bulletin_unread_dot_label">ਅਣਪੜ੍ਹਿਆ</string>
     <string name="bulletin_withdrawn_badge">ਵਾਪਸ ਲਿਆ ਗਿਆ</string>
-    <string name="calendar_date_today_suffix"> (ਅੱਜ)</string>
+    <string name="calendar_date_today_suffix">\u0020(ਅੱਜ)</string>
     <string name="calendar_holiday_notify_description">ਇਸ ਛੁੱਟੀ ਦੌਰਾਨ ਕਲਾਸ ਰੀਮਾਈਂਡਰ ਬੰਦ ਹਨ। ਇਹ ਮਿਲਦੇ ਰਹਿਣ ਲਈ ਇਸਨੂੰ ਚਾਲੂ ਕਰੋ।</string>
     <string name="calendar_holiday_notify_title">ਕੀ ਹਾਲੇ ਵੀ ਕਲਾਸ ਹੈ?</string>
     <string name="calendar_month_year">%1$d/%2$d</string>
@@ -662,7 +662,7 @@
     <string name="refreshing_message">ਤਾਜ਼ਾ ਕੀਤਾ ਜਾ ਰਿਹਾ ਹੈ… ਰੁਕੋ</string>
     <string name="school_mail_account_title">ਸਕੂਲ ਮੇਲ</string>
     <string name="school_mail_add_attachment">ਫ਼ਾਈਲ ਜੋੜੋ</string>
-    <string name="school_mail_attachment_share">Share</string>
+    <string name="school_mail_attachment_share">ਸ਼ੇਅਰ ਕਰੋ ਜਾਂ ਸੇਵ ਕਰੋ</string>
     <string name="school_mail_attachments">ਅਟੈਚਮੈਂਟ</string>
     <string name="school_mail_auth_failed_banner">ਸਕੂਲ ਮੇਲ ਸਾਈਨ-ਇਨ ਅਸਫਲ ਰਿਹਾ। ਦੁਬਾਰਾ ਸਾਈਨ ਇਨ ਕਰੋ।</string>
     <string name="school_mail_auth_failed_notification_text">ਦੁਬਾਰਾ ਸਾਈਨ ਇਨ ਕਰਨ ਲਈ TigerDuck ਖੋਲ੍ਹੋ।</string>
@@ -767,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Cc/Bcc ਜੋੜੋ</string>
     <string name="school_mail_sign_in_note">ਤੁਹਾਡੀ ID ਅਤੇ ਪਾਸਵਰਡ ਅਕਾਦਮਿਕ ਸਿਸਟਮ ਵਾਲਾ ਹੀ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ। TigerDuck ਇਸ ਪਾਸਵਰਡ ਨੂੰ ਸਿਰਫ਼ ਇਸ ਡਿਵਾਈਸ \'ਤੇ ਐਨਕ੍ਰਿਪਟ ਕਰਕੇ ਰੱਖਦਾ ਹੈ ਅਤੇ ਕਦੇ ਅੱਪਲੋਡ ਨਹੀਂ ਕਰਦਾ।</string>
     <string name="school_mail_sign_in_prompt_title">ਸਕੂਲ ਮੇਲ ਵਿੱਚ ਸਾਈਨ ਇਨ ਕਰੋ</string>
+    <string name="school_mail_source_failed">ਸੋਰਸ ਲੋਡ ਨਹੀਂ ਹੋ ਸਕਿਆ।</string>
     <string name="school_mail_subject">ਵਿਸ਼ਾ</string>
     <string name="school_mail_to">ਪ੍ਰਤੀ</string>
     <string name="school_mail_too_large">ਅਟੈਚਮੈਂਟ 50 MB ਦੀ ਸੀਮਾ ਤੋਂ ਵੱਧ ਹਨ</string>

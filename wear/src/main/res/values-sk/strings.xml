@@ -131,7 +131,7 @@
     <string name="bulletin_rule_delete_action">Odstrániť pravidlo</string>
     <string name="bulletin_rule_dept_and_tag_title">Odd. + Kategória (%1$s)</string>
     <string name="bulletin_rule_dept_only_title">Konkrétne oddelenie</string>
-    <string name="bulletin_rule_dept_prefix">Odd.: </string>
+    <string name="bulletin_rule_dept_prefix">Odd.:\u0020</string>
     <string name="bulletin_rule_disabled_badge">Vypnuté</string>
     <string name="bulletin_rule_edit_title">Upraviť pravidlo</string>
     <string name="bulletin_rule_editor_dept_section">Oddelenie</string>
@@ -143,11 +143,11 @@
     <string name="bulletin_rule_editor_name_section">Názov</string>
     <string name="bulletin_rule_editor_selected_count">%1$d vybraných</string>
     <string name="bulletin_rule_editor_tag_section">Kategória</string>
-    <string name="bulletin_rule_filter_separator">, </string>
-    <string name="bulletin_rule_join_and"> a </string>
-    <string name="bulletin_rule_join_or"> alebo </string>
+    <string name="bulletin_rule_filter_separator">,\u0020</string>
+    <string name="bulletin_rule_join_and">\u0020a\u0020</string>
+    <string name="bulletin_rule_join_or">\u0020alebo\u0020</string>
     <string name="bulletin_rule_tag_only_title">Konkrétna kategória</string>
-    <string name="bulletin_rule_tags_prefix">Kategória: </string>
+    <string name="bulletin_rule_tags_prefix">Kategória:\u0020</string>
     <string name="bulletin_rules_footer">Každé pravidlo môže filtrovať podľa oddelenia, kategórie a režimu kombinácie. Prázdne pole znamená, že sa daná dimenzia nefiltruje. Maximálne 32 pravidiel.</string>
     <string name="bulletin_rules_header">Pravidlá upozornení</string>
     <string name="bulletin_rules_load_failed">Načítanie zlyhalo</string>
@@ -165,7 +165,7 @@
     <string name="bulletin_taxonomy_picker_hint">Ak nevyberiete nič, pre túto dimenziu platí „všetko“.</string>
     <string name="bulletin_unread_dot_label">Neprečítané</string>
     <string name="bulletin_withdrawn_badge">Stiahnuté</string>
-    <string name="calendar_date_today_suffix"> (Dnes)</string>
+    <string name="calendar_date_today_suffix">\u0020(Dnes)</string>
     <string name="calendar_holiday_notify_description">Pripomienky hodín sú počas tohto sviatku vypnuté. Zapnite to, aby ste ich naďalej dostávali.</string>
     <string name="calendar_holiday_notify_title">Napriek tomu máte vyučovanie?</string>
     <string name="calendar_month_year">%1$d/%2$d</string>
@@ -662,7 +662,7 @@
     <string name="refreshing_message">Obnovuje sa… chvíľku počkajte</string>
     <string name="school_mail_account_title">Školská pošta</string>
     <string name="school_mail_add_attachment">Priložiť súbor</string>
-    <string name="school_mail_attachment_share">Share</string>
+    <string name="school_mail_attachment_share">Zdieľať alebo uložiť</string>
     <string name="school_mail_attachments">Prílohy</string>
     <string name="school_mail_auth_failed_banner">Prihlásenie do školskej pošty zlyhalo. Prihláste sa znova.</string>
     <string name="school_mail_auth_failed_notification_text">Otvorte TigerDuck a prihláste sa znova.</string>
@@ -767,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Pridať kópiu/skrytú kópiu</string>
     <string name="school_mail_sign_in_note">Vaše prihlasovacie meno a heslo by mali byť rovnaké ako v školskom systéme. TigerDuck toto heslo na tomto zariadení ukladá len v zašifrovanej podobe a nikdy ho nikam neodosiela.</string>
     <string name="school_mail_sign_in_prompt_title">Prihlásiť sa do školskej pošty</string>
+    <string name="school_mail_source_failed">Zdrojový kód sa nepodarilo načítať.</string>
     <string name="school_mail_subject">Predmet</string>
     <string name="school_mail_to">Komu</string>
     <string name="school_mail_too_large">Prílohy prekračujú limit 50 MB</string>

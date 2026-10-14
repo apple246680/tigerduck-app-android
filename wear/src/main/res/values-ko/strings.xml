@@ -131,7 +131,7 @@
     <string name="bulletin_rule_delete_action">규칙 삭제</string>
     <string name="bulletin_rule_dept_and_tag_title">학과 + 카테고리 (%1$s)</string>
     <string name="bulletin_rule_dept_only_title">특정 학과</string>
-    <string name="bulletin_rule_dept_prefix">학과: </string>
+    <string name="bulletin_rule_dept_prefix">학과:\u0020</string>
     <string name="bulletin_rule_disabled_badge">비활성화됨</string>
     <string name="bulletin_rule_edit_title">규칙 편집</string>
     <string name="bulletin_rule_editor_dept_section">학과</string>
@@ -143,11 +143,11 @@
     <string name="bulletin_rule_editor_name_section">이름</string>
     <string name="bulletin_rule_editor_selected_count">%1$d개 선택됨</string>
     <string name="bulletin_rule_editor_tag_section">카테고리</string>
-    <string name="bulletin_rule_filter_separator">, </string>
-    <string name="bulletin_rule_join_and"> 및 </string>
-    <string name="bulletin_rule_join_or"> 또는 </string>
+    <string name="bulletin_rule_filter_separator">,\u0020</string>
+    <string name="bulletin_rule_join_and">\u0020및\u0020</string>
+    <string name="bulletin_rule_join_or">\u0020또는\u0020</string>
     <string name="bulletin_rule_tag_only_title">특정 카테고리</string>
-    <string name="bulletin_rule_tags_prefix">카테고리: </string>
+    <string name="bulletin_rule_tags_prefix">카테고리:\u0020</string>
     <string name="bulletin_rules_footer">각 규칙은 부서, 카테고리 및 조합 모드로 필터링할 수 있습니다. 해당 항목의 모든 내용을 매칭하려면 비워 두세요. 최대 32개 규칙.</string>
     <string name="bulletin_rules_header">알림 규칙</string>
     <string name="bulletin_rules_load_failed">불러오기 실패</string>
@@ -165,7 +165,7 @@
     <string name="bulletin_taxonomy_picker_hint">선택하지 않으면 이 항목의 전체가 매칭됩니다.</string>
     <string name="bulletin_unread_dot_label">읽지 않음</string>
     <string name="bulletin_withdrawn_badge">철회됨</string>
-    <string name="calendar_date_today_suffix"> (오늘)</string>
+    <string name="calendar_date_today_suffix">\u0020(오늘)</string>
     <string name="calendar_holiday_notify_description">이 휴일에는 수업 알림이 꺼져 있습니다. 계속 받으려면 켜세요.</string>
     <string name="calendar_holiday_notify_title">그래도 수업이 있나요?</string>
     <string name="calendar_month_year">%1$d년 %2$d월</string>
@@ -662,7 +662,7 @@
     <string name="refreshing_message">새로고침 중… 잠시만요</string>
     <string name="school_mail_account_title">학교 메일</string>
     <string name="school_mail_add_attachment">파일 첨부</string>
-    <string name="school_mail_attachment_share">Share</string>
+    <string name="school_mail_attachment_share">공유 또는 저장</string>
     <string name="school_mail_attachments">첨부 파일</string>
     <string name="school_mail_auth_failed_banner">학교 메일 로그인에 실패했습니다. 다시 로그인해 주세요.</string>
     <string name="school_mail_auth_failed_notification_text">TigerDuck을 열어 다시 로그인해 주세요.</string>
@@ -767,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">참조/숨은참조 추가</string>
     <string name="school_mail_sign_in_note">학번과 비밀번호는 학교 시스템과 동일해야 합니다. TigerDuck은 이 비밀번호를 이 기기에만 암호화하여 저장하며 절대 업로드하지 않습니다.</string>
     <string name="school_mail_sign_in_prompt_title">학교 메일 로그인</string>
+    <string name="school_mail_source_failed">소스를 불러올 수 없습니다.</string>
     <string name="school_mail_subject">제목</string>
     <string name="school_mail_to">받는사람</string>
     <string name="school_mail_too_large">첨부 파일이 50MB 제한을 초과했습니다</string>

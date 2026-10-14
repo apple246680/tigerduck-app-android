@@ -131,7 +131,7 @@
     <string name="bulletin_rule_delete_action">Suprimeix la regla</string>
     <string name="bulletin_rule_dept_and_tag_title">Departament + Categoria (%1$s)</string>
     <string name="bulletin_rule_dept_only_title">Departament específic</string>
-    <string name="bulletin_rule_dept_prefix">Departament: </string>
+    <string name="bulletin_rule_dept_prefix">Departament:\u0020</string>
     <string name="bulletin_rule_disabled_badge">Inhabilitat</string>
     <string name="bulletin_rule_edit_title">Edita la regla</string>
     <string name="bulletin_rule_editor_dept_section">Departament</string>
@@ -143,11 +143,11 @@
     <string name="bulletin_rule_editor_name_section">Nom</string>
     <string name="bulletin_rule_editor_selected_count">%1$d seleccionat</string>
     <string name="bulletin_rule_editor_tag_section">Categoria</string>
-    <string name="bulletin_rule_filter_separator">, </string>
-    <string name="bulletin_rule_join_and"> i </string>
-    <string name="bulletin_rule_join_or"> o </string>
+    <string name="bulletin_rule_filter_separator">,\u0020</string>
+    <string name="bulletin_rule_join_and">\u0020i\u0020</string>
+    <string name="bulletin_rule_join_or">\u0020o\u0020</string>
     <string name="bulletin_rule_tag_only_title">Categoria específica</string>
-    <string name="bulletin_rule_tags_prefix">Categoria: </string>
+    <string name="bulletin_rule_tags_prefix">Categoria:\u0020</string>
     <string name="bulletin_rules_footer">Cada regla pot filtrar per departament, categoria i un mode de combinació. Deixa en blanc perquè coincideixi amb tot en aquesta dimensió. Màxim 32 regles.</string>
     <string name="bulletin_rules_header">Normes de notificació</string>
     <string name="bulletin_rules_load_failed">La càrrega ha fallat</string>
@@ -165,7 +165,7 @@
     <string name="bulletin_taxonomy_picker_hint">No seleccionar res significa \"combinar-ho tot\" per a aquesta dimensió.</string>
     <string name="bulletin_unread_dot_label">Sense llegir</string>
     <string name="bulletin_withdrawn_badge">Retirada</string>
-    <string name="calendar_date_today_suffix"> (Avui)</string>
+    <string name="calendar_date_today_suffix">\u0020(Avui)</string>
     <string name="calendar_holiday_notify_description">Els recordatoris de classe estan desactivats durant aquest festiu. Activa-ho per seguir rebent-los.</string>
     <string name="calendar_holiday_notify_title">Encara tens classe?</string>
     <string name="calendar_month_year">%1$d/%2$d</string>
@@ -662,7 +662,7 @@
     <string name="refreshing_message">Actualitzant… un moment</string>
     <string name="school_mail_account_title">Correu universitari</string>
     <string name="school_mail_add_attachment">Adjunta un fitxer</string>
-    <string name="school_mail_attachment_share">Share</string>
+    <string name="school_mail_attachment_share">Comparteix o desa</string>
     <string name="school_mail_attachments">Fitxers adjunts</string>
     <string name="school_mail_auth_failed_banner">No s\'ha pogut iniciar la sessió al correu universitari. Torna-hi a iniciar la sessió.</string>
     <string name="school_mail_auth_failed_notification_text">Obre TigerDuck per tornar a iniciar la sessió.</string>
@@ -767,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Afegeix Cc/Cco</string>
     <string name="school_mail_sign_in_note">El teu número d\'estudiant i contrasenya han de ser els mateixos que els del sistema universitari. TigerDuck només desa aquesta contrasenya xifrada en aquest dispositiu i mai la puja a internet.</string>
     <string name="school_mail_sign_in_prompt_title">Inicia la sessió al correu universitari</string>
+    <string name="school_mail_source_failed">No s\'ha pogut carregar el codi font.</string>
     <string name="school_mail_subject">Assumpte</string>
     <string name="school_mail_to">Per a</string>
     <string name="school_mail_too_large">Els fitxers adjunts superen el límit de 50 MB</string>
