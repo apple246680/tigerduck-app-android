@@ -23,9 +23,11 @@ internal fun OkHttpClient.executeCredentialPost(request: Request): Response? {
     if (!response.isRedirect) return response
     response.use {
         if (it.code !in FOLLOWED_AS_GET) return null
-        val next = it.header("Location")?.let(request.url::resolve) ?: return null
+        val next = it.header("Location")?.let(it.request.url::resolve) ?: return null
         if (!next.isHttps) return null
-        return newCall(request.newBuilder().url(next).get().build()).execute()
+        // From the request the POST went out as, not the caller's: it carries the account the
+        // sign-in started under (AccountSessionGuard), which a sign-out since then makes stale.
+        return newCall(it.request.newBuilder().url(next).get().build()).execute()
     }
 }
 
