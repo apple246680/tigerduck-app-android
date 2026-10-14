@@ -25,6 +25,13 @@ internal fun bannerRejection(
 ): StoredPasswordLatch.Rejection? = rejection?.takeIf { signedIn && it !== dismissed }
 
 /**
+ * Whether [typed] may sign in from the "Sign in again" sheet: the [stored] account only, as
+ * another student would inherit what it left on the device. Anyone with none stored.
+ */
+internal fun signsInAsStoredAccount(typed: String, stored: String?): Boolean =
+    stored == null || typed.trim().uppercase() == stored.trim().uppercase()
+
+/**
  * Whether the TigerSync status asks the user to sign in again, in place of the latest error: sync
  * is on, the school account is signed in with credentials to read, the device has no TigerSync
  * session, and the last sign-in that had something to send failed, so none came. Not while
@@ -91,6 +98,8 @@ class NtustSignInViewModel @Inject constructor(
     }
 
     fun signIn(studentId: String, password: String) {
+        // The sheet fixes the student ID; this keeps it so whatever reaches here.
+        if (!signsInAsStoredAccount(studentId, authService.storedStudentId)) return
         viewModelScope.launch {
             if (authService.login(studentId, password)) {
                 // As Settings does after a sign-in, in case it had stopped.
