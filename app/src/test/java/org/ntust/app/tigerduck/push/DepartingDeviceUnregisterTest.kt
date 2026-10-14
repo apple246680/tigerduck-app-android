@@ -2,6 +2,7 @@ package org.ntust.app.tigerduck.push
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.json.JSONException
@@ -49,6 +50,9 @@ class DepartingDeviceUnregisterTest {
     private val refreshReplies = ArrayDeque<DepartingRefresh>()
     private var signedInSince = false
 
+    /** Holds each refresh's reply until the test completes it. */
+    private var refreshGate: CompletableDeferred<Unit>? = null
+
     /** Thrown by each refresh, as a reply that cannot be read would be. */
     private var refreshThrows: Exception? = null
 
@@ -73,6 +77,7 @@ class DepartingDeviceUnregisterTest {
             assertEquals("the refresh goes to the backend that issued the token", BACKEND, session.baseUrl)
             refreshes += session.refreshToken
             onRefresh()
+            refreshGate?.await()
             refreshThrows?.let { throw it }
             refreshReplies.removeFirstOrNull() ?: DepartingRefresh.Refused
         },
@@ -317,6 +322,24 @@ class DepartingDeviceUnregisterTest {
         assertEquals(emptyList<String>(), refreshes)
         assertEquals(emptyList<String>(), deletes)
         assertNull(store.pending)
+    }
+
+    @Test
+    fun `a stop while the token is refreshed still keeps the pair the server rotated to`() = runTest {
+        // WorkManager stops a worker by cancelling it; the refresh it was waiting on may already
+        // have rotated the token, and the replaced one would be taken for reuse if sent again.
+        owe(expiresAt = now - 1)
+        refreshReplies += refreshed("access-2", "refresh-2")
+        val gate = CompletableDeferred<Unit>().also { refreshGate = it }
+        val sending = launch { unregister().send() }
+        runCurrent()
+
+        sending.cancel()
+        gate.complete(Unit)
+        sending.join()
+
+        assertEquals("refresh-2", store.pending?.session?.refreshToken)
+        assertEquals("stopped, it sends nothing more", emptyList<String>(), deletes)
     }
 
     @Test

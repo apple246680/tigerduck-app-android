@@ -2,7 +2,11 @@ package org.ntust.app.tigerduck.push
 
 import android.util.Log
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.ntust.app.tigerduck.auth.AuthTokenManager
 import org.ntust.app.tigerduck.auth.DepartingRefresh
 import org.ntust.app.tigerduck.auth.DepartingSession
@@ -160,6 +164,8 @@ class DepartingDeviceUnregister internal constructor(
             refreshed = true
         }
         if (hasSession()) return Outcome.DONE
+        // A stop that came during the refresh ends here, with the rotated pair kept.
+        currentCoroutineContext().ensureActive()
         var status = deleteDevice(current.session.baseUrl, current.deviceId, current.session.accessToken)
         if (status == 401 && !refreshed) {
             // Turned down before its time, a revoked token, say: a refreshed one may still go out.
@@ -182,14 +188,19 @@ class DepartingDeviceUnregister internal constructor(
     // Under the mutex, written by renew() for afterFailedRefresh() to read.
     private var refreshUnavailable = false
 
-    /** [pending] with a refreshed session, kept before it is used; null when the refresh failed. */
-    private suspend fun renew(pending: PendingUnregister): PendingUnregister? {
+    /**
+     * [pending] with a refreshed session, kept before it is used; null when the refresh failed.
+     * Finishes even when the caller is cancelled, as a WorkManager stop does, as the session's own
+     * refresh does: stopped between the send and the save, the pair the server rotated to would
+     * be lost, and the token kept is one the server would take for reuse.
+     */
+    private suspend fun renew(pending: PendingUnregister): PendingUnregister? = withContext(NonCancellable) {
         val reply = refresh(pending.session)
         refreshUnavailable = reply == DepartingRefresh.Unavailable
-        if (reply !is DepartingRefresh.Refreshed) return null
+        if (reply !is DepartingRefresh.Refreshed) return@withContext null
         // Kept before the DELETE: the server rotated the refresh token, and would take the one it
         // replaced for reuse if a later retry sent it.
-        return PendingUnregister(pending.deviceId, reply.session, pending.owedAt).also(store::save)
+        PendingUnregister(pending.deviceId, reply.session, pending.owedAt).also(store::save)
     }
 
     private fun afterFailedRefresh(): Outcome =
