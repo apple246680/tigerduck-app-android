@@ -245,6 +245,10 @@ object MoodleMembers {
             }
     }
 
+    /** A member's [groups] in one line: Chinese and Japanese list with 、, other languages with a comma. */
+    fun groupsText(groups: List<String>, locale: Locale): String =
+        groups.joinToString(if (locale.language in setOf("zh", "ja")) "、" else ", ")
+
     private fun matches(member: MoodleMember, needle: String): Boolean =
         listOfNotNull(member.name, member.studentId, member.department)
             .any { it.contains(needle, ignoreCase = true) }

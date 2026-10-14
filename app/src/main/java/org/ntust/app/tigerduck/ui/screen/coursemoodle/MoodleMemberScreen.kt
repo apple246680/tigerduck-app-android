@@ -36,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -50,6 +51,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.moodle.MoodleLookup
 import org.ntust.app.tigerduck.data.moodle.MoodleMemberPlacement
+import org.ntust.app.tigerduck.data.moodle.MoodleMembers
 import org.ntust.app.tigerduck.data.moodle.name
 import org.ntust.app.tigerduck.data.moodle.studentId
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMember
@@ -135,11 +137,12 @@ private fun memberRows(member: MoodleMember): List<MemberRow> {
     val departmentLabel = stringResource(R.string.course_member_department)
     val emailLabel = stringResource(R.string.course_member_email)
     val groupsLabel = stringResource(R.string.course_member_groups)
+    val locale = LocalConfiguration.current.locales[0]
     return buildList {
         member.studentId?.let { add(MemberRow(studentIdLabel, it)) }
         member.department?.let { add(MemberRow(departmentLabel, it)) }
         member.email?.let { add(MemberRow(emailLabel, it, isEmail = true)) }
-        if (member.groups.isNotEmpty()) add(MemberRow(groupsLabel, member.groups.joinToString("、")))
+        if (member.groups.isNotEmpty()) add(MemberRow(groupsLabel, MoodleMembers.groupsText(member.groups, locale)))
         member.fields.forEach { add(MemberRow(it.name, it.value)) }
     }
 }

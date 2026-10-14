@@ -148,4 +148,10 @@ class MoodleLogicTest {
         assertNull(MoodleGrades.activityPath(grade(1).copy(module = null)))
         assertNull(MoodleGrades.activityPath(grade(1).copy(module = "../x")))
     }
+
+    @Test
+    fun `groups are listed with the language's own separator`() {
+        assertEquals("A 組、B 組", MoodleMembers.groupsText(listOf("A 組", "B 組"), Locale.TRADITIONAL_CHINESE))
+        assertEquals("Team A, Team B", MoodleMembers.groupsText(listOf("Team A", "Team B"), Locale.ENGLISH))
+    }
 }
