@@ -84,19 +84,20 @@ fun openMoodleContentLink(context: Context, url: String, browserPreference: Stri
 /**
  * Opens a downloaded Moodle [file] in another app: a content URI to the app's own copy, readable
  * once by the app picked, so no link with the account's key ever leaves the app. A web page or an
- * SVG, which can run scripts, goes to the share sheet as iOS sends it, not to a viewer.
+ * SVG, which can run scripts, goes to the share sheet as iOS sends it, not to a viewer. Through
+ * the system's chooser, which says so itself when no app takes the file; the read grant rides the
+ * wrapped intent's clip, which the chooser passes on.
  */
 fun moodleFileIntent(context: Context, file: File, mimeType: String): Intent {
     val uri = FileProvider.getUriForFile(context, fileProviderAuthority(context), file)
     val intent = if (mimeType.lowercase() in SHARED_NOT_VIEWED) {
-        Intent(Intent.ACTION_SEND)
-            .setType(mimeType)
-            .putExtra(Intent.EXTRA_STREAM, uri)
-            .apply { clipData = ClipData.newRawUri(file.name, uri) }
+        Intent(Intent.ACTION_SEND).setType(mimeType).putExtra(Intent.EXTRA_STREAM, uri)
     } else {
         Intent(Intent.ACTION_VIEW).setDataAndTypeAndNormalize(uri, mimeType)
     }
-    return Intent.createChooser(intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), file.name)
+    intent.clipData = ClipData.newRawUri(file.name, uri)
+    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    return Intent.createChooser(intent, null)
 }
 
 private val SHARED_NOT_VIEWED = setOf("text/html", "application/xhtml+xml", "image/svg+xml")

@@ -264,13 +264,11 @@ private fun AttachmentRow(store: MoodleCourseStore, file: MoodleFile, discussion
                 onClick = {
                     scope.launch {
                         when (val opened = store.openAttachment(file)) {
+                            // The system's chooser tells the reader itself when no app takes the file.
                             is MoodleAttachment.Local -> runCatching {
                                 context.startActivity(
                                     moodleFileIntent(context, opened.file, moodleFileType(file.mimeType, file.name)),
                                 )
-                            }.onFailure {
-                                // As School Mail says when no app takes an attachment.
-                                Toast.makeText(context, R.string.school_mail_error_generic, Toast.LENGTH_SHORT).show()
                             }
                             is MoodleAttachment.Link -> openMoodleContentLink(context, opened.url, browserPreference)
                             is MoodleAttachment.Failed -> Toast.makeText(

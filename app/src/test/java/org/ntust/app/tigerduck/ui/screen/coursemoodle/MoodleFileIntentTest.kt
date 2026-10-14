@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Intent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -29,10 +30,14 @@ class MoodleFileIntentTest {
             writeText("x")
         }
 
+        val chooser = moodleFileIntent(context, file("TigerDuckCache/moodle_open/a1/s1/hw3.pdf"), "application/pdf")
+        // The system's own chooser, which says so itself when no app takes the file.
+        assertEquals(Intent.ACTION_CHOOSER, chooser.action)
+        assertNull("no title of the app's own", chooser.getCharSequenceExtra(Intent.EXTRA_TITLE))
         @Suppress("DEPRECATION")
-        val view = moodleFileIntent(context, file("TigerDuckCache/moodle_open/a1/s1/hw3.pdf"), "application/pdf")
-            .getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
+        val view = chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
         assertEquals(Intent.ACTION_VIEW, view.action)
+        assertEquals("the grant rides the wrapped intent's clip through the chooser", view.data, view.clipData!!.getItemAt(0).uri)
         assertEquals("content", view.data!!.scheme)
         assertEquals("application/pdf", view.type)
         assertTrue(view.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
