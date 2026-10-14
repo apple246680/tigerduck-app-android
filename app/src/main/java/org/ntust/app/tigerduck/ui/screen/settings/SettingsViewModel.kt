@@ -62,6 +62,7 @@ class SettingsViewModel @Inject constructor(
     private val syncApiClient: SyncApiClient,
     private val courseService: CourseService,
     private val dataCache: DataCache,
+    private val signOutLossCheck: SignOutLossCheck,
     private val debugFixtures: DebugFixtureStore,
     private val demoAccount: DemoAccount,
     private val courseIgnoreSync: CourseIgnoreSync,
@@ -501,6 +502,40 @@ class SettingsViewModel @Inject constructor(
     fun loginNtust(studentId: String, password: String) {
         // The background sync follows the sign-in: AccountSessionEffects.
         viewModelScope.launch { authService.login(studentId, password) }
+    }
+
+    private val _signOutConfirmation = MutableStateFlow<Set<SignOutLoss>?>(null)
+
+    /** What the NTUST sign-out waiting for an answer would delete; null when none is waiting. */
+    val signOutConfirmation: StateFlow<Set<SignOutLoss>?> = _signOutConfirmation
+
+    /**
+     * The Sign out button. A sign-out deletes this phone's data, so it asks first when that
+     * holds anything that exists nowhere else ([SignOutLoss]), and signs out at once otherwise.
+     */
+    fun requestNtustSignOut() {
+        // A second tap while the first is still reading the phone's data.
+        if (checkingSignOut) return
+        checkingSignOut = true
+        viewModelScope.launch {
+            try {
+                val losses = signOutLossCheck.losses()
+                if (losses.isEmpty()) logoutNtust() else _signOutConfirmation.value = losses
+            } finally {
+                checkingSignOut = false
+            }
+        }
+    }
+
+    private var checkingSignOut = false
+
+    fun confirmNtustSignOut() {
+        _signOutConfirmation.value = null
+        logoutNtust()
+    }
+
+    fun dismissNtustSignOut() {
+        _signOutConfirmation.value = null
     }
 
     fun logoutNtust() {

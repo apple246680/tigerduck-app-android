@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -115,6 +116,7 @@ fun SettingsScreen(
 
     var showNtustLoginSheet by remember { mutableStateOf(false) }
     var showLibraryLoginSheet by remember { mutableStateOf(false) }
+    val signOutConfirmation by viewModel.signOutConfirmation.collectAsStateWithLifecycle()
 
     // Auto-dismiss dialogs when login succeeds
     LaunchedEffect(isNtustLoggedIn) {
@@ -241,7 +243,8 @@ fun SettingsScreen(
                             subtitle = if (isNtustLoggedIn) viewModel.ntustStudentId else null,
                             isLoggingIn = isNtustLoggingIn,
                             onLogin = { showNtustLoginSheet = true },
-                            onLogout = { viewModel.logoutNtust() },
+                            // Asks first when the sign-out would delete what only this phone has.
+                            onLogout = { viewModel.requestNtustSignOut() },
                             actionMinWidth = accountButtonMinWidth,
                             highlight = highlightNtustRow,
                             onHighlightConsumed = { highlightNtustRow = false },
@@ -730,6 +733,23 @@ fun SettingsScreen(
             message = stringResource(R.string.settings_library_feature_disabled_message),
             confirmText = stringResource(R.string.settings_acknowledged),
             onConfirm = { viewModel.appState.pendingLibraryEnablePrompt = false },
+        )
+    }
+
+    // Every loss the sign-out would cause, one line each: the iPhone app asks about the imported
+    // class tables, and this phone may also hold edits TigerSync does not keep.
+    signOutConfirmation?.let { losses ->
+        TigerDuckDialog(
+            onDismissRequest = viewModel::dismissNtustSignOut,
+            title = stringResource(R.string.action_sign_out),
+            message = losses.sortedBy { it.ordinal }.map { stringResource(it.message) }.joinToString("\n"),
+            confirmText = stringResource(R.string.action_sign_out),
+            confirmColors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.error,
+                contentColor = MaterialTheme.colorScheme.onError,
+            ),
+            onConfirm = viewModel::confirmNtustSignOut,
+            dismissText = stringResource(R.string.action_cancel),
         )
     }
 
