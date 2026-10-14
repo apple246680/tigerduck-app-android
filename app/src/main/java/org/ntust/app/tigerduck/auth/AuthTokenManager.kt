@@ -206,13 +206,33 @@ class AuthTokenManager(
     }
 
     /**
-     * Non-suspending snapshot of the current bearer header, or null if no
-     * access token is stored. Does NOT trigger a refresh — intended for
-     * capturing the header before [logout] wipes the tokens, so a fire-and-
-     * forget device-unregister DELETE can still authenticate.
+     * The session as it stands, for a sign-out to take before [logout] wipes
+     * it: the device unregister goes out as the departing account after. Null
+     * without one.
      */
-    fun currentAuthHeader(): String? =
-        tokens.accessToken?.let { "Bearer $it" }
+    fun departingSession(): DepartingSession? = synchronized(signInLock) {
+        val access = tokens.accessToken ?: return null
+        val refresh = tokens.refreshToken ?: return null
+        DepartingSession(access, refresh, tokens.expiresAt)
+    }
+
+    /**
+     * Refreshes a [DepartingSession] for the sign-out's device unregister.
+     * Stores nothing: the pair is the departing account's, and the session
+     * here is whoever signs in next. Sent once more at once when no reply came
+     * back, as [sendWithOneResend] does; a second that gets none either is
+     * [DepartingRefresh.Unavailable], left for a later try.
+     */
+    suspend fun refreshDeparting(refreshToken: String): DepartingRefresh = withContext(Dispatchers.IO) {
+        val first = send(refreshToken, DEPARTING)
+        when (val outcome = if (first == RefreshOutcome.NoReply) send(refreshToken, DEPARTING) else first) {
+            is RefreshOutcome.Refreshed -> DepartingRefresh.Refreshed(
+                DepartingSession(outcome.accessToken, outcome.refreshToken, outcome.expiresAt),
+            )
+            RefreshOutcome.Refused -> DepartingRefresh.Refused
+            RefreshOutcome.NoReply, RefreshOutcome.Unavailable -> DepartingRefresh.Unavailable
+        }
+    }
 
     /**
      * Signs in to the backend and stores the pair it returns. When [logout]
@@ -402,10 +422,10 @@ class AuthTokenManager(
                 val result = JSONObject(response.body.string())
                 val newAccess = result.getString("access_token")
                 val newRefresh = result.getString("refresh_token")
-                val expiresIn = result.getInt("expires_in")
+                val expiresAt = now() + result.getInt("expires_in") * 1000L
                 // Stores nothing after a sign-out, which refreshAndSettle then sees.
-                saveIfSignedIn(signIn, newAccess, newRefresh, now() + expiresIn * 1000L)
-                RefreshOutcome.Refreshed(newAccess)
+                saveIfSignedIn(signIn, newAccess, newRefresh, expiresAt)
+                RefreshOutcome.Refreshed(newAccess, newRefresh, expiresAt)
             }
         } catch (e: IOException) {
             if (e.wasNeverSent()) {
@@ -427,7 +447,7 @@ class AuthTokenManager(
 
     private sealed interface RefreshOutcome {
         // Not a data class, whose toString() would print the token.
-        class Refreshed(val accessToken: String) : RefreshOutcome
+        class Refreshed(val accessToken: String, val refreshToken: String, val expiresAt: Long) : RefreshOutcome
 
         /** No reply came back, so the backend may or may not have rotated the token. */
         data object NoReply : RefreshOutcome
@@ -460,6 +480,9 @@ class AuthTokenManager(
     private companion object {
         const val TAG = "AuthTokenManager"
         const val REFRESH_TIMEOUT_SECONDS = 20L
+
+        // No generation is ever this, so a departing refresh stores nothing.
+        const val DEPARTING = -1
 
         // The backend limits refreshes per IP over a minute.
         const val REFRESH_PAUSE_MS = 60_000L

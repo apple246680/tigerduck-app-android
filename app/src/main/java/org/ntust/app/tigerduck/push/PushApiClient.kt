@@ -104,27 +104,23 @@ class PushApiClient @Inject constructor(
         }
 
     /**
-     * Deletes this device's row with [authHeader], the header a sign-out takes
-     * before it wipes the tokens: this fire-and-forget call runs after that.
-     * Without one nothing is sent, as a session looked up now could be the
-     * next account's, or its sign-in, and the DELETE would remove its row.
+     * Deletes this device's row as the account that signed out, with [accessToken] from the
+     * session it left, and gives the HTTP status. The sign-out's unregister runs after the tokens
+     * are wiped, and a session looked up now could be the next account's, or its sign-in, whose
+     * row the DELETE would remove. Throws [java.io.IOException] when no reply came back.
      */
-    suspend fun unregister(
+    suspend fun deleteDevice(
         deviceId: String,
-        authHeader: String?,
-    ) = withContext(Dispatchers.IO) {
+        accessToken: String,
+    ): Int = withContext(Dispatchers.IO) {
         // v3: DELETE /devices/{client_device_id}, scoped to the authed user
         // (matches iOS + the server). `deviceId` is PushIdentity.uuid().
         val request = Request.Builder()
             .url("$baseUrl/devices/$deviceId")
             .delete()
-            .header("Authorization", authHeader ?: throw NotSignedInException())
+            .header("Authorization", "Bearer $accessToken")
             .build()
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw PushApiException("unregister failed: HTTP ${response.code}")
-            }
-        }
+        client.newCall(request).execute().use { response -> response.code }
     }
 
     /** PATCH the user-facing server-push opt-out for this device. */

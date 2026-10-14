@@ -8,6 +8,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -114,31 +115,55 @@ class AutomaticSignInTest {
     }
 
     @Test
-    fun `the unregister after a sign-out goes out with the header taken before the tokens were wiped`() = runTest {
+    fun `the unregister after a sign-out goes out with the token taken before the tokens were wiped`() = runTest {
         tokens.save("access-1", "refresh-1", expiresAt = Long.MAX_VALUE)
         val manager = manager()
         // In the order AuthService.logout() takes them.
-        val captured = manager.currentAuthHeader()
+        val departing = manager.departingSession()
         accountStored = false
         manager.logout()
 
-        PushApiClient(backend.client, prefs, manager).unregister("device-1", captured)
+        val status = PushApiClient(backend.client, prefs, manager).deleteDevice("device-1", departing!!.accessToken)
 
+        assertEquals(200, status)
         assertEquals(listOf(UNREGISTER), backend.endpoints())
         assertEquals("Bearer access-1", backend.received(UNREGISTER).single().authorization)
     }
 
     @Test
-    fun `the unregister after a sign-out with no header taken sends nothing and borrows no session`() = runTest {
-        // The next account is stored by the time the DELETE goes out.
+    fun `a sign-out with no session takes none to unregister with`() = runTest {
         val manager = manager()
 
-        val failure = runCatching {
-            PushApiClient(backend.client, prefs, manager).unregister("device-1", null)
-        }.exceptionOrNull()
-
-        assertTrue("got $failure", failure is NotSignedInException)
+        assertNull(manager.departingSession())
         assertEquals(emptyList<String>(), backend.endpoints())
+    }
+
+    @Test
+    fun `the departing session is refreshed without storing the pair`() = runTest {
+        tokens.save("access-1", "refresh-1", expiresAt = 0L)
+        val manager = manager()
+        val departing = manager.departingSession()!!
+        accountStored = false
+        manager.logout()
+
+        val reply = manager.refreshDeparting(departing.refreshToken)
+
+        assertEquals("access-2", (reply as DepartingRefresh.Refreshed).session.accessToken)
+        assertEquals("refresh-2", reply.session.refreshToken)
+        assertEquals("refresh-1", JSONObject(backend.received(REFRESH).single().body).getString("refresh_token"))
+        // The session here is whoever signs in next, and nobody has.
+        assertNull(tokens.refreshToken)
+        assertFalse(manager.isLoggedIn)
+    }
+
+    @Test
+    fun `a departing refresh the backend turns down is refused, and a busy one left for later`() = runTest {
+        val manager = manager()
+        backend.answer(REFRESH, 401)
+        assertEquals(DepartingRefresh.Refused, manager.refreshDeparting("refresh-1"))
+
+        backend.answer(REFRESH, 503)
+        assertEquals(DepartingRefresh.Unavailable, manager.refreshDeparting("refresh-1"))
     }
 
     // Signing in again, and the pause after a failure

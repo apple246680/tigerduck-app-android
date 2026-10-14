@@ -2,7 +2,16 @@ package org.ntust.app.tigerduck.push
 
 import android.app.Application
 import android.content.Context
+import androidx.work.Configuration
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import androidx.work.testing.SynchronousExecutor
+import androidx.work.testing.WorkManagerTestInitHelper
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType
@@ -22,6 +31,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.ntust.app.tigerduck.auth.AuthTokenManager
 import org.ntust.app.tigerduck.auth.AuthTokenManager.SignInAttempt
+import org.ntust.app.tigerduck.auth.DepartingSession
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.UiLanguageMonitor
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore
@@ -57,6 +67,10 @@ class PushRegistrationServiceTest {
         prefs = AppPreferences(context)
         prefs.hasCompletedOnboarding = true
         tokens = V3TokenStore(context.getSharedPreferences("v3-tokens-test", Context.MODE_PRIVATE))
+        WorkManagerTestInitHelper.initializeTestWorkManager(
+            context,
+            Configuration.Builder().setExecutor(SynchronousExecutor()).build(),
+        )
     }
 
     /** A session whose access token needs no refresh. */
@@ -84,7 +98,26 @@ class PushRegistrationServiceTest {
             uiLanguage = UiLanguageMonitor(prefs),
             scope = backgroundScope,
             fixtures = DebugFixtureStore(context),
+            departingUnregister = DepartingDeviceUnregister(
+                store = owed,
+                deleteDevice = PushApiClient(backend.client, prefs, auth)::deleteDevice,
+                refresh = auth::refreshDeparting,
+                hasSession = { auth.isLoggedIn },
+                now = System::currentTimeMillis,
+            ),
         )
+    }
+
+    /** The unregister a sign-out owes, kept in memory. */
+    private val owed = object : PendingUnregisterStore {
+        var pending: PendingUnregister? = null
+        override fun load() = pending
+        override fun save(pending: PendingUnregister) {
+            this.pending = pending
+        }
+        override fun clear() {
+            pending = null
+        }
     }
 
     /** Registers "fcm-1" while the backend refuses it the way it refuses a request with no session. */
@@ -275,6 +308,56 @@ class PushRegistrationServiceTest {
         assertEquals("Bearer access-2", patch.authorization)
         assertEquals(false, JSONObject(patch.body).getBoolean("server_push_enabled"))
         assertEquals(emptyList<FakeBackend.Received>(), backend.received(ANNOUNCE))
+    }
+
+    // The sign-out's unregister
+
+    private fun deleteEndpoint() = "DELETE /v3/devices/" + PushIdentity(prefs, context).uuid()
+
+    private fun deletes() = backend.received(deleteEndpoint())
+
+    /** The unregister's request runs on the I/O dispatcher, out of the test scheduler's reach. */
+    private suspend fun awaitUntil(condition: () -> Boolean) = withContext(Dispatchers.Default) {
+        withTimeout(5_000) { while (!condition()) delay(10) }
+    }
+
+    private fun unregisterWork(): List<WorkInfo.State> =
+        WorkManager.getInstance(context)
+            .getWorkInfosForUniqueWork(DepartingUnregisterWorker.UNIQUE_NAME).get().map { it.state }
+
+    @Test
+    fun `a sign-out's unregister the server cannot take yet is kept and queued for later`() = runTest {
+        val service = service(signedIn = false)
+        backend.answer(deleteEndpoint(), 503)
+
+        service.unregister(DepartingSession("access-1", "refresh-1", accessExpiresAt = Long.MAX_VALUE))
+        awaitUntil { deletes().isNotEmpty() }
+
+        assertEquals(listOf("Bearer access-1"), deletes().map { it.authorization })
+        assertEquals("access-1", owed.pending?.session?.accessToken)
+        assertEquals(listOf(WorkInfo.State.ENQUEUED), unregisterWork())
+    }
+
+    @Test
+    fun `a sign-out's unregister the server takes leaves nothing owed`() = runTest {
+        val service = service(signedIn = false)
+
+        service.unregister(DepartingSession("access-1", "refresh-1", accessExpiresAt = Long.MAX_VALUE))
+        awaitUntil { owed.pending == null && deletes().isNotEmpty() }
+
+        assertEquals(1, deletes().size)
+        assertNull(owed.pending)
+    }
+
+    @Test
+    fun `a sign-out with no session owes nothing`() = runTest {
+        val service = service(signedIn = false)
+
+        service.unregister(null)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(0, deletes().size)
+        assertEquals(emptyList<WorkInfo.State>(), unregisterWork())
     }
 
     private companion object {

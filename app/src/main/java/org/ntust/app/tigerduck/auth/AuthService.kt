@@ -306,12 +306,12 @@ class AuthService @Inject constructor(
     }
 
     fun logout() {
-        // Snapshot the bearer BEFORE wiping tokens: clearNtustCredentials() and
-        // authTokenManager.logout() both null the v3 access token, and
-        // pushRegistration.unregister() runs its DELETE fire-and-forget on its
-        // own scope — so without a captured header the device-unregister call
-        // would find no session to go out with, and leak the device row.
-        val authHeader = authTokenManager.currentAuthHeader()
+        // Snapshot the session BEFORE wiping tokens: clearNtustCredentials() and
+        // authTokenManager.logout() both drop it, and pushRegistration.unregister()
+        // sends its DELETE afterwards, until the server has it — so without the
+        // departing session the device-unregister call would find none to go
+        // out with, and leak the device row.
+        val departing = authTokenManager.departingSession()
         credentials.clearNtustCredentials()
         credentials.clearLibraryCredentials()
         authTokenManager.logout()
@@ -338,7 +338,7 @@ class AuthService @Inject constructor(
         prefs.pendingConflictCategories = emptySet()
         _loginError.value = null
         _authState.value = false
-        pushRegistration.unregister(authHeader)
+        pushRegistration.unregister(departing)
         // Last, so everything above still sees the demo account and keeps
         // its requests on the device.
         demoAccount.exit()

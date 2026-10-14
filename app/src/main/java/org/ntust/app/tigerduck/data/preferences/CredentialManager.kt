@@ -124,6 +124,7 @@ class CredentialManager @Inject constructor(@ApplicationContext context: Context
     // ── v3 JWT tokens ────────────────────────────────────────────────────────
 
     val v3Tokens = V3TokenStore(prefs)
+    val pendingUnregister = PendingUnregisterPrefs(prefs)
 
     fun clearNtustCredentials() {
         prefs.edit()
