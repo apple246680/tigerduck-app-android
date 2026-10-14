@@ -76,7 +76,10 @@ class ReenableCheck @Inject constructor(
     fun runIfOwed() {
         if (!owed.due(prefs.pendingConflictCategories, prefs.cloudSyncEnabled)) return
         Log.i(TAG, "[reenable] running the owed check")
-        check { /* asked at the next Settings visit, whose check finds it again */ }
+        // Not while an answer is applied: that one settles the hold itself,
+        // and a Settings screen's check waiting for it must stay the one
+        // that runs after it.
+        check(waitForAnswers = false) { /* asked at the next Settings visit, whose check finds it again */ }
     }
 
     /**
@@ -85,13 +88,13 @@ class ReenableCheck @Inject constructor(
      * Settings would keep "assignments" pending, and the marks held, until
      * TigerSync is opened again. On Main, like the view models' work.
      */
-    fun check(onConflict: (SettingsViewModel.ReenableConflict) -> Unit) {
+    fun check(waitForAnswers: Boolean = true, onConflict: (SettingsViewModel.ReenableConflict) -> Unit) {
         val pending = prefs.pendingConflictCategories
         if (pending.isEmpty()) {
             Log.d(TAG, "[reenable] checkPendingConflicts skip: pending is empty")
             return
         }
-        val token = resolutions.checkStarting { check(onConflict) } ?: return
+        val token = resolutions.checkStarting(waits = waitForAnswers) { check(onConflict = onConflict) } ?: return
         Log.i(TAG, "[reenable] checkPendingConflicts start: pending=$pending")
         val account = authService.storedStudentId
         val generation = dataCache.userDataGeneration
