@@ -165,6 +165,8 @@ class AuthService @Inject constructor(
                 credentials.ntustStudentId = normalizedId
                 credentials.ntustPassword = password
                 importedClassTables.accountDidSignIn(normalizedId)
+                // After the store knows who signed in, which empties another account's leftovers.
+                demoAccount.importClassmates()
                 _authState.value = true
                 _isLoggingIn.value = false
                 return@withLock true
