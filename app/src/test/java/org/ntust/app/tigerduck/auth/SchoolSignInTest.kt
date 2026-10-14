@@ -21,7 +21,9 @@ import org.ntust.app.tigerduck.shared.LibraryService
  * out while it ran, however early the sign-out came: a sign-out takes the
  * library account too, and the step's answer is the departing student's
  * (tigerduck-app/tigerduck-app-android#293). The school sign-in itself still
- * succeeds.
+ * succeeds. Only a typed sign-in has that step: signing in again with the
+ * stored school account leaves the library to its own stored credentials
+ * (tigerduck-app/tigerduck-app-android#218).
  */
 class SchoolSignInTest {
 
@@ -64,21 +66,11 @@ class SchoolSignInTest {
     private var schoolSignIns = 0
     private var librarySignIns = 0
 
-    /** Runs once the stored account has been read, before the sign-in goes on. */
-    private var afterAccountRead: () -> Unit = {}
-
     /** Runs while the SSO step is out. */
     private var duringSchoolSignIn: () -> Unit = {}
 
     /** Runs while the library is answering, before the answer reaches the app. */
     private var duringLibrarySignIn: () -> Unit = {}
-
-    // What a sign-out does to the school account and, with it, the library one.
-    private fun signOut() {
-        storedId = null
-        storedPassword = null
-        library.signOut()
-    }
 
     private val libraryServer = Interceptor { chain ->
         check(chain.request().url.encodedPath.endsWith(LibraryApi.PATH_LOGIN))
@@ -100,7 +92,7 @@ class SchoolSignInTest {
         libraryStore = library,
         libraryService = LibraryService(library, extraInterceptors = listOf(libraryServer)),
         studentId = { storedId },
-        password = { storedPassword.also { afterAccountRead() } },
+        password = { storedPassword },
         sessionIsWarm = { warm },
         signInToSchool = { _, _, _ ->
             schoolSignIns++
@@ -117,28 +109,30 @@ class SchoolSignInTest {
     }
 
     @Test
-    fun `a sign-in again signs in to the library with the stored account`() = runTest {
-        assertTrue(signIn.stored())
+    fun `a typed sign-in signs in to the library with the same account`() = runTest {
+        assertTrue(signIn.typed("B10000001", "pw"))
         assertEquals("B10000001", library.libraryUsername)
         assertEquals("token", library.libraryToken)
     }
 
     @Test
-    fun `a sign-out right after the stored account is read keeps the library step from storing it`() = runTest {
-        afterAccountRead = { signOut() }
+    fun `a sign-in again leaves the library alone`() = runTest {
+        assertTrue(signIn.stored())
+
+        assertEquals(1, schoolSignIns)
+        assertEquals(0, librarySignIns)
+        assertNoLibraryAccount()
+    }
+
+    /** It used to sign a user who had signed out of the library back in. */
+    @Test
+    fun `a library account signed out of stays signed out through a sign-in again`() = runTest {
+        assertTrue(signIn.typed("B10000001", "pw"))
+        library.signOut()
 
         assertTrue(signIn.stored())
 
         assertEquals(1, librarySignIns)
-        assertNoLibraryAccount()
-    }
-
-    @Test
-    fun `a sign-out during the SSO step of a sign-in again keeps the library step from storing it`() = runTest {
-        duringSchoolSignIn = { signOut() }
-
-        assertTrue(signIn.stored())
-
         assertNoLibraryAccount()
     }
 
@@ -158,7 +152,7 @@ class SchoolSignInTest {
             assertTrue(library.saveLibrarySignIn(library.libraryAccountGeneration, "B10000009", "theirs", "user", Long.MAX_VALUE, byUser = true))
         }
 
-        assertTrue(signIn.stored())
+        assertTrue(signIn.typed("B10000001", "pw"))
 
         assertEquals("B10000009", library.libraryUsername)
         assertEquals("user", library.libraryToken)
@@ -167,7 +161,7 @@ class SchoolSignInTest {
     @Test
     fun `a library token still valid is kept, and a warm session skips the SSO step`() = runTest {
         library.saveLibrarySignIn(library.libraryAccountGeneration, "B10000001", "pw", "kept", Long.MAX_VALUE, byUser = true)
-        assertTrue(signIn.stored())
+        assertTrue(signIn.typed("B10000001", "pw"))
         assertEquals("kept", library.libraryToken)
         assertEquals(1, schoolSignIns)
         assertEquals(0, librarySignIns)
