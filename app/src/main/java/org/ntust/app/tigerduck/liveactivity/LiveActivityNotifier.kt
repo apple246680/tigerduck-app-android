@@ -1,6 +1,7 @@
 package org.ntust.app.tigerduck.liveactivity
 
 import android.Manifest
+import android.app.Notification
 import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
@@ -19,6 +20,7 @@ import org.ntust.app.tigerduck.notification.ClassPreparingNotificationReceiver
 import org.ntust.app.tigerduck.notification.DeviceSkin
 import org.ntust.app.tigerduck.notification.NotificationChannelRegistrar
 import org.ntust.app.tigerduck.notification.NotificationChannels
+import org.ntust.app.tigerduck.notification.NotificationGroup
 import org.ntust.app.tigerduck.notification.brandedNotification
 import org.ntust.app.tigerduck.openAppPendingIntent
 import org.ntust.app.tigerduck.pendingIntent
@@ -132,7 +134,12 @@ class LiveActivityNotifier @Inject constructor(
         }
 
         val scenarioChanged = lastScenario != snapshot.scenario
-        val alerting = scenarioChanged && !(quiet && lastScenario == null)
+        // A deadline coming within its lead time during a class takes the
+        // Live Update over quietly: the class goes on, and a chime in it is
+        // the one alert nobody wants. It sounds when it shows outside class.
+        val takenOverInClass = lastScenario == LiveActivityScenario.IN_CLASS &&
+            snapshot.scenario == LiveActivityScenario.ASSIGNMENT_URGENT
+        val alerting = scenarioChanged && !(quiet && lastScenario == null) && !takenOverInClass
         val soundWanted = alerting && wantsSoundFor(snapshot.scenario)
 
         // For sound to play on a scenario transition we need to (a) drop the
@@ -233,12 +240,11 @@ class LiveActivityNotifier @Inject constructor(
         manager.notify(NOTIFICATION_ID, builder.build())
 
         // Once the class is actually ongoing, the alarm-driven "即將上課" banner
-        // is redundant. The receiver's setTimeoutAfter is a best-effort hint
-        // and can lag past class start, leaving two side-by-side notifications
-        // for the same class. Clear any stragglers explicitly on the
-        // CLASS_PREPARING → IN_CLASS transition.
+        // is redundant; see clearStartedClassBanners, which LiveActivityManager
+        // also runs on every refresh. Here, on the switch to "in class", it
+        // clears a banner from an older build that carries no start too.
         if (scenarioChanged && snapshot.scenario == LiveActivityScenario.IN_CLASS) {
-            cancelClassPreparingBanners()
+            clearStartedClassBanners(AppClock.nowMillis(), includeUndated = true)
         }
 
         lastScenario = snapshot.scenario
@@ -339,11 +345,28 @@ class LiveActivityNotifier @Inject constructor(
         }
     }
 
-    private fun cancelClassPreparingBanners() {
-        manager.activeNotifications.forEach { sbn ->
-            if (sbn.notification.channelId == ClassPreparingNotificationReceiver.CHANNEL_ID) {
-                manager.cancel(sbn.tag, sbn.id)
-            }
+    /**
+     * Clears the "class starting soon" banners whose class has begun by
+     * [nowMs]; a banner for a class still to come stays. Each banner carries
+     * its class's start ([ClassPreparingNotificationReceiver.EXTRA_CLASS_START_MS]).
+     * One posted by a build before that extra counts as begun only when
+     * [includeUndated], which the switch to "in class" passes, as it used to
+     * clear every banner.
+     *
+     * The banner's own setTimeoutAfter is a best-effort hint that can lag past
+     * class start; LiveActivityManager calls this on every refresh, the one at
+     * class start included, whatever scenario is showing.
+     */
+    fun clearStartedClassBanners(nowMs: Long, includeUndated: Boolean = false) {
+        val active = runCatching { manager.activeNotifications }.getOrNull() ?: return
+        for (sbn in active) {
+            val banner = sbn.notification
+            if (banner.channelId != ClassPreparingNotificationReceiver.CHANNEL_ID) continue
+            if (banner.flags and Notification.FLAG_GROUP_SUMMARY != 0) continue
+            val startMs = banner.extras.getLong(ClassPreparingNotificationReceiver.EXTRA_CLASS_START_MS, 0L)
+            val begun = if (startMs > 0L) startMs <= nowMs else includeUndated
+            // Through the stack, so its summary goes with the last banner.
+            if (begun) NotificationGroup.CLASS.cancel(context, sbn.id, sbn.tag)
         }
     }
 

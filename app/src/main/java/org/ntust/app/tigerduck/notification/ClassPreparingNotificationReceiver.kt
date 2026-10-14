@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Bundle
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import dagger.hilt.EntryPoint
@@ -88,6 +89,13 @@ class ClassPreparingNotificationReceiver : BroadcastReceiver() {
         const val EXTRA_LEAD_TIME_MS = "lead_time_ms"
 
         /**
+         * On the posted banner, not the alarm: the class's start, epoch ms,
+         * which LiveActivityNotifier.clearStartedClassBanners reads to clear
+         * the banner once the class has begun.
+         */
+        const val EXTRA_CLASS_START_MS = "org.ntust.app.tigerduck.class_start_ms"
+
+        /**
          * The class reminder switch is on, and the app may post
          * notifications. Read when the alarm fires: turning reminders off
          * cancels the alarms already armed, but one armed in a race with that
@@ -157,6 +165,7 @@ class ClassPreparingNotificationReceiver : BroadcastReceiver() {
                 .setAutoCancel(true)
                 .setContentIntent(AppLink.ClassTable.pendingIntent(context))
                 .setGroup(NotificationGroup.CLASS.key)
+                .apply { if (startMs > 0L) addExtras(Bundle().apply { putLong(EXTRA_CLASS_START_MS, startMs) }) }
                 .apply { if (timeout > 0L) setTimeoutAfter(timeout) }
                 .build()
 

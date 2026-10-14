@@ -89,4 +89,24 @@ class LiveActivityNotifierAlertTest {
         notifier.apply(snapshot(LiveActivityScenario.ASSIGNMENT_URGENT))
         assertFalse(posted().isSilent)
     }
+
+    @Test
+    fun `a deadline taking over during class switches quietly`() {
+        notifier.apply(snapshot(LiveActivityScenario.IN_CLASS))
+        assertFalse(posted().isSilent)
+
+        notifier.apply(snapshot(LiveActivityScenario.ASSIGNMENT_URGENT))
+
+        assertTrue(posted().isSilent)
+    }
+
+    @Test
+    fun `a deadline showing first, before any class, still sounds`() {
+        notifier.apply(snapshot(LiveActivityScenario.IN_CLASS))
+        notifier.cancel()
+
+        notifier.apply(snapshot(LiveActivityScenario.ASSIGNMENT_URGENT))
+
+        assertFalse(posted().isSilent)
+    }
 }

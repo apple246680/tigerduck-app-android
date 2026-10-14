@@ -159,6 +159,10 @@ class LiveActivityManager internal constructor(
         // Before the Live Update's own gate: class reminders have a switch of
         // their own and no longer stop with the Live Update.
         armClassReminders(signedIn, skipped, calendar, optedIn)
+        // And whatever the Live Update shows: with a due-soon assignment
+        // shown first, the switch to "in class" that cleared these may never
+        // come. The boundary alarm at class start brings a refresh here.
+        notifier.clearStartedClassBanners(AppClock.nowMillis())
 
         if (!preferences.isEnabled || !signedIn) {
             // The other silent way to get no Live Update. Signing out stops it
