@@ -193,13 +193,13 @@ class CourseIgnoreReconcilerTest {
     }
 
     @Test
-    fun `a course back with a new row while another kept its id was re-added`() {
+    fun `a course back with a new row while another row of its term kept its id was re-added`() {
         val seen = mapOf("1151:CS1" to 1L, "1151:EE2" to 2L, "1142:GE3" to 3L)
 
         assertEquals(setOf("1151:CS1"), CourseIgnoreReconciler.recreated(mapOf("1151:CS1" to 9L, "1151:EE2" to 2L), seen))
         assertEquals(
-            "a term reset elsewhere, beside a term that kept its rows",
-            setOf("1151:CS1", "1151:EE2"),
+            "a term reset, by Use Local among others, beside a term that kept its rows was not re-added",
+            emptySet<String>(),
             CourseIgnoreReconciler.recreated(mapOf("1151:CS1" to 9L, "1151:EE2" to 10L, "1142:GE3" to 3L), seen),
         )
     }

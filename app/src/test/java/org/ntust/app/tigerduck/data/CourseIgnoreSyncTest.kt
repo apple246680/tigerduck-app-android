@@ -652,4 +652,27 @@ class CourseIgnoreSyncTest {
         assertEquals(setOf("1141:AAA"), cache.loadIgnoredCourses())
         assertEquals(listOf(Sent("1141AAA", true, null)), sent)
     }
+
+    @Test
+    fun `a term another device reset with Use Local keeps this device's ignores there and sends them again`() = runTest {
+        // An iPhone with assignment sync off, which lacks AAA's ignore, used
+        // Use Local: it reset 1141, so every 1141 row is new and has no
+        // setting, while 1142 kept its row. Its upload put nothing back for
+        // AAA's setting, so dropping it here would lose it for good.
+        cache.saveIgnoredCourses(setOf("1141:AAA"))
+        val other = ServerCourse(courseNo = "CCC", courseName = "C", semester = "1142", id = 3)
+        sync.applySnapshot(
+            snapshot(fetchedAtMs = 1_000L, "AAA" to true).copy(serverCourses = rows(0, 1, 2).serverCourses + other),
+            sync.currentGeneration(),
+        )
+        sent.clear()
+
+        sync.applySnapshot(
+            rows(fetchedAtMs = 2_000L, aaa = 9, bbb = 10).let { it.copy(serverCourses = it.serverCourses + other) },
+            sync.currentGeneration(),
+        )
+
+        assertEquals(setOf("1141:AAA"), cache.loadIgnoredCourses())
+        assertEquals(listOf(Sent("1141AAA", true, null)), sent)
+    }
 }
