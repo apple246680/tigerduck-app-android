@@ -39,5 +39,10 @@ internal fun dotSources(events: List<CalendarEvent>): List<EventSource> =
 internal fun dayTitle(date: LocalDate, today: LocalDate, locale: Locale, todaySuffix: String): String {
     val formatter = DateTimeFormatter.ofPattern(DateFormat.getBestDateTimePattern(locale, "MMMd"), locale)
     val title = formatter.format(date)
-    return if (date == today) title + todaySuffix else title
+    if (date != today) return title
+    // The suffix is " (Today)" in every locale but Japanese, whose "（今日）"
+    // carries its own spacing in the full-width brackets. aapt drops the
+    // leading space of an unquoted string resource, so put it back before
+    // an ASCII bracket.
+    return if (todaySuffix.startsWith("(")) "$title $todaySuffix" else title + todaySuffix
 }

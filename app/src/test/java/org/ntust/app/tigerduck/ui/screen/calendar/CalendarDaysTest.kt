@@ -76,4 +76,13 @@ class CalendarDaysTest {
         assertEquals("10月15日", dayTitle(today.plusDays(1), today, Locale.TAIWAN, " (今日)"))
         assertEquals("Oct 14 (Today)", dayTitle(today, today, Locale.US, " (Today)"))
     }
+
+    @Test
+    fun `the space before the suffix survives the resource losing it`() {
+        val today = LocalDate.of(2026, 10, 14)
+        // aapt trims the leading space of " (Today)", so the resource reads "(Today)".
+        assertEquals("Oct 14 (Today)", dayTitle(today, today, Locale.US, "(Today)"))
+        // Japanese brackets are full-width and take no space before them, as on the iPhone.
+        assertEquals("10月14日（今日）", dayTitle(today, today, Locale.JAPAN, "（今日）"))
+    }
 }
