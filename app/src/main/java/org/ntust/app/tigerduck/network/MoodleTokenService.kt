@@ -9,6 +9,7 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import kotlinx.coroutines.CoroutineScope
 import org.ntust.app.tigerduck.auth.SIGN_IN_PAUSE_MS
 import org.ntust.app.tigerduck.auth.PasswordPosting
@@ -259,7 +260,7 @@ class MoodleTokenService internal constructor(
             // lets go.
             val (nextHtml, nextUrl) = posting.post {
                 Log.i("MoodleTokenService", "posting SSO login → ${postUrl.redactForLog()}")
-                val answer = postForm(
+                val answer = postLoginForm(
                     url = postUrl,
                     fields = payload,
                     referer = responseUrl.toString(),
@@ -323,14 +324,41 @@ class MoodleTokenService internal constructor(
         return executeAndReadBody(reqBuilder.build())
     }
 
-    private fun executeAndReadBody(request: Request): Pair<String, HttpUrl> {
-        val response = try {
-            tokenClient.newCall(request).execute()
-        } catch (e: SocketTimeoutException) {
-            throw MoodleWebserviceError.TransientNetwork("timeout: ${e.message}")
-        } catch (e: java.io.IOException) {
-            throw MoodleWebserviceError.TransientNetwork(e.message ?: "io error")
-        }
+    /**
+     * The SSO sign-in form's POST, which carries the password: no redirect sends the form on to
+     * another address, and one that would ends the sign-in ([executeCredentialPost]).
+     */
+    private fun postLoginForm(
+        url: HttpUrl,
+        fields: Map<String, String>,
+        referer: String,
+        origin: String,
+    ): Pair<String, HttpUrl> {
+        val body = FormBody.Builder().apply {
+            fields.forEach { (k, v) -> add(k, v) }
+        }.build()
+        val request = Request.Builder().url(url).post(body)
+            .header("Referer", referer)
+            .header("Origin", origin)
+            .build()
+        return readBody(
+            execute { tokenClient.executeCredentialPost(request) }
+                ?: throw MoodleWebserviceError.MalformedResponse("SSO sign-in redirect not followed"),
+        )
+    }
+
+    private fun executeAndReadBody(request: Request): Pair<String, HttpUrl> =
+        readBody(execute { tokenClient.newCall(request).execute() })
+
+    private fun <T> execute(call: () -> T): T = try {
+        call()
+    } catch (e: SocketTimeoutException) {
+        throw MoodleWebserviceError.TransientNetwork("timeout: ${e.message}")
+    } catch (e: java.io.IOException) {
+        throw MoodleWebserviceError.TransientNetwork(e.message ?: "io error")
+    }
+
+    private fun readBody(response: Response): Pair<String, HttpUrl> {
         response.use { r ->
             if (!r.isSuccessful) {
                 throw MoodleWebserviceError.HttpStatus(r.code)

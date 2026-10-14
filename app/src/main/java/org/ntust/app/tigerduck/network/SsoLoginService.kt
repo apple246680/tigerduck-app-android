@@ -195,7 +195,7 @@ class SsoLoginService internal constructor(
      * form, and for nothing else.
      */
     private fun submitLoginForm(actionUrl: HttpUrl, fields: List<Pair<String, String>>): Boolean {
-        var (html, url) = postForm(actionUrl, fields)
+        var (html, url) = postLoginForm(actionUrl, fields)
 
         // Step 6: Resolve OIDC bridge forms after login
         val afterLogin = resolveOIDCBridgeForms(html, url)
@@ -242,6 +242,25 @@ class SsoLoginService internal constructor(
             currentUrl = newUrl
         }
         return currentHtml to currentUrl
+    }
+
+    /**
+     * The sign-in form's POST, which carries the password: no redirect sends the form on to
+     * another address, and one that would ends the sign-in ([executeCredentialPost]).
+     */
+    private fun postLoginForm(url: HttpUrl, fields: List<Pair<String, String>>): Pair<String, HttpUrl> {
+        try {
+            val body = FormBody.Builder().apply {
+                fields.forEach { (name, value) -> add(name, value) }
+            }.build()
+            val request = Request.Builder().url(url).post(body).build()
+            val response = client.executeCredentialPost(request) ?: throw SsoLoginError.InvalidResponse()
+            response.use { return it.body.string() to it.request.url }
+        } catch (e: SsoLoginError) {
+            throw e
+        } catch (e: java.io.IOException) {
+            throw SsoLoginError.NetworkError(e)
+        }
     }
 
     private fun postForm(url: HttpUrl, fields: List<Pair<String, String>>): Pair<String, HttpUrl> {
