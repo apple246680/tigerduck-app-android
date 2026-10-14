@@ -42,6 +42,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -70,6 +71,13 @@ import org.ntust.app.tigerduck.ui.screen.calendar.CalendarScreen
 import org.ntust.app.tigerduck.ui.screen.calendar.CalendarViewModel
 import org.ntust.app.tigerduck.ui.screen.classtable.ClassTableScreen
 import org.ntust.app.tigerduck.ui.screen.classtable.ClassTableViewModel
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleAnnouncementScreen
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleAnnouncementsScreen
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleCourseViewModel
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleGradesScreen
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleMemberScreen
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleMembersScreen
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleRoutes
 import org.ntust.app.tigerduck.ui.screen.home.HomeScreen
 import org.ntust.app.tigerduck.ui.screen.home.HomeViewModel
 import org.ntust.app.tigerduck.ui.screen.library.LibraryScreen
@@ -420,6 +428,54 @@ fun MainNavigation(
                     onOpenSignInSettings = openSignInSettings,
                 )
             }
+            val moodleCourseArg = navArgument(MoodleCourseViewModel.ARG_COURSE_ID) { type = NavType.IntType }
+            page(MoodleRoutes.ANNOUNCEMENTS, arguments = listOf(moodleCourseArg)) { entry ->
+                MoodleAnnouncementsScreen(
+                    onBack = { navController.popIfTop(entry) },
+                    onOpenRoute = { navController.navigate(it) },
+                )
+            }
+            page(
+                MoodleRoutes.ANNOUNCEMENT,
+                arguments = listOf(
+                    moodleCourseArg,
+                    navArgument(MoodleRoutes.ARG_DISCUSSION_ID) { type = NavType.IntType },
+                ),
+            ) { entry ->
+                MoodleAnnouncementScreen(
+                    discussionId = entry.arguments?.getInt(MoodleRoutes.ARG_DISCUSSION_ID) ?: 0,
+                    browserPreference = appState.browserPreference,
+                    onBack = { navController.popIfTop(entry) },
+                    onOpenRoute = { navController.navigate(it) },
+                )
+            }
+            page(MoodleRoutes.GRADES, arguments = listOf(moodleCourseArg)) { entry ->
+                MoodleGradesScreen(
+                    browserPreference = appState.browserPreference,
+                    onBack = { navController.popIfTop(entry) },
+                )
+            }
+            page(MoodleRoutes.MEMBERS, arguments = listOf(moodleCourseArg)) { entry ->
+                MoodleMembersScreen(
+                    onBack = { navController.popIfTop(entry) },
+                    onOpenRoute = { navController.navigate(it) },
+                )
+            }
+            page(
+                MoodleRoutes.MEMBER,
+                arguments = listOf(
+                    moodleCourseArg,
+                    navArgument(MoodleRoutes.ARG_MEMBER_ID) { type = NavType.IntType },
+                ),
+            ) { entry ->
+                MoodleMemberScreen(
+                    memberId = entry.arguments?.getInt(MoodleRoutes.ARG_MEMBER_ID) ?: 0,
+                    onBack = { navController.popIfTop(entry) },
+                    onComposeSchoolMail = { address ->
+                        navController.navigate(Screen.SchoolMailCompose.route(ComposeMode.NEW, to = address))
+                    },
+                )
+            }
             page(Screen.Calendar.route) {
                 CalendarScreen(
                     viewModel = calendarViewModel,
@@ -664,6 +720,14 @@ fun MainNavigation(
             }
         }
     }
+}
+
+/**
+ * Pops [entry] when it is the page on top, and does nothing otherwise: a back tapped twice, or a
+ * page closing itself while its pop already runs, must not take the page under it too.
+ */
+internal fun NavController.popIfTop(entry: NavBackStackEntry) {
+    if (currentBackStackEntry?.id == entry.id) popBackStack()
 }
 
 /**
