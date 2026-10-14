@@ -3,6 +3,7 @@ package org.ntust.app.tigerduck.ui.screen.settings
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import org.ntust.app.tigerduck.push.BackendSyncResult
+import org.ntust.app.tigerduck.ui.screen.home.AssignmentOverrideReconciler
 import org.ntust.app.tigerduck.util.logSummary
 
 /**
@@ -59,4 +60,41 @@ internal suspend fun serverForUseLocal(
 } catch (e: Exception) {
     Log.w("SyncReenable", "[reenable] keep-local read failed, using the check's: ${e.logSummary()}")
     checked
+}
+
+/**
+ * Use Local's answer to [conflict] for assignment marks and course ignores:
+ * this phone's marks go up as they stand at each request ([sendKeptMarks]),
+ * with a clear for each mark only the server has, and the course ignores
+ * after them ([pushCourseIgnores]). Both are decided against the server read
+ * again now, or against the snapshot the check compared when that read fails
+ * ([serverForUseLocal]).
+ */
+internal suspend fun keepLocalMarks(
+    conflict: SettingsViewModel.ReenableConflict,
+    fetch: suspend () -> BackendSyncResult,
+    marksVersion: () -> Int,
+    localMarks: suspend () -> Pair<Set<String>, Set<String>>,
+    send: suspend (assignmentId: Int, status: String) -> Unit,
+    keep: suspend (assignmentId: String, status: String) -> Unit,
+    pushCourseIgnores: suspend (BackendSyncResult?) -> Unit,
+) {
+    val server = serverForUseLocal(fetch, conflict.checked)
+    val serverIgnored = server?.ignoredIds.orEmpty()
+    val serverCompleted = server?.completedIds.orEmpty()
+    sendKeptMarks(
+        marksVersion = marksVersion,
+        marksNow = {
+            val (ignored, completed) = localMarks()
+            AssignmentOverrideReconciler.keepLocal(
+                localIgnored = ignored,
+                localCompleted = completed,
+                serverIgnored = serverIgnored,
+                serverCompleted = serverCompleted,
+            )
+        },
+        send = send,
+        keep = keep,
+    )
+    pushCourseIgnores(server)
 }

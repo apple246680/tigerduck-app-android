@@ -119,4 +119,25 @@ class KeptMarksTest {
 
         assertEquals(fresh, serverForUseLocal(fetch = { fresh }, checked = snapshot(ignored = setOf("9"))))
     }
+
+    @Test
+    fun `Use Local's answer falls back to the conflict's snapshot when the server cannot be read`() = runTest {
+        val checked = snapshot(ignored = setOf("9"))
+        val conflict = SettingsViewModel.ReenableConflict(listOf("assignments"), "", checked = checked)
+        val sent = mutableListOf<Pair<Int, String>>()
+        var ignoresAgainst: BackendSyncResult? = null
+
+        keepLocalMarks(
+            conflict = conflict,
+            fetch = { throw java.io.IOException("offline") },
+            marksVersion = { 0 },
+            localMarks = { emptySet<String>() to emptySet() },
+            send = { id, status -> sent += id to status },
+            keep = { _, _ -> },
+            pushCourseIgnores = { ignoresAgainst = it },
+        )
+
+        assertEquals(listOf(9 to STATUS_NONE), sent)
+        assertEquals(checked, ignoresAgainst)
+    }
 }

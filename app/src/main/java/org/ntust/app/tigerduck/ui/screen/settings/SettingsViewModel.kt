@@ -47,7 +47,6 @@ import org.ntust.app.tigerduck.push.PushRegistrationService
 import org.ntust.app.tigerduck.push.SyncApiClient
 import org.ntust.app.tigerduck.ui.AppState
 import org.ntust.app.tigerduck.ui.component.ServerStatusTracker
-import org.ntust.app.tigerduck.ui.screen.home.AssignmentOverrideReconciler
 import org.ntust.app.tigerduck.util.logSummary
 import org.ntust.app.tigerduck.wear.WearScheduleBridge
 import javax.inject.Inject
@@ -409,25 +408,21 @@ class SettingsViewModel @Inject constructor(
                 }
             }
             if ("assignments" in conflict.categories) {
-                val server = serverForUseLocal(syncApiClient::fetchFullSync, conflict.checked)
-                val serverIgnored = server?.ignoredIds.orEmpty()
-                val serverCompleted = server?.completedIds.orEmpty()
                 // Syncs leave the marks alone while "assignments" is pending,
                 // so the cache changes now only by taps on Home: the newest.
-                sendKeptMarks(
+                keepLocalMarks(
+                    conflict = conflict,
+                    fetch = syncApiClient::fetchFullSync,
                     marksVersion = { dataCache.assignmentMarksVersion.value },
-                    marksNow = {
-                        AssignmentOverrideReconciler.keepLocal(
-                            localIgnored = dataCache.loadIgnoredAssignments(),
-                            localCompleted = dataCache.loadMarkedCompletedAssignments(),
-                            serverIgnored = serverIgnored,
-                            serverCompleted = serverCompleted,
-                        )
+                    localMarks = {
+                        dataCache.loadIgnoredAssignments() to dataCache.loadMarkedCompletedAssignments()
                     },
                     send = pushApiClient::patchAssignmentOverride,
                     keep = { id, status -> unsentMarks.keep(id, status, generation) },
+                    pushCourseIgnores = { server ->
+                        if (prefs.syncCourses) courseIgnoreSync.pushLocal(server, generation)
+                    },
                 )
-                if (prefs.syncCourses) courseIgnoreSync.pushLocal(server, generation)
             }
         } else {
             if ("courses" in conflict.categories) {
