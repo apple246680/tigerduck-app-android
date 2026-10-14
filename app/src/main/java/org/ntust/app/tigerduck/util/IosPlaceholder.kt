@@ -14,3 +14,11 @@ package org.ntust.app.tigerduck.util
  */
 internal fun String.replaceIosArg(arg: Int, value: String): String =
     replace("%$arg\$@", value)
+
+/**
+ * [replaceIosArg] for a whole number, which the iOS-first strings write as
+ * `%1$lld` (`a11y_course_color_swatch`, `a11y_calendar_day`). Java formatting
+ * has no `ll` length, so `getString(id, n)` would throw on these.
+ */
+internal fun String.replaceIosArg(arg: Int, value: Long): String =
+    replace("%$arg\$lld", value.toString()).replace("%$arg\$d", value.toString())
