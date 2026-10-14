@@ -178,6 +178,9 @@ class AuthService @Inject constructor(
                 // stored, so a sign-out from here on keeps the v3 login below
                 // from storing a pair.
                 authTokenManager.signInInteractively { signIn ->
+                    // Read before it is overwritten: a stored Moodle token is
+                    // this student's only if the account stored was.
+                    val sameStudent = credentials.ntustStudentId == normalizedId
                     credentials.ntustStudentId = normalizedId
                     credentials.ntustPassword = password
                     // Before the class table can show: another account must not inherit what the last
@@ -192,16 +195,19 @@ class AuthService @Inject constructor(
                     // empty right after SSO (especially on a fresh install) — which
                     // makes the backend reject the login with 401 invalid_token.
                     // iOS does the same obtain-then-login. Best-effort: fall back to
-                    // any stored token, and never let a harvest failure block the
-                    // SSO session.
-                    val moodleToken = try {
-                        moodleTokenService.obtainToken(normalizedId, password)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        android.util.Log.w("AuthService", "Moodle token harvest failed; using stored: ${e.logSummary()}")
-                        credentials.moodleToken
+                    // this student's stored token, and never let a harvest failure
+                    // block the SSO session. A sign-out meanwhile stores and sends
+                    // nothing of the departing student's. The stored ID too: the
+                    // sign-out drops the credentials before it moves the generation.
+                    val stillCurrent = {
+                        authTokenManager.signInGeneration == signIn && credentials.ntustStudentId == normalizedId
                     }
+                    val moodleToken = interactiveMoodleToken(
+                        harvest = { moodleTokenService.obtainToken(normalizedId, password, stillCurrent) },
+                        stored = { credentials.moodleToken },
+                        sameStudent = sameStudent,
+                        stillCurrent = stillCurrent,
+                    )
                     if (moodleToken.isNullOrEmpty()) {
                         // A backend login without one could only be refused, and
                         // would count against the login limit. The automatic

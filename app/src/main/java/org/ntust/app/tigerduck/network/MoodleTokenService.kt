@@ -99,10 +99,15 @@ class MoodleTokenService @Inject constructor(
         triple.wstoken
     }
 
-    /** Fetch a fresh token using the supplied credentials (first-time login). */
-    suspend fun obtainToken(studentId: String, password: String): String = mutex.withLock {
+    /**
+     * Fetch a fresh token using the supplied credentials (first-time login), and store it only
+     * while [stillCurrent] says that sign-in is still the account's.
+     */
+    suspend fun obtainToken(studentId: String, password: String, stillCurrent: () -> Boolean): String = mutex.withLock {
         val triple = performOidcLogin(studentId.trim().uppercase(), password)
-        credentialManager.moodleToken = triple.wstoken
+        if (!storeIfStillCurrent(triple.wstoken, credentialManager::moodleToken, stillCurrent)) {
+            throw MoodleWebserviceError.MissingStoredCredentials()
+        }
         Log.i("MoodleTokenService", "obtained wstoken (len=${triple.wstoken.length})")
         triple.wstoken
     }
