@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Base64
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -36,6 +37,7 @@ import java.util.concurrent.CopyOnWriteArrayList
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
+@OptIn(ExperimentalCoroutinesApi::class)
 class MoodleTokenServiceLatchTest {
 
     private lateinit var latchPrefs: SharedPreferences

@@ -3,6 +3,7 @@ package org.ntust.app.tigerduck.network
 import android.app.Application
 import android.content.Context
 import android.util.Base64
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import okhttp3.Interceptor
@@ -37,6 +38,7 @@ import java.util.concurrent.CopyOnWriteArrayList
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
+@OptIn(ExperimentalCoroutinesApi::class)
 class SignInFormRedirectTest {
 
     /** Every request the school got, as "METHOD url", with " +password" when it carried it. */
