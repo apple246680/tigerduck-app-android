@@ -91,15 +91,28 @@ class MoodleFileDownloads internal constructor(
         return MoodleDownloadState.NotDownloaded
     }
 
-    /** Learns the copies already in [dir], as a course's screens open, so their rows show them. */
+    /**
+     * Learns the copies already in [dir], as a course's screens open, so their rows show them, and
+     * deletes the partial files a download left when the app was ended mid-way.
+     */
     suspend fun index(dir: File) {
         val found = withContext(io) {
+            sweepPartials(dir)
             dir.walkTopDown()
                 .filter { it.isFile && !it.name.endsWith(PART_SUFFIX) }
                 .map { it.path }
                 .toSet()
         }
         if (found.isNotEmpty()) _snapshot.update { it.copy(copies = it.copies + found) }
+    }
+
+    /** Partial files in [dir] no download on its way is writing, as an app ended mid-way leaves. */
+    private fun sweepPartials(dir: File) {
+        val writing = synchronized(running) { running.keys.mapNotNull { File(it).parentFile }.toSet() }
+        dir.walkTopDown()
+            .filter { it.isFile && it.name.endsWith(PART_SUFFIX) && it.parentFile !in writing }
+            .toList()
+            .forEach { it.delete() }
     }
 
     /**
@@ -160,8 +173,11 @@ class MoodleFileDownloads internal constructor(
         jobs.forEach { it.cancel() }
     }
 
-    /** The bytes the downloaded files take. */
-    suspend fun measure(): Long = withContext(io) { totalBytes(root()) }
+    /** The bytes the downloaded files take, once the partial files left behind are swept. */
+    suspend fun measure(): Long = withContext(io) {
+        sweepPartials(root())
+        totalBytes(root())
+    }
 
     /** Deletes every downloaded file, stopping the downloads on their way, and returns the bytes left. */
     suspend fun clear(): Long {
@@ -213,12 +229,13 @@ class MoodleFileDownloads internal constructor(
         val key = location.path
         var part: File? = null
         try {
-            val target = withContext(io) {
+            // Noted as soon as it is made: a stop that lands before this returns still deletes it.
+            withContext(io) {
                 val dir = location.parentFile ?: throw IOException("no folder for the file")
                 dir.mkdirs()
-                File.createTempFile(".dl", PART_SUFFIX, dir)
+                part = File.createTempFile(".dl", PART_SUFFIX, dir)
             }
-            part = target
+            val target = part ?: throw IOException("no partial file")
             fetch(target, progress)
             currentCoroutineContext().ensureActive()
             // Landed after a sign-out: the next account must not find it.
