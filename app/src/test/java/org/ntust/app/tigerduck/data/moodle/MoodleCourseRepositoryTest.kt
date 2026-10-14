@@ -33,7 +33,7 @@ class MoodleCourseRepositoryTest {
         override suspend fun gradeItems(courseId: Int) =
             listOf(MoodleGradeItem(1, "HW", "mod", "assign", 2, grade, 100.0, false, ""))
         override suspend fun summary(courseId: Int) = MoodleCourseSummary.EMPTY
-        override suspend fun download(file: MoodleFile, target: java.io.File) = Unit
+        override suspend fun download(file: MoodleFile, target: java.io.File, maxBytes: Long) = Unit
     }
 
     private val authState = MutableStateFlow(true)

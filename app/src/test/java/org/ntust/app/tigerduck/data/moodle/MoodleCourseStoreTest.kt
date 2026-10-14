@@ -83,8 +83,14 @@ class MoodleCourseStoreTest {
         override suspend fun summary(courseId: Int) = MoodleCourseSummary.EMPTY
         var downloads = 0
         var downloadAnswer: (java.io.File) -> Unit = { it.writeText("pdf bytes") }
-        override suspend fun download(file: org.ntust.app.tigerduck.network.model.moodle.MoodleFile, target: java.io.File) {
+        var lastLimit = 0L
+        override suspend fun download(
+            file: org.ntust.app.tigerduck.network.model.moodle.MoodleFile,
+            target: java.io.File,
+            maxBytes: Long,
+        ) {
             downloads++
+            lastLimit = maxBytes
             downloadAnswer(target)
         }
     }
@@ -288,8 +294,8 @@ class MoodleCourseStoreTest {
     fun `an attachment is downloaded into the app once, and opened from there after`() = runTest(UnconfinedTestDispatcher()) {
         val store = store()
 
-        val first = store.openAttachment(attachment, postId = 90)
-        val second = store.openAttachment(attachment, postId = 90)
+        val first = store.openAttachment(attachment)
+        val second = store.openAttachment(attachment)
 
         val file = (first as MoodleAttachment.Local).file
         assertEquals("pdf bytes", file.readText())
@@ -306,7 +312,7 @@ class MoodleCourseStoreTest {
         }
         val store = store()
 
-        val result = store.openAttachment(attachment, postId = 90)
+        val result = store.openAttachment(attachment)
 
         assertTrue((result as MoodleAttachment.Failed).error is IOException)
         assertTrue(tmp.root.walkTopDown().none { it.isFile })
@@ -317,7 +323,7 @@ class MoodleCourseStoreTest {
         val store = store()
         val elsewhere = attachment.copy(url = "https://example.com/hw3.pdf")
 
-        assertEquals(MoodleAttachment.Link("https://example.com/hw3.pdf"), store.openAttachment(elsewhere, postId = 90))
+        assertEquals(MoodleAttachment.Link("https://example.com/hw3.pdf"), store.openAttachment(elsewhere))
         assertEquals(0, api.downloads)
     }
 
@@ -380,5 +386,76 @@ class MoodleCourseStoreTest {
         cache.files.clear()
         api.membersAnswer = { throw IOException("offline") }
         assertTrue((store().ensureMember(7) as MoodleLookup.Failed).error is IOException)
+    }
+
+    @Test
+    fun `same-named files in different places, or a replaced file, get copies of their own`() = runTest(UnconfinedTestDispatcher()) {
+        val store = store()
+        val first = (store.openAttachment(attachment) as MoodleAttachment.Local).file
+        val elsewhere = (store.openAttachment(attachment.copy(url = attachment.url.replace("/90/", "/91/"))) as MoodleAttachment.Local).file
+        val replaced = (store.openAttachment(attachment.copy(modified = 2L)) as MoodleAttachment.Local).file
+
+        assertEquals(setOf("hw3.pdf"), setOf(first.name, elsewhere.name, replaced.name))
+        assertEquals(3, setOf(first, elsewhere, replaced).size)
+        assertEquals(3, api.downloads)
+    }
+
+    @Test
+    fun `a file with no listed type is fetched again each time rather than trusted from before`() = runTest(UnconfinedTestDispatcher()) {
+        val store = store()
+        val untyped = attachment.copy(mimeType = null)
+
+        store.openAttachment(untyped)
+        store.openAttachment(untyped)
+
+        assertEquals(2, api.downloads)
+    }
+
+    @Test
+    fun `a download is held to the size Moodle lists, and an oversized file opens on the website`() = runTest(UnconfinedTestDispatcher()) {
+        val store = store()
+        store.openAttachment(attachment)
+        assertEquals(9L, api.lastLimit)
+
+        val huge = attachment.copy(size = 2L * 1024 * 1024 * 1024)
+        assertEquals(
+            MoodleAttachment.Link("https://moodle2.ntust.edu.tw/pluginfile.php/1/mod_forum/attachment/90/hw3.pdf"),
+            store.openAttachment(huge),
+        )
+        assertEquals(1, api.downloads)
+    }
+
+    @Test
+    fun `a download that lands after a sign-out is deleted, not opened`() = runTest(UnconfinedTestDispatcher()) {
+        api.downloadAnswer = { target ->
+            target.writeText("pdf bytes")
+            signedIn = false
+        }
+        val store = store()
+
+        assertEquals(MoodleAttachment.Dropped, store.openAttachment(attachment))
+        assertTrue(tmp.root.walkTopDown().none { it.isFile })
+    }
+
+    @Test
+    fun `copies opened more than a day ago are pruned`() = runTest(UnconfinedTestDispatcher()) {
+        val old = java.io.File(tmp.root, "stale-slot/old.pdf").apply {
+            parentFile!!.mkdirs()
+            writeText("old")
+        }
+        old.parentFile!!.setLastModified(System.currentTimeMillis() - 2 * 24 * 3_600_000L)
+
+        store().openAttachment(attachment)
+
+        assertTrue(!old.exists())
+    }
+
+    @Test
+    fun `a file name cannot climb out of its folder`() = runTest(UnconfinedTestDispatcher()) {
+        val sneaky = attachment.copy(name = "..\\..\\x/y.pdf")
+        val file = (store().openAttachment(sneaky) as MoodleAttachment.Local).file
+
+        assertTrue(file.canonicalPath.startsWith(tmp.root.canonicalPath))
+        assertTrue(!file.name.contains('/') && !file.name.contains('\\') && !file.name.startsWith("."))
     }
 }

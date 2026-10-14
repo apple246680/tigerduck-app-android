@@ -11,6 +11,23 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
  */
 object MoodleFileUrls {
 
+    /**
+     * [fileUrl] as the website serves it, with no key: the web-service path becomes the web one
+     * and a token in it goes. The browser opens it with its own Moodle session.
+     */
+    fun webUrl(fileUrl: String): String? {
+        val url = fileUrl.toHttpUrlOrNull() ?: return null
+        if (!isMoodleFile(fileUrl)) return null
+        val segments = url.pathSegments.let { if (it.firstOrNull() == "webservice") it.drop(1) else it }
+        val builder = HttpUrl.Builder().scheme("https").host(url.host).port(url.port)
+        segments.forEach { builder.addPathSegment(it) }
+        for (i in 0 until url.querySize) {
+            val name = url.queryParameterName(i)
+            if (name != "token") builder.addQueryParameter(name, url.queryParameterValue(i))
+        }
+        return builder.build().toString()
+    }
+
     /** Whether [fileUrl] is a file the Moodle site's `pluginfile.php` serves, which takes the key. */
     fun isMoodleFile(fileUrl: String): Boolean = downloadUrl(fileUrl, accessKey = null, token = "") != null
 

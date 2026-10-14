@@ -1,9 +1,12 @@
 package org.ntust.app.tigerduck.ui.screen.coursemoodle
 
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
+import org.ntust.app.tigerduck.mail.resolveAttachmentMimeType
 import org.ntust.app.tigerduck.util.fileProviderAuthority
 import java.io.File
 import org.ntust.app.tigerduck.network.moodle.MoodleWebservice
@@ -80,14 +83,35 @@ fun openMoodleContentLink(context: Context, url: String, browserPreference: Stri
 
 /**
  * Opens a downloaded Moodle [file] in another app: a content URI to the app's own copy, readable
- * once by the app picked, so no link with the account's key ever leaves the app.
+ * once by the app picked, so no link with the account's key ever leaves the app. A web page or an
+ * SVG, which can run scripts, goes to the share sheet as iOS sends it, not to a viewer.
  */
 fun moodleFileIntent(context: Context, file: File, mimeType: String): Intent {
     val uri = FileProvider.getUriForFile(context, fileProviderAuthority(context), file)
-    val view = Intent(Intent.ACTION_VIEW)
-        .setDataAndTypeAndNormalize(uri, mimeType)
-        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    return Intent.createChooser(view, file.name)
+    val intent = if (mimeType.lowercase() in SHARED_NOT_VIEWED) {
+        Intent(Intent.ACTION_SEND)
+            .setType(mimeType)
+            .putExtra(Intent.EXTRA_STREAM, uri)
+            .apply { clipData = ClipData.newRawUri(file.name, uri) }
+    } else {
+        Intent(Intent.ACTION_VIEW).setDataAndTypeAndNormalize(uri, mimeType)
+    }
+    return Intent.createChooser(intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), file.name)
+}
+
+private val SHARED_NOT_VIEWED = setOf("text/html", "application/xhtml+xml", "image/svg+xml")
+
+/**
+ * The type to open a Moodle file as: the one Moodle lists, unless that is its `document/unknown`
+ * or none, when the file name's extension decides.
+ */
+fun moodleFileType(
+    listed: String?,
+    fileName: String,
+    extensionLookup: (String) -> String? = { MimeTypeMap.getSingleton().getMimeTypeFromExtension(it) },
+): String {
+    val declared = listed?.takeUnless { it.substringBefore(';').trim().equals("document/unknown", ignoreCase = true) }
+    return resolveAttachmentMimeType(declared.orEmpty(), fileName, extensionLookup)
 }
 
 /** [url] as the website serves it: the web-service file path becomes the web one, without a token. */

@@ -1,6 +1,5 @@
 package org.ntust.app.tigerduck.network.moodle
 
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -52,10 +51,11 @@ interface MoodleCourseApi {
     suspend fun summary(courseId: Int): MoodleCourseSummary
 
     /**
-     * Downloads [file], a file Moodle's own site serves, into [target]. The account's key goes in
-     * the request only, which never leaves the app; another app gets the copy, not the link.
+     * Downloads [file], a file Moodle's own site serves, into [target], stopping past [maxBytes].
+     * The account's key goes in the request only, which never leaves the app; another app gets
+     * the copy, not the link. Cancelling the caller cancels the request.
      */
-    suspend fun download(file: MoodleFile, target: java.io.File)
+    suspend fun download(file: MoodleFile, target: java.io.File, maxBytes: Long)
 
     companion object {
         const val FORUMS_FUNCTION = "mod_forum_get_forums_by_courses"
@@ -127,7 +127,7 @@ class LiveMoodleCourseApi internal constructor(
 
     override suspend fun markViewed(discussionId: Int, isCurrent: () -> Boolean) {
         webservice.withToken { token ->
-            if (!isCurrent()) throw CancellationException("signed out")
+            if (!isCurrent()) return@withToken
             webservice.call(
                 MoodleCourseApi.VIEW_DISCUSSION_FUNCTION,
                 token,
@@ -182,13 +182,11 @@ class LiveMoodleCourseApi internal constructor(
         }
     }
 
-    override suspend fun download(file: MoodleFile, target: java.io.File) {
+    override suspend fun download(file: MoodleFile, target: java.io.File, maxBytes: Long) {
         webservice.withToken { token ->
             val url = MoodleFileUrls.downloadUrl(file.url, webservice.siteInfo(token).privateAccessKey, token)
                 ?: throw MoodleWebserviceError.MalformedResponse("not a Moodle file")
-            withContext(Dispatchers.IO) {
-                webservice.downloadTo(Request.Builder().url(url).get().build(), target, file.mimeType)
-            }
+            webservice.downloadTo(Request.Builder().url(url).get().build(), target, file.mimeType, maxBytes)
         }
     }
 

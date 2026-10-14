@@ -259,30 +259,45 @@ class MoodleCourseStore(
     val downloading: StateFlow<Set<String>> = _downloading.asStateFlow()
 
     /**
-     * An attachment of post [postId], ready to open: the copy in the app, downloaded first when
-     * there is none, or for a file off the Moodle site its own link, which carries no key. A
-     * download that fails leaves no partial copy behind. Phase 2 adds progress, cancelling and
-     * dropping copies Moodle has a newer version of.
+     * An attachment ready to open: the copy in the app, downloaded first when there is none, or
+     * for a file off the Moodle site, or one too large to download here, a link with no key in
+     * it. Each file has a folder of its own, named for its link, place and version, so two files
+     * of one name never share a copy and a replaced one gets a new copy; a file with no listed
+     * type, which a download cannot check, is fetched again each time. A download stops past the
+     * size Moodle lists, and copies opened more than a day ago go. Phase 2 adds progress,
+     * cancelling and dropping copies Moodle has a newer version of.
      */
-    suspend fun openAttachment(file: MoodleFile, postId: Int): MoodleAttachment {
+    suspend fun openAttachment(file: MoodleFile): MoodleAttachment {
         if (!MoodleFileUrls.isMoodleFile(file.url)) return MoodleAttachment.Link(file.url)
+        if (file.size > MAX_DOWNLOAD_BYTES) {
+            return MoodleAttachment.Link(MoodleFileUrls.webUrl(file.url) ?: file.url)
+        }
         val dir = openedFilesDir ?: return MoodleAttachment.Failed(IllegalStateException("no folder for files"))
-        val target = File(File(dir, postId.toString()), safeFileName(file.name))
-        if (withContext(Dispatchers.IO) { target.isFile }) return MoodleAttachment.Local(target)
+        val slot = File(dir, slotName(file))
+        val target = File(slot, safeFileName(file.name))
+        val trusted = !file.mimeType.isNullOrBlank()
+        val kept = withContext(Dispatchers.IO) {
+            pruneOpened(dir, keep = slot)
+            (trusted && target.isFile).also { if (it) slot.setLastModified(System.currentTimeMillis()) }
+        }
+        if (kept) return MoodleAttachment.Local(target)
         _downloading.update { it + file.url }
         return try {
-            val partial = File(target.parentFile, ".${target.name}.part")
+            val partial = File(slot, ".${target.name}.part")
             try {
-                withContext(Dispatchers.IO) { target.parentFile?.mkdirs() }
-                api.download(file, partial)
+                withContext(Dispatchers.IO) { slot.mkdirs() }
+                api.download(file, partial, maxBytes = if (file.size > 0) file.size else MAX_DOWNLOAD_BYTES)
                 withContext(Dispatchers.IO) {
+                    target.delete()
                     if (!partial.renameTo(target)) throw java.io.IOException("could not keep the file")
                 }
-                if (!context.isCurrent()) {
-                    withContext(Dispatchers.IO) { target.delete() }
-                    throw CancellationException("signed out")
+                if (context.isCurrent()) {
+                    MoodleAttachment.Local(target)
+                } else {
+                    // Landed after a sign-out: the next account must not find it.
+                    withContext(NonCancellable + Dispatchers.IO) { slot.deleteRecursively() }
+                    MoodleAttachment.Dropped
                 }
-                MoodleAttachment.Local(target)
             } finally {
                 withContext(NonCancellable + Dispatchers.IO) { partial.delete() }
             }
@@ -290,15 +305,29 @@ class MoodleCourseStore(
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "attachment not downloaded: ${e.logSummary()}")
+            withContext(NonCancellable + Dispatchers.IO) { if (slot.list().isNullOrEmpty()) slot.delete() }
             MoodleAttachment.Failed(e)
         } finally {
             _downloading.update { it - file.url }
         }
     }
 
-    /** [name] as one file name, nothing in it able to climb out of its folder. */
+    /** Copies opened more than a day ago, which another app had its chance to read. */
+    private fun pruneOpened(dir: File, keep: File) {
+        val cutoff = System.currentTimeMillis() - DAY_MS
+        dir.listFiles()?.filter { it != keep && it.lastModified() < cutoff }?.forEach { it.deleteRecursively() }
+    }
+
+    /** One folder per file: its link, place and version, so neither a namesake nor an update shares it. */
+    private fun slotName(file: MoodleFile): String =
+        java.security.MessageDigest.getInstance("SHA-256")
+            .digest("${file.url}|${file.path.orEmpty()}|${file.modified ?: 0}".toByteArray())
+            .take(8)
+            .joinToString("") { "%02x".format(it) }
+
+    /** [name] as one file name: no slash, backslash or NUL, and no leading dot to hide or climb with. */
     private fun safeFileName(name: String): String =
-        name.replace(Regex("[/\\\u0000]"), "_").trim().trimStart('.').ifEmpty { "file" }
+        name.replace(Regex("""[/\\\u0000]"""), "_").trim().trimStart('.').ifEmpty { "file" }
 
     // --- Pictures ---
 
@@ -365,6 +394,11 @@ class MoodleCourseStore(
     companion object {
         private const val TAG = "MoodleCourseStore"
 
+        /** The largest attachment downloaded into the app; a larger one opens on the website. */
+        const val MAX_DOWNLOAD_BYTES = 100L * 1024 * 1024
+
+        private const val DAY_MS = 24 * 60 * 60 * 1000L
+
         /** How many pages an announcement opened cold is looked for in. */
         private const val MAX_LOOKUP_PAGES = 10
 
@@ -397,6 +431,9 @@ sealed interface MoodleAttachment {
     data class Local(val file: File) : MoodleAttachment
     data class Link(val url: String) : MoodleAttachment
     data class Failed(val error: Throwable) : MoodleAttachment
+
+    /** Landed after the account signed out, and deleted: there is nothing to show. */
+    data object Dropped : MoodleAttachment
 }
 
 /** What a page opened with nothing cached found: what it shows, nothing (it is gone), or why not. */

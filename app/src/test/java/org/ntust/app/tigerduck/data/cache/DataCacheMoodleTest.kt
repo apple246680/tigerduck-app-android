@@ -84,4 +84,12 @@ class DataCacheMoodleTest {
         assertFalse(File(context.cacheDir, "escape.json").exists())
         assertEquals(grades, cache.loadMoodleData<MoodleCourseGrades>(type, "escape", "B11300001")!!.value)
     }
+
+    @Test
+    fun `the opened files' folder does not name the account`() {
+        val dir = cache.moodleOpenedFilesDir("B11300001")
+        assertFalse(dir.path.contains("B11300001", ignoreCase = true))
+        assertEquals(dir, cache.moodleOpenedFilesDir("B11300001"))
+        assertFalse(dir == cache.moodleOpenedFilesDir("B11300002"))
+    }
 }

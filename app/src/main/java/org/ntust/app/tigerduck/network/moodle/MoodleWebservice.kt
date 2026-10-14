@@ -2,7 +2,13 @@ package org.ntust.app.tigerduck.network.moodle
 
 import com.google.gson.JsonElement
 import com.google.gson.JsonParser
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -104,7 +110,7 @@ class MoodleWebservice internal constructor(
      */
     fun download(request: Request, accepts: (contentType: String?) -> Boolean): ByteArray =
         client().newCall(request).execute().use { response ->
-            val type = response.header("Content-Type")?.substringBefore(';')?.trim()?.lowercase()
+            val type = response.body.contentType()?.toString() ?: response.header("Content-Type")?.substringBefore(';')?.trim()?.lowercase()
             if (type == "application/json") {
                 MoodleWebserviceError.fromJsonBody(response.body.string())?.let { throw it }
                 throw MoodleWebserviceError.MalformedResponse("json in place of a file")
@@ -115,22 +121,56 @@ class MoodleWebservice internal constructor(
         }
 
     /**
-     * Streams [request]'s file into [target]. A Moodle error, which comes as JSON, throws its own
-     * case; anything other than the file Moodle listed, such as a sign-in page, throws
-     * [MoodleWebserviceError.MalformedResponse]. Blocking: call on IO.
+     * Streams [request]'s file into [target], at most [maxBytes] of it. A Moodle error, which comes
+     * as JSON whatever its length is said to be, throws its own case, so a dead token starts a
+     * renewal; anything other than the file Moodle listed, such as a sign-in page, or more than
+     * [maxBytes], throws [MoodleWebserviceError.MalformedResponse]. Cancelling the caller cancels
+     * the request, which a blocking read would otherwise sit out.
      */
-    fun downloadTo(request: Request, target: java.io.File, expectedMime: String?) {
-        client().newCall(request).execute().use { response ->
-            val type = response.header("Content-Type")
-            if (baseType(type) == "application/json" && (response.body.contentLength() in 0..ERROR_REPLY_LIMIT)) {
-                val bytes = response.body.bytes()
-                MoodleWebserviceError.fromJsonBody(String(bytes, Charsets.UTF_8))?.let { throw it }
-                checkFile(response.code, type, expectedMime)
-                target.writeBytes(bytes)
-                return
+    suspend fun downloadTo(request: Request, target: java.io.File, expectedMime: String?, maxBytes: Long) {
+        val call = client().newCall(request)
+        coroutineScope {
+            val cancelOnCancel = launch(start = CoroutineStart.UNDISPATCHED) {
+                try {
+                    awaitCancellation()
+                } finally {
+                    call.cancel()
+                }
+            }
+            try {
+                withContext(Dispatchers.IO) { readFile(call, target, expectedMime, maxBytes) }
+            } catch (e: java.io.IOException) {
+                // The request cancelled because its caller was: that is the cancellation, not a
+                // network failure to report.
+                currentCoroutineContext().ensureActive()
+                throw e
+            } finally {
+                cancelOnCancel.cancel()
+            }
+        }
+    }
+
+    private suspend fun readFile(call: okhttp3.Call, target: java.io.File, expectedMime: String?, maxBytes: Long) {
+        call.execute().use { response ->
+            val type = response.body.contentType()?.toString() ?: response.header("Content-Type")
+            if (baseType(type) == "application/json" || type == null) {
+                MoodleWebserviceError.fromJsonBody(response.peekBody(ERROR_REPLY_LIMIT).string())?.let { throw it }
             }
             checkFile(response.code, type, expectedMime)
-            target.outputStream().use { out -> response.body.byteStream().copyTo(out) }
+            if (response.body.contentLength() > maxBytes) throw MoodleWebserviceError.MalformedResponse("larger than listed")
+            val source = response.body.source()
+            target.outputStream().use { out ->
+                val chunk = ByteArray(64 * 1024)
+                var total = 0L
+                while (true) {
+                    currentCoroutineContext().ensureActive()
+                    val read = source.read(chunk)
+                    if (read < 0) break
+                    total += read
+                    if (total > maxBytes) throw MoodleWebserviceError.MalformedResponse("larger than listed")
+                    out.write(chunk, 0, read)
+                }
+            }
         }
     }
 

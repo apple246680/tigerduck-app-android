@@ -66,7 +66,6 @@ import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.moodle.MoodleAttachment
 import org.ntust.app.tigerduck.data.moodle.MoodleCourseStore
 import org.ntust.app.tigerduck.data.moodle.MoodleLookup
-import org.ntust.app.tigerduck.mail.resolveAttachmentMimeType
 import org.ntust.app.tigerduck.data.moodle.MoodlePersonName
 import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussion
 import org.ntust.app.tigerduck.network.model.moodle.MoodleFile
@@ -264,15 +263,14 @@ private fun AttachmentRow(store: MoodleCourseStore, file: MoodleFile, discussion
                 onLongClick = { menu = true },
                 onClick = {
                     scope.launch {
-                        when (val opened = store.openAttachment(file, discussion.postId)) {
+                        when (val opened = store.openAttachment(file)) {
                             is MoodleAttachment.Local -> runCatching {
                                 context.startActivity(
-                                    moodleFileIntent(
-                                        context,
-                                        opened.file,
-                                        resolveAttachmentMimeType(file.mimeType.orEmpty(), file.name),
-                                    ),
+                                    moodleFileIntent(context, opened.file, moodleFileType(file.mimeType, file.name)),
                                 )
+                            }.onFailure {
+                                // As School Mail says when no app takes an attachment.
+                                Toast.makeText(context, R.string.school_mail_error_generic, Toast.LENGTH_SHORT).show()
                             }
                             is MoodleAttachment.Link -> openMoodleContentLink(context, opened.url, browserPreference)
                             is MoodleAttachment.Failed -> Toast.makeText(
@@ -280,6 +278,7 @@ private fun AttachmentRow(store: MoodleCourseStore, file: MoodleFile, discussion
                                 moodleErrorText(context.resources, opened.error),
                                 Toast.LENGTH_SHORT,
                             ).show()
+                            MoodleAttachment.Dropped -> Unit
                         }
                     }
                 },

@@ -1,5 +1,8 @@
 package org.ntust.app.tigerduck.network.moodle
 
+import kotlinx.coroutines.cancelAndJoin
+import okio.buffer
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
@@ -164,5 +167,99 @@ class MoodleWebserviceTest {
         assertThrows(MoodleWebserviceError.HttpStatus::class.java) {
             MoodleWebservice.checkFile(404, "text/html", "application/pdf")
         }
+    }
+
+    private fun downloading(body: okio.Buffer, type: String, length: Long = -1L) = OkHttpClient.Builder().addInterceptor { chain ->
+        Response.Builder()
+            .request(chain.request())
+            .protocol(Protocol.HTTP_1_1)
+            .code(200)
+            .message("")
+            .body(object : okhttp3.ResponseBody() {
+                override fun contentType() = type.toMediaType()
+                override fun contentLength() = length
+                override fun source(): okio.BufferedSource = body
+            })
+            .build()
+    }.build()
+
+    private val fileRequest = Request.Builder().url("https://moodle2.ntust.edu.tw/tokenpluginfile.php/k/1/a.pdf").build()
+
+    @get:org.junit.Rule
+    val tmp = org.junit.rules.TemporaryFolder()
+
+    @Test
+    fun `a dead token in a download of unknown length is the token error, so a renewal starts`() = runTest {
+        val client = downloading(okio.Buffer().writeUtf8("""{"errorcode":"invalidtoken","exception":"moodle_exception"}"""), "application/json")
+        val target = tmp.newFile()
+
+        val error = runCatching {
+            MoodleWebservice({ client }, Tokens("t1")).downloadTo(fileRequest, target, "application/pdf", maxBytes = 1_000)
+        }.exceptionOrNull()
+
+        assertTrue(error is MoodleWebserviceError.InvalidToken)
+    }
+
+    @Test
+    fun `a JSON file is kept whole`() = runTest {
+        val json = """{"week":1,"topics":["lists","trees"]}"""
+        val client = downloading(okio.Buffer().writeUtf8(json), "application/json; charset=utf-8")
+        val target = tmp.newFile()
+
+        MoodleWebservice({ client }, Tokens("t1")).downloadTo(fileRequest, target, "application/json", maxBytes = 1_000)
+
+        assertEquals(json, target.readText())
+    }
+
+    @Test
+    fun `a download larger than allowed stops`() = runTest {
+        val client = downloading(okio.Buffer().write(ByteArray(5_000)), "application/pdf")
+        val target = tmp.newFile()
+
+        val error = runCatching {
+            MoodleWebservice({ client }, Tokens("t1")).downloadTo(fileRequest, target, "application/pdf", maxBytes = 1_000)
+        }.exceptionOrNull()
+
+        assertTrue(error is MoodleWebserviceError.MalformedResponse)
+    }
+
+    @Test
+    fun `cancelling a download cancels its request`() = kotlinx.coroutines.runBlocking {
+        var call: okhttp3.Call? = null
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            call = chain.call()
+            val endless = object : okio.Source {
+                override fun read(sink: okio.Buffer, byteCount: Long): Long {
+                    // A slow network: a byte at a time until the call is cancelled.
+                    if (chain.call().isCanceled()) throw java.io.IOException("Canceled")
+                    Thread.sleep(5)
+                    sink.writeByte(0)
+                    return 1
+                }
+                override fun timeout() = okio.Timeout.NONE
+                override fun close() = Unit
+            }
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("")
+                .body(object : okhttp3.ResponseBody() {
+                    override fun contentType() = "application/pdf".toMediaType()
+                    override fun contentLength() = -1L
+                    override fun source(): okio.BufferedSource = endless.buffer()
+                })
+                .build()
+        }.build()
+        val target = tmp.newFile()
+
+        val job = launch(kotlinx.coroutines.Dispatchers.Default) {
+            MoodleWebservice({ client }, Tokens("t1")).downloadTo(fileRequest, target, "application/pdf", maxBytes = Long.MAX_VALUE)
+        }
+        while (call == null) kotlinx.coroutines.delay(10)
+        kotlinx.coroutines.delay(50)
+        kotlinx.coroutines.withTimeout(2_000) { job.cancelAndJoin() }
+
+        assertTrue(call!!.isCanceled())
     }
 }

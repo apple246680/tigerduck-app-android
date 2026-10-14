@@ -647,7 +647,17 @@ class DataCache @Inject constructor(
      * [moodleFilesDir], so that path exposes nothing but these copies.
      */
     fun moodleOpenedFilesDir(account: String): File =
-        File(File(cacheDir, MOODLE_OPENED_DIR), moodleAccountFolder(account))
+        File(File(cacheDir, MOODLE_OPENED_DIR), opaqueFolder(account))
+
+    /**
+     * A folder name for [account] that does not spell it: its path shows in the content URI
+     * another app is handed.
+     */
+    private fun opaqueFolder(account: String): String =
+        java.security.MessageDigest.getInstance("SHA-256")
+            .digest(account.trim().uppercase().toByteArray())
+            .take(8)
+            .joinToString("") { "%02x".format(it) }
 
     private fun moodleFile(name: String, account: String): File {
         // A name is the app's own, such as "courses/123/grades"; dot segments never come from it,
