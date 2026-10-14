@@ -274,6 +274,14 @@ class UseLocalCoursesTest {
         override suspend fun patchCustomName(moodleId: String, name: String, locale: String) = Unit
     }
 
+    private class SwitchedOff : CourseSyncBackend {
+        override suspend fun deleteAllCourses(semester: String) = throw CourseSyncOffException()
+        override suspend fun uploadCourses(courses: List<Course>, semester: String) = throw CourseSyncOffException()
+        override suspend fun deleteCourse(courseKey: String) = throw CourseSyncOffException()
+        override suspend fun patchCustomName(moodleId: String, name: String, locale: String) =
+            throw CourseSyncOffException()
+    }
+
     private class Recording(private val onRequest: () -> Unit = {}) : CourseSyncBackend {
         override suspend fun deleteAllCourses(semester: String) = onRequest()
         override suspend fun uploadCourses(courses: List<Course>, semester: String) = onRequest()
@@ -294,6 +302,14 @@ class UseLocalCoursesTest {
 
         assertEquals(listOf("latch 1151", "ask again", "stamp 1151", "release 1151"), events)
         assertEquals(emptySet<String>(), held)
+    }
+
+    @Test
+    fun `course sync switched off midway asks nothing, since turning it back on asks anyway`() = runTest {
+        // Asked now, the question would come back with course sync off.
+        run(SwitchedOff(), "1151" to roster("CS1"))
+
+        assertEquals(listOf("latch 1151", "stamp 1151", "release 1151"), events)
     }
 
     @Test

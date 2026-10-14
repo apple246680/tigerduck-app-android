@@ -22,8 +22,8 @@ import org.robolectric.annotation.Config
 /**
  * Use Local's requests fail, rather than go quietly unsent, once course sync
  * is off ([PushCourseSyncBackend]). [PushApiClient] skips them without a word
- * then, so a term reset that had landed was followed by no upload, and every
- * other device hid the whole term — with nothing to ask the question again.
+ * then, so Use Local went on as if they had landed: a term reset followed by
+ * no upload left every other device hiding the whole term.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)

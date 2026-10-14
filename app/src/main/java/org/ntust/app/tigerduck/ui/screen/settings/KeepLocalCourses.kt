@@ -20,14 +20,16 @@ internal interface CourseSyncBackend {
     suspend fun patchCustomName(moodleId: String, name: String, locale: String)
 }
 
-/** Course sync went off while Use Local was sending: the question is asked again. */
+/**
+ * Course sync went off while Use Local was sending. Nothing is asked then:
+ * turning course sync back on marks the question again.
+ */
 internal class CourseSyncOffException : IllegalStateException("course sync is off")
 
 /**
  * [CourseSyncBackend] over [PushApiClient], whose course requests return
- * quietly unsent with cloud or course sync off. Use Local's fail instead: a
- * term reset followed by an upload that never went would leave every other
- * device hiding the whole term, with nothing to ask the question again.
+ * quietly unsent with cloud or course sync off. Use Local's fail instead, so
+ * it stops rather than follow a term reset with an upload that never went.
  */
 internal class PushCourseSyncBackend(
     private val api: PushApiClient,
@@ -214,6 +216,10 @@ internal suspend fun useLocalCourses(
             keepLocalCourses(terms, hiding, backend, customNames, portalCached, isCurrent)
         } catch (e: CancellationException) {
             throw e
+        } catch (e: CourseSyncOffException) {
+            // Not asked now, with course sync off: turning it back on marks
+            // the question again by itself.
+            Log.w("SyncReenable", "[reenable] keep-local courses stopped: course sync went off")
         } catch (e: Exception) {
             Log.w("SyncReenable", "[reenable] keep-local courses failed, asking again: ${e.logSummary()}")
             if (isCurrent()) host.askAgain()
