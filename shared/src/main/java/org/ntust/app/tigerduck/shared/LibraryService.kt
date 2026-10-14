@@ -3,6 +3,9 @@ package org.ntust.app.tigerduck.shared
 import android.util.Log
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -17,6 +20,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.logging.HttpLoggingInterceptor
 import java.io.IOException
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.resumeWithException
 
 /**
@@ -37,6 +41,8 @@ class LibraryService(
      * globally — the phone passes its demo-mode kill switch through here.
      */
     extraInterceptors: List<Interceptor> = emptyList(),
+    /** Wall-clock ms, for the pause after a failed sign-in with the stored credentials. */
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val loggingInterceptor = HttpLoggingInterceptor { message ->
         Log.d("TigerDuck-HTTP", LibraryApi.redactSensitive(message))
@@ -53,6 +59,53 @@ class LibraryService(
         .build()
     private val gson = Gson()
     private val tokenMutex = Mutex()
+
+    /** What became of a sign-in made with the stored credentials, for the app to act on. */
+    enum class StoredSignIn {
+        /** A new token is stored. */
+        SIGNED_IN,
+
+        /** The library refused the stored password; nothing signs in with it again by itself. */
+        REFUSED,
+    }
+
+    private val _storedSignIns = MutableSharedFlow<StoredSignIn>(extraBufferCapacity = 8)
+
+    /** Each sign-in [ensureToken] makes with the stored credentials that stores a token or is refused. */
+    val storedSignIns: SharedFlow<StoredSignIn> = _storedSignIns.asSharedFlow()
+
+    /**
+     * When a sign-in with the stored credentials last failed short of a
+     * refusal, with no answer or a server error. [signInIfCredentialed] waits
+     * [SIGN_IN_PAUSE_MS] after it; opening the Library page does not.
+     */
+    @Volatile
+    private var storedSignInFailedAt: Long? = null
+
+    /** Whether [ensureToken] can sign in again by itself once the token runs out. */
+    val canSignInWithStoredCredentials: Boolean
+        get() = credentials.libraryUsername != null &&
+            credentials.libraryPassword != null &&
+            !credentials.libraryPasswordRefused
+
+    /**
+     * Signs in with the stored credentials when there is no live token, so the
+     * Library page shows its code at once: at launch and on each return to the
+     * app. Not after a refusal, not within [SIGN_IN_PAUSE_MS] of another
+     * failure, and not offline. Returns whether it signed in.
+     */
+    suspend fun signInIfCredentialed(isOnline: () -> Boolean): Boolean {
+        if (credentials.isLibraryTokenValid || !canSignInWithStoredCredentials) return false
+        if (!signInIsDue(storedSignInFailedAt, clock()) || !isOnline()) return false
+        return try {
+            ensureToken()
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            false
+        }
+    }
 
     /**
      * Signs in and stores the account and its token. Once the library account
@@ -89,32 +142,34 @@ class LibraryService(
                 .build()
 
             send(request).use { response ->
-                val responseBody = response.body.string()
-                val loginResponse = runCatching {
-                    gson.fromJson(responseBody, LibraryLoginResponse::class.java)
-                }.getOrNull()
-
-                if (loginResponse?.data == null ||
-                    loginResponse.error?.code?.let { it != 0 } == true
-                ) {
-                    throw LibraryServiceError.LoginFailed(
-                        serverErrorMessage(response.code, loginResponse?.error)
-                    )
-                }
-
-                val token = loginResponse.data.token
+                val answer = loginAnswer(response.code, response.body.string())
                 val stored = credentials.saveLibrarySignIn(
                     accountGeneration,
                     username,
                     password,
-                    token,
-                    loginResponse.data.expirationTimeStamp,
+                    answer.token,
+                    answer.expirationTimeStamp,
                     byUser,
                 )
                 if (!stored) throw LibraryServiceError.CredentialsNotFound()
-                token
+                answer.token
             }
         }
+
+    /**
+     * Reads the library's answer to a sign-in. A 4xx is a refusal like a wrong
+     * password: which status a wrong password gets is unchecked, and a refusal
+     * stops the automatic sign-ins. A server error or an answer that cannot be
+     * read is not.
+     */
+    private fun loginAnswer(status: Int, body: String): LibraryLoginData {
+        val parsed = runCatching { gson.fromJson(body, LibraryLoginResponse::class.java) }.getOrNull()
+        val message = serverErrorMessage(status, parsed?.error)
+        if (status in 400..499) throw LibraryServiceError.LoginFailed(message)
+        if (status !in 200..299 || parsed == null) throw LibraryServiceError.LoginUnavailable(message)
+        if (parsed.error?.code?.let { it != 0 } == true) throw LibraryServiceError.LoginFailed(message)
+        return parsed.data ?: throw LibraryServiceError.LoginFailed(message)
+    }
 
     suspend fun ensureToken(): String = tokenMutex.withLock {
         // Before the account it signs in with, so a sign-out after this keeps
@@ -127,8 +182,30 @@ class LibraryService(
             ?: throw LibraryServiceError.CredentialsNotFound()
         val password = credentials.libraryPassword
             ?: throw LibraryServiceError.CredentialsNotFound()
+        // Each refusal counts toward the account's lockout, so a refused
+        // password is not sent again until a sign-in saves credentials that work.
+        if (credentials.libraryPasswordRefused) throw LibraryServiceError.CredentialsNotFound()
 
-        loginInternal(username, password, accountGeneration, byUser = false)
+        val signedIn = try {
+            loginInternal(username, password, accountGeneration, byUser = false)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // A failure says something only about the credentials still stored.
+            if (e is LibraryServiceError.LoginFailed) {
+                if (credentials.refuseLibraryPassword(accountGeneration, password)) {
+                    _storedSignIns.tryEmit(StoredSignIn.REFUSED)
+                }
+            } else if (credentials.libraryAccountGeneration == accountGeneration &&
+                credentials.libraryPassword == password
+            ) {
+                storedSignInFailedAt = clock()
+            }
+            throw e
+        }
+        storedSignInFailedAt = null
+        _storedSignIns.tryEmit(StoredSignIn.SIGNED_IN)
+        signedIn
     }
 
     suspend fun generateQRCode(): String = withContext(Dispatchers.IO) {
@@ -188,10 +265,23 @@ class LibraryService(
         return if (httpStatus in 200..299) GENERIC_ERROR else "$GENERIC_ERROR (HTTP $httpStatus)"
     }
 
-    private companion object {
+    companion object {
         // Localized error strings live in the UI layer of each module; the
         // shared service falls back to a stable non-empty marker so callers
         // can still display *something* if the server omits a message.
-        const val GENERIC_ERROR = "Library request failed"
+        private const val GENERIC_ERROR = "Library request failed"
+
+        /** How long a return to the app waits after a sign-in that failed short of a refusal. */
+        const val SIGN_IN_PAUSE_MS = 5 * 60 * 1000L
+
+        /**
+         * Whether a return to the app may sign in again. Measured from the
+         * failure, so a clock set back does not stretch the pause.
+         */
+        fun signInIsDue(lastFailure: Long?, now: Long): Boolean {
+            if (lastFailure == null) return true
+            val age = now - lastFailure
+            return age >= SIGN_IN_PAUSE_MS || age < 0
+        }
     }
 }

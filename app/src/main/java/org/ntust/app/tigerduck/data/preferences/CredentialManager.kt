@@ -87,8 +87,20 @@ class CredentialManager private constructor(
             .putString("library_password", password)
             .putString("library_token", token)
             .putLong("library_token_expiry", tokenExpiry)
+            // Credentials that work, so the app may sign in with them again.
+            .remove(KEY_LIBRARY_PASSWORD_REFUSED)
             .apply()
     }
+
+    override val libraryPasswordRefused: Boolean
+        get() = prefs.getBoolean(KEY_LIBRARY_PASSWORD_REFUSED, false)
+
+    override fun refuseLibraryPassword(generation: Int, password: String): Boolean =
+        libraryAccount.whileCurrent(generation) {
+            if (libraryPassword != password) return@whileCurrent false
+            prefs.edit().putBoolean(KEY_LIBRARY_PASSWORD_REFUSED, true).apply()
+            true
+        } ?: false
 
     /** Long-lived Moodle Mobile wstoken, obtained via the OIDC launch flow. */
     var moodleToken: String?
@@ -121,6 +133,7 @@ class CredentialManager private constructor(
                 .remove("library_password")
                 .remove("library_token")
                 .remove("library_token_expiry")
+                .remove(KEY_LIBRARY_PASSWORD_REFUSED)
                 .apply()
         }
     }
@@ -157,6 +170,7 @@ class CredentialManager private constructor(
 
     companion object {
         private const val PREFS_NAME = "tigerduck_credentials"
+        private const val KEY_LIBRARY_PASSWORD_REFUSED = "library_password_refused"
 
         private fun openEncrypted(context: Context): Opened {
             fun attempt(): SharedPreferences {

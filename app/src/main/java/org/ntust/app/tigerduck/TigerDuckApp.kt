@@ -69,6 +69,9 @@ class TigerDuckApp : Application(), Configuration.Provider {
     @Inject
     lateinit var librarySession: org.ntust.app.tigerduck.library.LibrarySession
 
+    @Inject
+    lateinit var libraryService: org.ntust.app.tigerduck.shared.LibraryService
+
     // The DI singleton, not a private scope: it carries a logging
     // CoroutineExceptionHandler (see CoroutineModule) so a failure in the
     // safety-net publishes below can't crash the process pre-first-frame.
@@ -134,6 +137,17 @@ class TigerDuckApp : Application(), Configuration.Provider {
                 // moment to (re)mirror the library credentials onto the
                 // paired watch.
                 wearBridge.publishLibraryCredentials()
+            }
+        }
+        // A sign-in with the stored library credentials, at a return to the app
+        // or behind the Library page, changes what Settings and the flip read.
+        // A refusal also takes the password off the watch.
+        appScope.launch {
+            libraryService.storedSignIns.collect { outcome ->
+                librarySession.refresh()
+                if (outcome == org.ntust.app.tigerduck.shared.LibraryService.StoredSignIn.REFUSED) {
+                    wearBridge.publishLibraryCredentials()
+                }
             }
         }
         // Mirror language changes to the watch so its UI follows the phone.

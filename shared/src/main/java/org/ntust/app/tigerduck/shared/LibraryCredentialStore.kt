@@ -40,6 +40,23 @@ interface LibraryCredentialStore {
         tokenExpiry: Long,
         byUser: Boolean,
     ): Boolean
+
+    /**
+     * Whether the library refused the stored password in a sign-in the app made
+     * on its own. Each refusal counts toward the account's lockout, so
+     * [LibraryService.ensureToken] does not send that password again. Kept
+     * across launches, and cleared by a sign-in that saves credentials and by a
+     * sign-out. A store that does not keep it reads false, as the watch's does:
+     * the phone takes the watch's copy of the password away instead.
+     */
+    val libraryPasswordRefused: Boolean get() = false
+
+    /**
+     * Records that the library refused [password], if it is still the stored
+     * one and the account has not changed since [generation] was read; says
+     * whether it did.
+     */
+    fun refuseLibraryPassword(generation: Int, password: String): Boolean = false
 }
 
 /**
@@ -60,6 +77,11 @@ class LibraryAccountGate {
         generation++
         signedOutAt = generation
         remove()
+    }
+
+    /** Runs [block] while the generation is still [read], atomic with sign-outs and saves; null once it moved. */
+    fun <T> whileCurrent(read: Int, block: () -> T): T? = synchronized(this) {
+        if (generation == read) block() else null
     }
 
     /** Another account stored other than by a sign-in, as the phone hands one to the watch. */
