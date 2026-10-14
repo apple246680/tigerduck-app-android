@@ -466,6 +466,34 @@ class SchoolMailMessageViewModelTest {
         assertNull(ready(vm).document)
     }
 
+    // --- attachments: share -----------------------------------------------------------------
+
+    @Test
+    fun `sharing downloads the attachment for the share sheet, asking first for a risky one`() {
+        val risky = MailAttachment("2", "invoice.pdf.exe", "application/octet-stream", 10, null)
+        val safe = MailAttachment("3", "notes.txt", "text/plain", 5, null)
+        repo.add("INBOX", mailSummary(5, hasAttachments = true))
+        repo.bodies[5] = MailBody(null, "see attached", listOf(risky, safe), emptyMap())
+        val vm = vm()
+        vm.load()
+
+        vm.requestShare(safe)
+        val shared = vm.state.value.shareRequest!!
+        assertEquals("notes.txt", shared.file.name)
+        assertEquals("text/plain", shared.contentType)
+        assertEquals("attachment 3", shared.file.readText())
+        assertTrue(shared.file.canonicalPath.startsWith(cache.attachmentsDir.canonicalPath))
+        assertNull("sharing is not opening", vm.state.value.openRequest)
+        vm.consumeShareRequest()
+        assertNull(vm.state.value.shareRequest)
+
+        vm.requestShare(risky)
+        assertEquals(PendingAttachment(risky, AttachmentAction.SHARE), vm.state.value.confirmAttachment)
+        assertNull(vm.state.value.shareRequest)
+        vm.confirmAttachment(true)
+        assertEquals("invoice.pdf.exe", vm.state.value.shareRequest!!.file.name)
+    }
+
     // --- attachments: open ------------------------------------------------------------------
 
     @Test

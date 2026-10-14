@@ -66,7 +66,7 @@ class SchoolMailMessageViewModel @Inject constructor(
 
     enum class ViewMode { FORMATTED, PLAIN, SOURCE }
 
-    enum class AttachmentAction { OPEN, SAVE }
+    enum class AttachmentAction { OPEN, SAVE, SHARE }
 
     data class PendingAttachment(val attachment: MailAttachment, val action: AttachmentAction)
 
@@ -115,6 +115,8 @@ class SchoolMailMessageViewModel @Inject constructor(
         /** An attachment (open or save) that needs the risky/HTML/SVG confirmation first. */
         val confirmAttachment: PendingAttachment? = null,
         val openRequest: OpenRequest? = null,
+        /** A downloaded attachment for the screen to hand to the share sheet. */
+        val shareRequest: OpenRequest? = null,
         /** Set once a save is confirmed (or needed no confirmation): the screen launches the SAF picker for it. */
         val saveRequest: MailAttachment? = null,
         /** Attachment part IDs currently being downloaded, open or save alike -- keyed per part so two different attachments don't clear each other's spinner. */
@@ -405,6 +407,8 @@ class SchoolMailMessageViewModel @Inject constructor(
 
     fun requestSave(attachment: MailAttachment) = request(attachment, AttachmentAction.SAVE)
 
+    fun requestShare(attachment: MailAttachment) = request(attachment, AttachmentAction.SHARE)
+
     private fun request(attachment: MailAttachment, action: AttachmentAction) {
         if (attachment.partId in _state.value.downloading) return
         if (needsConfirmation(attachment)) {
@@ -423,7 +427,10 @@ class SchoolMailMessageViewModel @Inject constructor(
 
     private fun proceed(attachment: MailAttachment, action: AttachmentAction) {
         when (action) {
-            AttachmentAction.OPEN -> open(attachment)
+            AttachmentAction.OPEN -> open(attachment) { file -> update { it.copy(openRequest = OpenRequest(file, attachment.contentType)) } }
+            // Downloaded exactly as for opening; the screen hands the file to the share sheet
+            // instead of a viewer.
+            AttachmentAction.SHARE -> open(attachment) { file -> update { it.copy(shareRequest = OpenRequest(file, attachment.contentType)) } }
             // The SAF document picker is a Compose activity-result launcher this view model
             // can't drive directly; saveRequest tells the screen to launch it, and the actual
             // write happens in saveAttachment() once it returns a target.
@@ -433,13 +440,12 @@ class SchoolMailMessageViewModel @Inject constructor(
 
     fun consumeSaveRequest() = update { it.copy(saveRequest = null) }
 
-    private fun open(attachment: MailAttachment) {
+    private fun open(attachment: MailAttachment, deliver: (File) -> Unit) {
         if (attachment.partId in _state.value.downloading) return
         act {
             update { it.copy(downloading = it.downloading + attachment.partId) }
             try {
-                val file = download(attachment)
-                update { it.copy(openRequest = OpenRequest(file, attachment.contentType)) }
+                deliver(download(attachment))
             } finally {
                 update { it.copy(downloading = it.downloading - attachment.partId) }
             }
@@ -447,6 +453,8 @@ class SchoolMailMessageViewModel @Inject constructor(
     }
 
     fun consumeOpenRequest() = update { it.copy(openRequest = null) }
+
+    fun consumeShareRequest() = update { it.copy(shareRequest = null) }
 
     /**
      * Into `attachmentsDir/<random>/<name>`, which the FileProvider serves; files older than a

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.ReplyAll
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -173,6 +174,11 @@ fun SchoolMailMessageScreen(
         val request = state.openRequest ?: return@LaunchedEffect
         openAttachment(context, request)
         viewModel.consumeOpenRequest()
+    }
+    LaunchedEffect(state.shareRequest) {
+        val request = state.shareRequest ?: return@LaunchedEffect
+        shareAttachment(context, request)
+        viewModel.consumeShareRequest()
     }
 
     val ready = state.content as? Content.Ready
@@ -402,6 +408,7 @@ fun SchoolMailMessageScreen(
                                 downloading = attachment.partId in state.downloading,
                                 onOpen = { viewModel.requestOpen(attachment) },
                                 onSave = { viewModel.requestSave(attachment) },
+                                onShare = { viewModel.requestShare(attachment) },
                             )
                         }
                     }
@@ -709,7 +716,13 @@ private fun WarningCard(title: String, action: (@Composable () -> Unit)?) {
 }
 
 @Composable
-private fun AttachmentRow(attachment: MailAttachment, downloading: Boolean, onOpen: () -> Unit, onSave: () -> Unit) {
+private fun AttachmentRow(
+    attachment: MailAttachment,
+    downloading: Boolean,
+    onOpen: () -> Unit,
+    onSave: () -> Unit,
+    onShare: () -> Unit,
+) {
     val context = LocalContext.current
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
@@ -730,6 +743,13 @@ private fun AttachmentRow(attachment: MailAttachment, downloading: Boolean, onOp
         } else {
             TextButton(onClick = onOpen) { Text(stringResource(R.string.school_mail_open)) }
             TextButton(onClick = onSave) { Text(stringResource(R.string.action_save)) }
+            IconButton(onClick = onShare) {
+                Icon(
+                    Icons.Filled.Share,
+                    contentDescription = stringResource(R.string.school_mail_attachment_share),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
         }
     }
 }
@@ -805,6 +825,26 @@ private fun openAttachment(context: Context, request: SchoolMailMessageViewModel
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         context.startActivity(Intent.createChooser(view, request.file.name))
     }.onFailure { Toast.makeText(context, R.string.school_mail_error_generic, Toast.LENGTH_SHORT).show() }
+}
+
+/**
+ * Hands a downloaded attachment to the system share sheet, read-only through the same
+ * FileProvider [openAttachment] uses. The grant rides on the ClipData as well as the flag, so it
+ * reaches the app picked in the chooser, not only the chooser itself.
+ */
+private fun shareAttachment(context: Context, request: SchoolMailMessageViewModel.OpenRequest) {
+    runCatching { context.startActivity(attachmentShareIntent(context, request)) }
+        .onFailure { Toast.makeText(context, R.string.school_mail_error_generic, Toast.LENGTH_SHORT).show() }
+}
+
+internal fun attachmentShareIntent(context: Context, request: SchoolMailMessageViewModel.OpenRequest): Intent {
+    val uri = FileProvider.getUriForFile(context, fileProviderAuthority(context), request.file)
+    val send = Intent(Intent.ACTION_SEND)
+        .setType(resolveAttachmentMimeType(request.contentType, request.file.name))
+        .putExtra(Intent.EXTRA_STREAM, uri)
+        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    send.clipData = ClipData.newRawUri(request.file.name, uri)
+    return Intent.createChooser(send, request.file.name)
 }
 
 private fun copyToClipboard(context: Context, text: String) {
