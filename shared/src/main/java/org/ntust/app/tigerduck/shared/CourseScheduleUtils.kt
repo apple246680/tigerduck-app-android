@@ -47,6 +47,18 @@ fun Course.blockClassroom(weekday: Int, periods: List<String>): String {
     return if (seen.isEmpty()) Course.dedupRooms(classroom) else seen.joinToString(", ")
 }
 
+/**
+ * The room of this course's block on [weekday] that holds [periodId], or else of its first block
+ * after it: where a 衝堂 tile's later course meets, given the tile's first period. The day's rooms
+ * when the course has neither.
+ */
+fun Course.blockClassroomFrom(weekday: Int, periodId: String): String {
+    val runs = contiguousPeriodRuns(schedule[weekday].orEmpty())
+    val run = runs.firstOrNull { periodId in it }
+        ?: runs.firstOrNull { periodOrder(it.first()) > periodOrder(periodId) }
+    return if (run != null) blockClassroom(weekday, run) else classroom(weekday)
+}
+
 data class OngoingCourseInfo(
     val course: Course,
     val weekday: Int,

@@ -115,4 +115,14 @@ class CourseScheduleUtilsTest {
     fun `blockClassroom falls back to the flat room for a block the map lacks`() {
         assertEquals("TR-313, TR-412", twice.blockClassroom(2, listOf("1")))
     }
+
+    @Test
+    fun `blockClassroomFrom gives the room of the block holding the period, or of the next block`() {
+        assertEquals("TR-313", twice.blockClassroomFrom(1, "4"))
+        // Period 5 is in no block; the next one starts at 7.
+        assertEquals("TR-412", twice.blockClassroomFrom(1, "5"))
+        // Nothing after period 9: the day's rooms.
+        assertEquals("TR-313, TR-412", twice.blockClassroomFrom(1, "9"))
+    }
 }
+
