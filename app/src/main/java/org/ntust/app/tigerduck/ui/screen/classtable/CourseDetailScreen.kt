@@ -171,26 +171,33 @@ internal fun CourseDetailScreen(
         },
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
-        Column(
+        // Centred and held to a readable width on a tablet or in landscape.
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(scroll)
-                .padding(horizontal = 16.dp)
-                .padding(top = 4.dp, bottom = 32.dp)
-                .widthIn(max = 720.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+                .verticalScroll(scroll),
+            contentAlignment = Alignment.TopCenter,
         ) {
-            CourseDetailContent(
-                course = course,
-                title = title,
-                classroom = classroom,
-                timeRange = timeRange,
-                assignments = assignments,
-            )
-            val current = store
-            if (showsMoodle && moodleCourseId != null && current != null && current.courseId == moodleCourseId) {
-                MoodleCourseSection(current, browserPreference, onOpenRoute)
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 720.dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(top = 4.dp, bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+            ) {
+                CourseDetailContent(
+                    course = course,
+                    title = title,
+                    classroom = classroom,
+                    timeRange = timeRange,
+                    assignments = assignments,
+                )
+                val current = store
+                if (showsMoodle && moodleCourseId != null && current != null && current.courseId == moodleCourseId) {
+                    MoodleCourseSection(current, browserPreference, onOpenRoute)
+                }
             }
         }
     }
