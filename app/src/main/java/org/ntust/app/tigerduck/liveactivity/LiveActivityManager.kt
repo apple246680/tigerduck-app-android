@@ -33,16 +33,18 @@ class LiveActivityManager internal constructor(
     private val preferences: LiveActivityPreferences,
     private val notifier: LiveActivityNotifier,
     private val dataCache: DataCache,
-    // authState, not a session-liveness check: see refreshLocked.
-    private val signedIn: () -> Boolean,
+    private val isSignedIn: () -> Boolean,
     private val appPrefs: AppPreferences,
     private val classPreparingScheduler: ClassPreparingNotificationScheduler,
     private val academicCalendar: org.ntust.app.tigerduck.academic.AcademicCalendarStore,
     private val boundaryScheduler: LiveActivityBoundaryScheduler,
     private val appScope: CoroutineScope,
 ) {
-    @Inject
-    constructor(
+    // The real entry point, which Hilt calls. The primary constructor takes
+    // the sign-in state as a plain function, so LiveActivityManagerRestartTest
+    // can build the real manager without AuthService's dependency graph. Same
+    // split as LiveActivityPreferences and NotificationSettingsSync.
+    @Inject constructor(
         preferences: LiveActivityPreferences,
         notifier: LiveActivityNotifier,
         dataCache: DataCache,
@@ -56,7 +58,8 @@ class LiveActivityManager internal constructor(
         preferences = preferences,
         notifier = notifier,
         dataCache = dataCache,
-        signedIn = { authService.authState.value },
+        // authState, not a session-liveness check; see refreshLocked.
+        isSignedIn = { authService.authState.value },
         appPrefs = appPrefs,
         classPreparingScheduler = classPreparingScheduler,
         academicCalendar = academicCalendar,
@@ -130,7 +133,7 @@ class LiveActivityManager internal constructor(
         // is signed in at all — not whether an SSO cookie happens to be warm.
         // The cookie jar is in-memory, so gating on it stopped the Live Update
         // after every reboot or background kill until the user signed in again.
-        val signedIn = signedIn()
+        val signedIn = isSignedIn()
         if (!preferences.isEnabled || !signedIn) {
             // The other silent way to get no Live Update. Signing out stops it
             // just as completely as the feature toggle, and neither says so

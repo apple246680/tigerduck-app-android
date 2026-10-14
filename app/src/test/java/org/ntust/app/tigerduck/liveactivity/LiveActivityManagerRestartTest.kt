@@ -75,7 +75,7 @@ class LiveActivityManagerRestartTest {
             preferences = livePrefs,
             notifier = LiveActivityNotifier(context, livePrefs, prefs, channels),
             dataCache = dataCache,
-            signedIn = { signedIn },
+            isSignedIn = { signedIn },
             appPrefs = prefs,
             classPreparingScheduler = ClassPreparingNotificationScheduler(context),
             academicCalendar = calendar,
