@@ -46,8 +46,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -69,6 +74,8 @@ import org.ntust.app.tigerduck.ui.component.TigerPullToRefresh
 import org.ntust.app.tigerduck.ui.component.scrollbar
 import org.ntust.app.tigerduck.ui.component.PageLeftEffect
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
+import org.ntust.app.tigerduck.util.replaceIosArg
+import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -327,13 +334,15 @@ private fun MonthCalendar(
 }
 
 @Composable
-private fun CalendarGrid(
+internal fun CalendarGrid(
     monthDate: Date,
     selectedDate: Date,
     events: List<CalendarEvent>,
     onDateSelected: (Date) -> Unit
 ) {
     val taipeiTz = org.ntust.app.tigerduck.AppConstants.TAIPEI_TZ
+    val locale = LocalConfiguration.current.locales[0] ?: Locale.getDefault()
+    val dayLabelTemplate = stringResource(R.string.a11y_calendar_day)
     val cal = Calendar.getInstance(taipeiTz).apply { time = monthDate }
     val year = cal.get(Calendar.YEAR)
     val month = cal.get(Calendar.MONTH)
@@ -369,7 +378,9 @@ private fun CalendarGrid(
 
                         val isSelected = isSameDay(dayDate, selectedDate)
                         val isToday = isSameDay(dayDate, Date(AppClock.nowMillis()))
-                        val hasEvent = events.any { isSameDay(it.date, dayDate) }
+                        val eventCount = events.count { isSameDay(it.date, dayDate) }
+                        val hasEvent = eventCount > 0
+                        val dayLabel = calendarDayLabel(dayLabelTemplate, dayDate, eventCount, locale)
 
                         Box(
                             modifier = Modifier
@@ -383,7 +394,17 @@ private fun CalendarGrid(
                                         else -> Color.Transparent
                                     }
                                 )
-                                .clickable { onDateSelected(dayDate) },
+                                .clickable(role = Role.Button) { onDateSelected(dayDate) }
+                                // The full date and the event count in place of the
+                                // bare day number, as iOS reads it. Only the chosen
+                                // day says it is selected: "not selected" on every
+                                // other day would be noise. Cleared here, on the
+                                // clickable node itself: a child that clears its own
+                                // semantics leaves this node unclickable to TalkBack.
+                                .clearAndSetSemantics {
+                                    contentDescription = dayLabel
+                                    if (isSelected) selected = true
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -421,6 +442,18 @@ private fun CalendarGrid(
             }
         }
     }
+}
+
+/**
+ * What TalkBack reads for a day of the month grid: its full date in the app's
+ * Taipei calendar, so it matches the cell for a user west of Taiwan, and how
+ * many events it has. [template] is `a11y_calendar_day`.
+ */
+internal fun calendarDayLabel(template: String, date: Date, eventCount: Int, locale: Locale): String {
+    val fullDate = DateFormat.getDateInstance(DateFormat.FULL, locale)
+        .apply { timeZone = org.ntust.app.tigerduck.AppConstants.TAIPEI_TZ }
+        .format(date)
+    return template.replaceIosArg(1, fullDate).replaceIosArg(2, eventCount.toLong())
 }
 
 private fun getYearMonthDiff(start: Date, end: Date): Int {
