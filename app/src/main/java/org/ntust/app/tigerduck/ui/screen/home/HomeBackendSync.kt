@@ -138,7 +138,12 @@ class HomeBackendSync @Inject constructor(
             // Unsent course-ignore changes go first, so the snapshot has them.
             courseIgnoreSync.retryPending()
             val result = syncApiClient.fetchFullSync()
-            syncAssignmentOverrides(state, result)
+            // Recorded at once, for this account only: a later step that
+            // fails must not leave the next sync reading an empty server as
+            // this phone's first.
+            if (syncAssignmentOverrides(state, result) && authService.isStillSignedInAs(account)) {
+                prefs.assignmentMarksSyncedOnce = true
+            }
             // One reading of the switches, for the course steps below and for what
             // this sync records as synced: one flipped meanwhile counts from the next.
             val switchedOn = categoriesSwitchedOn(prefs)
@@ -283,35 +288,27 @@ class HomeBackendSync @Inject constructor(
         }
     }
 
-    private suspend fun syncAssignmentOverrides(state: HomeSyncState, result: BackendSyncResult) {
-        if (AssignmentOverrideReconciler.isHeldForReenable(prefs.pendingConflictCategories)) return
+    /**
+     * The assignment-mark step of [pull]. Returns whether this account's
+     * marks have now been through a sync here — taken from the server, or
+     * every one of them sent up as the first sync — which the caller records
+     * in [AppPreferences.assignmentMarksSyncedOnce].
+     */
+    private suspend fun syncAssignmentOverrides(state: HomeSyncState, result: BackendSyncResult): Boolean {
+        if (AssignmentOverrideReconciler.isHeldForReenable(prefs.pendingConflictCategories)) return false
         val localIgnored = dataCache.loadIgnoredAssignments()
         val localMarked = dataCache.loadMarkedCompletedAssignments()
 
         if (AssignmentOverrideReconciler.isFirstUpload(
+                syncedBefore = prefs.assignmentMarksSyncedOnce,
                 serverIgnored = result.ignoredIds,
                 serverCompleted = result.completedIds,
                 localIgnored = localIgnored,
                 localCompleted = localMarked,
             )
         ) {
-            for (id in localIgnored) {
-                runCatching {
-                    pushApiClient.patchAssignmentOverride(
-                        id.toIntOrNull() ?: return@runCatching,
-                        AssignmentOverrideReconciler.STATUS_IGNORED,
-                    )
-                }
-            }
-            for (id in localMarked) {
-                runCatching {
-                    pushApiClient.patchAssignmentOverride(
-                        id.toIntOrNull() ?: return@runCatching,
-                        AssignmentOverrideReconciler.STATUS_COMPLETED,
-                    )
-                }
-            }
-            return
+            val allSent = sendFirstSyncMarks(localIgnored, localMarked, pushApiClient::patchAssignmentOverride)
+            return allSent
         }
 
         val byId = state.allAssignments.value.associateBy { it.assignmentId }
@@ -330,6 +327,7 @@ class HomeBackendSync @Inject constructor(
             state.pendingResult = result
             state.conflicts.value = outcome.conflicts
         }
+        return true
     }
 
     private suspend fun commitOverrides(

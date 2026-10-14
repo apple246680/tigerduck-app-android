@@ -67,19 +67,26 @@ object AssignmentOverrideReconciler {
     )
 
     /**
-     * True when this device has overrides and the server has none at all.
+     * True when this device has overrides and the server has none at all, on
+     * the account's first sync of them here.
      *
-     * That combination means the account predates override sync (or the
-     * backend was reset), so the correct move is to push local state up
-     * rather than reconcile against an empty server — reconciling would read
-     * every local override as "server says none" and delete it.
+     * That combination means the account predates override sync, so the
+     * correct move is to push local state up rather than reconcile against
+     * an empty server — reconciling would read every local override as
+     * "server says none" and delete it.
+     *
+     * Only before [syncedBefore], though. Once a sync has taken this
+     * account's marks here, a server holding none means they were cleared on
+     * another device, and sending this device's older copy up again would
+     * bring them back everywhere.
      */
     fun isFirstUpload(
+        syncedBefore: Boolean,
         serverIgnored: Set<String>,
         serverCompleted: Set<String>,
         localIgnored: Set<String>,
         localCompleted: Set<String>,
-    ): Boolean = serverIgnored.isEmpty() && serverCompleted.isEmpty() &&
+    ): Boolean = !syncedBefore && serverIgnored.isEmpty() && serverCompleted.isEmpty() &&
         (localIgnored.isNotEmpty() || localCompleted.isNotEmpty())
 
     /**

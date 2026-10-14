@@ -41,6 +41,7 @@ class AssignmentOverrideReconcilerTest {
     fun `first upload when server is empty and this device has overrides`() {
         assertTrue(
             AssignmentOverrideReconciler.isFirstUpload(
+                syncedBefore = false,
                 serverIgnored = emptySet(),
                 serverCompleted = emptySet(),
                 localIgnored = setOf("1"),
@@ -53,10 +54,26 @@ class AssignmentOverrideReconcilerTest {
     fun `not a first upload once the server knows anything`() {
         assertFalse(
             AssignmentOverrideReconciler.isFirstUpload(
+                syncedBefore = false,
                 serverIgnored = setOf("9"),
                 serverCompleted = emptySet(),
                 localIgnored = setOf("1"),
                 localCompleted = emptySet(),
+            )
+        )
+    }
+
+    @Test
+    fun `not a first upload once a sync has taken the account's marks here`() {
+        // The server is empty because the last mark was cleared on another
+        // device; sending this device's older copy up would bring it back.
+        assertFalse(
+            AssignmentOverrideReconciler.isFirstUpload(
+                syncedBefore = true,
+                serverIgnored = emptySet(),
+                serverCompleted = emptySet(),
+                localIgnored = setOf("1"),
+                localCompleted = setOf("2"),
             )
         )
     }
@@ -67,6 +84,7 @@ class AssignmentOverrideReconcilerTest {
         // as one would fire a pointless PATCH storm on every sync.
         assertFalse(
             AssignmentOverrideReconciler.isFirstUpload(
+                syncedBefore = false,
                 serverIgnored = emptySet(),
                 serverCompleted = emptySet(),
                 localIgnored = emptySet(),
