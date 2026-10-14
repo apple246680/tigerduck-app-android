@@ -75,11 +75,17 @@ class ClassTableVisualStyleTest {
         TigerDuckTheme.setDarkMode(false)
     }
 
-    private fun draw(preset: VisualPreset, widthPx: Int, heightPx: Int, content: @Composable () -> Unit) {
+    private fun draw(
+        preset: VisualPreset,
+        widthPx: Int,
+        heightPx: Int,
+        density: Float = 1f,
+        content: @Composable () -> Unit,
+    ) {
         composeRule.setContent {
             CompositionLocalProvider(
                 LocalVisualStylePolicy provides VisualStylePolicy(preset),
-                LocalDensity provides Density(1f, 1f),
+                LocalDensity provides Density(density, 1f),
             ) {
                 Box(Modifier.size(widthPx.dp, heightPx.dp).background(Color.White)) { content() }
             }
@@ -172,13 +178,14 @@ class ClassTableVisualStyleTest {
 
     // ---- conflicts ----
 
-    private fun conflictCell(preset: VisualPreset) {
+    /** With [marks], the first course has work due and the second's is ignored. */
+    private fun conflictCell(preset: VisualPreset, marks: Boolean = false, density: Float = 1f) {
         val role = CellRole.ConflictStart(
             courseA = calculus, spanA = 2, offsetA = 0,
             courseB = physics, spanB = 2, offsetB = 0,
             combinedSpan = 2,
         )
-        draw(preset, width, cellHeight * 2) {
+        draw(preset, width, cellHeight * 2, density) {
             ConflictCourseCell(
                 cellRole = role,
                 dayColWidth = width.dp,
@@ -187,10 +194,10 @@ class ClassTableVisualStyleTest {
                 y = 0.dp,
                 weekday = 1,
                 periodId = "1",
-                hasAssignmentA = false,
+                hasAssignmentA = marks,
                 hasAssignmentB = false,
                 assignmentsIgnoredA = false,
-                assignmentsIgnoredB = false,
+                assignmentsIgnoredB = marks,
                 onPickConflict = { _, _, _, _ -> },
                 onLongPress = {},
                 onRename = {},
@@ -219,8 +226,8 @@ class ClassTableVisualStyleTest {
         assertNear("second course", physicsColour.pastel(), image[4, cellHeight * 2 - 6])
     }
 
-    @Test
-    fun `a conflict of three or more is recoloured to pastels under TAT`() {
+    /** With [marks], the first lane's course has work due and the second's is ignored. */
+    private fun multiConflictCell(preset: VisualPreset, marks: Boolean = false, density: Float = 1f) {
         val role = CellRole.MultiConflictStart(
             members = listOf(
                 CellRole.MultiConflictStart.Member(calculus, span = 2, offset = 0, lane = 0, firstPeriodId = "1"),
@@ -229,7 +236,7 @@ class ClassTableVisualStyleTest {
             combinedSpan = 2,
             laneCount = 2,
         )
-        draw(VisualPreset.Tat, width, cellHeight * 2) {
+        draw(preset, width, cellHeight * 2, density) {
             MultiConflictCourseCell(
                 cellRole = role,
                 dayColWidth = width.dp,
@@ -237,8 +244,8 @@ class ClassTableVisualStyleTest {
                 x = 0.dp,
                 y = 0.dp,
                 weekday = 1,
-                hasAssignment = { false },
-                assignmentsIgnored = { false },
+                hasAssignment = { marks && it == calculus.courseNo },
+                assignmentsIgnored = { marks && it == physics.courseNo },
                 onSelect = { _, _ -> },
                 onLongPress = {},
                 onRename = {},
@@ -247,9 +254,102 @@ class ClassTableVisualStyleTest {
                 onDelete = {},
             )
         }
+    }
+
+    @Test
+    fun `a conflict of three or more is recoloured to pastels under TAT`() {
+        multiConflictCell(VisualPreset.Tat)
         val image = pixels()
         assertNear("first lane", calculusColour.pastel(), image[width / 4, 6])
         assertNear("second lane", physicsColour.pastel(), image[width * 3 / 4, 6])
+    }
+
+    // ---- conflict marks ----
+
+    // Drawn at 3x, so the 10dp marks have solid pixels to read.
+    private val markDensity = 3f
+
+    /**
+     * The pixel of a 10dp mark whose top-left corner sits at ([left], [top])
+     * dp: on the book's cover, clear of its bookmark, its edges and the slash
+     * of the ignored mark.
+     */
+    private fun PixelMap.markAt(left: Float, top: Float): Color =
+        this[((left + 7.5f) * markDensity).toInt(), ((top + 3f) * markDensity).toInt()]
+
+    /** [ink] at [alpha] over the opaque [fill]. */
+    private fun blend(ink: Color, alpha: Float, fill: Color) = Color(
+        red = ink.red * alpha + fill.red * (1 - alpha),
+        green = ink.green * alpha + fill.green * (1 - alpha),
+        blue = ink.blue * alpha + fill.blue * (1 - alpha),
+    )
+
+    private val blockInk = Color(0xFF1C1C1E)
+
+    // Inside the cell's 1dp inset: the first course's mark in its top-right
+    // corner, the second's in its bottom-left, each at a 3dp inset.
+    private val firstMarkLeft = width - 1 - 3 - 10f
+    private val firstMarkTop = 1 + 3f
+    private val secondMarkLeft = 1 + 3f
+    private val secondMarkTop = cellHeight * 2 - 1 - 3 - 10f
+
+    @Test
+    fun `a two-course conflict keeps its marks at 70 percent under TigerDuck`() {
+        conflictCell(VisualPreset.TigerDuck, marks = true, density = markDensity)
+        val image = pixels()
+        assertNear(
+            "work due",
+            blend(blockInk, 0.7f, overWhite(calculusColour, 0.5f)),
+            image.markAt(firstMarkLeft, firstMarkTop),
+        )
+        assertNear(
+            "work ignored",
+            blend(blockInk, 0.7f, overWhite(physicsColour, 0.5f)),
+            image.markAt(secondMarkLeft, secondMarkTop),
+        )
+    }
+
+    @Test
+    fun `a two-course conflict draws its marks at 80 percent on TAT pastels`() {
+        conflictCell(VisualPreset.Tat, marks = true, density = markDensity)
+        val image = pixels()
+        val ink = VisualStylePolicy.TextOnPastel
+        assertNear("work due", blend(ink, 0.8f, calculusColour.pastel()), image.markAt(firstMarkLeft, firstMarkTop))
+        assertNear("work ignored", blend(ink, 0.8f, physicsColour.pastel()), image.markAt(secondMarkLeft, secondMarkTop))
+    }
+
+    // Each lane is 29dp of the cell's 58, its course inset 0.5dp; the mark sits
+    // in the lane's bottom-right corner at a 3dp inset.
+    private val laneMarkLeft = 1 + 29 - 0.5f - 3 - 10
+    private val laneMarkTop = cellHeight * 2 - 1 - 0.5f - 3 - 10
+
+    @Test
+    fun `a conflict of three or more keeps its marks at 70 percent under TigerDuck`() {
+        multiConflictCell(VisualPreset.TigerDuck, marks = true, density = markDensity)
+        val image = pixels()
+        assertNear(
+            "work due",
+            blend(blockInk, 0.7f, overWhite(calculusColour, 0.5f)),
+            image.markAt(laneMarkLeft, laneMarkTop),
+        )
+        assertNear(
+            "work ignored",
+            blend(blockInk, 0.7f, overWhite(physicsColour, 0.5f)),
+            image.markAt(laneMarkLeft + 29, laneMarkTop),
+        )
+    }
+
+    @Test
+    fun `a conflict of three or more draws its marks at 80 percent on TAT pastels`() {
+        multiConflictCell(VisualPreset.Tat, marks = true, density = markDensity)
+        val image = pixels()
+        val ink = VisualStylePolicy.TextOnPastel
+        assertNear("work due", blend(ink, 0.8f, calculusColour.pastel()), image.markAt(laneMarkLeft, laneMarkTop))
+        assertNear(
+            "work ignored",
+            blend(ink, 0.8f, physicsColour.pastel()),
+            image.markAt(laneMarkLeft + 29, laneMarkTop),
+        )
     }
 
     // ---- period column and rows ----

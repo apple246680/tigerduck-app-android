@@ -74,6 +74,7 @@ internal fun ConflictCourseCell(
 ) {
     val style = LocalVisualStylePolicy.current
     val textColor = style.courseTextColor
+    val markColor = style.courseSecondaryTextColor
     fun bgFor(course: Course) = style.courseFill(course.courseNo)
 
     val overlapStart = maxOf(cellRole.offsetA, cellRole.offsetB)
@@ -217,7 +218,7 @@ internal fun ConflictCourseCell(
                 CourseCellBadge(
                     hasAssignment = hasAssignmentA,
                     assignmentsIgnored = assignmentsIgnoredA,
-                    tint = textColor.copy(alpha = 0.7f),
+                    tint = markColor,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(3.dp)
@@ -271,7 +272,7 @@ internal fun ConflictCourseCell(
                 CourseCellBadge(
                     hasAssignment = hasAssignmentB,
                     assignmentsIgnored = assignmentsIgnoredB,
-                    tint = textColor.copy(alpha = 0.7f),
+                    tint = markColor,
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .padding(3.dp)
@@ -336,6 +337,7 @@ internal fun MultiConflictCourseCell(
 ) {
     val style = LocalVisualStylePolicy.current
     val textColor = style.courseTextColor
+    val markColor = style.courseSecondaryTextColor
     fun bgFor(course: Course) = style.courseFill(course.courseNo)
 
     val conflictPrefix = stringResource(R.string.a11y_class_table_conflict_prefix)
@@ -419,7 +421,7 @@ internal fun MultiConflictCourseCell(
                     CourseCellBadge(
                         hasAssignment = hasAssignmentForMember,
                         assignmentsIgnored = ignoredForMember,
-                        tint = textColor.copy(alpha = 0.7f),
+                        tint = markColor,
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(3.dp)
