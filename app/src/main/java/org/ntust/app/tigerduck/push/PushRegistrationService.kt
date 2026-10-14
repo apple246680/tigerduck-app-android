@@ -19,7 +19,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.ntust.app.tigerduck.BuildConfig
-import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.auth.AuthTokenManager
 import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
@@ -45,12 +44,12 @@ data class PushDiagnostic(
 )
 
 /**
- * [PushDiagnostic.lastError] for a failure: its message, or the generic
- * "Failed" when it has none. Never its class name, which a release build
- * shortens to R8's name for it, such as "v44".
+ * [PushDiagnostic.lastError] for a failure: its message, or "" when it has
+ * none, which the status card shows as the generic "Failed" in the app's
+ * language at the time (latestErrorText). Never its class name, which a
+ * release build shortens to R8's name for it, such as "v44".
  */
-internal fun Throwable.diagnosticText(context: Context): String =
-    message?.takeUnless { it.isBlank() } ?: context.getString(R.string.sync_status_failed)
+internal fun Throwable.diagnosticText(): String = message?.takeUnless { it.isBlank() }.orEmpty()
 
 /**
  * Coalesces the two events that trigger a server-side device registration —
@@ -429,7 +428,7 @@ class PushRegistrationService @Inject constructor(
                     // Not isRegistered: no account row exists, and the settings
                     // screen reads that flag to mean cloud sync is live. Custom
                     // push reaches this device; user-scoped push does not.
-                    lastError = announceError?.diagnosticText(context),
+                    lastError = announceError?.diagnosticText(),
                 )
             }
             recordRegistrationAttempt(landed = announceError == null)
@@ -463,7 +462,7 @@ class PushRegistrationService @Inject constructor(
             onFailure = { e ->
                 if (e is CancellationException) throw e
                 Log.w(TAG, "register failed: ${e.logSummary()}")
-                updateDiagnostic { it.copy(lastError = e.diagnosticText(context)) }
+                updateDiagnostic { it.copy(lastError = e.diagnosticText()) }
                 false
             },
         ).let { landed ->
@@ -616,7 +615,7 @@ class PushRegistrationService @Inject constructor(
             }
             failure?.let {
                 Log.w(TAG, "server push preference update failed: ${it.logSummary()}")
-                it.diagnosticText(context)
+                it.diagnosticText()
             }
         }
         // Clear stale errors on success, set them on failure — either way the
