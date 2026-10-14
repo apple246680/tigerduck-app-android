@@ -23,7 +23,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
@@ -71,7 +75,9 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.ntust.app.tigerduck.AppConstants
 import org.ntust.app.tigerduck.R
+import org.ntust.app.tigerduck.data.sharing.ClassTableShare
 import org.ntust.app.tigerduck.shared.Course
+import org.ntust.app.tigerduck.ui.screen.classtable.sharing.ClassTableShareSheet
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.ui.component.ColorPickerSheet
 import org.ntust.app.tigerduck.ui.component.ConflictCoursePickerSheet
@@ -180,6 +186,8 @@ fun ClassTableScreen(
     var showAddCourse by remember { mutableStateOf(false) }
     var showResetConfirm by remember { mutableStateOf(false) }
     var exporting by remember { mutableStateOf(false) }
+    var sharing by remember { mutableStateOf<ClassTableShare?>(null) }
+    val shareTerms by viewModel.shareTerms.collectAsStateWithLifecycle()
     var courseToRename by remember { mutableStateOf<Course?>(null) }
     var renameText by remember { mutableStateOf("") }
     var courseToRecolor by remember { mutableStateOf<Course?>(null) }
@@ -253,7 +261,10 @@ fun ClassTableScreen(
                     // export is not something an icon alone can say.
                     Box {
                         IconButton(
-                            onClick = { showMoreMenu = true },
+                            onClick = {
+                                showMoreMenu = true
+                                viewModel.refreshShareTerms()
+                            },
                             enabled = isLoggedIn
                         ) {
                             Icon(
@@ -271,15 +282,33 @@ fun ClassTableScreen(
                         ) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.add_course_title)) },
+                                leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null) },
                                 onClick = { showMoreMenu = false; showAddCourse = true },
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.class_table_reset_title)) },
+                                leadingIcon = { Icon(Icons.Filled.Sync, contentDescription = null) },
                                 onClick = { showMoreMenu = false; showResetConfirm = true },
                             )
                             HorizontalDivider()
                             DropdownMenuItem(
+                                text = { Text(stringResource(R.string.class_table_share)) },
+                                leadingIcon = { Icon(Icons.Filled.QrCode, contentDescription = null) },
+                                onClick = {
+                                    showMoreMenu = false
+                                    val id = viewModel.studentId
+                                    if (id != null && shareTerms.isNotEmpty()) {
+                                        sharing = ClassTableShare(id, shareTerms)
+                                    }
+                                },
+                                // Held off with an export, whose chooser would
+                                // open behind the sheet.
+                                enabled = !exporting && shareTerms.isNotEmpty() &&
+                                    ClassTableShare.canName(viewModel.studentId),
+                            )
+                            DropdownMenuItem(
                                 text = { Text(stringResource(R.string.class_table_export_screenshot)) },
+                                leadingIcon = { Icon(Icons.Filled.Share, contentDescription = null) },
                                 onClick = { showMoreMenu = false; exporting = true },
                                 // Only exportable while the grid below is
                                 // drawn; anything else would export a header
@@ -697,6 +726,16 @@ fun ClassTableScreen(
             dismissText = stringResource(R.string.action_cancel),
         )
     }
+
+    sharing?.let { share ->
+        ClassTableShareSheet(
+            share = share,
+            labelFor = viewModel::displayLabel,
+            onDismiss = { sharing = null },
+        )
+    }
+    // A sign-out closes the sheet: the code names the account that left.
+    LaunchedEffect(isLoggedIn) { if (!isLoggedIn) sharing = null }
 
     if (showAddCourse) {
         val addCourseSheetState = rememberModalBottomSheetState()

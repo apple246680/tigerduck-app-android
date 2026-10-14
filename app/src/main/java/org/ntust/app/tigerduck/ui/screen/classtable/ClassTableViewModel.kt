@@ -37,6 +37,7 @@ import org.ntust.app.tigerduck.data.OutstandingAssignments
 import org.ntust.app.tigerduck.data.RefreshPolicy
 import org.ntust.app.tigerduck.data.RefreshTriggers
 import org.ntust.app.tigerduck.data.cache.DataCache
+import org.ntust.app.tigerduck.data.sharing.ClassTableShare
 import org.ntust.app.tigerduck.debug.DebugFixtureStore
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.shared.computeOngoingCourses
@@ -265,6 +266,10 @@ class ClassTableViewModel @Inject constructor(
     )
     val syncCompleteEvent: SharedFlow<Unit> = _syncCompleteEvent.asSharedFlow()
 
+    /** The user's terms the share sheet can offer; see [refreshShareTerms]. */
+    private val _shareTerms = MutableStateFlow<List<ClassTableShare.Term>>(emptyList())
+    val shareTerms: StateFlow<List<ClassTableShare.Term>> = _shareTerms
+
     private var hasLoaded = false
     private var loadJob: Job? = null
 
@@ -343,6 +348,7 @@ class ClassTableViewModel @Inject constructor(
                     fetchFlight.cancel()
                     loadJob?.cancel()
                     _courses.value = emptyList()
+                    _shareTerms.value = emptyList()
                     _assignments.value = emptyList()
                     _ignoredAssignmentIds.value = emptySet()
                     _markedCompletedIds.value = emptySet()
@@ -492,6 +498,29 @@ class ClassTableViewModel @Inject constructor(
     }
 
     val totalCredits: Float get() = _courses.value.fold(0f) { acc, c -> acc + c.credits }
+
+    /**
+     * Reads which of the user's terms a share code can carry, for the share sheet, newest first.
+     * The term on screen comes from the table, which a refresh can have made newer than its cache,
+     * an emptied term included; the others from the cache, so sharing needs no request.
+     */
+    fun refreshShareTerms() {
+        val shownSemester = _currentSemester.value
+        val shown = _courses.value
+        val semesters = _availableSemesters.value
+        viewModelScope.launch {
+            val account = authService.storedStudentId
+            val deleted = dataCache.loadDeletedCourseNos()
+            val terms = semesters.mapNotNull { semester ->
+                val courses = if (semester == shownSemester) shown else dataCache.loadCourses(semester)
+                ClassTableShare.shareable(semester, courses) { CourseTombstoneKeys.isHidden(it, semester, deleted) }
+                    .takeIf { it.isNotEmpty() }
+                    ?.let { ClassTableShare.Term(semester, it) }
+            }
+            // Read for an account that has since signed out: none of it is the next one's.
+            _shareTerms.value = if (authService.isStillSignedInAs(account)) terms else emptyList()
+        }
+    }
 
     /** The live term's roster, wherever it currently lives. */
     private val liveCourses: List<Course>
