@@ -228,23 +228,52 @@ class AuthTokenManager(
      * as [sendWithOneResend] has it: the token may have been rotated, and a
      * later send of it would be taken for reuse.
      */
-    suspend fun refreshDeparting(departing: DepartingSession): DepartingRefresh = withContext(Dispatchers.IO) {
-        // To the backend that issued the session, whatever the endpoint setting says now.
-        val base = departing.baseUrl
-        val first = send(departing.refreshToken, DEPARTING, base)
-        val outcome = if (first == RefreshOutcome.NoReply) {
-            send(departing.refreshToken, DEPARTING, base) as? RefreshOutcome.Refreshed ?: RefreshOutcome.Refused
-        } else {
-            first
+    suspend fun refreshDeparting(departing: DepartingSession): DepartingRefresh {
+        val token = departing.refreshToken
+        // The session's own refresh of this token may still be on its way, sent
+        // before the sign-out: its pair is waited for and taken rather than the
+        // token sent once more. That refresh belongs to the departing account,
+        // so it signs nobody in and never waits on the caller.
+        synchronized(signInLock) { refreshOnItsWay?.takeIf { it.first == token }?.second }?.await()
+        return withContext(Dispatchers.IO) {
+            // To the backend that issued the session, whatever the endpoint setting says now.
+            val base = departing.baseUrl
+            val outcome = takeUnstoredPair(token) ?: run {
+                var sent: RefreshOutcome
+                do {
+                    // Two sends without a reply already, this one's or the
+                    // session's: a third would be taken for reuse.
+                    if (sendsWithoutReply(token) >= 2) return@run RefreshOutcome.Refused
+                    sent = send(token, DEPARTING, base)
+                } while (sent == RefreshOutcome.NoReply)
+                sent
+            }
+            when (outcome) {
+                is RefreshOutcome.Refreshed -> DepartingRefresh.Refreshed(
+                    DepartingSession(outcome.accessToken, outcome.refreshToken, outcome.expiresAt, base),
+                )
+                RefreshOutcome.Refused, RefreshOutcome.NoReply -> DepartingRefresh.Refused
+                RefreshOutcome.Unavailable -> DepartingRefresh.Unavailable
+            }
         }
-        when (outcome) {
-            is RefreshOutcome.Refreshed -> DepartingRefresh.Refreshed(
-                DepartingSession(outcome.accessToken, outcome.refreshToken, outcome.expiresAt, base),
-            )
-            // NoReply comes only from the first send, which was sent again above.
-            RefreshOutcome.Refused, RefreshOutcome.NoReply -> DepartingRefresh.Refused
-            RefreshOutcome.Unavailable -> DepartingRefresh.Unavailable
-        }
+    }
+
+    // Under signInLock. The pair a refresh got back after a sign-out, which it
+    // could not store, by the token it replaced; for refreshDeparting to take.
+    private var unstoredPair: Pair<String, RefreshOutcome.Refreshed>? = null
+
+    // Under signInLock. How many sends of a refresh token in a row got no reply.
+    private var unanswered: Pair<String, Int>? = null
+
+    // Under signInLock. The session refresh on its way, by the token it sends.
+    private var refreshOnItsWay: Pair<String, CompletableDeferred<Unit>>? = null
+
+    private fun takeUnstoredPair(token: String): RefreshOutcome.Refreshed? = synchronized(signInLock) {
+        unstoredPair?.takeIf { it.first == token }?.second?.also { unstoredPair = null }
+    }
+
+    private fun sendsWithoutReply(token: String): Int = synchronized(signInLock) {
+        unanswered?.takeIf { it.first == token }?.second ?: 0
     }
 
     /**
@@ -421,9 +450,16 @@ class AuthTokenManager(
      * too is a failed refresh, never a token kept for later.
      */
     private fun sendWithOneResend(refreshToken: String, signIn: Int): RefreshOutcome {
-        val first = send(refreshToken, signIn)
-        if (first != RefreshOutcome.NoReply || signIn != signInGeneration) return first
-        return send(refreshToken, signIn) as? RefreshOutcome.Refreshed ?: RefreshOutcome.Refused
+        val onItsWay = refreshToken to CompletableDeferred<Unit>()
+        synchronized(signInLock) { refreshOnItsWay = onItsWay }
+        try {
+            val first = send(refreshToken, signIn)
+            if (first != RefreshOutcome.NoReply || signIn != signInGeneration) return first
+            return send(refreshToken, signIn) as? RefreshOutcome.Refreshed ?: RefreshOutcome.Refused
+        } finally {
+            synchronized(signInLock) { if (refreshOnItsWay === onItsWay) refreshOnItsWay = null }
+            onItsWay.second.complete(Unit)
+        }
     }
 
     private fun send(refreshToken: String, signIn: Int, base: String = baseUrl): RefreshOutcome {
@@ -437,6 +473,8 @@ class AuthTokenManager(
             .build()
         return try {
             refreshClient.newCall(request).execute().use { response ->
+                // Answered: whatever the token's sends before got, this one has a reply.
+                synchronized(signInLock) { if (unanswered?.first == refreshToken) unanswered = null }
                 if (response.code == 429 || response.code >= 500) {
                     Log.w(TAG, "refresh got HTTP ${response.code}; keeping the tokens")
                     return@use RefreshOutcome.Unavailable
@@ -446,9 +484,13 @@ class AuthTokenManager(
                 val newAccess = result.getString("access_token")
                 val newRefresh = result.getString("refresh_token")
                 val expiresAt = now() + result.getInt("expires_in") * 1000L
+                val refreshed = RefreshOutcome.Refreshed(newAccess, newRefresh, expiresAt)
                 // Stores nothing after a sign-out, which refreshAndSettle then sees.
-                saveIfSignedIn(signIn, newAccess, newRefresh, expiresAt)
-                RefreshOutcome.Refreshed(newAccess, newRefresh, expiresAt)
+                // The pair is kept aside instead, for the sign-out's unregister.
+                if (!saveIfSignedIn(signIn, newAccess, newRefresh, expiresAt) && signIn != DEPARTING) {
+                    synchronized(signInLock) { unstoredPair = refreshToken to refreshed }
+                }
+                refreshed
             }
         } catch (e: IOException) {
             if (e.wasNeverSent()) {
@@ -456,6 +498,10 @@ class AuthTokenManager(
                 RefreshOutcome.Unavailable
             } else {
                 Log.w(TAG, "refresh got no reply: ${e.javaClass.simpleName}")
+                synchronized(signInLock) {
+                    val count = unanswered?.takeIf { it.first == refreshToken }?.second ?: 0
+                    unanswered = refreshToken to count + 1
+                }
                 RefreshOutcome.NoReply
             }
         }

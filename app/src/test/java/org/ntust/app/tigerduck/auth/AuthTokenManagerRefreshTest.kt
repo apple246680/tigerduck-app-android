@@ -3,9 +3,12 @@ package org.ntust.app.tigerduck.auth
 import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import okhttp3.Call
 import okhttp3.EventListener
@@ -42,6 +45,7 @@ import java.net.SocketAddress
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import javax.net.SocketFactory
@@ -496,6 +500,65 @@ class AuthTokenManagerRefreshTest {
         val manager = manager(Reply.Status(503))
 
         assertEquals(DepartingRefresh.Unavailable, manager.refreshDeparting(departing()))
+    }
+
+    // A session refresh still on its way at sign-out, with the same token as the departing one
+
+    @Test
+    fun `a departing refresh takes the pair of a refresh on its way at sign-out instead of sending again`() = runTest {
+        val manager = manager(Reply.Pair("access-2", "refresh-2"), Reply.Pair("access-3", "refresh-3"))
+        // As AuthService.logout() takes it: while the session's refresh is on its way.
+        var departing: DepartingSession? = null
+        onRefreshSent = {
+            departing = manager.departingSession()
+            manager.logout()
+            onRefreshSent = {}
+        }
+        assertNull(manager.authHeader())
+
+        val reply = manager.refreshDeparting(departing!!)
+
+        assertEquals("refresh-2", (reply as DepartingRefresh.Refreshed).session.refreshToken)
+        assertEquals(listOf("refresh-1"), sentRefreshTokens)
+        assertNull("still nothing stored", tokens.refreshToken)
+    }
+
+    @Test
+    fun `a departing refresh waits for the session refresh of its token still on its way`() = runBlocking {
+        val manager = manager(Reply.Pair("access-2", "refresh-2"), Reply.Pair("access-3", "refresh-3"))
+        val sent = CountDownLatch(1)
+        val answer = CountDownLatch(1)
+        var departing: DepartingSession? = null
+        onRefreshSent = {
+            departing = manager.departingSession()
+            manager.logout()
+            onRefreshSent = {}
+            sent.countDown()
+            answer.await(5, TimeUnit.SECONDS)
+        }
+        val sessionRefresh = async(Dispatchers.IO) { manager.authHeader() }
+        assertTrue(sent.await(5, TimeUnit.SECONDS))
+
+        val unregisterRefresh = async(Dispatchers.IO) { manager.refreshDeparting(departing!!) }
+        Thread.sleep(300)
+        answer.countDown()
+
+        assertNull(sessionRefresh.await())
+        assertEquals("refresh-2", (unregisterRefresh.await() as DepartingRefresh.Refreshed).session.refreshToken)
+        assertEquals(listOf("refresh-1"), sentRefreshTokens)
+    }
+
+    @Test
+    fun `a token the session sent twice without a reply is not sent a third time for the unregister`() = runTest {
+        val manager = manager(Reply.Lost, Reply.Lost, Reply.Pair("access-3", "refresh-3"))
+        val departing = manager.departingSession()!!
+        // The resend's reply is lost as the account signs out.
+        var sends = 0
+        onRefreshSent = { if (++sends == 2) manager.logout() }
+        assertNull(manager.authHeader())
+
+        assertEquals(DepartingRefresh.Refused, manager.refreshDeparting(departing))
+        assertEquals(listOf("refresh-1", "refresh-1"), sentRefreshTokens)
     }
 
     private fun manager(vararg replies: Reply, reloginSucceeds: Boolean = false) = AuthTokenManager(
