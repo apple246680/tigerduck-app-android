@@ -65,7 +65,7 @@ class HomeMarkSyncTest {
             sends = { prefs.syncAssignments },
             signInGeneration = { 0 },
         )
-        step = AssignmentMarkStep.over(prefs, cache, unsent, send)
+        step = AssignmentMarkStep.over(prefs, cache, unsent) { id, status, _ -> send(id, status) }
     }
 
     private fun server(ignored: Set<String> = emptySet()) = BackendSyncResult(
@@ -79,7 +79,7 @@ class HomeMarkSyncTest {
 
     /** What `HomeBackendSync.pull` passes: the switch as read with the other categories. */
     private suspend fun fullSync(result: BackendSyncResult) =
-        step.pull(state, result, syncsMarks = "assignments" in categoriesSwitchedOn(prefs))
+        step.pull(state, result, syncsMarks = "assignments" in categoriesSwitchedOn(prefs), signIn = 0)
 
     @Test
     fun `with the Assignments switch off a full sync leaves this phone's marks alone`() = runTest {

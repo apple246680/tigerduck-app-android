@@ -22,7 +22,7 @@ internal class AssignmentMarkStep(
     private val pendingConflicts: () -> Set<String>,
     private val syncedBefore: () -> Boolean,
     private val store: MarkStore,
-    private val send: suspend (assignmentId: Int, status: String) -> Unit,
+    private val send: suspend (assignmentId: Int, status: String, signIn: Int) -> Unit,
     /**
      * Marks tapped here whose PATCH has not landed (`UnsentMarks`): kept at
      * this phone's value like a PATCH still in flight, since the server has
@@ -42,9 +42,11 @@ internal class AssignmentMarkStep(
      * have now been through a sync here — taken from the server, or every
      * one sent up as the first sync — which the caller records in
      * `AppPreferences.assignmentMarksSyncedOnce`. [syncsMarks] is the switch
-     * as the sync read it with the other categories.
+     * as the sync read it with the other categories; [signIn] the sign-in it
+     * began under (`AuthTokenManager.signInGeneration`), which the first-sync
+     * upload is pinned to.
      */
-    suspend fun pull(state: HomeSyncState, result: BackendSyncResult, syncsMarks: Boolean): Boolean {
+    suspend fun pull(state: HomeSyncState, result: BackendSyncResult, syncsMarks: Boolean, signIn: Int): Boolean {
         AssignmentOverrideReconciler.reasonToLeaveMarks(syncsMarks, pendingConflicts())?.let { reason ->
             Log.i(TAG, "[Sync] leaving assignment marks alone: $reason")
             return false
@@ -60,7 +62,9 @@ internal class AssignmentMarkStep(
                 localCompleted = localCompleted,
             )
         ) {
-            val allSent = sendFirstSyncMarks(localIgnored, localCompleted, send)
+            // Pinned to [signIn]: after a sign-out the rest go without a
+            // token, not as the next account's marks.
+            val allSent = sendFirstSyncMarks(localIgnored, localCompleted) { id, status -> send(id, status, signIn) }
             // Switched off meanwhile, the rest were never sent.
             return allSent && switchOn()
         }
@@ -114,7 +118,7 @@ internal class AssignmentMarkStep(
             prefs: AppPreferences,
             dataCache: DataCache,
             unsentMarks: UnsentMarks,
-            send: suspend (assignmentId: Int, status: String) -> Unit,
+            send: suspend (assignmentId: Int, status: String, signIn: Int) -> Unit,
         ) = AssignmentMarkStep(
             switchOn = { prefs.syncAssignments },
             pendingConflicts = { prefs.pendingConflictCategories },

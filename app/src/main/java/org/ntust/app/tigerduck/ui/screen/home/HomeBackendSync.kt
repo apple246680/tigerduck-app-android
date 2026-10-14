@@ -141,6 +141,9 @@ class HomeBackendSync @Inject constructor(
         try {
             if (BuildConfig.DEBUG) ServerFailureSimulator.check(ServerKind.BACKEND)
             val account = authService.storedStudentId
+            // The first-sync mark upload is pinned to it: a sign-out and
+            // another sign-in meanwhile must not send these marks as theirs.
+            val signIn = authTokenManager.signInGeneration
             val generation = courseIgnoreSync.currentGeneration()
             // Unsent course-ignore changes and marks go first, so the snapshot has them.
             courseIgnoreSync.retryPending()
@@ -152,7 +155,7 @@ class HomeBackendSync @Inject constructor(
             // Recorded at once, for this account only: a later step that
             // fails must not leave the next sync reading an empty server as
             // this phone's first.
-            if (markStep.pull(state, result, syncsMarks = "assignments" in switchedOn) &&
+            if (markStep.pull(state, result, syncsMarks = "assignments" in switchedOn, signIn = signIn) &&
                 authService.isStillSignedInAs(account)
             ) {
                 prefs.assignmentMarksSyncedOnce = true
