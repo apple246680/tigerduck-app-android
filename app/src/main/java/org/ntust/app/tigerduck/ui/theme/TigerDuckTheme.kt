@@ -283,7 +283,7 @@ object CornerRadius {
 // iOS-inspired, Material 3 color scheme. Keeping the slots explicit (rather
 // than letting M3 derive tonal variants from `primary`) prevents the pinkish
 // tint M3 otherwise applies to surfaceVariant when primary is blue.
-private val LightColorScheme = lightColorScheme(
+internal val LightColorScheme = lightColorScheme(
     primary = Color(0xFF007AFF),
     onPrimary = Color.White,
     primaryContainer = Color(0xFFDDE7FF),
@@ -317,7 +317,7 @@ private val LightColorScheme = lightColorScheme(
     surfaceTint = Color(0xFF007AFF),
 )
 
-private val DarkColorScheme = darkColorScheme(
+internal val DarkColorScheme = darkColorScheme(
     primary = Color(0xFF0A84FF),
     onPrimary = Color.White,
     primaryContainer = Color(0xFF003585),
@@ -341,7 +341,9 @@ private val DarkColorScheme = darkColorScheme(
     onSurfaceVariant = Color(0xFFC7C7CC),
 
     outline = Color(0xFF5A5A5C),
-    outlineVariant = Color(0xFF3A3A3C),
+    // Between surface and outline: HorizontalDivider draws in this on cards,
+    // which are surface, and when the two matched every divider vanished.
+    outlineVariant = Color(0xFF48484A),
 
     error = Color(0xFFEF4444),
     onError = Color.White,
