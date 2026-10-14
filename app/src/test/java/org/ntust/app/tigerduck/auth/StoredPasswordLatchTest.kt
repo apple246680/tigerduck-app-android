@@ -128,7 +128,7 @@ class StoredPasswordLatchTest {
         var harvested = false
 
         val failure = runCatching {
-            latch.guardAutomaticHarvest("B00000000", "old-password") { harvested = true }
+            latch.guardAutomaticHarvest("B00000000", "old-password") { _ -> harvested = true }
         }.exceptionOrNull()
 
         assertFalse(harvested)
@@ -141,7 +141,7 @@ class StoredPasswordLatchTest {
         val latch = latch()
 
         val failure = runCatching {
-            latch.guardAutomaticHarvest("B00000000", "old-password") {
+            latch.guardAutomaticHarvest("B00000000", "old-password") { _ ->
                 throw MoodleWebserviceError.SsoLoginRejected("Wrong password")
             }
         }.exceptionOrNull()
@@ -155,7 +155,7 @@ class StoredPasswordLatchTest {
         val latch = latch()
 
         runCatching {
-            latch.guardAutomaticHarvest("B00000000", "old-password") {
+            latch.guardAutomaticHarvest("B00000000", "old-password") { _ ->
                 throw MoodleWebserviceError.TransientNetwork("timeout")
             }
         }

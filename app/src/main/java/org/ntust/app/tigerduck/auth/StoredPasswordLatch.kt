@@ -62,17 +62,23 @@ interface StoredPasswordLatch {
 /**
  * Runs [harvest], a Moodle token harvest the user did not start, which posts the stored
  * [password] to NTUST's SSO: not at all while the latch is set, and latching when SSO refuses it.
- * The harvest a sign-in the user makes runs without it.
+ * [harvest] runs the check it is handed right before the password goes out, so a refusal that
+ * another sign-in latched meanwhile stops it too. The harvest a sign-in the user makes runs
+ * without it.
  */
 internal suspend fun <T> StoredPasswordLatch.guardAutomaticHarvest(
     studentId: String,
     password: String,
-    harvest: suspend () -> T,
+    harvest: suspend (beforePosting: () -> Unit) -> T,
 ): T {
-    rejection.value?.let { throw MoodleWebserviceError.SsoLoginRejected(it.reason) }
+    val refuseIfLatched = {
+        rejection.value?.let { throw MoodleWebserviceError.SsoLoginRejected(it.reason) }
+        Unit
+    }
+    refuseIfLatched()
     val before = generation
     return try {
-        harvest()
+        harvest(refuseIfLatched)
     } catch (e: MoodleWebserviceError.SsoLoginRejected) {
         markRejected(before, studentId, password, e.reason)
         throw e

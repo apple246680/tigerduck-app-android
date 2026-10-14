@@ -10,6 +10,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.ntust.app.tigerduck.auth.InMemoryStoredPasswordLatch
 
 /** How MoodleTokenService gets, renews and stores the token around its SSO sign-in. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -27,6 +28,7 @@ class MoodleTokenCoordinatorTest {
     }
 
     private val tokens = Tokens()
+    private val latch = InMemoryStoredPasswordLatch()
     private var now = 1_000_000L
     private val logins = mutableListOf<String>()
     private var loginGate: CompletableDeferred<Unit>? = null
@@ -34,14 +36,16 @@ class MoodleTokenCoordinatorTest {
 
     private fun kotlinx.coroutines.test.TestScope.coordinator() = MoodleTokenCoordinator(
         tokens = tokens,
-        login = { id, password ->
+        login = { id, password, beforePosting ->
             logins += id
             loginGate?.await()
+            beforePosting()
             login(id, password)
         },
         scope = backgroundScope,
         now = { now },
         pauseMs = 300_000L,
+        passwordLatch = latch,
     )
 
     @Test
@@ -111,7 +115,7 @@ class MoodleTokenCoordinatorTest {
         assertEquals("the refused password is not sent again", 1, logins.size)
 
         // And the other way round: a refresh SSO refuses stops the renewals after it.
-        val other = MoodleTokenCoordinator(tokens, { id, _ -> logins += id; throw MoodleWebserviceError.SsoLoginRejected(null) }, backgroundScope, { now }, 300_000L)
+        val other = MoodleTokenCoordinator(tokens, { id, _, _ -> logins += id; throw MoodleWebserviceError.SsoLoginRejected(null) }, backgroundScope, { now }, 300_000L, InMemoryStoredPasswordLatch())
         runCatching { other.refresh() }
         runCatching { other.refresh() }
         runCatching { other.renew("dead") }
@@ -183,7 +187,7 @@ class MoodleTokenCoordinatorTest {
             override val password: String? = "pw"
             override fun storeIfSignedIn(studentId: String, token: String) = true.also { this.token = token }
         }
-        coordinator = MoodleTokenCoordinator(storing, { id, _ -> logins += id; "token-${logins.size}" }, backgroundScope, { now }, 300_000L)
+        coordinator = MoodleTokenCoordinator(storing, { id, _, _ -> logins += id; "token-${logins.size}" }, backgroundScope, { now }, 300_000L, latch)
 
         val obtained = coordinator.obtain("B11300001", "pw")
 
@@ -192,25 +196,64 @@ class MoodleTokenCoordinatorTest {
     }
 
     @Test
-    fun `refusals are kept where the coordinator is told to keep them`() = runTest(UnconfinedTestDispatcher()) {
+    fun `refusals are kept in the app-wide latch, which a sign-in by hand lifts`() = runTest(UnconfinedTestDispatcher()) {
         tokens.token = "dead"
-        val refusal = object : StoredPasswordRefusal {
-            var refused = mutableSetOf<String>()
-            override fun isRefused(fingerprint: String) = fingerprint in refused
-            override fun markRefused(fingerprint: String) { refused += fingerprint }
-            override fun clear() = refused.clear()
-        }
-        val first = MoodleTokenCoordinator(tokens, { id, _ -> logins += id; throw MoodleWebserviceError.SsoLoginRejected(null) }, backgroundScope, { now }, 300_000L, refusal)
+        val first = MoodleTokenCoordinator(tokens, { id, _, _ -> logins += id; throw MoodleWebserviceError.SsoLoginRejected("wrong") }, backgroundScope, { now }, 300_000L, latch)
         runCatching { first.renew("dead") }
-        assertEquals(1, refusal.refused.size)
+        assertEquals("wrong", latch.rejection.value?.reason)
 
-        // Another coordinator over the same record, as after the app restarts with a persisted one.
-        val second = MoodleTokenCoordinator(tokens, { id, _ -> logins += id; "fresh" }, backgroundScope, { now }, 300_000L, refusal)
+        // Another coordinator over the same latch, as after the app restarts with the persisted one.
+        val second = MoodleTokenCoordinator(tokens, { id, _, _ -> logins += id; "fresh" }, backgroundScope, { now }, 300_000L, latch)
         assertTrue(runCatching { second.refresh() }.exceptionOrNull() is MoodleWebserviceError.SsoLoginRejected)
         assertEquals(1, logins.size)
 
         second.obtain("B11300001", "pw")
-        assertTrue("a sign-in by hand clears it", refusal.refused.isEmpty())
+        assertNull("a sign-in by hand lifts it", latch.rejection.value)
+    }
+
+    @Test
+    fun `a refusal latched while a renewal waits to post stops it before the password goes out`() = runTest(UnconfinedTestDispatcher()) {
+        tokens.token = "dead"
+        var posted = false
+        val coordinator = MoodleTokenCoordinator(
+            tokens,
+            { _, _, beforePosting ->
+                // Another sign-in's refusal lands while this one is on its way to the form.
+                latch.markRejected(latch.generation, "B11300001", "pw", "Locked")
+                beforePosting()
+                posted = true
+                "fresh"
+            },
+            backgroundScope, { now }, 300_000L, latch,
+        )
+
+        val error = runCatching { coordinator.renew("dead") }.exceptionOrNull()
+
+        assertTrue("got $error", error is MoodleWebserviceError.SsoLoginRejected)
+        assertTrue("nothing posted", !posted)
+        assertEquals("dead", tokens.token)
+    }
+
+    @Test
+    fun `a sign-in by hand posts what was typed, latch or not`() = runTest(UnconfinedTestDispatcher()) {
+        latch.markRejected(latch.generation, "B11300001", "old", "Wrong")
+
+        assertEquals("token-B11300001-1", coordinator().obtain("B11300001", "new"))
+        assertNull(latch.rejection.value)
+    }
+
+    @Test
+    fun `a sign-out during a sign-in by hand stores nothing of the departing account`() = runTest(UnconfinedTestDispatcher()) {
+        tokens.token = null
+        login = { _, _ ->
+            tokens.studentId = null
+            "departing"
+        }
+
+        val error = runCatching { coordinator().obtain("B11300001", "pw") }.exceptionOrNull()
+
+        assertTrue("got $error", error is MoodleWebserviceError.MissingStoredCredentials)
+        assertNull(tokens.token)
     }
 
     @Test
@@ -281,7 +324,7 @@ class MoodleTokenCoordinatorTest {
                 token = null
             }
         }
-        val coordinator = MoodleTokenCoordinator(racing, { id, _ -> logins += id; loggedIn = true; "departing" }, backgroundScope, { now }, 300_000L)
+        val coordinator = MoodleTokenCoordinator(racing, { id, _, _ -> logins += id; loggedIn = true; "departing" }, backgroundScope, { now }, 300_000L, latch)
 
         runCatching { coordinator.refresh() }
         if (!signedOut) racing.signOut()

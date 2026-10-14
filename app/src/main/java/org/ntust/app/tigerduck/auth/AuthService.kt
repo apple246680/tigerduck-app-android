@@ -107,9 +107,9 @@ class AuthService @Inject constructor(
         studentId = { credentials.ntustStudentId },
         password = { credentials.ntustPassword },
         storedMoodleToken = { credentials.moodleToken },
-        // Unlike obtainToken(), stores no token once the account has signed
-        // out, so a sign-out during the harvest leaves none for the next one.
-        harvestMoodleToken = { _ -> moodleTokenService.refreshToken() },
+        // A token in place of the one the backend refused. Stores none once the
+        // account has signed out, and sends no password the school refused.
+        harvestMoodleToken = { refused -> moodleTokenService.renewToken(refused) },
         afterSignIn = {
             appScope.launch {
                 runCatching { pushRegistration.onSignedIn() }
@@ -196,14 +196,15 @@ class AuthService @Inject constructor(
                     // makes the backend reject the login with 401 invalid_token.
                     // iOS does the same obtain-then-login. Best-effort: fall back to
                     // this student's stored token, and never let a harvest failure
-                    // block the SSO session. A sign-out meanwhile stores and sends
-                    // nothing of the departing student's. The stored ID too: the
-                    // sign-out drops the credentials before it moves the generation.
+                    // block the SSO session. obtainToken stores nothing once the
+                    // account has signed out, and stillCurrent then keeps the
+                    // fallback from sending anything. It reads the stored ID too:
+                    // the sign-out drops the credentials before it moves the generation.
                     val stillCurrent = {
                         authTokenManager.signInGeneration == signIn && credentials.ntustStudentId == normalizedId
                     }
                     val moodleToken = interactiveMoodleToken(
-                        harvest = { moodleTokenService.obtainToken(normalizedId, password, stillCurrent) },
+                        harvest = { moodleTokenService.obtainToken(normalizedId, password) },
                         stored = { credentials.moodleToken },
                         sameStudent = sameStudent,
                         stillCurrent = stillCurrent,
