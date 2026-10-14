@@ -70,6 +70,15 @@ class MoodleFileIntentTest {
             assertTrue(shareChooser.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
         }
 
+        // Listed as anything, a copy whose name says web page is a web page to the app that reads it.
+        val named = moodleFileIntent(
+            context, file("TigerDuckCache/moodle_open/a1/s1/a_html.html"), "application/octet-stream",
+        ) { if (it == "html") "text/html" else null }
+        @Suppress("DEPRECATION")
+        val namedShared = named.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
+        assertEquals(Intent.ACTION_SEND, namedShared.action)
+        assertEquals("text/html", namedShared.type)
+
         ShadowLog.clear()
         val noApp = object : ContextWrapper(context) {
             override fun startActivity(intent: Intent) = throw ActivityNotFoundException("week1-s1234567.pdf")

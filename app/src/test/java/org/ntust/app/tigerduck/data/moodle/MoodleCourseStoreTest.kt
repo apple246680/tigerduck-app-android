@@ -535,4 +535,14 @@ class MoodleCourseStoreTest {
         assertTrue(file.name.endsWith(".pdf"))
         assertTrue(file.name.startsWith("資料結構"))
     }
+
+    @Test
+    fun `a long name whose extension cannot be kept does not end in another`() = runTest(UnconfinedTestDispatcher()) {
+        // Cut at 200 bytes, it would end in ".html", which another app reads as a web page.
+        val long = attachment.copy(name = "a".repeat(195) + ".html." + "x".repeat(20), mimeType = "application/octet-stream")
+        val file = (store().openAttachment(long) as MoodleAttachment.Local).file
+
+        assertTrue(file.name.toByteArray().size <= 200)
+        assertTrue("got ${file.name}", !file.name.contains('.'))
+    }
 }

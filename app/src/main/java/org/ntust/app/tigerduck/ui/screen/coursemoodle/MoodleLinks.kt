@@ -87,13 +87,22 @@ fun openMoodleContentLink(context: Context, url: String, browserPreference: Stri
  * Opens a downloaded Moodle [file] in another app: a content URI to the app's own copy, readable
  * once by the app picked, so no link with the account's key ever leaves the app. A web page, an
  * SVG or any other XML, which a browser renders and may run scripts in, goes to the share sheet
- * as iOS sends it, not to a viewer. Through the system's chooser, which says so itself when no
- * app takes the file; the read grant rides the wrapped intent's clip, which the chooser passes on.
+ * as iOS sends it, not to a viewer, by the type listed or the one the copy's name gives. Through
+ * the system's chooser, which says so itself when no app takes the file; the read grant rides the
+ * wrapped intent's clip, which the chooser passes on.
  */
-fun moodleFileIntent(context: Context, file: File, mimeType: String): Intent {
+fun moodleFileIntent(
+    context: Context,
+    file: File,
+    mimeType: String,
+    extensionLookup: (String) -> String? = { MimeTypeMap.getSingleton().getMimeTypeFromExtension(it) },
+): Intent {
     val uri = FileProvider.getUriForFile(context, fileProviderAuthority(context), file)
-    val intent = if (isSharedNotViewed(mimeType)) {
-        Intent(Intent.ACTION_SEND).setTypeAndNormalize(mimeType).putExtra(Intent.EXTRA_STREAM, uri)
+    // The app picked asks the FileProvider for the type, which reads it from the copy's name.
+    val nameType = file.extension.takeIf { it.isNotEmpty() }?.lowercase()?.let(extensionLookup)
+    val sharedType = listOfNotNull(mimeType, nameType).firstOrNull(::isSharedNotViewed)
+    val intent = if (sharedType != null) {
+        Intent(Intent.ACTION_SEND).setTypeAndNormalize(sharedType).putExtra(Intent.EXTRA_STREAM, uri)
     } else {
         Intent(Intent.ACTION_VIEW).setDataAndTypeAndNormalize(uri, mimeType)
     }

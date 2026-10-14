@@ -352,7 +352,9 @@ class MoodleCourseStore(
 
     /**
      * [name] as one file name: no slash, backslash or NUL, no leading dot to hide or climb with, and
-     * at most [MAX_NAME_BYTES] bytes, its extension kept, where a file system allows 255.
+     * at most [MAX_NAME_BYTES] bytes, its extension kept, where a file system allows 255. A cut name
+     * whose extension could not be kept has no dot left, so it cannot end in another extension
+     * that another app would open it by.
      */
     private fun safeFileName(name: String): String {
         val cleaned = name.replace(Regex("""[/\\\u0000]"""), "_").trim().trimStart('.').ifEmpty { "file" }
@@ -372,7 +374,8 @@ class MoodleCourseStore(
             used += bytes
             i += Character.charCount(codePoint)
         }
-        return stem.toString().ifEmpty { "file" } + extension
+        val cut = stem.toString().ifEmpty { "file" }
+        return if (extension.isEmpty()) cut.replace('.', '_') else cut + extension
     }
 
     // --- Pictures ---
