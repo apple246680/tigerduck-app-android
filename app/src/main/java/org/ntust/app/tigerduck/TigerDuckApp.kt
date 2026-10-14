@@ -144,10 +144,11 @@ class TigerDuckApp : Application(), Configuration.Provider {
         // A refusal also takes the password off the watch.
         appScope.launch {
             libraryService.storedSignIns.collect { outcome ->
-                librarySession.refresh()
-                if (outcome == org.ntust.app.tigerduck.shared.LibraryService.StoredSignIn.REFUSED) {
-                    wearBridge.publishLibraryCredentials()
-                }
+                org.ntust.app.tigerduck.library.onStoredLibrarySignIn(
+                    outcome,
+                    librarySession,
+                    wearBridge::publishLibraryCredentials,
+                )
             }
         }
         // Mirror language changes to the watch so its UI follows the phone.
