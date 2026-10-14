@@ -24,6 +24,7 @@ import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.data.CourseColorStore
 import org.ntust.app.tigerduck.data.CourseIgnoreSync
+import org.ntust.app.tigerduck.data.UnsentMarks
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.liveactivity.LiveActivityManager
@@ -72,6 +73,7 @@ class SettingsViewModel @Inject constructor(
     private val debugFixtures: DebugFixtureStore,
     private val demoAccount: DemoAccount,
     private val courseIgnoreSync: CourseIgnoreSync,
+    private val unsentMarks: UnsentMarks,
     @param:ApplicationScope private val appScope: CoroutineScope,
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
@@ -414,6 +416,8 @@ class SettingsViewModel @Inject constructor(
                 dataCache.saveCourseCustomNames(emptyMap())
             }
             if ("assignments" in conflict.categories) {
+                // The server's marks win, so taps still waiting to go up are dropped.
+                unsentMarks.forget()
                 dataCache.replaceIgnoredAssignments(emptySet())
                 dataCache.replaceMarkedCompletedAssignments(emptySet())
             }

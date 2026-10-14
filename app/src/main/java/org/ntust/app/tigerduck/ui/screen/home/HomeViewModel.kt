@@ -45,6 +45,7 @@ import org.ntust.app.tigerduck.data.CourseTombstoneKeys
 import org.ntust.app.tigerduck.data.OutstandingAssignments
 import org.ntust.app.tigerduck.data.RefreshPolicy
 import org.ntust.app.tigerduck.data.RefreshTriggers
+import org.ntust.app.tigerduck.data.UnsentMarks
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.model.AssignmentFilter
@@ -97,6 +98,7 @@ class HomeViewModel @Inject constructor(
     private val syncApiClient: SyncApiClient,
     private val authTokenManager: AuthTokenManager,
     private val backendSync: HomeBackendSync,
+    private val unsentMarks: UnsentMarks,
 ) : ViewModel() {
 
 
@@ -892,7 +894,8 @@ class HomeViewModel @Inject constructor(
      * 已忽略 and 標示為完成 are mutually exclusive, so setting either clears
      * the other — that is what [secondary] is for. The UI updates before the
      * PATCH goes out and is never rolled back if it fails: the id stays in
-     * this device's cache and the next sync re-asserts it, which is a better
+     * this device's cache, [UnsentMarks] keeps it, and the next sync keeps
+     * this device's value for it and sends it again, which is a better
      * outcome than a row that silently springs back under the user's finger.
      */
     private fun toggleOverride(
@@ -919,15 +922,12 @@ class HomeViewModel @Inject constructor(
         revisionPoller.noteActivity()
         viewModelScope.launch {
             try {
-                pushApiClient.patchAssignmentOverride(
-                    id.toIntOrNull() ?: return@launch, status,
-                )
-            } catch (e: Exception) {
-                Log.w("HomeViewModel", "override PATCH FAILED → $status: ${e.logSummary()}")
+                // Kept on disk until it lands; a failure is logged there.
+                unsentMarks.send(id, status)
             } finally {
-                // Always release the in-flight lock — a failed PATCH must not
-                // pin this id in pendingOverrides forever, which would block it
-                // from ever being reconciled from the server again.
+                // Always release the in-flight lock: from here on a PATCH
+                // that failed is protected by UnsentMarks, which lets the id
+                // go once the server has it, so it is not pinned for ever.
                 pendingOverrides.remove(id)
             }
         }

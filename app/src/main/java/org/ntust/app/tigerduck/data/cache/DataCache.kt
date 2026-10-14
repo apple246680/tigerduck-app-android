@@ -523,6 +523,23 @@ class DataCache @Inject constructor(
             ?: emptySet()
     }
 
+    // --- Unsent assignment marks (assignmentId → status) ---
+    // Marks tapped here whose PATCH the backend has not confirmed; see
+    // UnsentMarks, the only writer. In filesDir with the marks themselves.
+
+    /** False, and nothing written, when the data was wiped since [generation]. */
+    suspend fun saveUnsentMarks(marks: Map<String, String>, generation: Int? = null): Boolean =
+        saveToUserDataIf(marks, "unsent_marks.json", generation ?: writeGeneration())
+
+    /** Entries without an id or a status are left out. */
+    suspend fun loadUnsentMarks(): Map<String, String> {
+        val type = object : TypeToken<Map<String?, String?>>() {}.type
+        val stored = loadFromUserData<Map<String?, String?>>(type, "unsent_marks.json") ?: return emptyMap()
+        return buildMap {
+            for ((id, status) in stored) if (id != null && status != null) put(id, status)
+        }
+    }
+
     // --- Score Report (per studentId) ---
 
     /**
@@ -664,6 +681,7 @@ class DataCache @Inject constructor(
                     "ignored_courses.json",
                     "pending_course_ignores.json",
                     "marked_completed_assignments.json",
+                    "unsent_marks.json",
                     "deleted_courses.json",
                     "course_custom_names.json",
                     "selection_dropped.json",

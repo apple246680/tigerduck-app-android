@@ -31,6 +31,9 @@ class AssignmentMarkStepTest {
     /** Runs as the step reads this phone's completed marks, for a switch flipped mid-sync. */
     private var onRead: () -> Unit = {}
 
+    /** Marks tapped here whose PATCH has not landed; see UnsentMarks. */
+    private var unsent = emptySet<String>()
+
     private val step = AssignmentMarkStep(
         switchOn = { switchOn },
         pendingConflicts = { pending },
@@ -45,6 +48,7 @@ class AssignmentMarkStepTest {
             }
         },
         send = { id, status -> send(id, status) },
+        unsent = { unsent },
     )
 
     private val state = HomeSyncState(
@@ -169,5 +173,32 @@ class AssignmentMarkStepTest {
 
         assertEquals(setOf("1"), ignored)
         assertEquals(emptySet<String>(), completed)
+    }
+
+    @Test
+    fun `a tap whose PATCH failed survives a sync of a server without it`() = runTest {
+        // Marked done offline after the account's first sync: the server has
+        // no marks, and the next sync must not take that as the truth.
+        syncedBefore = true
+        completed = setOf("3")
+        state.markedCompletedIds.value = setOf("3")
+        unsent = setOf("3")
+
+        step.pull(state, server(), syncsMarks = true)
+
+        assertEquals(setOf("3"), completed)
+        assertEquals(setOf("3"), state.markedCompletedIds.value)
+    }
+
+    @Test
+    fun `keeping the server's marks keeps a tap that has not reached it`() = runTest {
+        ignored = setOf("1")
+        state.ignoredAssignmentIds.value = setOf("1")
+        unsent = setOf("1")
+
+        step.keepServer(state, server(completed = setOf("2")))
+
+        assertEquals(setOf("1"), ignored)
+        assertEquals(setOf("2"), completed)
     }
 }

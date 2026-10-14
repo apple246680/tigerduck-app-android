@@ -394,4 +394,31 @@ class AssignmentOverrideReconcilerTest {
     fun `after the first sync the background sync takes an empty server too`() {
         assertTrue(backgroundTakes(syncedBefore = true, localIgnored = setOf("1")))
     }
+
+    @Test
+    fun `the background sync keeps a tap whose PATCH has not landed`() {
+        val out = AssignmentOverrideReconciler.backgroundMarks(
+            serverIgnored = emptySet(),
+            serverCompleted = setOf("2"),
+            localIgnored = emptySet(),
+            localCompleted = setOf("3"),
+            unsent = setOf("3"),
+        )
+
+        assertEquals(setOf("2", "3"), out.completed)
+        assertEquals(emptySet<String>(), out.ignored)
+    }
+
+    @Test
+    fun `the background sync keeps an unsent clear too`() {
+        val out = AssignmentOverrideReconciler.backgroundMarks(
+            serverIgnored = setOf("1"),
+            serverCompleted = emptySet(),
+            localIgnored = emptySet(),
+            localCompleted = emptySet(),
+            unsent = setOf("1"),
+        )
+
+        assertEquals(emptySet<String>(), out.ignored)
+    }
 }

@@ -20,6 +20,12 @@ internal class AssignmentMarkStep(
     private val syncedBefore: () -> Boolean,
     private val store: MarkStore,
     private val send: suspend (assignmentId: Int, status: String) -> Unit,
+    /**
+     * Marks tapped here whose PATCH has not landed (`UnsentMarks`): kept at
+     * this phone's value like a PATCH still in flight, since the server has
+     * not heard of them.
+     */
+    private val unsent: suspend () -> Set<String>,
 ) {
     /** This phone's marks on disk. */
     interface MarkStore {
@@ -64,7 +70,7 @@ internal class AssignmentMarkStep(
             localCompleted = localCompleted,
             inFlightIgnored = state.ignoredAssignmentIds.value,
             inFlightCompleted = state.markedCompletedIds.value,
-            pendingOverrides = state.pendingOverrides,
+            pendingOverrides = state.pendingOverrides + unsent(),
             labelFor = { byId[it]?.title },
         )
         // Read again: switched off since, the marks are this phone's own.
@@ -86,7 +92,7 @@ internal class AssignmentMarkStep(
             serverCompleted = result.completedIds,
             inFlightIgnored = state.ignoredAssignmentIds.value,
             inFlightCompleted = state.markedCompletedIds.value,
-            pendingOverrides = state.pendingOverrides,
+            pendingOverrides = state.pendingOverrides + unsent(),
         )
         commit(state, outcome)
     }

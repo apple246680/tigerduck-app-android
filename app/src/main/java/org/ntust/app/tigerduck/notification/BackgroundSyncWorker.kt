@@ -27,6 +27,7 @@ import kotlinx.coroutines.coroutineScope
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
+import org.ntust.app.tigerduck.data.UnsentMarks
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.push.BackendSyncResult
 import org.ntust.app.tigerduck.ui.screen.home.AssignmentOverrideReconciler
@@ -66,6 +67,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
     private val fcmBootstrap: org.ntust.app.tigerduck.push.FcmBootstrap,
     private val notificationSettingsSync: org.ntust.app.tigerduck.push.NotificationSettingsSync,
     private val courseIgnoreSync: CourseIgnoreSync,
+    private val unsentMarks: UnsentMarks,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) : CoroutineWorker(context, params) {
 
@@ -167,6 +169,8 @@ class BackgroundSyncWorker @AssistedInject constructor(
             val account = authService.storedStudentId
             val generation = courseIgnoreSync.currentGeneration()
             courseIgnoreSync.retryPending()
+            // Marks whose PATCH failed go first, so the snapshot has them.
+            unsentMarks.retry()
             val result = syncApiClient.fetchFullSync()
             val localIgnored = dataCache.loadIgnoredAssignments()
             val localMarked = dataCache.loadMarkedCompletedAssignments()
@@ -182,13 +186,20 @@ class BackgroundSyncWorker @AssistedInject constructor(
                 localIgnored = localIgnored,
                 localCompleted = localMarked,
             )
+            val marks = AssignmentOverrideReconciler.backgroundMarks(
+                serverIgnored = result.ignoredIds,
+                serverCompleted = result.completedIds,
+                localIgnored = localIgnored,
+                localCompleted = localMarked,
+                unsent = unsentMarks.ids(),
+            )
             if (takesMarks) {
-                dataCache.replaceIgnoredAssignments(result.ignoredIds)
-                dataCache.replaceMarkedCompletedAssignments(result.completedIds)
+                dataCache.replaceIgnoredAssignments(marks.ignored)
+                dataCache.replaceMarkedCompletedAssignments(marks.completed)
                 if (authService.isStillSignedInAs(account)) prefs.assignmentMarksSyncedOnce = true
             }
             val marksChanged = takesMarks &&
-                (result.ignoredIds != localIgnored || result.completedIds != localMarked)
+                (marks.ignored != localIgnored || marks.completed != localMarked)
             courseIgnoreSync.applySnapshot(result, generation)
 
             if (prefs.syncCourseColors && result.courseOverrides.isNotEmpty()) {

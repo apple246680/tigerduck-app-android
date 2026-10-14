@@ -248,6 +248,26 @@ object AssignmentOverrideReconciler {
     ): Boolean = reasonToLeaveMarks(syncsMarks, pendingConflictCategories) == null &&
         !isFirstUpload(syncedBefore, serverIgnored, serverCompleted, localIgnored, localCompleted)
 
+    /**
+     * This device's marks after the background worker's full sync takes the
+     * server's ([backgroundTakesMarks]): the server's, except marks tapped
+     * here whose PATCH has not landed ([unsent], see `UnsentMarks`), which
+     * keep this device's value whether they set or clear the mark.
+     */
+    fun backgroundMarks(
+        serverIgnored: Set<String>,
+        serverCompleted: Set<String>,
+        localIgnored: Set<String>,
+        localCompleted: Set<String>,
+        unsent: Set<String>,
+    ): Outcome = serverWins(
+        serverIgnored = serverIgnored,
+        serverCompleted = serverCompleted,
+        inFlightIgnored = localIgnored,
+        inFlightCompleted = localCompleted,
+        pendingOverrides = unsent,
+    )
+
     private fun statusOf(id: String, ignored: Set<String>, completed: Set<String>): String = when (id) {
         in ignored -> STATUS_IGNORED
         in completed -> STATUS_COMPLETED

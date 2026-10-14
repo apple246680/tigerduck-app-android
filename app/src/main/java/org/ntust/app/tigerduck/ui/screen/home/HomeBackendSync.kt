@@ -40,6 +40,7 @@ import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
+import org.ntust.app.tigerduck.data.UnsentMarks
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.network.CourseService
 import org.ntust.app.tigerduck.network.SemesterCatalog
@@ -111,6 +112,7 @@ class HomeBackendSync @Inject constructor(
     private val widgetUpdater: WidgetUpdater,
     private val academicCalendar: org.ntust.app.tigerduck.academic.AcademicCalendarStore,
     private val courseIgnoreSync: CourseIgnoreSync,
+    private val unsentMarks: UnsentMarks,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) {
 
@@ -127,6 +129,7 @@ class HomeBackendSync @Inject constructor(
             }
         },
         send = pushApiClient::patchAssignmentOverride,
+        unsent = unsentMarks::ids,
     )
 
     /**
@@ -151,8 +154,9 @@ class HomeBackendSync @Inject constructor(
             if (BuildConfig.DEBUG) ServerFailureSimulator.check(ServerKind.BACKEND)
             val account = authService.storedStudentId
             val generation = courseIgnoreSync.currentGeneration()
-            // Unsent course-ignore changes go first, so the snapshot has them.
+            // Unsent course-ignore changes and marks go first, so the snapshot has them.
             courseIgnoreSync.retryPending()
+            unsentMarks.retry()
             val result = syncApiClient.fetchFullSync()
             // One reading of the switches, for the steps below and for what
             // this sync records as synced: one flipped meanwhile counts from the next.
