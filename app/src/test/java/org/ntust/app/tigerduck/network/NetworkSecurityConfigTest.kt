@@ -62,6 +62,31 @@ class NetworkSecurityConfigTest {
         assertEquals(release, pinSets("src/debug/res/xml/network_security_config.xml"))
     }
 
+    // The watch calls the library with the same account the phone pins it for, so a
+    // rotation that skips the watch's copy fails here.
+    @Test
+    fun `the watch pins the library with the phone's pins and date`() {
+        val library = release.filter { set -> set.domains.any { it.name == "api.lib.ntust.edu.tw" } }
+        assertEquals(1, library.size)
+        assertEquals(library, pinSets("../wear/src/main/res/xml/network_security_config.xml"))
+    }
+
+    @Test
+    fun `the watch applies its config and allows no cleartext`() {
+        val parser = DocumentBuilderFactory.newInstance().newDocumentBuilder()
+        val application = parser.parse(File("../wear/src/main/AndroidManifest.xml"))
+            .getElementsByTagName("application").item(0) as Element
+        assertEquals("@xml/network_security_config", application.getAttribute("android:networkSecurityConfig"))
+        val config = parser.parse(File("../wear/src/main/res/xml/network_security_config.xml"))
+        val base = config.getElementsByTagName("base-config")
+        assertEquals("false", (base.item(0) as Element).getAttribute("cleartextTrafficPermitted"))
+        val domains = config.getElementsByTagName("domain-config")
+        (0 until domains.length).map { domains.item(it) as Element }.forEach {
+            // Absent, a domain-config inherits the base's false.
+            assertTrue(it.getAttribute("cleartextTrafficPermitted") != "true")
+        }
+    }
+
     @Test
     fun `PIN_EXPIRY_EPOCH is the earliest pin-set expiration`() {
         val earliest = release.minOf { it.expiration }

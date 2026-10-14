@@ -71,8 +71,10 @@ default is silently dropped and the field is null at runtime.
   in the 30-day window. Rotate before lapse; post-expiry the platform
   falls back to system CA trust silently. `NetworkSecurityConfigTest` fails
   45 days before any pin-set expires, when the debug config's pin-sets drift
-  from the release one's, and when `PIN_EXPIRY_EPOCH` is not the earliest
-  expiration. The Apple repo's `tls-pin-rotation` skill rotates both apps.
+  from the release one's, when `PIN_EXPIRY_EPOCH` is not the earliest
+  expiration, and when the watch's library pin-set
+  (`wear/src/main/res/xml/network_security_config.xml`) differs from the
+  phone's. The Apple repo's `tls-pin-rotation` skill rotates both apps.
 - **The Open-source licences lists are committed, not built.** Two
   generated files per flavor: `res/raw/aboutlibraries.json` (libraries and
   their licences, from the AboutLibraries plugin) and

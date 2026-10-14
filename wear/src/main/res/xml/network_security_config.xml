@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The watch calls one host, api.lib.ntust.edu.tw, with the library account the
+    phone hands it, so it pins that host with the phone's pin-set:
+    app/src/main/res/xml/network_security_config.xml, which says how pins are
+    made and rotated. Change both together; the phone's NetworkSecurityConfigTest
+    fails while their library pins or dates differ.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+
+    <!-- api.lib.ntust.edu.tw leaf + Sectigo DV E36 intermediate.
+         Leaf cert expires 2026-11-04; pins expire six months later. -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">api.lib.ntust.edu.tw</domain>
+        <pin-set expiration="2027-05-04">
+            <pin digest="SHA-256">m8Epf0KqJFv9abCXfipePZ79hfOMjddCKxz+RSZIDKY=</pin>
+            <pin digest="SHA-256">ZSagvDzjltLkewXEBuDxIzpW/dpVw1Juvvmd0hhkzdY=</pin>
+        </pin-set>
+    </domain-config>
+</network-security-config>
