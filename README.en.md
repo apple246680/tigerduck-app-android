@@ -94,7 +94,7 @@ unintuitive interfaces.
 ### 🔄 **Auto-Update** (Play only)
 
 - When Play has a newer version, an update prompt appears: **Update now** opens the Play Store page, or pick **Later** or **Skip this version**
-- Prompts once Play has offered a version for 3 days, and not again for 7 days after **Later**; **Settings → About → Check for updates** checks any time
+- Prompts once Play has offered a version for 3 days, and not again for that version for 7 days after **Later**; **Settings → About → Check for updates** checks any time
 - Post-upgrade "What's new" sheet highlights what changed at a glance
 
 ### ⌚ **Wear OS** (Play only)
