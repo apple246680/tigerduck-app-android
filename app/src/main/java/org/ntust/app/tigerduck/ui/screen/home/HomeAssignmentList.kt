@@ -61,6 +61,7 @@ import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.ui.component.AssignmentItem
 import org.ntust.app.tigerduck.ui.component.EmptyStateView
 import org.ntust.app.tigerduck.ui.navigation.icon
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.openMoodleWebPage
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -316,13 +317,16 @@ internal fun SwipeableAssignmentRow(
         }
     }
 }
+/**
+ * In the Moodle app through its link, else on the website signed in, as every "Open in Moodle"
+ * opens a page.
+ */
 internal fun openAssignmentInMoodle(context: Context, assignment: Assignment) {
-    val targets = listOfNotNull(assignment.moodleDeepLink, assignment.moodleUrl)
-    for (target in targets) {
-        val intent = Intent(Intent.ACTION_VIEW, target.toUri()).apply {
+    assignment.moodleDeepLink?.let { link ->
+        val intent = Intent(Intent.ACTION_VIEW, link.toUri()).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
         }
-        val opened = runCatching { context.startActivity(intent) }.isSuccess
-        if (opened) return
+        if (runCatching { context.startActivity(intent) }.isSuccess) return
     }
+    assignment.moodleUrl?.let { openMoodleWebPage(context, it) }
 }

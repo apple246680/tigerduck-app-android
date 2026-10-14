@@ -7,17 +7,27 @@ import android.util.Log
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import org.ntust.app.tigerduck.data.preferences.AppPreferences
+import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.mail.resolveAttachmentMimeType
+import org.ntust.app.tigerduck.network.moodle.MoodleAutologin
+import org.ntust.app.tigerduck.network.moodle.MoodleWebservice
+import org.ntust.app.tigerduck.ui.screen.mail.openMailLink
 import org.ntust.app.tigerduck.util.fileProviderAuthority
 import org.ntust.app.tigerduck.util.logSummary
 import java.io.File
-import org.ntust.app.tigerduck.network.moodle.MoodleWebservice
-import org.ntust.app.tigerduck.ui.screen.mail.openMailLink
 import java.net.URLEncoder
 
 /**
  * A page on the Moodle site, opened as every "Open in Moodle" opens one: in the Moodle app where
- * it is installed, else in the browser. Paths are site-relative.
+ * it is installed, else in the browser, signed in. Paths are site-relative.
  */
 object MoodlePage {
     fun course(courseId: Int) = "/course/view.php?id=$courseId"
@@ -48,23 +58,47 @@ object MoodlePage {
 }
 
 /**
- * Opens [path] in the Moodle app through its `moodlemobile://` link, or in the browser when no
- * app takes it. Phase 2 signs the browser in through an autologin key, as iOS does.
+ * Opens [path] in the Moodle app through its `moodlemobile://` link, or, when no app takes it, on
+ * the website in the browser the Browser setting picks, signed in through a one-time key as iOS
+ * opens it. A link the Moodle app takes asks for no key.
  */
 fun openMoodlePage(context: Context, path: String) {
-    for (target in listOf(MoodlePage.deepLink(path), MoodlePage.webUrl(path))) {
-        val intent = Intent(Intent.ACTION_VIEW, target.toUri()).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
-        }
-        if (runCatching { context.startActivity(intent) }.isSuccess) return
+    val app = Intent(Intent.ACTION_VIEW, MoodlePage.deepLink(path).toUri()).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
     }
+    if (runCatching { context.startActivity(app) }.isSuccess) return
+    openMoodleWebPage(context, MoodlePage.webUrl(path))
 }
 
 /**
- * Opens a link from Moodle content, such as an announcement's message: a Moodle page in the
- * browser, with a `webservice/pluginfile.php` link rewritten to the web path and its token
- * dropped, so no key leaves the app; any other web page as the Browser setting asks; mail as a
- * new message.
+ * Opens [url], a page on the Moodle site, in the browser [browserPreference] picks (the Browser
+ * setting when null), signed in through [MoodleAutologin] where a key comes in time, else as it
+ * is. The key is asked for in the app's scope, so leaving the screen meanwhile does not stop the
+ * page opening.
+ */
+fun openMoodleWebPage(context: Context, url: String, browserPreference: String? = null) {
+    val links = EntryPointAccessors.fromApplication(context.applicationContext, MoodleLinksEntryPoint::class.java)
+    links.appScope().launch(Dispatchers.Main.immediate) {
+        val target = links.autologin().url(url)
+        openMailLink(context, target, browserPreference ?: links.appPreferences().browserPreference)
+    }
+}
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+internal interface MoodleLinksEntryPoint {
+    fun autologin(): MoodleAutologin
+    fun appPreferences(): AppPreferences
+
+    @ApplicationScope
+    fun appScope(): CoroutineScope
+}
+
+/**
+ * Opens a link from Moodle content, such as an announcement's message: a Moodle page signed in, as
+ * [openMoodleWebPage] opens it, with a `webservice/pluginfile.php` link rewritten to the web path
+ * and its token dropped, so no key leaves the app; any other web page as the Browser setting
+ * asks; mail as a new message.
  */
 fun openMoodleContentLink(context: Context, url: String, browserPreference: String) {
     val uri = url.toUri()
@@ -72,13 +106,9 @@ fun openMoodleContentLink(context: Context, url: String, browserPreference: Stri
         uri.scheme.equals("mailto", ignoreCase = true) -> {
             runCatching { context.startActivity(Intent(Intent.ACTION_SENDTO, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
         }
-        uri.host.equals(MoodleWebservice.SITE_HOST, ignoreCase = true) -> {
-            runCatching {
-                context.startActivity(
-                    Intent(Intent.ACTION_VIEW, moodleWebLink(url).toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
-            }
-        }
+        MoodleAutologin.isMoodlePage(url) -> openMoodleWebPage(context, moodleWebLink(url), browserPreference)
+        uri.host.equals(MoodleWebservice.SITE_HOST, ignoreCase = true) ->
+            openMailLink(context, moodleWebLink(url), browserPreference)
         else -> openMailLink(context, url, browserPreference)
     }
 }
