@@ -46,9 +46,13 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data
-                    android:host="announcement"
-                    android:scheme="tigerduck" />
+                <!-- What each link opens, and the checks a link must pass,
+                     are AppLink.parse's. -->
+                <data android:scheme="tigerduck" />
+                <data android:host="announcement" />
+                <data android:host="assignment" />
+                <data android:host="classtable" />
+                <data android:host="library" />
             </intent-filter>
         </activity>
 
