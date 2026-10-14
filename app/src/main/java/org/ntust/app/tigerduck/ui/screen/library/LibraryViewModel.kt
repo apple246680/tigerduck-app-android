@@ -49,7 +49,7 @@ class LibraryViewModel @Inject constructor(
         // the countdown animation and any ongoing gestures don't stutter.
         render = { payload -> withContext(Dispatchers.Default) { generateQRBitmap(payload) } },
         account = { credentials.libraryAccountGeneration },
-        sessionValid = ::resolveSignedIn,
+        sessionValid = { fixtureSignedIn || credentials.isLibraryTokenValid },
         // The session is gone: back to the sign-in form instead of looping
         // on a dead token.
         onSessionEnded = {
@@ -88,7 +88,11 @@ class LibraryViewModel @Inject constructor(
     private val fixtureSignedIn: Boolean
         get() = fixtureQr != null && debugFixtures.libraryFakeSignedIn
 
-    private fun resolveSignedIn(): Boolean = fixtureSignedIn || credentials.isLibraryTokenValid
+    private fun resolveSignedIn(): Boolean = showsPass(
+        fixtureSignedIn = fixtureSignedIn,
+        tokenValid = credentials.isLibraryTokenValid,
+        canSignInWithStoredCredentials = libraryService.canSignInWithStoredCredentials,
+    )
 
     private fun resolveUsername(): String? =
         demoAccount.libraryUsername ?: credentials.libraryUsername
@@ -169,5 +173,16 @@ class LibraryViewModel @Inject constructor(
 
     companion object {
         const val QR_VALID_SECONDS = 30
+
+        /**
+         * Whether the page shows the pass rather than the sign-in form. Stored
+         * credentials count: the code's fetch signs in again with them, so an
+         * expired token shows a code, not the form. A refused password does not.
+         */
+        internal fun showsPass(
+            fixtureSignedIn: Boolean,
+            tokenValid: Boolean,
+            canSignInWithStoredCredentials: Boolean,
+        ): Boolean = fixtureSignedIn || tokenValid || canSignInWithStoredCredentials
     }
 }

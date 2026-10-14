@@ -116,6 +116,12 @@ class MainActivity : AppCompatActivity() {
     @Inject
     lateinit var mailChecker: org.ntust.app.tigerduck.mail.sync.MailChecker
 
+    @Inject
+    lateinit var libraryService: org.ntust.app.tigerduck.shared.LibraryService
+
+    @Inject
+    lateinit var demoAccount: org.ntust.app.tigerduck.demo.DemoAccount
+
     private val widgetStartRoute = mutableStateOf<String?>(null)
     private val whatsNewFlow = mutableStateOf<WhatsNewFlow?>(null)
 
@@ -255,6 +261,12 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         // The library token runs out with time, and the flip listens only while it is valid.
         appState.librarySession.refresh()
+        // It lasts a day, so a launch or a return after one signs in again with
+        // the stored library credentials, and the Library page opens on a code.
+        // Not in demo mode, which reaches no server.
+        if (!demoAccount.isActive) {
+            lifecycleScope.launch { libraryService.signInIfCredentialed(networkChecker::isAvailable) }
+        }
         refreshAcademicCalendar()
         liveActivityManager.refresh()
         updateChecker.resume(this)
