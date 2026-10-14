@@ -304,6 +304,23 @@ class BackgroundSyncWorkerTest {
     }
 
     @Test
+    fun `a sync that failed while the school refuses the stored password does not retry`() {
+        // A retry could only fail the same way: no automatic sign-in posts
+        // that password until the user signs in again (issue #212).
+        for (triggered in listOf(true, false)) {
+            assertEquals(
+                "triggered $triggered",
+                ListenableWorker.Result.success(),
+                BackgroundSyncWorker.resultForFailedSync(
+                    triggered = triggered,
+                    runAttemptCount = 0,
+                    passwordRejected = true,
+                ),
+            )
+        }
+    }
+
+    @Test
     fun `a failed periodic sync keeps retrying`() {
         for (attempt in listOf(0, 3, 10)) {
             assertEquals(

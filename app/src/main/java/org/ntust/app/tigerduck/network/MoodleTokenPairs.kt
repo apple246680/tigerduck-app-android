@@ -43,6 +43,9 @@ internal class MoodleTokenPairs(private val store: MoodleTokenPairStore) : Moodl
             store.privateToken = value?.let(::privateTokenFor)
         }
 
+    /** The private token stored, whichever wstoken it came with. */
+    val privateToken: String? get() = store.privateToken
+
     override val studentId: String? get() = store.studentId
     override val password: String? get() = store.password
 

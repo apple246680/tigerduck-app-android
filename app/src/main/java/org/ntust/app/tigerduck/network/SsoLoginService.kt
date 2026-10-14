@@ -7,14 +7,24 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.ntust.app.tigerduck.auth.StoredPasswordLatch
+import org.ntust.app.tigerduck.auth.postAutomatically
 import javax.inject.Inject
 import javax.inject.Singleton
 
 sealed class SsoLoginError : Exception() {
     class LoginFormNotFound : SsoLoginError()
-    class LoginFailed : SsoLoginError()
+
+    /** The school kept the sign-in on its form. [reason] is its message, when the page had one. */
+    class LoginFailed(val reason: String? = null) : SsoLoginError()
     class InvalidResponse : SsoLoginError()
     data class NetworkError(val cause_: Exception) : SsoLoginError()
+
+    /**
+     * An automatic sign-in's credentials stopped being the stored account's while it ran, as a
+     * sign-in by hand stored another password or the account signed out, so it posted nothing.
+     */
+    class AccountChanged : SsoLoginError()
 }
 
 /**
@@ -51,10 +61,16 @@ internal suspend fun <T> fetchWithSsoSession(
 }
 
 @Singleton
-class SsoLoginService @Inject constructor(
-    private val sessionManager: NtustSessionManager
+class SsoLoginService internal constructor(
+    private val sessionManager: NtustSessionManager,
+    private val passwordLatch: StoredPasswordLatch,
+    private val clientFor: () -> OkHttpClient,
 ) {
-    private val client: OkHttpClient get() = sessionManager.client
+    @Inject
+    constructor(sessionManager: NtustSessionManager, passwordLatch: StoredPasswordLatch) :
+        this(sessionManager, passwordLatch, { sessionManager.client })
+
+    private val client: OkHttpClient get() = clientFor()
 
     // One login at a time. A login that meets the SSO wall clears the whole
     // cookie jar (step 4) before it signs in, which pulled the session out
@@ -63,8 +79,10 @@ class SsoLoginService @Inject constructor(
     private val loginMutex = Mutex()
 
     /**
-     * Ensures the user is logged in to the given service via NTUST SSO.
-     * Returns true on success, throws SsoLoginError on failure.
+     * Ensures the user is logged in to the given service via NTUST SSO, with
+     * the stored account. Returns true on success, throws SsoLoginError on
+     * failure. Once the school has refused the stored password, it posts it
+     * no more and throws [SsoLoginError.LoginFailed] — see [StoredPasswordLatch].
      */
     suspend fun ensureServiceLogin(
         serviceUrl: String,
@@ -80,6 +98,10 @@ class SsoLoginService @Inject constructor(
      * of a session left by the account before. So this one empties the jar
      * first. Under the same lock, so a login still running for the account
      * that left finishes before the jar is emptied, not after.
+     *
+     * It posts the credentials whatever the latch holds, and leaves the latch
+     * as it is: the refused password is still the one stored until the
+     * sign-in stores the new one, which lifts it (TypedAccountSignIn).
      */
     suspend fun signIn(
         serviceUrl: String,
@@ -87,14 +109,23 @@ class SsoLoginService @Inject constructor(
         password: String
     ): Boolean = loginMutex.withLock {
         sessionManager.invalidateSession()
-        logIn(serviceUrl, studentId, password)
+        logIn(serviceUrl, studentId, password, typed = true)
     }
 
+    /**
+     * [typed] for credentials the user just entered. Any other login is one
+     * the user did not start, and posts no password the school refused.
+     */
     private suspend fun logIn(
         serviceUrl: String,
         studentId: String,
-        password: String
+        password: String,
+        typed: Boolean = false,
     ): Boolean = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        // Before anything that could be refused, so a refusal that lands after
+        // the user signed in again or signed out latches nothing.
+        val latchGeneration = passwordLatch.generation
+
         // Step 1: Visit service URL
         var (html, url) = fetchPage(serviceUrl)
 
@@ -108,6 +139,11 @@ class SsoLoginService @Inject constructor(
             sessionManager.markLoginSuccess()
             return@withContext true
         }
+
+        // The session needs the password now, and each refusal of it counts
+        // toward the account's lockout. Before step 4, which would empty the
+        // jar for a sign-in that is not going to happen.
+        if (!typed) passwordLatch.rejection.value?.let { throw SsoLoginError.LoginFailed(it.reason) }
 
         // Step 4: Clear cookies and retry
         sessionManager.invalidateSession()
@@ -141,9 +177,37 @@ class SsoLoginService @Inject constructor(
         }
 
         val actionUrl = resolveUrl(form.action, url)
-        val loginResult = postForm(actionUrl, fields)
-        html = loginResult.first
-        url = loginResult.second
+        // The credentials go to the school's sign-in host and nowhere else, whatever the page
+        // names as the form's action. As on the iPhone (ssoActionHostAllowlist).
+        if (!isSignInHost(actionUrl)) throw SsoLoginError.InvalidResponse()
+        if (typed) return@withContext submitLoginForm(actionUrl, fields)
+        // Under the lock every automatic post of the stored password takes, with the latch and
+        // the stored account checked again right before the password goes out: a refusal
+        // another sign-in got, the Moodle token renewal's included, has landed by then, and
+        // none lands while this one is posting.
+        passwordLatch.postAutomatically(
+            generation = latchGeneration,
+            studentId = studentId,
+            password = password,
+            refused = { SsoLoginError.LoginFailed(it.reason) },
+            stale = { SsoLoginError.AccountChanged() },
+        ) {
+            try {
+                submitLoginForm(actionUrl, fields)
+            } catch (e: SsoLoginError.LoginFailed) {
+                passwordLatch.markRejected(latchGeneration, studentId, password, e.reason)
+                throw e
+            }
+        }
+    }
+
+    /**
+     * Steps 5 to 7: posts the sign-in form's [fields] to [actionUrl] and follows the answer. Throws
+     * [SsoLoginError.LoginFailed] with the school's message when the school kept the sign-in on its
+     * form, and for nothing else.
+     */
+    private fun submitLoginForm(actionUrl: HttpUrl, fields: List<Pair<String, String>>): Boolean {
+        var (html, url) = postLoginForm(actionUrl, fields)
 
         // Step 6: Resolve OIDC bridge forms after login
         val afterLogin = resolveOIDCBridgeForms(html, url)
@@ -151,10 +215,12 @@ class SsoLoginService @Inject constructor(
         url = afterLogin.second
 
         // Step 7: Check if still on SSO page
-        if (HtmlParser.isSSOLoginPage(html, url)) throw SsoLoginError.LoginFailed()
+        if (HtmlParser.isSSOLoginPage(html, url)) {
+            throw SsoLoginError.LoginFailed(HtmlParser.loginErrorMessage(html))
+        }
 
         sessionManager.markLoginSuccess()
-        true
+        return true
     }
 
     private fun fetchPage(url: String): Pair<String, HttpUrl> {
@@ -188,6 +254,25 @@ class SsoLoginService @Inject constructor(
             currentUrl = newUrl
         }
         return currentHtml to currentUrl
+    }
+
+    /**
+     * The sign-in form's POST, which carries the password: no redirect sends the form on to
+     * another address, and one that would ends the sign-in ([executeCredentialPost]).
+     */
+    private fun postLoginForm(url: HttpUrl, fields: List<Pair<String, String>>): Pair<String, HttpUrl> {
+        try {
+            val body = FormBody.Builder().apply {
+                fields.forEach { (name, value) -> add(name, value) }
+            }.build()
+            val request = Request.Builder().url(url).post(body).build()
+            val response = client.executeCredentialPost(request) ?: throw SsoLoginError.InvalidResponse()
+            response.use { return it.body.string() to it.request.url }
+        } catch (e: SsoLoginError) {
+            throw e
+        } catch (e: java.io.IOException) {
+            throw SsoLoginError.NetworkError(e)
+        }
     }
 
     private fun postForm(url: HttpUrl, fields: List<Pair<String, String>>): Pair<String, HttpUrl> {
@@ -230,3 +315,8 @@ class SsoLoginService @Inject constructor(
         else add(name to value)
     }
 }
+
+/** Where the sign-in form may post the credentials: the school's sign-in host, over HTTPS. */
+internal fun isSignInHost(url: HttpUrl): Boolean = url.isHttps && url.host == SIGN_IN_HOST
+
+private const val SIGN_IN_HOST = "ssoam2.ntust.edu.tw"

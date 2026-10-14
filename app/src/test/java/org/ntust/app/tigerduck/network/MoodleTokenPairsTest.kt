@@ -7,6 +7,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import org.ntust.app.tigerduck.auth.InMemoryStoredPasswordLatch
 
 /** The private token a sign-in harvests is stored beside the wstoken it came with, and no other. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -30,9 +31,11 @@ class MoodleTokenPairsTest {
     private var harvests = 0
     private var privateToken: String? = "private"
 
+    private val latch = InMemoryStoredPasswordLatch()
+
     private fun TestScope.coordinator() = MoodleTokenCoordinator(
         tokens = pairs,
-        login = { id, _ ->
+        login = { id, _, _ ->
             val token = "token-$id-${harvests++}"
             pairs.harvested(token, privateToken)
             token
@@ -40,6 +43,7 @@ class MoodleTokenPairsTest {
         scope = backgroundScope,
         now = { 0L },
         pauseMs = 300_000L,
+        passwordLatch = latch,
     )
 
     @Test
@@ -67,7 +71,7 @@ class MoodleTokenPairsTest {
         store.token = "dead"
         val coordinator = MoodleTokenCoordinator(
             tokens = pairs,
-            login = { id, _ ->
+            login = { id, _, _ ->
                 pairs.harvested("fresh", "private")
                 store.studentId = null
                 "fresh-$id"
@@ -75,6 +79,7 @@ class MoodleTokenPairsTest {
             scope = backgroundScope,
             now = { 0L },
             pauseMs = 300_000L,
+            passwordLatch = latch,
         )
         runCatching { coordinator.renew(rejected = "dead") }
 

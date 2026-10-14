@@ -105,6 +105,7 @@ import org.ntust.app.tigerduck.ui.screen.settings.SyncContentScreen
 import org.ntust.app.tigerduck.ui.screen.settings.SourceCodePickerScreen
 import org.ntust.app.tigerduck.ui.screen.settings.TabEditorScreen
 import org.ntust.app.tigerduck.ui.screen.settings.VibrationSettingsScreen
+import org.ntust.app.tigerduck.ui.screen.signin.NtustSignInSheetHost
 import org.ntust.app.tigerduck.widget.LibraryShortcutWidget
 
 sealed class Screen(val route: String) {
@@ -174,6 +175,7 @@ fun AppNavigation(
             onStartRouteConsumed = onStartRouteConsumed,
         )
         PermissionWarningDialogHost(appState.systemPermissions)
+        NtustSignInSheetHost()
     }
 
     val needsReset by appState.needsUserReset.collectAsStateWithLifecycle()

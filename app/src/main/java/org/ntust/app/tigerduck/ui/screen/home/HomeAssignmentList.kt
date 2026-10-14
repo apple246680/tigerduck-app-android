@@ -130,7 +130,8 @@ internal fun AssignmentsEmptyState(
             icon = Icons.Filled.Lock,
             title = stringResource(R.string.common_not_signed_in),
             message = stringResource(R.string.common_sign_in_required_feature),
-            onIconClick = onOpenSignInSettings,
+            actionLabel = stringResource(R.string.onboarding_sign_in_button),
+            onAction = onOpenSignInSettings,
         )
         return
     }

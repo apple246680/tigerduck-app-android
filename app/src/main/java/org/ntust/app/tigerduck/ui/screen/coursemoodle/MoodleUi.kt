@@ -237,9 +237,8 @@ internal fun moodleErrorText(resources: Resources, error: Throwable): String {
         is MoodleWebserviceError.InvalidToken -> resources.getString(R.string.error_moodle_invalid_token)
         is MoodleWebserviceError.InvalidCredentials -> resources.getString(R.string.error_moodle_invalid_credentials)
         is MoodleWebserviceError.MissingStoredCredentials -> resources.getString(R.string.error_moodle_missing_credentials)
-        is MoodleWebserviceError.SsoLoginRejected -> error.reason?.takeIf { it.isNotBlank() }
-            ?.let { resources.getString(R.string.error_moodle_sso_rejected_with_reason).replaceIosArg(1, it) }
-            ?: resources.getString(R.string.error_moodle_sso_rejected)
+        is MoodleWebserviceError.SsoLoginRejected -> ssoRejectedText(resources, error.reason)
+        is MoodleWebserviceError.SsoLoginFormUnavailable -> ssoRejectedText(resources, error.reason)
         is MoodleWebserviceError.AccessDenied,
         is MoodleWebserviceError.WebserviceDisabled -> resources.getString(R.string.error_moodle_webservice_disabled)
         is MoodleWebserviceError.HttpStatus -> resources.getString(R.string.error_moodle_http_status_format, error.code)
@@ -249,6 +248,11 @@ internal fun moodleErrorText(resources: Resources, error: Throwable): String {
             .replaceIosArg(1, error.javaClass.simpleName)
     }
 }
+
+private fun ssoRejectedText(resources: Resources, reason: String?): String =
+    reason?.takeIf { it.isNotBlank() }
+        ?.let { resources.getString(R.string.error_moodle_sso_rejected_with_reason).replaceIosArg(1, it) }
+        ?: resources.getString(R.string.error_moodle_sso_rejected)
 
 /**
  * Keeps a screen's data fresh while it shows and the app is in the foreground: a refresh as soon

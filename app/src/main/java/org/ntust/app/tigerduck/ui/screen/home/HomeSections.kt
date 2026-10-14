@@ -194,6 +194,7 @@ internal fun HomeSectionContent(
                     invertDirection = invertDirection,
                     isLoggedIn = isLoggedIn,
                     initialLoadComplete = initialLoadComplete,
+                    onSignIn = onOpenSignInSettings,
                     onSelectCourse = onCourseClick
                 )
             }
