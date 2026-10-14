@@ -38,6 +38,17 @@ val localProps = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
+/**
+ * Hands a test a file's path as a system property and declares the file an
+ * input of the test task, so the two cannot drift apart.
+ */
+class InputFileProperty(
+    @get:Input val name: String,
+    @get:InputFile @get:PathSensitive(PathSensitivity.RELATIVE) val file: File,
+) : CommandLineArgumentProvider {
+    override fun asArguments() = listOf("-D$name=${file.absolutePath}")
+}
+
 fun localProp(key: String, default: String = ""): String =
     localProps.getProperty(key) ?: (project.findProperty(key) as? String) ?: default
 
@@ -140,6 +151,17 @@ android {
             // ReleaseLogRulesTest reads the R8 rules, which are no input of the
             // test task otherwise: a change to them alone would leave it UP-TO-DATE.
             all { it.inputs.file("proguard-rules.pro") }
+            // NetworkSecurityConfigTest reads both pin configs. They reach the
+            // test only through these providers, which declare each file an
+            // input, so an edit to the XML alone reruns the pin checks.
+            all {
+                it.jvmArgumentProviders += InputFileProperty(
+                    "tigerduck.nsc.release", file("src/main/res/xml/network_security_config.xml"),
+                )
+                it.jvmArgumentProviders += InputFileProperty(
+                    "tigerduck.nsc.debug", file("src/debug/res/xml/network_security_config.xml"),
+                )
+            }
         }
     }
 
