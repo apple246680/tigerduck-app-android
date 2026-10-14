@@ -1,5 +1,6 @@
 package org.ntust.app.tigerduck.ui.screen.emptyclassroom
 
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import org.ntust.app.tigerduck.AppConstants
 import org.ntust.app.tigerduck.academic.AcademicCalendar
@@ -29,6 +30,12 @@ interface FinderEnvironment {
     fun now(): LocalDateTime
 
     fun calendar(): AcademicCalendar
+
+    /**
+     * Emits when the academic calendar changes, as when it first arrives: until then every
+     * weekday counts as a class day, so a day already read may turn out to be off.
+     */
+    val calendarChanged: Flow<Unit>
 
     /** The class table's courses for the term in session, without the ones the user deleted. */
     suspend fun courses(): List<Course>
@@ -75,6 +82,8 @@ class AppFinderEnvironment @Inject constructor(
     override fun now(): LocalDateTime = AppClock.localDateTime(AppConstants.TAIPEI_ZONE)
 
     override fun calendar(): AcademicCalendar = finderCalendar(demoAccount.isActive, academicCalendar::current)
+
+    override val calendarChanged: Flow<Unit> get() = academicCalendar.changes
 
     override val coursesChanged: StateFlow<Int> get() = dataCache.backgroundSyncVersion
 

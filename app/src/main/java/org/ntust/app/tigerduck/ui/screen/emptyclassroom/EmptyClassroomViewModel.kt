@@ -123,6 +123,7 @@ class EmptyClassroomViewModel internal constructor(
         // A sync that rewrote the timetable while the screen is open; off screen, the next
         // appear() reads the courses anyway.
         viewModelScope.launch { env.coursesChanged.drop(1).collect { if (isStarted) reloadCourses() } }
+        viewModelScope.launch { env.calendarChanged.collect { calendarChanged() } }
     }
 
     /**
@@ -193,6 +194,18 @@ class EmptyClassroomViewModel internal constructor(
         }
     }
 
+    /**
+     * The academic calendar changed. It can arrive after the day was read, as on a first launch,
+     * when every weekday still counted as a class day, so a day it takes off stops its read and
+     * shows no rooms.
+     */
+    private fun calendarChanged() {
+        refreshClasses()
+        val off = EmptyClassroomSchedule.dayOff(_state.value.selectedDay, env.calendar()) ?: return
+        stopLoading()
+        show(contentOf(off))
+    }
+
     fun select(day: LocalDate) {
         if (day == _state.value.selectedDay) return
         edit { it.copy(selectedDay = day) }
@@ -257,11 +270,7 @@ class EmptyClassroomViewModel internal constructor(
         if (!force && running?.first == day) return
         stopLoading()
         refreshClasses()
-        when (val off = EmptyClassroomSchedule.dayOff(day, env.calendar())) {
-            is DayOff.HolidayOff -> return show(FinderContent.HolidayOff(off.holiday))
-            DayOff.Weekend, DayOff.OutOfTerm -> return show(FinderContent.NoData)
-            null -> Unit
-        }
+        EmptyClassroomSchedule.dayOff(day, env.calendar())?.let { return show(contentOf(it)) }
         val credentials = env.credentials() ?: return show(FinderContent.Loading)
         val kept = service.keptUsage(day)
         edit {
@@ -300,6 +309,11 @@ class EmptyClassroomViewModel internal constructor(
 
     private fun show(content: FinderContent) {
         edit { it.copy(content = content, isRefreshing = false, isReloading = false) }
+    }
+
+    private fun contentOf(off: DayOff): FinderContent = when (off) {
+        is DayOff.HolidayOff -> FinderContent.HolidayOff(off.holiday)
+        DayOff.Weekend, DayOff.OutOfTerm -> FinderContent.NoData
     }
 
     private fun contentOf(kept: KeptUsage): FinderContent =

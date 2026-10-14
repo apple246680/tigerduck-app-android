@@ -2,6 +2,7 @@ package org.ntust.app.tigerduck.ui.screen.emptyclassroom
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -40,6 +41,7 @@ class EmptyClassroomViewModelTest {
         override var pickedBuilding: String? = null
         override val signedIn = MutableStateFlow(true)
         override val coursesChanged = MutableStateFlow(0)
+        override val calendarChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
         var account: String? = "B00000000"
 
         /** Holds the next course read, which then returns the class table as it was asked for. */
@@ -131,6 +133,48 @@ class EmptyClassroomViewModelTest {
         assertEquals(FinderContent.NoData, harness.state.content)
         assertEquals(0, harness.requests)
         assertNull(harness.state.nextTeachingDay)
+    }
+
+    @Test
+    fun `a term's dates that arrive after the day was read take its rooms off the screen`() {
+        val harness = Harness(time(14, 10, 5))
+        val inTerm = harness.env.calendar
+        // Before the calendar arrives, every weekday counts as a class day.
+        harness.env.calendar = AcademicCalendar.EMPTY
+        harness.serveDay(listOf(Pages.row("IB-508", "..............")))
+        harness.model.appear()
+        assertEquals(listOf("IB-508"), harness.rooms)
+
+        harness.env.calendar = inTerm
+        harness.env.calendarChanged.tryEmit(Unit)
+        assertEquals(listOf("IB-508"), harness.rooms)
+
+        harness.env.calendar = inTerm.copy(
+            terms = listOf(SemesterTerm("1151", LocalDate.of(2026, 9, 14), LocalDate.of(2026, 10, 13))),
+        )
+        harness.env.calendarChanged.tryEmit(Unit)
+        assertEquals(FinderContent.NoData, harness.state.content)
+        assertNull(harness.state.nextTeachingDay)
+        assertEquals(3, harness.requests)
+    }
+
+    @Test
+    fun `a calendar that makes the day a holiday while it loads stops the read`() {
+        val harness = Harness(time(14, 10, 5))
+        harness.env.calendar = AcademicCalendar.EMPTY
+        val gate = CompletableDeferred<Unit>()
+        harness.serveDay(listOf(Pages.row("IB-508", "..............")), gate)
+        harness.model.appear()
+        assertEquals(FinderContent.Loading, harness.state.content)
+
+        harness.env.calendar = harness.env.calendar.copy(
+            holidays = listOf(Holiday(2, "校慶", "Founding Day", day(14), day(14))),
+        )
+        harness.env.calendarChanged.tryEmit(Unit)
+        gate.complete(Unit)
+
+        assertEquals("Founding Day", (harness.state.content as FinderContent.HolidayOff).holiday.nameEn)
+        assertNull(harness.service.keptUsage(day(14)))
     }
 
     @Test
