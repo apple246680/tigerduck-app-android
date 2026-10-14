@@ -545,7 +545,7 @@ class SettingsViewModel @Inject constructor(
                     _libLoginError.value = context.getString(R.string.error_sign_in_failed)
                     return@launch
                 }
-                libraryService.login(username, password)
+                libraryService.login(username, password, credentials.libraryAccountGeneration, byUser = true)
                 demoAccount.signOutLibrary()
                 _isLibraryLoggedIn.value = true
                 // The NTUST authState collector in TigerDuckApp pushes library

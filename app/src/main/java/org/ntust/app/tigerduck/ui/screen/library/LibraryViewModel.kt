@@ -110,7 +110,7 @@ class LibraryViewModel @Inject constructor(
                     _errorMessage.value = context.getString(R.string.error_sign_in_failed)
                     return@launch
                 }
-                libraryService.login(username, password)
+                libraryService.login(username, password, credentials.libraryAccountGeneration, byUser = true)
                 demoAccount.signOutLibrary()
                 _isLoggedIn.value = true
                 _storedUsername.value = username

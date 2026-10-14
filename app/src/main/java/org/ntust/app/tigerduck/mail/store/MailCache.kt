@@ -73,6 +73,18 @@ class MailCache(
     }
 
     /**
+     * [saveBody] while [stillCurrent] says the body is still the signed-in account's, asked under
+     * the lock [clearAll] takes, and says whether it saved. A sign-out moves its account before it
+     * clears the cache, so a body it allows lands before that clear and goes with it.
+     */
+    @Synchronized
+    fun saveBodyIf(folder: String, uid: Long, uidValidity: Long, body: MailBody, stillCurrent: () -> Boolean): Boolean {
+        if (!stillCurrent()) return false
+        saveBody(folder, uid, uidValidity, body)
+        return true
+    }
+
+    /**
      * The raw source, keyed and invalidated exactly like a body and kept in the same directory,
      * so one [maxBodyBytes] budget and one LRU sweep cover bodies and sources together. Its key
      * carries a suffix a body key can never produce, so the two never collide on one file.

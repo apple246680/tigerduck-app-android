@@ -128,6 +128,26 @@ class AuthService @Inject constructor(
         },
     )
 
+    // Run under loginMutex, by login() and ensureAuthenticated().
+    private val schoolSignIn = SchoolSignIn(
+        libraryStore = credentials,
+        libraryService = libraryService,
+        studentId = { credentials.ntustStudentId },
+        password = { credentials.ntustPassword },
+        sessionIsWarm = { sessionManager.cookiesValid },
+        signInToSchool = { studentId, password, typed ->
+            val serviceUrl = "https://courseselection.ntust.edu.tw/"
+            if (typed) {
+                ssoLoginService.signIn(serviceUrl, studentId, password)
+            } else {
+                ssoLoginService.ensureServiceLogin(serviceUrl, studentId, password)
+            }
+        },
+        // A library-only demo sign-in may still be standing in; see
+        // [org.ntust.app.tigerduck.demo.DemoAccount.signOutLibrary].
+        afterLibrarySignIn = { demoAccount.signOutLibrary() },
+    )
+
     init {
         authTokenManager.signInWithStoredAccount = storedAccountSignIn::signIn
     }
@@ -174,7 +194,7 @@ class AuthService @Inject constructor(
                 return@withLock true
             }
 
-            val success = performSsoLoginUnlocked(normalizedId, password, signingIn = true)
+            val success = schoolSignIn.typed(normalizedId, password)
 
             if (success) {
                 // Registered before authState flips: an automatic sign-in it
@@ -255,57 +275,13 @@ class AuthService @Inject constructor(
         // No session to build: every caller then reads its cache, which is
         // where the demo data is.
         if (demoAccount.isActive) return@withLock false
-        val studentId = credentials.ntustStudentId ?: return@withLock false
-        val password = credentials.ntustPassword ?: return@withLock false
-
-        if (sessionManager.cookiesValid) return@withLock true
-
         try {
-            performSsoLoginUnlocked(studentId.trim().uppercase(), password)
+            schoolSignIn.stored()
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             false
         }
-    }
-
-    /**
-     * Shared SSO + library login work. Caller MUST already hold [loginMutex] —
-     * Kotlin `Mutex` is non-reentrant, so the public entry points each acquire
-     * the lock once and delegate here, avoiding the deadlock that would happen
-     * if one path called the other.
-     *
-     * [signingIn] for credentials just entered, which are checked from an
-     * empty session rather than trusting whatever session the jar holds: it
-     * may still be another account's — see [SsoLoginService.signIn].
-     */
-    private suspend fun performSsoLoginUnlocked(
-        normalizedId: String,
-        password: String,
-        signingIn: Boolean = false,
-    ): Boolean {
-        val serviceUrl = "https://courseselection.ntust.edu.tw/"
-        val success = if (signingIn) {
-            ssoLoginService.signIn(serviceUrl, normalizedId, password)
-        } else {
-            ssoLoginService.ensureServiceLogin(serviceUrl, normalizedId, password)
-        }
-        if (success && !credentials.isLibraryTokenValid) {
-            // Best-effort: library credentials may differ from NTUST SSO, so a
-            // failure here must not fail the SSO login — but log it, otherwise
-            // "library QR never works" is undiagnosable in the field.
-            try {
-                libraryService.login(normalizedId, password)
-                // A library-only demo sign-in may still be standing in; see
-                // [org.ntust.app.tigerduck.demo.DemoAccount.signOutLibrary].
-                demoAccount.signOutLibrary()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                android.util.Log.w("AuthService", "Library login failed (best-effort): ${e.logSummary()}")
-            }
-        }
-        return success
     }
 
     fun logout() {
