@@ -11,4 +11,12 @@ class MailRoutesTest {
         assertEquals("schoolMail/compose?mode=REPLY&folder=INBOX&uid=42", MailRoutes.compose(ComposeMode.REPLY, "INBOX", 42))
         assertEquals("schoolMail/compose?mode=NEW&folder=&uid=-1", MailRoutes.compose(ComposeMode.NEW))
     }
+
+    @Test
+    fun `a new message can name its recipient`() {
+        assertEquals(
+            "schoolMail/compose?mode=NEW&folder=&uid=-1&to=b11300001%40mail.ntust.edu.tw",
+            MailRoutes.compose(ComposeMode.NEW, to = "b11300001@mail.ntust.edu.tw"),
+        )
+    }
 }
