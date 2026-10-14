@@ -592,12 +592,16 @@ private const val TIGERDUCK_WEBSITE_URL = "https://tigerduck.app"
 /**
  * Map intent input — the [StartRoute] extra of the app's own widgets and
  * notifications, and the `tigerduck://` links of [AppLink] — onto a NavHost
- * route. An extra naming any other route is dropped, and the intent's link,
- * if any, opens instead.
+ * route. An intent with a link, or one a browser marks
+ * [Intent.CATEGORY_BROWSABLE], opens that link alone: the app's own senders
+ * put neither on an intent with the extra. An extra naming any other route is
+ * dropped.
  */
 internal fun startRouteOf(intent: Intent?): String? {
-    StartRoute.accepted(intent?.getStringExtra(StartRoute.EXTRA))?.let { return it }
-    return AppLink.parse(intent?.data)?.let(::startRouteFor)
+    intent ?: return null
+    val fromLink = intent.data != null || intent.hasCategory(Intent.CATEGORY_BROWSABLE)
+    if (!fromLink) StartRoute.accepted(intent.getStringExtra(StartRoute.EXTRA))?.let { return it }
+    return AppLink.parse(intent.data)?.let(::startRouteFor)
 }
 
 /**

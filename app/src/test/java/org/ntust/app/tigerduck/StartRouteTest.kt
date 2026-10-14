@@ -60,8 +60,36 @@ class StartRouteTest {
             "schoolMail/message//1",
             "schoolMail/message/%ZZ/1",
             "schoolMail/message/INBOX/1?x=1",
+            // Past Long.MAX_VALUE: the NavHost cannot read the UID and throws.
+            "schoolMail/message/INBOX/9223372036854775808",
+            "schoolMail/message/INBOX/9999999999999999999",
+            "schoolMail/message/INBOX/12345678901234567890",
             "",
         ).forEach { assertNull(it, routeFor(it)) }
+    }
+
+    @Test
+    fun `the largest UID a Long holds still comes through`() {
+        val route = "schoolMail/message/INBOX/9223372036854775807"
+        assertEquals(route, routeFor(route))
+    }
+
+    @Test
+    fun `a link from a browser or another app cannot carry a route`() {
+        val browsable = Intent(Intent.ACTION_VIEW, Uri.parse("tigerduck://library"))
+            .addCategory(Intent.CATEGORY_BROWSABLE)
+            .putExtra("start_route", MailRoutes.LIST)
+        assertEquals(LibraryShortcutWidget.ROUTE_SENTINEL, startRouteOf(browsable))
+
+        val browsableNoLink = Intent().addCategory(Intent.CATEGORY_BROWSABLE)
+            .putExtra("start_route", Screen.ClassTable.route)
+        assertNull(startRouteOf(browsableNoLink))
+
+        assertEquals(
+            "an intent with a link opens the link",
+            Screen.ClassTable.route,
+            routeFor(MailRoutes.LIST, link = "tigerduck://classtable"),
+        )
     }
 
     @Test

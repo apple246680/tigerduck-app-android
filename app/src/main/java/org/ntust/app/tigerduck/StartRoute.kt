@@ -12,7 +12,10 @@ import org.ntust.app.tigerduck.widget.LibraryShortcutWidget
  * [accepted] lets through exactly the routes the app itself sends — the class
  * table and Library widgets, and School Mail's notifications — and drops
  * everything else, so no other screen can be reached this way and a route the
- * NavHost does not have never reaches it.
+ * NavHost does not have never reaches it. None of those senders puts a link
+ * or [android.content.Intent.CATEGORY_BROWSABLE] on its intent, so
+ * `startRouteOf` reads the extra only from an intent with neither: a link
+ * from a browser or another app opens the link alone.
  */
 object StartRoute {
     const val EXTRA = "start_route"
@@ -28,11 +31,15 @@ object StartRoute {
 
     /**
      * AndroidMailNotifier's per-mail tap, [MailRoutes.message]: a folder as
-     * URLEncoder writes it, then a UID.
+     * URLEncoder writes it, then a UID, which must fit the Long the NavHost
+     * reads it into.
      */
-    private val MAIL_MESSAGE = Regex("""schoolMail/message/(?:[A-Za-z0-9._*\-]|%[0-9A-Fa-f]{2})+/\d{1,19}""")
+    private val MAIL_MESSAGE = Regex("""schoolMail/message/(?:[A-Za-z0-9._*\-]|%[0-9A-Fa-f]{2})+/(\d{1,19})""")
 
     /** [route] when it is one the app sends, else null. */
     fun accepted(route: String?): String? =
-        route?.takeIf { it in FIXED || MAIL_MESSAGE.matches(it) }
+        route?.takeIf { it in FIXED || isMailMessage(it) }
+
+    private fun isMailMessage(route: String): Boolean =
+        MAIL_MESSAGE.matchEntire(route)?.groupValues?.get(1)?.toLongOrNull() != null
 }
