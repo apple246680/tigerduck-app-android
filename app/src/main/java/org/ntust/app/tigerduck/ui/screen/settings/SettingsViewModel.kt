@@ -24,6 +24,7 @@ import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.data.CourseColorStore
 import org.ntust.app.tigerduck.data.CourseIgnoreSync
+import org.ntust.app.tigerduck.data.UnsentMarks
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.data.sharing.ImportedClassTableStore
@@ -39,6 +40,8 @@ import org.ntust.app.tigerduck.debug.DebugFixtureStore
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.demo.DemoAccount
 import org.ntust.app.tigerduck.network.CourseService
+import org.ntust.app.tigerduck.network.SemesterCatalog
+import org.ntust.app.tigerduck.push.BackendSyncResult
 import org.ntust.app.tigerduck.push.PushApiClient
 import org.ntust.app.tigerduck.push.PushDiagnostic
 import org.ntust.app.tigerduck.push.PushIdentity
@@ -46,7 +49,6 @@ import org.ntust.app.tigerduck.push.PushRegistrationService
 import org.ntust.app.tigerduck.push.SyncApiClient
 import org.ntust.app.tigerduck.ui.AppState
 import org.ntust.app.tigerduck.ui.component.ServerStatusTracker
-import org.ntust.app.tigerduck.ui.screen.home.AssignmentOverrideReconciler
 import org.ntust.app.tigerduck.util.logSummary
 import org.ntust.app.tigerduck.wear.WearScheduleBridge
 import javax.inject.Inject
@@ -68,10 +70,12 @@ class SettingsViewModel @Inject constructor(
     private val pushApiClient: PushApiClient,
     private val syncApiClient: SyncApiClient,
     private val courseService: CourseService,
+    private val semesterCatalog: SemesterCatalog,
     private val dataCache: DataCache,
     private val debugFixtures: DebugFixtureStore,
     private val demoAccount: DemoAccount,
     private val courseIgnoreSync: CourseIgnoreSync,
+    private val unsentMarks: UnsentMarks,
     private val importedClassTableStore: ImportedClassTableStore,
     @param:ApplicationScope private val appScope: CoroutineScope,
     @param:ApplicationContext private val context: Context,
@@ -192,6 +196,8 @@ class SettingsViewModel @Inject constructor(
     data class ReenableConflict(
         val categories: List<String>,
         val description: String,
+        /** The snapshot the check compared, for Use Local when it cannot read the server again. */
+        val checked: BackendSyncResult? = null,
     )
 
     private val _reenableConflict = MutableStateFlow<ReenableConflict?>(null)
@@ -320,6 +326,7 @@ class SettingsViewModel @Inject constructor(
                     _reenableConflict.value = ReenableConflict(
                         categories = pending.toList(),
                         description = diffs.joinToString("\n"),
+                        checked = result,
                     )
                 } else {
                     // Only what this check compared: one started later may
@@ -343,7 +350,16 @@ class SettingsViewModel @Inject constructor(
         // and tied to this account: a sign-out ends it, and drops any write
         // still on its way.
         val holdsCourseIgnores = "assignments" in conflict.categories
-        prefs.pendingConflictCategories = if (holdsCourseIgnores) setOf("assignments") else emptySet()
+        // Use Local's terms are latched before the courses check lets the
+        // course list go: a sync in between would un-hide a course deleted
+        // here before Use Local sends its delete.
+        val latch = handOverCourseHold(
+            useLocal = keepLocal && "courses" in conflict.categories,
+            semesters = semesterCatalog::availableSemesters,
+            host = useLocalHost,
+        ) {
+            prefs.pendingConflictCategories = if (holdsCourseIgnores) setOf("assignments") else emptySet()
+        }
         val generation = dataCache.userDataGeneration
         resolutions.start()
         appScope.launch(DataCache.Generation(generation)) {
@@ -353,10 +369,12 @@ class SettingsViewModel @Inject constructor(
                         authService.authState.first { !it }
                         this@coroutineScope.cancel()
                     }
-                    resolve(conflict, keepLocal, generation)
+                    resolve(conflict, keepLocal, generation, latch)
                     signOut.cancel()
                 }
             } finally {
+                // Already let go when Use Local ran; this covers a sign-out before it.
+                latch?.release()
                 if (resolutions.finish()) {
                     prefs.pendingConflictCategories = prefs.pendingConflictCategories - "assignments"
                 }
@@ -365,14 +383,14 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    private suspend fun resolve(conflict: ReenableConflict, keepLocal: Boolean, generation: Int) {
+    private suspend fun resolve(
+        conflict: ReenableConflict,
+        keepLocal: Boolean,
+        generation: Int,
+        latch: UseLocalLatch?,
+    ) {
         if (keepLocal) {
-            if ("courses" in conflict.categories) {
-                val courses = dataCache.loadCourses()
-                val semester = courseService.currentSemesterCode()
-                runCatching { pushApiClient.deleteAllCourses() }
-                runCatching { pushApiClient.uploadCourses(courses, semester) }
-            }
+            if (latch != null) sendLocalCourses(generation, latch)
             if ("course_colors" in conflict.categories) {
                 val courses = dataCache.loadCourses()
                 for (course in courses) {
@@ -397,24 +415,21 @@ class SettingsViewModel @Inject constructor(
                 }
             }
             if ("assignments" in conflict.categories) {
-                val server = runCatching { syncApiClient.fetchFullSync() }.getOrNull()
-                val serverIgnored = server?.ignoredIds.orEmpty()
-                val serverCompleted = server?.completedIds.orEmpty()
                 // Syncs leave the marks alone while "assignments" is pending,
                 // so the cache changes now only by taps on Home: the newest.
-                sendKeptMarks(
+                keepLocalMarks(
+                    conflict = conflict,
+                    fetch = syncApiClient::fetchFullSync,
                     marksVersion = { dataCache.assignmentMarksVersion.value },
-                    marksNow = {
-                        AssignmentOverrideReconciler.keepLocal(
-                            localIgnored = dataCache.loadIgnoredAssignments(),
-                            localCompleted = dataCache.loadMarkedCompletedAssignments(),
-                            serverIgnored = serverIgnored,
-                            serverCompleted = serverCompleted,
-                        )
+                    localMarks = {
+                        dataCache.loadIgnoredAssignments() to dataCache.loadMarkedCompletedAssignments()
                     },
                     send = pushApiClient::patchAssignmentOverride,
+                    keep = { id, status -> unsentMarks.keep(id, status, generation) },
+                    pushCourseIgnores = { server ->
+                        if (prefs.syncCourses) courseIgnoreSync.pushLocal(server, generation)
+                    },
                 )
-                if (prefs.syncCourses) courseIgnoreSync.pushLocal(server, generation)
             }
         } else {
             if ("courses" in conflict.categories) {
@@ -424,6 +439,8 @@ class SettingsViewModel @Inject constructor(
                 dataCache.saveCourseCustomNames(emptyMap())
             }
             if ("assignments" in conflict.categories) {
+                // The server's marks win, so taps still waiting to go up are dropped.
+                unsentMarks.forget()
                 dataCache.replaceIgnoredAssignments(emptySet())
                 dataCache.replaceMarkedCompletedAssignments(emptySet())
             }
@@ -487,6 +504,36 @@ class SettingsViewModel @Inject constructor(
                 courseIgnoreSync.adoptServer(result, generation)
             }
         }
+    }
+
+    private val useLocalHost = object : UseLocalHost {
+        override fun beginReset(semester: String) = dataCache.beginReset(semester)
+        override fun endReset(semester: String) = dataCache.endReset(semester)
+        override suspend fun stampReset(semester: String, atMs: Long) =
+            dataCache.saveSemesterResetAt(semester, atMs)
+        override fun askAgain() = markCategoryReenabled("courses")
+    }
+
+    /** Use Local for courses, every term this phone knows — see [useLocalCourses]. */
+    private suspend fun sendLocalCourses(generation: Int, latch: UseLocalLatch) {
+        // The terms latched on the tap; the catalogue may have moved since.
+        val semesters = latch.semesters
+        val portalCached = semesters.filterTo(mutableSetOf()) { dataCache.hasPortalCourses(it) }
+        useLocalCourses(
+            terms = semesters.map { it to dataCache.loadCourses(it) },
+            hiding = dataCache.loadDeletedCourseNos(),
+            backend = PushCourseSyncBackend(pushApiClient, prefs),
+            // A term's reset takes its courses' names off the server with
+            // them. With name sync off here nothing can be sent back (the
+            // PATCH honours the switch), so names other devices set on that
+            // term's courses are lost: the price of Use Local resetting a term.
+            customNames = if (prefs.syncCourseNames) dataCache.loadCourseCustomNames() else emptyMap(),
+            portalCached = { it in portalCached },
+            latch = latch,
+            host = useLocalHost,
+            now = System::currentTimeMillis,
+            isCurrent = { dataCache.userDataGeneration == generation },
+        )
     }
 
     val isNtustLoggingIn = authService.isLoggingIn

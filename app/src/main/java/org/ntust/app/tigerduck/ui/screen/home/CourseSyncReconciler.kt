@@ -304,6 +304,20 @@ object CourseSyncReconciler {
     private const val RESET_STAMP_GRACE_MS = 60_000L
 
     /**
+     * Whether a full sync reconciles the course list: with its switch on
+     * ([switchOn]), and not from switching course sync back on until the
+     * re-enable check finds no difference or the user has answered it. A
+     * reconcile in that window would answer for the user — it un-hides a
+     * course deleted here while sync was off, because the server still lists
+     * it, and Use Local could then no longer keep it deleted. iOS holds the
+     * course list the same way.
+     */
+    fun syncsCourseList(switchOn: Boolean, pendingConflictCategories: Set<String>): Boolean =
+        switchOn && REENABLE_CATEGORY !in pendingConflictCategories
+
+    private const val REENABLE_CATEGORY = "courses"
+
+    /**
      * The terms to reconcile: everything the server knows plus the picker's,
      * less [excluding] — see [termsResetAfter].
      */

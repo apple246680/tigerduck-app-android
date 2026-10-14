@@ -959,30 +959,29 @@ class ClassTableViewModel @Inject constructor(
     }
 
     /**
-     * Assigns [newHex] to [courseNo]. Pass null to clear the user-picked color
-     * and fall back to hash-based assignment. Any other course whose custom
-     * color matches [newHex] is automatically cleared so it gets reassigned
-     * through the palette probe logic.
+     * Assigns [newHex] to [courseNo]. Pass null to go back to the palette's
+     * colour for it, which is then pinned so the server can be sent it. Any
+     * other course pinned to [newHex] moves to a free colour, pinned and
+     * synced — see [CourseColorPick].
      */
     fun updateCourseColor(courseNo: String, newHex: String?) {
         if (isShowingSomeoneElse) return
-        val normalized = newHex?.uppercase()
-        val updated = _courses.value.map { course ->
-            when {
-                course.courseNo == courseNo -> course.copy(customColorHex = normalized)
-                normalized != null && course.customColorHex?.uppercase() == normalized ->
-                    course.copy(customColorHex = null)
-
-                else -> course
-            }
-        }
+        val pick = CourseColorPick.assign(
+            courses = _courses.value,
+            courseNo = courseNo,
+            hex = newHex,
+            shown = TigerDuckTheme::courseColorVibrant,
+        )
+        val updated = pick.courses
         _courses.value = updated
         TigerDuckTheme.buildCourseColorMap(updated)
         viewModelScope.launch {
             dataCache.saveCourses(updated, _currentSemester.value)
             widgetUpdater.requestUpdate()
         }
-        syncCourseOverride(courseNo, colorHex = normalized)
+        // A concrete hex each, a default included: the backend reads a
+        // missing one as "unchanged".
+        for ((no, hex) in pick.toSync) syncCourseOverride(no, colorHex = hex)
     }
 
     private fun syncCourseOverride(
