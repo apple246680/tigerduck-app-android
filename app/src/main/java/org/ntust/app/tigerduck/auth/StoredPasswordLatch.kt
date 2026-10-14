@@ -45,7 +45,7 @@ interface StoredPasswordLatch {
      * start, which read [generation] before it posted them. [reason] is the school's message, when
      * the page carried one. Nothing latches once [clear] has run since, or when the stored account
      * is no longer this one: a sign-in with a new password can finish while one with the old
-     * password is still under way.
+     * password is still under way. While a refusal holds, it stays as it is.
      */
     fun markRejected(generation: Int, studentId: String, password: String, reason: String?)
 
@@ -122,14 +122,18 @@ class PersistedStoredPasswordLatch internal constructor(
 
     override fun markRejected(generation: Int, studentId: String, password: String, reason: String?) {
         synchronized(lock) {
+            // One already holds: a new one would show a banner the user closed again.
+            if (_rejection.value != null) return
             if (generation != currentGeneration) return
             val (storedId, storedPassword) = storedAccount() ?: return
             if (normalized(storedId) != normalized(studentId) || storedPassword != password) return
             val message = reason?.trim()?.take(MAX_REASON_LENGTH)?.takeIf { it.isNotEmpty() }
+            // Written through before anything reads it: a process the system ends right
+            // after must not start the next one unlatched.
             prefs.edit().apply {
                 putBoolean(KEY_REJECTED, true)
                 if (message == null) remove(KEY_REASON) else putString(KEY_REASON, message)
-            }.apply()
+            }.commit()
             _rejection.value = StoredPasswordLatch.Rejection(message)
         }
     }

@@ -8,6 +8,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -107,6 +108,19 @@ class StoredPasswordLatchTest {
         latch.markRejected(latch.generation, " b00000000 ", "old-password", null)
 
         assertTrue(latch.isRejected)
+    }
+
+    @Test
+    fun `a refusal while one already holds keeps that one`() {
+        val latch = latch()
+        latch.markRejected(latch.generation, "B00000000", "old-password", "Wrong account or password")
+        val first = latch.rejection.value
+
+        latch.markRejected(latch.generation, "B00000000", "old-password", "Locked")
+
+        // The banner closed for it stays closed.
+        assertSame(first, latch.rejection.value)
+        assertEquals("Wrong account or password", latch().rejection.value?.reason)
     }
 
     @Test

@@ -170,6 +170,9 @@ class SsoLoginService internal constructor(
         }
 
         val actionUrl = resolveUrl(form.action, url)
+        // Again right before the password goes out: another sign-in's refusal
+        // may have landed since the check above.
+        if (!typed) passwordLatch.rejection.value?.let { throw SsoLoginError.LoginFailed(it.reason) }
         val loginResult = postForm(actionUrl, fields)
         html = loginResult.first
         url = loginResult.second

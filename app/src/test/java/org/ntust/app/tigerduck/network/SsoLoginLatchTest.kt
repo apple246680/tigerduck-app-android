@@ -39,6 +39,10 @@ class SsoLoginLatchTest {
 
     /** Whether the school takes the password posted to it. */
     private var accepts = false
+
+    /** Runs as each visit to the service arrives, with how many came before it. */
+    private var onVisit: (Int) -> Unit = {}
+    private var visits = 0
     private val posts = CopyOnWriteArrayList<String>()
 
     @Before
@@ -72,6 +76,18 @@ class SsoLoginLatchTest {
 
         assertTrue("got $failure", failure is SsoLoginError.LoginFailed)
         assertEquals(REASON, (failure as SsoLoginError.LoginFailed).reason)
+        assertEquals(emptyList<String>(), posts)
+    }
+
+    @Test
+    fun `a refusal latched while an automatic sign-in is on its way to the form stops it`() = runTest {
+        accepts = true
+        // Another sign-in's refusal lands after this one's first look at the form.
+        onVisit = { if (it == 1) latch.markRejected(latch.generation, STUDENT, PASSWORD, REASON) }
+
+        val failure = runCatching { service.ensureServiceLogin(SERVICE, STUDENT, PASSWORD) }.exceptionOrNull()
+
+        assertTrue("got $failure", failure is SsoLoginError.LoginFailed)
         assertEquals(emptyList<String>(), posts)
     }
 
@@ -112,7 +128,10 @@ class SsoLoginLatchTest {
                 if (accepts) SERVICE to SERVICE_PAGE else LOGIN_URL to LOGIN_PAGE_REFUSED
             }
             // Every visit to the service lands on the school's sign-in form.
-            else -> LOGIN_URL to LOGIN_PAGE
+            else -> {
+                onVisit(visits++)
+                LOGIN_URL to LOGIN_PAGE
+            }
         }
         return Response.Builder()
             // As if OkHttp had followed the redirect to it.
