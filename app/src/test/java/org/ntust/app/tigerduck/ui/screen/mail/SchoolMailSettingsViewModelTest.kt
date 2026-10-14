@@ -1,5 +1,6 @@
 package org.ntust.app.tigerduck.ui.screen.mail
 
+import android.app.Application
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
@@ -21,6 +22,7 @@ import org.ntust.app.tigerduck.mail.RecordingScheduler
 import org.ntust.app.tigerduck.mail.store.MailCache
 import org.ntust.app.tigerduck.mail.sync.ExactAlarmAccess
 import org.ntust.app.tigerduck.mail.testApplicationScope
+import org.ntust.app.tigerduck.notification.SystemPermissions
 import java.io.File
 import org.ntust.app.tigerduck.mail.schoolMailSite
 
@@ -43,15 +45,19 @@ class SchoolMailSettingsViewModelTest {
      * construction, to seed `signedIn`, so a test that wants a signed-in
      * account has to sign in before the view model exists.
      */
-    private fun viewModel(): SchoolMailSettingsViewModel {
-        val account = MailAccount(
-            credentials, state, server.factory(), cache, demo, schoolMailSite(),
-            RecordingScheduler(), RecordingNotifier(), testApplicationScope(),
-        )
+    private fun viewModel(account: MailAccount = account()): SchoolMailSettingsViewModel {
         // The same TestDispatcher backs Dispatchers.Main and the injected @IoDispatcher, so the
-        // cache walk stays synchronous under the test.
-        return SchoolMailSettingsViewModel(state, scheduler, ExactAlarmAccess { false }, cache, main.dispatcher, account)
+        // cache walk stays synchronous under the test. The permission check reads the stub SDK
+        // level, which predates the notification permission, so it never touches the context.
+        return SchoolMailSettingsViewModel(
+            state, scheduler, ExactAlarmAccess { false }, cache, main.dispatcher, account, SystemPermissions(Application()),
+        )
     }
+
+    private fun account() = MailAccount(
+        credentials, state, server.factory(), cache, demo, schoolMailSite(),
+        RecordingScheduler(), RecordingNotifier(), testApplicationScope(),
+    )
 
     private fun signIn(studentId: String, password: String) = runBlocking {
         val account = MailAccount(
@@ -104,6 +110,17 @@ class SchoolMailSettingsViewModelTest {
     fun `signed in, the notification row and the display name field are enabled`() {
         signIn("b10000001", "pw")
         assertTrue(viewModel().signedIn.value)
+    }
+
+    @Test
+    fun `the new-mail switch works only while signed in with a password the server accepts`() {
+        assertFalse("signed out, no check would run", viewModel().notificationsToggleEnabled.value)
+        signIn("b10000001", "pw")
+        val account = account()
+        val vm = viewModel(account)
+        assertTrue(vm.notificationsToggleEnabled.value)
+        account.onAuthFailure()
+        assertFalse("a rejected password is never sent again, so no check would run", vm.notificationsToggleEnabled.value)
     }
 
     @Test

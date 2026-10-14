@@ -5,8 +5,11 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -16,6 +19,8 @@ import org.ntust.app.tigerduck.mail.store.MailCache
 import org.ntust.app.tigerduck.mail.store.MailStateStore
 import org.ntust.app.tigerduck.mail.sync.ExactAlarmAccess
 import org.ntust.app.tigerduck.mail.sync.MailBackgroundScheduler
+import org.ntust.app.tigerduck.notification.AppPermission
+import org.ntust.app.tigerduck.notification.SystemPermissions
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -41,6 +46,7 @@ class SchoolMailSettingsViewModel @Inject constructor(
     private val cache: MailCache,
     @IoDispatcher private val io: CoroutineDispatcher,
     account: MailAccount,
+    val systemPermissions: SystemPermissions,
 ) : ViewModel() {
     /**
      * The same flag the mail page and the Settings account row read
@@ -52,11 +58,22 @@ class SchoolMailSettingsViewModel @Inject constructor(
      */
     val signedIn: StateFlow<Boolean> = account.signedIn
 
+    /**
+     * Whether the new-mail switch can do anything. Signed out there is nothing to check, and
+     * after the server rejected the password no check runs either (spec §7.4: it is never sent
+     * again), so the switch would look on and do nothing. The stored value still shows.
+     */
+    val notificationsToggleEnabled: StateFlow<Boolean> =
+        combine(account.signedIn, account.authFailed) { signedIn, authFailed -> signedIn && !authFailed }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, account.signedIn.value && !account.authFailed.value)
+
     data class UiState(
         val notificationsEnabled: Boolean,
         val displayName: String,
         val canExactAlarm: Boolean,
         val diagnostics: List<String>,
+        /** The system blocks this app's notifications, so new mail could not be announced. */
+        val notificationsDenied: Boolean,
     )
 
     private val _ui = MutableStateFlow(read())
@@ -70,7 +87,7 @@ class SchoolMailSettingsViewModel @Inject constructor(
     private val _cacheBytes = MutableStateFlow<Long?>(null)
     val cacheBytes: StateFlow<Long?> = _cacheBytes.asStateFlow()
 
-    /** Re-read on resume: the exact-alarm grant and the diagnostics change behind the screen. */
+    /** Re-read on resume: the exact-alarm and notification grants and the diagnostics change behind the screen. */
     fun refresh() {
         _ui.value = read().copy(displayName = _ui.value.displayName)
     }
@@ -111,6 +128,7 @@ class SchoolMailSettingsViewModel @Inject constructor(
         displayName = state.displayName.orEmpty(),
         canExactAlarm = exactAlarms.canScheduleExactAlarms(),
         diagnostics = state.diagnostics.mapNotNull(MailDiagnostics::format),
+        notificationsDenied = systemPermissions.state(AppPermission.NOTIFICATIONS).let { it.applicable && !it.granted },
     )
 
     private companion object {
