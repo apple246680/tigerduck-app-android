@@ -58,4 +58,16 @@ class ReenableCoursesTest {
 
         assertFalse(diff.differs)
     }
+
+    @Test
+    fun `Use Server hides what only this phone lists, in every term both sides list`() {
+        val hides = coursesUseServerHides(
+            serverCourses = listOf(row("1141", "A"), row("1142", "C"), row("1142", "B", moodleId = "1151B")),
+            cached = mapOf("1132" to listOf("Z"), "1141" to listOf("A", "X"), "1142" to listOf("B", "C")),
+        )
+
+        // 1132 has no server rows: left to the reconcile. 1142's B row is
+        // misfiled, so the server does not list B there.
+        assertEquals(mapOf("1141" to setOf("X"), "1142" to setOf("B")), hides)
+    }
 }

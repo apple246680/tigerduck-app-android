@@ -37,7 +37,6 @@ import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.debug.DebugFixtureStore
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.demo.DemoAccount
-import org.ntust.app.tigerduck.network.CourseService
 import org.ntust.app.tigerduck.network.SemesterCatalog
 import org.ntust.app.tigerduck.push.BackendSyncResult
 import org.ntust.app.tigerduck.push.PushApiClient
@@ -67,7 +66,6 @@ class SettingsViewModel @Inject constructor(
     private val pushRegistration: PushRegistrationService,
     private val pushApiClient: PushApiClient,
     private val syncApiClient: SyncApiClient,
-    private val courseService: CourseService,
     private val semesterCatalog: SemesterCatalog,
     private val dataCache: DataCache,
     private val debugFixtures: DebugFixtureStore,
@@ -321,22 +319,19 @@ class SettingsViewModel @Inject constructor(
             }
             val result = runCatching { syncApiClient.fetchFullSync() }.getOrNull()
             if (result != null) {
-                if ("courses" in conflict.categories && result.serverCourseNos.isNotEmpty()) {
-                    val semester = courseService.currentSemesterCode()
-                    val serverHere = result.serverCourses
-                        .filter { it.semester == semester }
-                        .map { it.courseNo }
-                        .toSet()
-                        .ifEmpty { result.serverCourseNos }
-                    val localCourses = dataCache.loadCourses()
-                    val missing = localCourses.map { it.courseNo }.toSet() - serverHere
-                    if (missing.isNotEmpty()) {
+                if ("courses" in conflict.categories) {
+                    // Every term the check compared — see coursesUseServerHides.
+                    val terms = (result.serverCourses.map { it.semester } + semesterCatalog.availableSemesters())
+                        .filterTo(sortedSetOf()) { it.isNotBlank() }
+                    val cached = terms.associateWith { term -> dataCache.loadCourses(term).map { it.courseNo } }
+                    val hides = coursesUseServerHides(result.serverCourses, cached)
+                    if (hides.isNotEmpty()) {
                         // Scoped, and added to the store rather than
                         // replacing it: an unscoped overwrite dropped every
                         // other term's tombstones on the floor.
                         var deleted = dataCache.loadDeletedCourseNos()
-                        for (no in missing) {
-                            deleted = CourseTombstoneKeys.hide(no, semester, deleted)
+                        for ((semester, nos) in hides) {
+                            for (no in nos) deleted = CourseTombstoneKeys.hide(no, semester, deleted)
                         }
                         dataCache.saveDeletedCourseNos(deleted)
                     }

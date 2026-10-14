@@ -40,3 +40,25 @@ internal fun courseListDifference(
     }
     return CourseListDifference(localOnly, serverOnly)
 }
+
+/**
+ * What Use Server hides for the courses re-enable check, by term: in each
+ * term [cached] names where both this phone and the server list courses, the
+ * ones only this phone lists. The terms compared are the check's
+ * ([courseListDifference]); a term only one side lists is left to the
+ * reconcile, which merges the server's down. It used to act on the current
+ * term alone, while the check compares every term.
+ */
+internal fun coursesUseServerHides(
+    serverCourses: List<ServerCourse>,
+    cached: Map<String, Collection<String>>,
+): Map<String, Set<String>> = buildMap {
+    for ((semester, courseNos) in cached.toSortedMap()) {
+        val serverNos = serverCourses
+            .filter { it.semester == semester && CourseSyncReconciler.isFiled(it.moodleId, it.courseNo, semester) }
+            .mapTo(mutableSetOf()) { it.courseNo }
+        val localNos = courseNos.toSet()
+        if (serverNos.isEmpty() || localNos.isEmpty()) continue
+        (localNos - serverNos).takeIf { it.isNotEmpty() }?.let { put(semester, it) }
+    }
+}
