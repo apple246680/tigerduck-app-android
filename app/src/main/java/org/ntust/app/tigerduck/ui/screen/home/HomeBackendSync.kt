@@ -141,14 +141,16 @@ class HomeBackendSync @Inject constructor(
         try {
             if (BuildConfig.DEBUG) ServerFailureSimulator.check(ServerKind.BACKEND)
             val account = authService.storedStudentId
-            // The first-sync mark upload is pinned to it: a sign-out and
-            // another sign-in meanwhile must not send these marks as theirs.
-            val signIn = authTokenManager.signInGeneration
             val generation = courseIgnoreSync.currentGeneration()
             // Unsent course-ignore changes and marks go first, so the snapshot has them.
             courseIgnoreSync.retryPending()
             unsentMarks.retry()
-            val result = syncApiClient.fetchFullSync()
+            // The first-sync mark upload is pinned to the sign-in read here:
+            // a sign-out and another sign-in meanwhile must not send these
+            // marks as theirs.
+            val (result, signIn) = fetchPinned({ authTokenManager.signInGeneration }) {
+                syncApiClient.fetchFullSync()
+            }
             // One reading of the switches, for the steps below and for what
             // this sync records as synced: one flipped meanwhile counts from the next.
             val switchedOn = categoriesSwitchedOn(prefs)
@@ -483,6 +485,23 @@ class HomeBackendSync @Inject constructor(
         const val SYNC_PREFS = "tigerduck_sync"
         const val KEY_LAST_COURSE_SYNC_AT = "last_course_sync_at"
     }
+}
+
+/** A full sync's snapshot, and the sign-in its first-sync mark upload is pinned to. */
+internal data class PinnedSnapshot(val result: BackendSyncResult, val signIn: Int)
+
+/**
+ * [fetch]es a full sync's snapshot, with the sign-in
+ * (`AuthTokenManager.signInGeneration`) read before it: read after, a
+ * sign-out and another sign-in while the fetch was out would pin this
+ * account's first-sync mark upload to the next account's session.
+ */
+internal suspend fun fetchPinned(
+    signInGeneration: () -> Int,
+    fetch: suspend () -> BackendSyncResult,
+): PinnedSnapshot {
+    val signIn = signInGeneration()
+    return PinnedSnapshot(fetch(), signIn)
 }
 
 /**
