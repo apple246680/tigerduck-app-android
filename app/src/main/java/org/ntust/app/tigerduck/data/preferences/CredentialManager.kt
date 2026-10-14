@@ -14,8 +14,14 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class CredentialManager @Inject constructor(@ApplicationContext context: Context) :
-    LibraryCredentialStore, MailCredentialStore {
+class CredentialManager internal constructor(
+    context: Context?,
+    /** Prefs a test hands in, in place of the encrypted ones the app opens from [context]. */
+    givenPrefs: SharedPreferences?,
+) : LibraryCredentialStore, MailCredentialStore {
+
+    @Inject
+    constructor(@ApplicationContext context: Context) : this(context, null)
 
     var isEncrypted: Boolean = false
         private set
@@ -29,7 +35,7 @@ class CredentialManager @Inject constructor(@ApplicationContext context: Context
     var wasRecreatedDueToCorruption: Boolean = false
         private set
 
-    private val prefs: SharedPreferences = createEncryptedPrefs(context)
+    private val prefs: SharedPreferences = givenPrefs ?: createEncryptedPrefs(requireNotNull(context))
 
     private fun createEncryptedPrefs(context: Context): SharedPreferences {
         fun attempt(): SharedPreferences {

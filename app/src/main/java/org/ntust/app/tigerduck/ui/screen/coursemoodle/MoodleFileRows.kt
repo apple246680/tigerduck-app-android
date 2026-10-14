@@ -93,6 +93,11 @@ class MoodleFileOpener internal constructor(
     private val context: Context,
     private val scope: CoroutineScope,
     private val browserPreference: () -> String,
+    /** Hands a copy to another app, or with share to the share sheet; tests stand in for it. */
+    private val present: (copy: File, file: MoodleFile, share: Boolean) -> Unit = { copy, file, share ->
+        // The system's chooser tells the reader itself when no app takes the file.
+        launchMoodleFile(context, copy, moodleFileType(file.mimeType, file.name), share = share)
+    },
 ) {
     internal var isOnScreen = false
 
@@ -108,7 +113,7 @@ class MoodleFileOpener internal constructor(
         when (state) {
             is MoodleDownloadState.Downloading -> store.cancelDownload(ref)
             is MoodleDownloadState.Downloaded -> {
-                show(state.file, ref.file, share = false)
+                present(state.file, ref.file, false)
                 opened()
             }
             else -> scope.launch {
@@ -116,7 +121,7 @@ class MoodleFileOpener internal constructor(
                 if (!isLatest(action)) return@launch
                 when (result) {
                     is MoodleAttachment.Local -> {
-                        show(result.file, ref.file, share = false)
+                        present(result.file, ref.file, false)
                         opened()
                     }
                     is MoodleAttachment.Link -> {
@@ -135,7 +140,7 @@ class MoodleFileOpener internal constructor(
         val action = ++latestAction
         scope.launch {
             when (val result = store.download(ref)) {
-                is MoodleAttachment.Local -> if (isLatest(action)) show(result.file, ref.file, share = true)
+                is MoodleAttachment.Local -> if (isLatest(action)) present(result.file, ref.file, true)
                 is MoodleAttachment.Link -> if (isLatest(action)) shareMoodleLink(context, ref.file.name, result.url)
                 is MoodleAttachment.Failed -> if (isLatest(action)) toast(result.error)
                 MoodleAttachment.Dropped -> Unit
@@ -150,11 +155,6 @@ class MoodleFileOpener internal constructor(
 
     private fun isLatest(action: Int) = isOnScreen && latestAction == action
 
-    private fun show(copy: File, file: MoodleFile, share: Boolean) {
-        // The system's chooser tells the reader itself when no app takes the file.
-        launchMoodleFile(context, copy, moodleFileType(file.mimeType, file.name), share = share)
-    }
-
     private fun toast(error: Throwable) {
         Toast.makeText(context, moodleErrorText(context.resources, error), Toast.LENGTH_SHORT).show()
     }
@@ -166,7 +166,7 @@ internal fun rememberMoodleFileOpener(store: MoodleCourseStore, browserPreferenc
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val latestPreference by rememberUpdatedState(browserPreference)
-    val opener = remember(store, context, scope) { MoodleFileOpener(store, context, scope) { latestPreference } }
+    val opener = remember(store, context, scope) { MoodleFileOpener(store, context, scope, browserPreference = { latestPreference }) }
     LifecycleResumeEffect(opener) {
         opener.isOnScreen = true
         onPauseOrDispose { opener.isOnScreen = false }
