@@ -26,7 +26,6 @@ import org.ntust.app.tigerduck.data.CourseColorStore
 import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
-import org.ntust.app.tigerduck.notification.AssignmentNotificationScheduler
 import org.ntust.app.tigerduck.shared.LibraryService
 import org.ntust.app.tigerduck.analytics.AnalyticsLogger
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
@@ -55,7 +54,6 @@ class SettingsViewModel @Inject constructor(
     private val libraryService: LibraryService,
     private val credentials: CredentialManager,
     val prefs: AppPreferences,
-    private val notificationScheduler: AssignmentNotificationScheduler,
     private val courseColorStore: CourseColorStore,
     private val wearBridge: WearScheduleBridge,
     val identity: PushIdentity,
@@ -509,9 +507,10 @@ class SettingsViewModel @Inject constructor(
         // Persisted-data clearing now lives in AuthService.logout() on an
         // application-scoped coroutine, so it survives ViewModel destruction
         // when the user navigates away from Settings immediately after logout.
+        // The reminders, notifications, Live Update and background sync follow
+        // the sign-out itself: AccountSessionEffects.
         authService.logout()
         _isLibraryLoggedIn.value = false
-        notificationScheduler.cancelAllTracked()
     }
 
     fun loginLibrary(username: String, password: String) {
