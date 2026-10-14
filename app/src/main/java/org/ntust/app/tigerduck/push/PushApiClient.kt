@@ -18,6 +18,7 @@ import org.ntust.app.tigerduck.shared.Course
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -122,7 +123,17 @@ class PushApiClient @Inject constructor(
             .delete()
             .header("Authorization", "Bearer $accessToken")
             .build()
-        client.newCall(request).execute().use { response -> response.code }
+        deleteClient.newCall(request).execute().use { response -> response.code }
+    }
+
+    // A sign-in of the same student waits for the sign-out's unregister, so its
+    // DELETE gives up within a bound; and it is retried by its own debt, never
+    // sent again by OkHttp on its own.
+    internal val deleteClient: OkHttpClient by lazy {
+        client.newBuilder()
+            .retryOnConnectionFailure(false)
+            .callTimeout(DELETE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .build()
     }
 
     /** PATCH the user-facing server-push opt-out for this device. */
@@ -451,3 +462,5 @@ internal fun preferencesPatchBlockedOnFdroid(
         request.syncLiveActivity != null
     return changesAPreference && flavor.equals("fdroid", ignoreCase = true)
 }
+
+private const val DELETE_TIMEOUT_SECONDS = 20L

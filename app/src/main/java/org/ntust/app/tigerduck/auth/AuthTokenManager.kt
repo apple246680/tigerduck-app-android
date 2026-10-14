@@ -8,6 +8,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -43,6 +44,8 @@ class AuthTokenManager(
     private val now: () -> Long = System::currentTimeMillis,
     // The unregister a sign-out owes, which a login waits for and then ends; see [login].
     private val owedUnregister: OwedUnregister? = null,
+    // How long a departing refresh waits for a session refresh of its token on its way.
+    private val departingWaitMs: Long = REFRESH_TIMEOUT_SECONDS * 1000,
 ) {
     private val refreshMutex = Mutex()
     private val jsonType = "application/json".toMediaType()
@@ -235,7 +238,12 @@ class AuthTokenManager(
         // before the sign-out: its pair is waited for and taken rather than the
         // token sent once more. That refresh belongs to the departing account,
         // so it signs nobody in and never waits on the caller.
-        synchronized(signInLock) { refreshOnItsWay?.takeIf { it.first == token }?.second }?.await()
+        val onItsWay = synchronized(signInLock) { refreshOnItsWay?.takeIf { it.first == token }?.second }
+        // Bounded, as whoever waits on the unregister waits on this: past it the
+        // refresh is left for a later try rather than the token sent alongside.
+        if (onItsWay != null && withTimeoutOrNull(departingWaitMs) { onItsWay.await() } == null) {
+            return DepartingRefresh.Unavailable
+        }
         return withContext(Dispatchers.IO) {
             // To the backend that issued the session, whatever the endpoint setting says now.
             val base = departing.baseUrl
@@ -293,7 +301,7 @@ class AuthTokenManager(
         moodlePrivateToken: String?,
         platform: String = "android",
         signInGeneration: Int = this.signInGeneration,
-    ): LoginResult = signingIn {
+    ): LoginResult = signingIn(studentId) {
         if (moodleToken.isBlank()) throw AuthException("no Moodle token")
         val json = JSONObject().apply {
             put("student_id", studentId)
@@ -335,10 +343,11 @@ class AuthTokenManager(
      * unregister a sign-out owes, which a login that lands ends: see
      * [OwedUnregister.signingIn].
      */
-    private suspend fun <T> signingIn(login: suspend CoroutineScope.() -> T): T = withContext(Dispatchers.IO) {
-        val owed = owedUnregister ?: return@withContext login()
-        owed.signingIn { login() }
-    }
+    private suspend fun <T> signingIn(studentId: String, login: suspend CoroutineScope.() -> T): T =
+        withContext(Dispatchers.IO) {
+            val owed = owedUnregister ?: return@withContext login()
+            owed.signingIn(studentId) { login() }
+        }
 
     /**
      * Drops the pair, and keeps a login or refresh reply still on its way from

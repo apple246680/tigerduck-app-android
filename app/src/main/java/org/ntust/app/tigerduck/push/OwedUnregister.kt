@@ -21,18 +21,34 @@ class OwedUnregister internal constructor(internal val store: PendingUnregisterS
     internal val mutex = Mutex()
 
     /**
-     * Runs a backend sign-in's [login] under the lock, and ends the debt once it signed in.
+     * Runs a backend sign-in of [studentId]'s [login], and ends the debt once it signed in.
      * Logging in moves the device to the account that signed in: the server deletes the device's
      * rows under every other account, and takes up its row again for the same one, which an
-     * unregister sent after would delete, revoking the new session. Under the lock, no unregister
-     * is on its way while the login is. A login that fails leaves the debt: the server moved
-     * nothing, as far as this phone can tell.
+     * unregister sent after would delete, revoking the new session. So the same student's login
+     * runs under the lock, with no unregister on its way while it is. Another student's has
+     * nothing to wait for: the server ends the departing account's row itself, and an unregister
+     * still on its way finds it gone. A debt from before the student was recorded is taken for
+     * the same student's. A login that fails leaves the debt: the server moved nothing, as far as
+     * this phone can tell.
      */
-    suspend fun <T> signingIn(login: suspend () -> T): T = mutex.withLock {
-        val result = login()
+    suspend fun <T> signingIn(studentId: String, login: suspend () -> T): T {
+        val owedBy = runCatching { store.load() }.getOrNull()?.session?.studentId
+        if (owedBy != null && owedBy != studentId) {
+            val result = login()
+            // Not under the lock: an unregister on its way only finds the row gone.
+            clear()
+            return result
+        }
+        return mutex.withLock {
+            val result = login()
+            clear()
+            result
+        }
+    }
+
+    private fun clear() {
         runCatching { store.clear() }
             .onFailure { Log.w(TAG, "owed unregister not cleared after a sign-in: ${it.logSummary()}") }
-        result
     }
 
     private companion object {

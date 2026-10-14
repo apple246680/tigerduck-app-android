@@ -264,6 +264,14 @@ class AutomaticSignInTest {
         assertEquals(listOf(LOGIN), backend.endpoints())
     }
 
+    @Test
+    fun `the unregister's DELETE gives up within a bound and is never sent again by OkHttp on its own`() {
+        val client = PushApiClient(backend.client, prefs, manager()).deleteClient
+
+        assertFalse(client.retryOnConnectionFailure)
+        assertEquals(20_000, client.callTimeoutMillis)
+    }
+
     // Signing in again, and the pause after a failure
 
     @Test

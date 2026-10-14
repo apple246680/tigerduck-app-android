@@ -6,6 +6,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.json.JSONException
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 import org.ntust.app.tigerduck.auth.DepartingRefresh
@@ -81,7 +82,7 @@ class DepartingDeviceUnregisterTest {
     )
 
     private fun session(access: String, refresh: String, expiresAt: Long) =
-        DepartingSession(access, refresh, expiresAt, BACKEND)
+        DepartingSession(access, refresh, expiresAt, BACKEND, STUDENT)
 
     private fun refreshed(access: String, refresh: String) =
         DepartingRefresh.Refreshed(session(access, refresh, now + 900_000))
@@ -225,7 +226,7 @@ class DepartingDeviceUnregisterTest {
         val events = mutableListOf<String>()
         val sending = async { unregister().send().also { events += "unregister $it" } }
         runCurrent()
-        val signingIn = async { owed.signingIn { events += "login" } }
+        val signingIn = async { owed.signingIn(STUDENT) { events += "login" } }
         runCurrent()
         assertEquals("the login waits for the DELETE", emptyList<String>(), events)
 
@@ -238,10 +239,41 @@ class DepartingDeviceUnregisterTest {
     }
 
     @Test
+    fun `another student's sign-in does not wait for the unregister on its way, and ends the debt`() = runTest {
+        // Logging in, the backend deletes this device's rows under every other account itself.
+        owe()
+        val held = CompletableDeferred<Int>().also { heldDelete = it }
+        val sending = async { unregister().send() }
+        runCurrent()
+
+        owed.signingIn("B11300002") { }
+
+        assertNull(store.pending)
+        held.complete(503)
+        sending.await()
+        assertNull("the unregister on its way does not bring the debt back", store.pending)
+    }
+
+    @Test
+    fun `a debt from before the student was recorded makes any sign-in wait`() = runTest {
+        unregister().owe("device-1", DepartingSession("access-1", "refresh-1", now + 600_000, BACKEND, studentId = null))
+        val held = CompletableDeferred<Int>().also { heldDelete = it }
+        val sending = async { unregister().send() }
+        runCurrent()
+        val signingIn = async { owed.signingIn("B11300002") { "login" } }
+        runCurrent()
+        assertFalse(signingIn.isCompleted)
+
+        held.complete(204)
+        sending.await()
+        assertEquals("login", signingIn.await())
+    }
+
+    @Test
     fun `a sign-in that fails leaves the debt`() = runTest {
         owe()
 
-        runCatching { owed.signingIn { throw IllegalStateException("login refused") } }
+        runCatching { owed.signingIn(STUDENT) { throw IllegalStateException("login refused") } }
 
         assertEquals("device-1", store.pending?.deviceId)
     }
@@ -297,6 +329,7 @@ class DepartingDeviceUnregisterTest {
     }
 
     private companion object {
+        const val STUDENT = "B11300001"
         const val BACKEND = "https://backend.example/v3"
     }
 }

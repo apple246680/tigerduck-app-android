@@ -570,6 +570,31 @@ class AuthTokenManagerRefreshTest {
     }
 
     @Test
+    fun `a departing refresh waits for the session refresh on its way only so long`() = runBlocking {
+        val manager = manager(Reply.Pair("access-2", "refresh-2"), departingWaitMs = 200)
+        val sent = CountDownLatch(1)
+        val answer = CountDownLatch(1)
+        var departing: DepartingSession? = null
+        onRefreshSent = {
+            departing = manager.departingSession()
+            manager.logout()
+            onRefreshSent = {}
+            sent.countDown()
+            answer.await(5, TimeUnit.SECONDS)
+        }
+        val sessionRefresh = async(Dispatchers.IO) { manager.authHeader() }
+        assertTrue(sent.await(5, TimeUnit.SECONDS))
+
+        // Left for a later try, rather than holding up whoever waits on the unregister.
+        assertEquals(DepartingRefresh.Unavailable, manager.refreshDeparting(departing!!))
+        assertEquals(listOf("refresh-1"), sentRefreshTokens)
+
+        answer.countDown()
+        sessionRefresh.await()
+        Unit
+    }
+
+    @Test
     fun `a token the session sent twice without a reply is not sent a third time for the unregister`() = runTest {
         val manager = manager(Reply.Lost, Reply.Lost, Reply.Pair("access-3", "refresh-3"))
         val departing = manager.departingSession()!!
@@ -582,12 +607,13 @@ class AuthTokenManagerRefreshTest {
         assertEquals(listOf("refresh-1", "refresh-1"), sentRefreshTokens)
     }
 
-    private fun manager(vararg replies: Reply, reloginSucceeds: Boolean = false) = AuthTokenManager(
+    private fun manager(vararg replies: Reply, reloginSucceeds: Boolean = false, departingWaitMs: Long = 20_000) = AuthTokenManager(
         tokens = tokens,
         httpClient = backend(*replies),
         prefs = AppPreferences(context),
         deviceUuid = "device-1",
         now = { clock },
+        departingWaitMs = departingWaitMs,
     ).apply {
         // Stands in for AuthService's automatic sign-in, which signs in through login().
         signInWithStoredAccount = {
