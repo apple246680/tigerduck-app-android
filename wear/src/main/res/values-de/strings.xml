@@ -662,6 +662,7 @@
     <string name="refreshing_message">Wird aktualisiert … einen Moment</string>
     <string name="school_mail_account_title">Uni-Mail</string>
     <string name="school_mail_add_attachment">Datei anhängen</string>
+    <string name="school_mail_attachment_share">Teilen oder sichern</string>
     <string name="school_mail_attachments">Anhänge</string>
     <string name="school_mail_auth_failed_banner">Anmeldung bei Uni-Mail fehlgeschlagen. Bitte erneut anmelden.</string>
     <string name="school_mail_auth_failed_notification_text">Öffne TigerDuck, um dich erneut anzumelden.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Cc/Bcc hinzufügen</string>
     <string name="school_mail_sign_in_note">Matrikelnummer und Passwort entsprechen denen des Hochschulsystems. TigerDuck speichert dieses Passwort nur verschlüsselt auf diesem Gerät und lädt es niemals hoch.</string>
     <string name="school_mail_sign_in_prompt_title">Bei Uni-Mail anmelden</string>
+    <string name="school_mail_source_failed">Der Quelltext konnte nicht geladen werden.</string>
     <string name="school_mail_subject">Betreff</string>
     <string name="school_mail_to">An</string>
     <string name="school_mail_too_large">Anhänge überschreiten das Limit von 50 MB</string>

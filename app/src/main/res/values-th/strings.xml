@@ -662,6 +662,7 @@
     <string name="refreshing_message">กำลังรีเฟรช… โปรดรอสักครู่</string>
     <string name="school_mail_account_title">อีเมลมหาวิทยาลัย</string>
     <string name="school_mail_add_attachment">แนบไฟล์</string>
+    <string name="school_mail_attachment_share">แชร์หรือบันทึก</string>
     <string name="school_mail_attachments">ไฟล์แนบ</string>
     <string name="school_mail_auth_failed_banner">เข้าสู่ระบบอีเมลมหาวิทยาลัยไม่สำเร็จ เข้าสู่ระบบอีกครั้ง</string>
     <string name="school_mail_auth_failed_notification_text">เปิด TigerDuck เพื่อเข้าสู่ระบบอีกครั้ง</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">เพิ่ม Cc/Bcc</string>
     <string name="school_mail_sign_in_note">รหัสนักศึกษาและรหัสผ่านควรตรงกับระบบของมหาวิทยาลัย TigerDuck จะจัดเก็บรหัสผ่านนี้แบบเข้ารหัสไว้ในอุปกรณ์นี้เท่านั้น ไม่อัปโหลดขึ้นที่ใดทั้งสิ้น</string>
     <string name="school_mail_sign_in_prompt_title">เข้าสู่ระบบอีเมลมหาวิทยาลัย</string>
+    <string name="school_mail_source_failed">โหลดซอร์สโค้ดไม่สำเร็จ</string>
     <string name="school_mail_subject">หัวเรื่อง</string>
     <string name="school_mail_to">ถึง</string>
     <string name="school_mail_too_large">ไฟล์แนบเกินขีดจำกัด 50 MB</string>

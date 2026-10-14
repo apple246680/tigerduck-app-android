@@ -662,6 +662,7 @@
     <string name="refreshing_message">রিফ্রেশ হচ্ছে… একটু অপেক্ষা করুন</string>
     <string name="school_mail_account_title">স্কুল মেইল</string>
     <string name="school_mail_add_attachment">ফাইল যুক্ত করুন</string>
+    <string name="school_mail_attachment_share">শেয়ার করুন বা সংরক্ষণ করুন</string>
     <string name="school_mail_attachments">অ্যাটাচমেন্ট</string>
     <string name="school_mail_auth_failed_banner">স্কুল মেইলে সাইন ইন ব্যর্থ হয়েছে। আবার সাইন ইন করুন।</string>
     <string name="school_mail_auth_failed_notification_text">আবার সাইন ইন করতে TigerDuck খুলুন।</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Cc/Bcc যোগ করুন</string>
     <string name="school_mail_sign_in_note">আপনার ID এবং পাসওয়ার্ড একাডেমিক সিস্টেমের মতোই হওয়া উচিত। TigerDuck এই পাসওয়ার্ডটি শুধু এই ডিভাইসে এনক্রিপ্ট করে রাখে, কখনো আপলোড করে না।</string>
     <string name="school_mail_sign_in_prompt_title">স্কুল মেইলে সাইন ইন করুন</string>
+    <string name="school_mail_source_failed">সোর্স লোড করা যায়নি।</string>
     <string name="school_mail_subject">বিষয়</string>
     <string name="school_mail_to">প্রতি</string>
     <string name="school_mail_too_large">অ্যাটাচমেন্ট 50 MB সীমার বেশি</string>

@@ -662,6 +662,7 @@
     <string name="refreshing_message">Yenileniyor… lütfen bekleyin</string>
     <string name="school_mail_account_title">Okul postası</string>
     <string name="school_mail_add_attachment">Dosya ekle</string>
+    <string name="school_mail_attachment_share">Paylaş veya Kaydet</string>
     <string name="school_mail_attachments">Ekler</string>
     <string name="school_mail_auth_failed_banner">Okul postasına giriş başarısız oldu. Yeniden giriş yapın.</string>
     <string name="school_mail_auth_failed_notification_text">Yeniden giriş yapmak için TigerDuck uygulamasını açın.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Cc/Bcc ekle</string>
     <string name="school_mail_sign_in_note">Öğrenci numaranız ve şifreniz okul sistemindekiyle aynı olmalıdır. TigerDuck uygulaması bu şifreyi yalnızca bu cihazda şifreli olarak saklar ve hiçbir zaman yüklemez.</string>
     <string name="school_mail_sign_in_prompt_title">Okul postasına giriş yapın</string>
+    <string name="school_mail_source_failed">Kaynak yüklenemedi.</string>
     <string name="school_mail_subject">Konu</string>
     <string name="school_mail_to">Kime</string>
     <string name="school_mail_too_large">Ekler 50 MB sınırını aşıyor</string>

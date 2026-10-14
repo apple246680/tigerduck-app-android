@@ -662,6 +662,7 @@
     <string name="refreshing_message">Atjauno… pagaidiet</string>
     <string name="school_mail_account_title">Skolas pasts</string>
     <string name="school_mail_add_attachment">Pievienot failu</string>
+    <string name="school_mail_attachment_share">Kopīgot vai saglabāt</string>
     <string name="school_mail_attachments">Pielikumi</string>
     <string name="school_mail_auth_failed_banner">Pieteikšanās skolas pastā neizdevās. Piesakieties vēlreiz.</string>
     <string name="school_mail_auth_failed_notification_text">Atveriet TigerDuck un piesakieties vēlreiz.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Pievienot Cc/Bcc</string>
     <string name="school_mail_sign_in_note">Jūsu studenta ID un parolei jāsakrīt ar skolas sistēmā izmantoto. TigerDuck šo paroli glabā tikai šifrētu šajā ierīcē un nekad neaugšupielādē.</string>
     <string name="school_mail_sign_in_prompt_title">Piesakieties skolas pastā</string>
+    <string name="school_mail_source_failed">Neizdevās ielādēt pirmkodu.</string>
     <string name="school_mail_subject">Tēma</string>
     <string name="school_mail_to">Kam</string>
     <string name="school_mail_too_large">Pielikumi pārsniedz 50 MB limitu</string>

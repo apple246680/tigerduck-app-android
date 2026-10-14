@@ -662,6 +662,7 @@
     <string name="refreshing_message">Atnaujinama… palaukite</string>
     <string name="school_mail_account_title">Mokyklos paštas</string>
     <string name="school_mail_add_attachment">Pridėti failą</string>
+    <string name="school_mail_attachment_share">Bendrinti arba išsaugoti</string>
     <string name="school_mail_attachments">Priedai</string>
     <string name="school_mail_auth_failed_banner">Prisijungimas prie mokyklos pašto nepavyko. Prisijunkite iš naujo.</string>
     <string name="school_mail_auth_failed_notification_text">Atidarykite TigerDuck ir prisijunkite iš naujo.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Pridėti Cc/Bcc</string>
     <string name="school_mail_sign_in_note">Jūsų studento ID ir slaptažodis turėtų būti tokie patys kaip mokyklos sistemoje. TigerDuck šį slaptažodį saugo tik užšifruotą šiame įrenginyje ir niekada neįkelia į serverį.</string>
     <string name="school_mail_sign_in_prompt_title">Prisijunkite prie mokyklos pašto</string>
+    <string name="school_mail_source_failed">Nepavyko įkelti pirminio kodo.</string>
     <string name="school_mail_subject">Tema</string>
     <string name="school_mail_to">Kam</string>
     <string name="school_mail_too_large">Priedai viršija 50 MB ribą</string>

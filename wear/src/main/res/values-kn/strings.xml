@@ -662,6 +662,7 @@
     <string name="refreshing_message">ರಿಫ್ರೆಶ್ ಆಗುತ್ತಿದೆ… ಸ್ವಲ್ಪ ನಿರೀಕ್ಷಿಸಿ</string>
     <string name="school_mail_account_title">ಶಾಲಾ ಇಮೇಲ್</string>
     <string name="school_mail_add_attachment">ಫೈಲ್ ಲಗತ್ತಿಸಿ</string>
+    <string name="school_mail_attachment_share">ಹಂಚಿಕೊಳ್ಳಿ ಅಥವಾ ಉಳಿಸಿ</string>
     <string name="school_mail_attachments">ಲಗತ್ತುಗಳು</string>
     <string name="school_mail_auth_failed_banner">ಶಾಲಾ ಇಮೇಲ್ ಸೈನ್ ಇನ್ ವಿಫಲವಾಯಿತು. ಮತ್ತೆ ಲಾಗಿನ್ ಮಾಡಿ.</string>
     <string name="school_mail_auth_failed_notification_text">ಮತ್ತೆ ಲಾಗಿನ್ ಮಾಡಲು TigerDuck ತೆರೆಯಿರಿ.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Cc/Bcc ಸೇರಿಸಿ</string>
     <string name="school_mail_sign_in_note">ನಿಮ್ಮ ID ಮತ್ತು ಪಾಸ್‌ವರ್ಡ್ ಶಾಲಾ ವ್ಯವಸ್ಥೆಯದ್ದೇ ಆಗಿರಬೇಕು. TigerDuck ಈ ಪಾಸ್‌ವರ್ಡ್ ಅನ್ನು ಈ ಸಾಧನದಲ್ಲಿ ಎನ್‌ಕ್ರಿಪ್ಟ್ ಮಾಡಿ ಮಾತ್ರ ಸಂಗ್ರಹಿಸುತ್ತದೆ, ಎಂದಿಗೂ ಅಪ್‌ಲೋಡ್ ಮಾಡುವುದಿಲ್ಲ.</string>
     <string name="school_mail_sign_in_prompt_title">ಶಾಲಾ ಇಮೇಲ್‌ಗೆ ಸೈನ್ ಇನ್ ಮಾಡಿ</string>
+    <string name="school_mail_source_failed">ಮೂಲವನ್ನು ಲೋಡ್ ಮಾಡಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ.</string>
     <string name="school_mail_subject">ವಿಷಯ</string>
     <string name="school_mail_to">ಸ್ವೀಕರಿಸುವವರು</string>
     <string name="school_mail_too_large">ಲಗತ್ತುಗಳು 50 MB ಮಿತಿಯನ್ನು ಮೀರಿವೆ</string>

@@ -662,6 +662,7 @@
     <string name="refreshing_message">ریفریش ہو رہا ہے… تھوڑا صبر کریں</string>
     <string name="school_mail_account_title">اسکول ای میل</string>
     <string name="school_mail_add_attachment">فائل منسلک کریں</string>
+    <string name="school_mail_attachment_share">شیئر کریں یا محفوظ کریں</string>
     <string name="school_mail_attachments">منسلکات</string>
     <string name="school_mail_auth_failed_banner">اسکول ای میل سائن ان ناکام ہو گیا۔ دوبارہ سائن ان کریں۔</string>
     <string name="school_mail_auth_failed_notification_text">دوبارہ سائن ان کرنے کے لیے TigerDuck کھولیں۔</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Cc/Bcc شامل کریں</string>
     <string name="school_mail_sign_in_note">آپ کا ID اور پاس ورڈ اکیڈمک سسٹم جیسا ہی ہونا چاہیے۔ TigerDuck اس پاس ورڈ کو صرف اس ڈیوائس پر خفیہ کر کے محفوظ رکھتا ہے، کبھی اپ لوڈ نہیں کرتا۔</string>
     <string name="school_mail_sign_in_prompt_title">اسکول ای میل میں سائن ان کریں</string>
+    <string name="school_mail_source_failed">سورس لوڈ نہیں ہو سکا۔</string>
     <string name="school_mail_subject">موضوع</string>
     <string name="school_mail_to">وصول کنندہ</string>
     <string name="school_mail_too_large">منسلکات 50 MB کی حد سے تجاوز کر گئے ہیں</string>

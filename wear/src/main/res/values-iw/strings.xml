@@ -662,6 +662,7 @@
     <string name="refreshing_message">מרענן… רגע</string>
     <string name="school_mail_account_title">דואר בית הספר</string>
     <string name="school_mail_add_attachment">צרף קובץ</string>
+    <string name="school_mail_attachment_share">שתף או שמור</string>
     <string name="school_mail_attachments">קבצים מצורפים</string>
     <string name="school_mail_auth_failed_banner">ההתחברות לדואר בית הספר נכשלה. יש להתחבר שוב.</string>
     <string name="school_mail_auth_failed_notification_text">פתח את TigerDuck כדי להתחבר שוב.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">הוסף עותק/עותק מוסתר</string>
     <string name="school_mail_sign_in_note">מספר הסטודנט והסיסמה שלך צריכים להיות זהים לאלה של מערכת בית הספר. TigerDuck שומר את הסיסמה הזו מוצפנת במכשיר הזה בלבד ולעולם לא מעלה אותה.</string>
     <string name="school_mail_sign_in_prompt_title">התחברות לדואר בית הספר</string>
+    <string name="school_mail_source_failed">לא ניתן היה לטעון את המקור.</string>
     <string name="school_mail_subject">נושא</string>
     <string name="school_mail_to">אל</string>
     <string name="school_mail_too_large">הקבצים המצורפים חורגים מהמגבלה של 50MB</string>

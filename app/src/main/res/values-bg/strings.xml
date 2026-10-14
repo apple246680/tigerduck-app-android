@@ -662,6 +662,7 @@
     <string name="refreshing_message">Опресняване… моля изчакайте</string>
     <string name="school_mail_account_title">Училищна поща</string>
     <string name="school_mail_add_attachment">Прикачи файл</string>
+    <string name="school_mail_attachment_share">Сподели или запази</string>
     <string name="school_mail_attachments">Прикачени файлове</string>
     <string name="school_mail_auth_failed_banner">Влизането в училищната поща е неуспешно. Влезте отново.</string>
     <string name="school_mail_auth_failed_notification_text">Отворете TigerDuck, за да влезете отново.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Добави Cc/Bcc</string>
     <string name="school_mail_sign_in_note">Вашият студентски номер и парола трябва да са същите като в системата на училището. TigerDuck съхранява тази парола само криптирана на това устройство и никога не я качва в мрежата.</string>
     <string name="school_mail_sign_in_prompt_title">Влезте в училищната поща</string>
+    <string name="school_mail_source_failed">Изходният код не можа да се зареди.</string>
     <string name="school_mail_subject">Тема</string>
     <string name="school_mail_to">До</string>
     <string name="school_mail_too_large">Прикачените файлове надвишават лимита от 50 MB</string>

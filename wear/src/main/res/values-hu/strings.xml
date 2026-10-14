@@ -662,6 +662,7 @@
     <string name="refreshing_message">Frissítés folyamatban… kérem várjon</string>
     <string name="school_mail_account_title">Iskolai posta</string>
     <string name="school_mail_add_attachment">Fájl csatolása</string>
+    <string name="school_mail_attachment_share">Megosztás vagy mentés</string>
     <string name="school_mail_attachments">Mellékletek</string>
     <string name="school_mail_auth_failed_banner">Nem sikerült bejelentkezni az iskolai postába. Jelentkezzen be újra.</string>
     <string name="school_mail_auth_failed_notification_text">Nyissa meg a TigerDuck alkalmazást az újbóli bejelentkezéshez.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Másolat/Titkos másolat hozzáadása</string>
     <string name="school_mail_sign_in_note">A hallgatói azonosítónak és a jelszónak meg kell egyeznie az egyetemi rendszerben használttal. A TigerDuck alkalmazás ezt a jelszót csak titkosítva tárolja ezen az eszközön, és soha nem tölti fel.</string>
     <string name="school_mail_sign_in_prompt_title">Bejelentkezés az iskolai postába</string>
+    <string name="school_mail_source_failed">Nem sikerült betölteni a forrást.</string>
     <string name="school_mail_subject">Tárgy</string>
     <string name="school_mail_to">Címzett</string>
     <string name="school_mail_too_large">A mellékletek meghaladják az 50 MB-os korlátot</string>

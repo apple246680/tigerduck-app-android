@@ -662,6 +662,7 @@
     <string name="refreshing_message">Obnovuje sa… chvíľku počkajte</string>
     <string name="school_mail_account_title">Školská pošta</string>
     <string name="school_mail_add_attachment">Priložiť súbor</string>
+    <string name="school_mail_attachment_share">Zdieľať alebo uložiť</string>
     <string name="school_mail_attachments">Prílohy</string>
     <string name="school_mail_auth_failed_banner">Prihlásenie do školskej pošty zlyhalo. Prihláste sa znova.</string>
     <string name="school_mail_auth_failed_notification_text">Otvorte TigerDuck a prihláste sa znova.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Pridať kópiu/skrytú kópiu</string>
     <string name="school_mail_sign_in_note">Vaše prihlasovacie meno a heslo by mali byť rovnaké ako v školskom systéme. TigerDuck toto heslo na tomto zariadení ukladá len v zašifrovanej podobe a nikdy ho nikam neodosiela.</string>
     <string name="school_mail_sign_in_prompt_title">Prihlásiť sa do školskej pošty</string>
+    <string name="school_mail_source_failed">Zdrojový kód sa nepodarilo načítať.</string>
     <string name="school_mail_subject">Predmet</string>
     <string name="school_mail_to">Komu</string>
     <string name="school_mail_too_large">Prílohy prekračujú limit 50 MB</string>

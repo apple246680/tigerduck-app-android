@@ -662,6 +662,7 @@
     <string name="refreshing_message">جارٍ التحديث… انتظر قليلًا</string>
     <string name="school_mail_account_title">البريد المدرسي</string>
     <string name="school_mail_add_attachment">إرفاق ملف</string>
+    <string name="school_mail_attachment_share">مشاركة أو حفظ</string>
     <string name="school_mail_attachments">المرفقات</string>
     <string name="school_mail_auth_failed_banner">فشل تسجيل الدخول إلى البريد المدرسي. سجّل الدخول مرة أخرى.</string>
     <string name="school_mail_auth_failed_notification_text">افتح TigerDuck لتسجيل الدخول مرة أخرى.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">إضافة نسخة/نسخة مخفية</string>
     <string name="school_mail_sign_in_note">يجب أن يكون رقم الطالب وكلمة المرور مطابقين لبيانات النظام الجامعي. يخزّن TigerDuck كلمة المرور هذه مشفّرة على هذا الجهاز فقط ولا يرفعها أبدًا.</string>
     <string name="school_mail_sign_in_prompt_title">تسجيل الدخول إلى البريد المدرسي</string>
+    <string name="school_mail_source_failed">تعذّر تحميل المصدر.</string>
     <string name="school_mail_subject">الموضوع</string>
     <string name="school_mail_to">إلى</string>
     <string name="school_mail_too_large">المرفقات تتجاوز الحد الأقصى البالغ 50 ميغابايت</string>

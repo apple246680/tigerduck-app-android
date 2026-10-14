@@ -662,6 +662,7 @@
     <string name="refreshing_message">Opdaterer… vent et øjeblik</string>
     <string name="school_mail_account_title">Skolemail</string>
     <string name="school_mail_add_attachment">Vedhæft fil</string>
+    <string name="school_mail_attachment_share">Del eller gem</string>
     <string name="school_mail_attachments">Vedhæftninger</string>
     <string name="school_mail_auth_failed_banner">Login til Skolemail mislykkedes. Log ind igen.</string>
     <string name="school_mail_auth_failed_notification_text">Åbn TigerDuck for at logge ind igen.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Tilføj Cc/Bcc</string>
     <string name="school_mail_sign_in_note">Dit studienummer og din adgangskode skal være de samme som til skolens system. TigerDuck gemmer kun denne adgangskode krypteret på denne enhed og uploader den aldrig.</string>
     <string name="school_mail_sign_in_prompt_title">Log ind på Skolemail</string>
+    <string name="school_mail_source_failed">Kildekoden kunne ikke indlæses.</string>
     <string name="school_mail_subject">Emne</string>
     <string name="school_mail_to">Til</string>
     <string name="school_mail_too_large">Vedhæftninger overskrider grænsen på 50 MB</string>

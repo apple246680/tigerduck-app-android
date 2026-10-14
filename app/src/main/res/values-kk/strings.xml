@@ -662,6 +662,7 @@
     <string name="refreshing_message">Жаңартылуда… күтіңіз</string>
     <string name="school_mail_account_title">Мектеп поштасы</string>
     <string name="school_mail_add_attachment">Файл тіркеу</string>
+    <string name="school_mail_attachment_share">Бөлісу немесе сақтау</string>
     <string name="school_mail_attachments">Тіркемелер</string>
     <string name="school_mail_auth_failed_banner">Мектеп поштасына кіру сәтсіз аяқталды. Қайта кіріңіз.</string>
     <string name="school_mail_auth_failed_notification_text">Қайта кіру үшін TigerDuck қолданбасын ашыңыз.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Cc/Bcc қосу</string>
     <string name="school_mail_sign_in_note">Студент ID және құпия сөзіңіз мектеп жүйесіндегімен бірдей болуы керек. TigerDuck қолданбасы бұл құпия сөзді тек осы құрылғыда шифрланған түрде сақтайды және ешқашан жүктемейді.</string>
     <string name="school_mail_sign_in_prompt_title">Мектеп поштасына кіру</string>
+    <string name="school_mail_source_failed">Бастапқы кодты жүктеу мүмкін болмады.</string>
     <string name="school_mail_subject">Тақырып</string>
     <string name="school_mail_to">Кімге</string>
     <string name="school_mail_too_large">Тіркемелер 50 МБ шегінен асып кетті</string>

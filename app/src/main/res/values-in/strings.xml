@@ -662,6 +662,7 @@
     <string name="refreshing_message">Sedang menyegarkan… mohon tunggu</string>
     <string name="school_mail_account_title">Email sekolah</string>
     <string name="school_mail_add_attachment">Lampirkan file</string>
+    <string name="school_mail_attachment_share">Bagikan atau Simpan</string>
     <string name="school_mail_attachments">Lampiran</string>
     <string name="school_mail_auth_failed_banner">Gagal masuk ke email sekolah. Masuk kembali.</string>
     <string name="school_mail_auth_failed_notification_text">Buka TigerDuck untuk masuk kembali.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Tambahkan Cc/Bcc</string>
     <string name="school_mail_sign_in_note">ID dan kata sandimu harus sama dengan sistem sekolah. TigerDuck hanya menyimpan kata sandi ini terenkripsi di perangkat ini dan tidak pernah mengunggahnya.</string>
     <string name="school_mail_sign_in_prompt_title">Masuk ke email sekolah</string>
+    <string name="school_mail_source_failed">Tidak dapat memuat kode sumber.</string>
     <string name="school_mail_subject">Subjek</string>
     <string name="school_mail_to">Kepada</string>
     <string name="school_mail_too_large">Lampiran melebihi batas 50 MB</string>

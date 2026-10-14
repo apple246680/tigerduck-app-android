@@ -662,6 +662,7 @@
     <string name="refreshing_message">Oppdaterer… vent litt</string>
     <string name="school_mail_account_title">Skolepost</string>
     <string name="school_mail_add_attachment">Legg ved fil</string>
+    <string name="school_mail_attachment_share">Del eller lagre</string>
     <string name="school_mail_attachments">Vedlegg</string>
     <string name="school_mail_auth_failed_banner">Pålogging til Skolepost mislyktes. Logg på igjen.</string>
     <string name="school_mail_auth_failed_notification_text">Åpne TigerDuck for å logge på igjen.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Legg til Cc/Bcc</string>
     <string name="school_mail_sign_in_note">Studentnummeret og passordet ditt skal være det samme som i skolens system. TigerDuck lagrer dette passordet bare kryptert på denne enheten og laster det aldri opp.</string>
     <string name="school_mail_sign_in_prompt_title">Logg på Skolepost</string>
+    <string name="school_mail_source_failed">Kildekoden kunne ikke lastes inn.</string>
     <string name="school_mail_subject">Emne</string>
     <string name="school_mail_to">Til</string>
     <string name="school_mail_too_large">Vedlegg overskrider grensen på 50 MB</string>

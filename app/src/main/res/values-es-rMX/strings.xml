@@ -662,6 +662,7 @@
     <string name="refreshing_message">Actualizando… espera un momento</string>
     <string name="school_mail_account_title">Correo universitario</string>
     <string name="school_mail_add_attachment">Adjuntar archivo</string>
+    <string name="school_mail_attachment_share">Compartir o guardar</string>
     <string name="school_mail_attachments">Adjuntos</string>
     <string name="school_mail_auth_failed_banner">No se pudo iniciar sesión en el correo universitario. Vuelve a iniciar sesión.</string>
     <string name="school_mail_auth_failed_notification_text">Abre TigerDuck para volver a iniciar sesión.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Añadir Cc/Cco</string>
     <string name="school_mail_sign_in_note">Tu número de estudiante y contraseña deben ser los mismos que los del sistema universitario. TigerDuck solo guarda esta contraseña cifrada en este dispositivo y nunca la sube a internet.</string>
     <string name="school_mail_sign_in_prompt_title">Inicia sesión en el correo universitario</string>
+    <string name="school_mail_source_failed">No se pudo cargar el código fuente.</string>
     <string name="school_mail_subject">Asunto</string>
     <string name="school_mail_to">Para</string>
     <string name="school_mail_too_large">Los adjuntos superan el límite de 50 MB</string>

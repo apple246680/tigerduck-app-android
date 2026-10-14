@@ -662,6 +662,7 @@
     <string name="refreshing_message">Odświeżanie… proszę czekać</string>
     <string name="school_mail_account_title">Poczta uczelniana</string>
     <string name="school_mail_add_attachment">Dodaj załącznik</string>
+    <string name="school_mail_attachment_share">Udostępnij lub zapisz</string>
     <string name="school_mail_attachments">Załączniki</string>
     <string name="school_mail_auth_failed_banner">Nie udało się zalogować do poczty uczelnianej. Zaloguj się ponownie.</string>
     <string name="school_mail_auth_failed_notification_text">Otwórz TigerDuck, aby zalogować się ponownie.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Dodaj DW/UDW</string>
     <string name="school_mail_sign_in_note">Twój login i hasło powinny być takie same jak w systemie uczelnianym. TigerDuck przechowuje to hasło wyłącznie w postaci zaszyfrowanej na tym urządzeniu i nigdy go nie przesyła.</string>
     <string name="school_mail_sign_in_prompt_title">Zaloguj się do poczty uczelnianej</string>
+    <string name="school_mail_source_failed">Nie udało się wczytać kodu źródłowego.</string>
     <string name="school_mail_subject">Temat</string>
     <string name="school_mail_to">Do</string>
     <string name="school_mail_too_large">Załączniki przekraczają limit 50 MB</string>

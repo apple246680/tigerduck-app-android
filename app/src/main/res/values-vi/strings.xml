@@ -662,6 +662,7 @@
     <string name="refreshing_message">Đang làm mới… vui lòng chờ</string>
     <string name="school_mail_account_title">Email trường</string>
     <string name="school_mail_add_attachment">Đính kèm tệp</string>
+    <string name="school_mail_attachment_share">Chia sẻ hoặc Lưu</string>
     <string name="school_mail_attachments">Tệp đính kèm</string>
     <string name="school_mail_auth_failed_banner">Đăng nhập Email trường không thành công. Vui lòng đăng nhập lại.</string>
     <string name="school_mail_auth_failed_notification_text">Mở TigerDuck để đăng nhập lại.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Thêm Cc/Bcc</string>
     <string name="school_mail_sign_in_note">Mã số và mật khẩu của bạn nên giống với hệ thống của trường. TigerDuck chỉ lưu mật khẩu này ở dạng mã hóa trên thiết bị này và không bao giờ tải lên.</string>
     <string name="school_mail_sign_in_prompt_title">Đăng nhập Email trường</string>
+    <string name="school_mail_source_failed">Không thể tải mã nguồn.</string>
     <string name="school_mail_subject">Chủ đề</string>
     <string name="school_mail_to">Đến</string>
     <string name="school_mail_too_large">Tệp đính kèm vượt quá giới hạn 50 MB</string>

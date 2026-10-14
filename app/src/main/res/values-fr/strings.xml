@@ -662,6 +662,7 @@
     <string name="refreshing_message">Actualisation en cours… patientez</string>
     <string name="school_mail_account_title">Messagerie universitaire</string>
     <string name="school_mail_add_attachment">Joindre un fichier</string>
+    <string name="school_mail_attachment_share">Partager ou enregistrer</string>
     <string name="school_mail_attachments">Pièces jointes</string>
     <string name="school_mail_auth_failed_banner">Échec de connexion à la messagerie universitaire. Reconnectez-vous.</string>
     <string name="school_mail_auth_failed_notification_text">Ouvrez TigerDuck pour vous reconnecter.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Ajouter Cc/Cci</string>
     <string name="school_mail_sign_in_note">Votre numéro d\'étudiant et votre mot de passe doivent être identiques à ceux du système universitaire. TigerDuck stocke ce mot de passe uniquement de façon chiffrée sur cet appareil et ne le transmet jamais en ligne.</string>
     <string name="school_mail_sign_in_prompt_title">Se connecter à la messagerie universitaire</string>
+    <string name="school_mail_source_failed">Impossible de charger le code source.</string>
     <string name="school_mail_subject">Objet</string>
     <string name="school_mail_to">À</string>
     <string name="school_mail_too_large">Les pièces jointes dépassent la limite de 50 Mo</string>

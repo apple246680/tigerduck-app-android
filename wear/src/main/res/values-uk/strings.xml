@@ -662,6 +662,7 @@
     <string name="refreshing_message">Оновлення… зачекайте</string>
     <string name="school_mail_account_title">Університетська пошта</string>
     <string name="school_mail_add_attachment">Прикріпити файл</string>
+    <string name="school_mail_attachment_share">Поділитися або зберегти</string>
     <string name="school_mail_attachments">Вкладення</string>
     <string name="school_mail_auth_failed_banner">Не вдалося увійти в університетську пошту. Увійдіть знову.</string>
     <string name="school_mail_auth_failed_notification_text">Відкрийте TigerDuck, щоб увійти знову.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Додати копію/приховану копію</string>
     <string name="school_mail_sign_in_note">Логін і пароль мають збігатися з обліковими даними системи університету. TigerDuck зберігає цей пароль лише в зашифрованому вигляді на цьому пристрої й ніколи його не вивантажує.</string>
     <string name="school_mail_sign_in_prompt_title">Увійти в університетську пошту</string>
+    <string name="school_mail_source_failed">Не вдалося завантажити вихідний код.</string>
     <string name="school_mail_subject">Тема</string>
     <string name="school_mail_to">Кому</string>
     <string name="school_mail_too_large">Вкладення перевищують ліміт 50 МБ</string>

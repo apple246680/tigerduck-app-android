@@ -662,6 +662,7 @@
     <string name="refreshing_message">Uppdaterar… vänta lite</string>
     <string name="school_mail_account_title">Skolmejl</string>
     <string name="school_mail_add_attachment">Bifoga fil</string>
+    <string name="school_mail_attachment_share">Dela eller spara</string>
     <string name="school_mail_attachments">Bilagor</string>
     <string name="school_mail_auth_failed_banner">Inloggningen till Skolmejl misslyckades. Logga in igen.</string>
     <string name="school_mail_auth_failed_notification_text">Öppna TigerDuck för att logga in igen.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Lägg till Cc/Bcc</string>
     <string name="school_mail_sign_in_note">Ditt studentnummer och lösenord ska vara samma som i skolans system. TigerDuck sparar det här lösenordet bara krypterat på den här enheten och laddar aldrig upp det.</string>
     <string name="school_mail_sign_in_prompt_title">Logga in på Skolmejl</string>
+    <string name="school_mail_source_failed">Källkoden kunde inte läsas in.</string>
     <string name="school_mail_subject">Ämne</string>
     <string name="school_mail_to">Till</string>
     <string name="school_mail_too_large">Bilagorna överskrider gränsen på 50 MB</string>

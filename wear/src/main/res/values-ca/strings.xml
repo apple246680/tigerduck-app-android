@@ -662,6 +662,7 @@
     <string name="refreshing_message">Actualitzant… un moment</string>
     <string name="school_mail_account_title">Correu universitari</string>
     <string name="school_mail_add_attachment">Adjunta un fitxer</string>
+    <string name="school_mail_attachment_share">Comparteix o desa</string>
     <string name="school_mail_attachments">Fitxers adjunts</string>
     <string name="school_mail_auth_failed_banner">No s\'ha pogut iniciar la sessió al correu universitari. Torna-hi a iniciar la sessió.</string>
     <string name="school_mail_auth_failed_notification_text">Obre TigerDuck per tornar a iniciar la sessió.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Afegeix Cc/Cco</string>
     <string name="school_mail_sign_in_note">El teu número d\'estudiant i contrasenya han de ser els mateixos que els del sistema universitari. TigerDuck només desa aquesta contrasenya xifrada en aquest dispositiu i mai la puja a internet.</string>
     <string name="school_mail_sign_in_prompt_title">Inicia la sessió al correu universitari</string>
+    <string name="school_mail_source_failed">No s\'ha pogut carregar el codi font.</string>
     <string name="school_mail_subject">Assumpte</string>
     <string name="school_mail_to">Per a</string>
     <string name="school_mail_too_large">Els fitxers adjunts superen el límit de 50 MB</string>

@@ -662,6 +662,7 @@
     <string name="refreshing_message">Osvježavanje… pričekajte</string>
     <string name="school_mail_account_title">Školska pošta</string>
     <string name="school_mail_add_attachment">Priloži datoteku</string>
+    <string name="school_mail_attachment_share">Podijeli ili spremi</string>
     <string name="school_mail_attachments">Privici</string>
     <string name="school_mail_auth_failed_banner">Prijava u školsku poštu nije uspjela. Prijavite se ponovno.</string>
     <string name="school_mail_auth_failed_notification_text">Otvorite TigerDuck da se ponovno prijavite.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Dodaj Cc/Bcc</string>
     <string name="school_mail_sign_in_note">Vaš studentski broj i lozinka trebaju biti isti kao u školskom sustavu. TigerDuck tu lozinku pohranjuje samo šifrirano na ovom uređaju i nikada je ne učitava.</string>
     <string name="school_mail_sign_in_prompt_title">Prijavite se u školsku poštu</string>
+    <string name="school_mail_source_failed">Izvorni kod nije moguće učitati.</string>
     <string name="school_mail_subject">Predmet</string>
     <string name="school_mail_to">Prima</string>
     <string name="school_mail_too_large">Privici prelaze ograničenje od 50 MB</string>

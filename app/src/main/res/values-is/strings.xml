@@ -662,6 +662,7 @@
     <string name="refreshing_message">Uppfærir… bíddu aðeins</string>
     <string name="school_mail_account_title">Skólapóstur</string>
     <string name="school_mail_add_attachment">Hengja skjal við</string>
+    <string name="school_mail_attachment_share">Deila eða vista</string>
     <string name="school_mail_attachments">Viðhengi</string>
     <string name="school_mail_auth_failed_banner">Innskráning í Skólapóst mistókst. Skráðu þig inn aftur.</string>
     <string name="school_mail_auth_failed_notification_text">Opnaðu TigerDuck til að skrá þig inn aftur.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Bæta við Cc/Bcc</string>
     <string name="school_mail_sign_in_note">Námsmannsnúmerið og lykilorðið þitt eiga að vera þau sömu og í kerfi skólans. TigerDuck geymir þetta lykilorð aðeins dulkóðað á þessu tæki og sendir það aldrei upp á netið.</string>
     <string name="school_mail_sign_in_prompt_title">Skrá sig inn í Skólapóst</string>
+    <string name="school_mail_source_failed">Ekki tókst að hlaða inn frumkóðanum.</string>
     <string name="school_mail_subject">Efni</string>
     <string name="school_mail_to">Til</string>
     <string name="school_mail_too_large">Viðhengi fara yfir 50 MB mörkin</string>

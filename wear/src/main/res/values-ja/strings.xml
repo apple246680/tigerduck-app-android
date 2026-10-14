@@ -662,6 +662,7 @@
     <string name="refreshing_message">更新中です。少々お待ちください…</string>
     <string name="school_mail_account_title">学内メール</string>
     <string name="school_mail_add_attachment">ファイルを添付</string>
+    <string name="school_mail_attachment_share">共有または保存</string>
     <string name="school_mail_attachments">添付ファイル</string>
     <string name="school_mail_auth_failed_banner">学内メールへのサインインに失敗しました。もう一度サインインしてください。</string>
     <string name="school_mail_auth_failed_notification_text">TigerDuckを開いて、もう一度サインインしてください。</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Cc/Bccを追加</string>
     <string name="school_mail_sign_in_note">学籍番号とパスワードは校務システムと同じものを使用してください。このパスワードは、TigerDuckがこの端末上で暗号化して保存するのみで、アップロードすることはありません。</string>
     <string name="school_mail_sign_in_prompt_title">学内メールにサインイン</string>
+    <string name="school_mail_source_failed">ソースを読み込めませんでした。</string>
     <string name="school_mail_subject">件名</string>
     <string name="school_mail_to">宛先</string>
     <string name="school_mail_too_large">添付ファイルが50 MBの上限を超えています</string>

@@ -662,6 +662,7 @@
     <string name="refreshing_message">புதுப்பிக்கிறோம்… கொஞ்சம் காத்திருங்கள்</string>
     <string name="school_mail_account_title">பள்ளி மின்னஞ்சல்</string>
     <string name="school_mail_add_attachment">கோப்பை இணை</string>
+    <string name="school_mail_attachment_share">பகிர் அல்லது சேமி</string>
     <string name="school_mail_attachments">இணைப்புகள்</string>
     <string name="school_mail_auth_failed_banner">பள்ளி மின்னஞ்சல் உள்நுழைவு தோல்வியடைந்தது. மீண்டும் உள்நுழைக.</string>
     <string name="school_mail_auth_failed_notification_text">மீண்டும் உள்நுழைய TigerDuck-ஐத் திறக்கவும்.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Cc/Bcc சேர்</string>
     <string name="school_mail_sign_in_note">உங்கள் ID மற்றும் கடவுச்சொல் கல்வி அமைப்பில் உள்ளதைப் போலவே இருக்க வேண்டும். TigerDuck இந்தக் கடவுச்சொல்லை இந்தச் சாதனத்தில் மறையாக்கம் செய்து மட்டுமே சேமிக்கும், ஒருபோதும் பதிவேற்றாது.</string>
     <string name="school_mail_sign_in_prompt_title">பள்ளி மின்னஞ்சலில் உள்நுழைக</string>
+    <string name="school_mail_source_failed">மூலத்தை ஏற்ற முடியவில்லை.</string>
     <string name="school_mail_subject">பொருள்</string>
     <string name="school_mail_to">பெறுநர்</string>
     <string name="school_mail_too_large">இணைப்புகள் 50 MB வரம்பை மீறுகின்றன</string>

@@ -662,6 +662,7 @@
     <string name="refreshing_message">Refreshing… hold on</string>
     <string name="school_mail_account_title">School mail</string>
     <string name="school_mail_add_attachment">Attach file</string>
+    <string name="school_mail_attachment_share">Share or Save</string>
     <string name="school_mail_attachments">Attachments</string>
     <string name="school_mail_auth_failed_banner">School mail sign-in failed. Sign in again.</string>
     <string name="school_mail_auth_failed_notification_text">Open TigerDuck to sign in again.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Add Cc/Bcc</string>
     <string name="school_mail_sign_in_note">Your ID and password should be the same as the school system\'s. TigerDuck only stores this password encrypted on this device and never uploads it.</string>
     <string name="school_mail_sign_in_prompt_title">Sign in to school mail</string>
+    <string name="school_mail_source_failed">Couldn\'t load the source.</string>
     <string name="school_mail_subject">Subject</string>
     <string name="school_mail_to">To</string>
     <string name="school_mail_too_large">Attachments are over the 50 MB limit</string>

@@ -662,6 +662,7 @@
     <string name="refreshing_message">Nire-refresh… sandali lang po</string>
     <string name="school_mail_account_title">Mail ng paaralan</string>
     <string name="school_mail_add_attachment">Mag-attach ng file</string>
+    <string name="school_mail_attachment_share">I-share o I-save</string>
     <string name="school_mail_attachments">Mga Attachment</string>
     <string name="school_mail_auth_failed_banner">Nabigo ang sign-in sa mail ng paaralan. Mag-sign in muli.</string>
     <string name="school_mail_auth_failed_notification_text">Buksan ang TigerDuck para mag-sign in muli.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Magdagdag ng Cc/Bcc</string>
     <string name="school_mail_sign_in_note">Dapat magkapareho ang ID at password mo sa sistemang akademiko. Ino-encrypt lang ng TigerDuck ang password na ito at ise-save sa device na ito, at hindi kailanman ina-upload.</string>
     <string name="school_mail_sign_in_prompt_title">Mag-sign in sa mail ng paaralan</string>
+    <string name="school_mail_source_failed">Hindi ma-load ang source.</string>
     <string name="school_mail_subject">Paksa</string>
     <string name="school_mail_to">Kay</string>
     <string name="school_mail_too_large">Lumagpas sa 50 MB limit ang mga attachment</string>

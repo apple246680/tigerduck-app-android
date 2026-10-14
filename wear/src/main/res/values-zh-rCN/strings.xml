@@ -662,6 +662,7 @@
     <string name="refreshing_message">页面正在刷新，别急～</string>
     <string name="school_mail_account_title">校园邮箱</string>
     <string name="school_mail_add_attachment">添加附件</string>
+    <string name="school_mail_attachment_share">分享或存储</string>
     <string name="school_mail_attachments">附件</string>
     <string name="school_mail_auth_failed_banner">校园邮箱登录失败，请重新登录。</string>
     <string name="school_mail_auth_failed_notification_text">请打开 TigerDuck 重新登录。</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">添加抄送／密送</string>
     <string name="school_mail_sign_in_note">账号密码应与校务系统相同。此密码 TigerDuck 只会加密保存在这台设备上，不会上传。</string>
     <string name="school_mail_sign_in_prompt_title">登录校园邮箱</string>
+    <string name="school_mail_source_failed">无法加载源代码。</string>
     <string name="school_mail_subject">主题</string>
     <string name="school_mail_to">收件人</string>
     <string name="school_mail_too_large">附件超过 50 MB 上限</string>

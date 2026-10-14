@@ -662,6 +662,7 @@
     <string name="refreshing_message">Menyegar semula… sila tunggu</string>
     <string name="school_mail_account_title">E-mel sekolah</string>
     <string name="school_mail_add_attachment">Lampirkan fail</string>
+    <string name="school_mail_attachment_share">Kongsi atau Simpan</string>
     <string name="school_mail_attachments">Lampiran</string>
     <string name="school_mail_auth_failed_banner">Log masuk e-mel sekolah gagal. Log masuk lagi.</string>
     <string name="school_mail_auth_failed_notification_text">Buka TigerDuck untuk log masuk lagi.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Tambah Cc/Bcc</string>
     <string name="school_mail_sign_in_note">ID dan kata laluan anda perlu sama seperti sistem sekolah. TigerDuck hanya menyimpan kata laluan ini dalam bentuk disulitkan pada peranti ini dan tidak sekali-kali memuat naiknya.</string>
     <string name="school_mail_sign_in_prompt_title">Log masuk ke e-mel sekolah</string>
+    <string name="school_mail_source_failed">Tidak dapat memuatkan kod sumber.</string>
     <string name="school_mail_subject">Subjek</string>
     <string name="school_mail_to">Kepada</string>
     <string name="school_mail_too_large">Lampiran melebihi had 50 MB</string>

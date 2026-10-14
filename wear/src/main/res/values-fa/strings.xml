@@ -662,6 +662,7 @@
     <string name="refreshing_message">در حال به‌روزرسانی… کمی صبر کنید</string>
     <string name="school_mail_account_title">ایمیل مدرسه</string>
     <string name="school_mail_add_attachment">پیوست کردن فایل</string>
+    <string name="school_mail_attachment_share">اشتراک‌گذاری یا ذخیره</string>
     <string name="school_mail_attachments">پیوست‌ها</string>
     <string name="school_mail_auth_failed_banner">ورود به ایمیل مدرسه ناموفق بود. دوباره وارد شوید.</string>
     <string name="school_mail_auth_failed_notification_text">برای ورود دوباره، TigerDuck را باز کنید.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">افزودن Cc/Bcc</string>
     <string name="school_mail_sign_in_note">شماره دانشجویی و رمز عبور شما باید همان سیستم دانشگاه باشد. TigerDuck این رمز عبور را فقط به‌صورت رمزگذاری‌شده روی همین دستگاه ذخیره می‌کند و هرگز آپلود نمی‌کند.</string>
     <string name="school_mail_sign_in_prompt_title">ورود به ایمیل مدرسه</string>
+    <string name="school_mail_source_failed">بارگذاری منبع ممکن نشد.</string>
     <string name="school_mail_subject">موضوع</string>
     <string name="school_mail_to">گیرنده</string>
     <string name="school_mail_too_large">پیوست‌ها از محدودیت 50 مگابایت بیشتر است</string>

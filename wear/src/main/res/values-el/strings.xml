@@ -662,6 +662,7 @@
     <string name="refreshing_message">Ανανέωση… παρακαλώ περιμένετε</string>
     <string name="school_mail_account_title">Πανεπιστημιακό email</string>
     <string name="school_mail_add_attachment">Επισύναψη αρχείου</string>
+    <string name="school_mail_attachment_share">Κοινή χρήση ή αποθήκευση</string>
     <string name="school_mail_attachments">Συνημμένα</string>
     <string name="school_mail_auth_failed_banner">Η σύνδεση στο πανεπιστημιακό email απέτυχε. Συνδέσου ξανά.</string>
     <string name="school_mail_auth_failed_notification_text">Άνοιξε το TigerDuck για να συνδεθείς ξανά.</string>
@@ -766,6 +767,7 @@
     <string name="school_mail_show_cc_bcc">Προσθήκη Κοιν./Κρυφή κοιν.</string>
     <string name="school_mail_sign_in_note">Ο αριθμός μητρώου και ο κωδικός πρόσβασής σου πρέπει να είναι ίδιοι με αυτούς του συστήματος του πανεπιστημίου. Το TigerDuck αποθηκεύει αυτόν τον κωδικό κρυπτογραφημένο μόνο σε αυτήν τη συσκευή και δεν τον μεταφορτώνει ποτέ.</string>
     <string name="school_mail_sign_in_prompt_title">Σύνδεση στο πανεπιστημιακό email</string>
+    <string name="school_mail_source_failed">Δεν ήταν δυνατή η φόρτωση του πηγαίου κώδικα.</string>
     <string name="school_mail_subject">Θέμα</string>
     <string name="school_mail_to">Προς</string>
     <string name="school_mail_too_large">Τα συνημμένα υπερβαίνουν το όριο των 50 MB</string>
