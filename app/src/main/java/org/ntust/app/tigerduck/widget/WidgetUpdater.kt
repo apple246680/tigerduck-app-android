@@ -192,6 +192,8 @@ class WidgetUpdater @Inject constructor(
     )
 
     companion object {
+        // The *_dark kinds are hidden from the widget picker but still
+        // refreshed: widgets placed from them before keep showing.
         private val WIDGETS = listOf(
             WidgetKind(WeekLightWidgetReceiver::class.java, "week_light") { WeekLightWidget() },
             WidgetKind(WeekDarkWidgetReceiver::class.java, "week_dark") { WeekDarkWidget() },
