@@ -47,6 +47,13 @@ interface FinderEnvironment {
     fun isOffline(error: Throwable): Boolean
 }
 
+/**
+ * The academic calendar the finder reads. The demo account's week is no term's, so it is shown on
+ * every weekday: a store reviewer signing in between terms or on a holiday still sees rooms.
+ */
+internal fun finderCalendar(isDemo: Boolean, current: () -> AcademicCalendar): AcademicCalendar =
+    if (isDemo) AcademicCalendar.EMPTY else current()
+
 class AppFinderEnvironment @Inject constructor(
     private val authService: AuthService,
     private val academicCalendar: AcademicCalendarStore,
@@ -58,7 +65,7 @@ class AppFinderEnvironment @Inject constructor(
 ) : FinderEnvironment {
     override fun now(): LocalDateTime = AppClock.localDateTime(AppConstants.TAIPEI_ZONE)
 
-    override fun calendar(): AcademicCalendar = academicCalendar.current()
+    override fun calendar(): AcademicCalendar = finderCalendar(demoAccount.isActive, academicCalendar::current)
 
     override suspend fun courses(): List<Course> {
         val hidden = CourseTombstoneKeys.hiddenIn(courseService.currentSemesterCode(), dataCache.loadDeletedCourseNos())
