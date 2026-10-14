@@ -78,7 +78,21 @@ class MoodleTokenService @Inject constructor(
     }
 
     /** Fetch a fresh token using stored NTUST credentials. */
-    suspend fun refreshToken(): String = mutex.withLock {
+    suspend fun refreshToken(): String = mutex.withLock { refreshUnlocked() }
+
+    /**
+     * A token in place of [rejected], which is null when none was stored. The stored token is
+     * replaced only once a new one is in hand, so a renewal that fails, as during Moodle
+     * maintenance, leaves the old one rather than none. When another caller already renewed it
+     * while this one waited, that token is handed back and no second SSO sign-in runs.
+     */
+    suspend fun renewToken(rejected: String?): String = mutex.withLock {
+        val stored = credentialManager.moodleToken
+        if (!stored.isNullOrEmpty() && stored != rejected) return@withLock stored
+        refreshUnlocked()
+    }
+
+    private suspend fun refreshUnlocked(): String {
         val sid = credentialManager.ntustStudentId
             ?: throw MoodleWebserviceError.MissingStoredCredentials()
         val pwd = credentialManager.ntustPassword
@@ -91,7 +105,7 @@ class MoodleTokenService @Inject constructor(
         }
         credentialManager.moodleToken = triple.wstoken
         Log.i("MoodleTokenService", "refreshed wstoken (len=${triple.wstoken.length})")
-        triple.wstoken
+        return triple.wstoken
     }
 
     /** Fetch a fresh token using the supplied credentials (first-time login). */
