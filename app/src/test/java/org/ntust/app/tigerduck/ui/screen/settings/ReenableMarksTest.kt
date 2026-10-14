@@ -122,4 +122,20 @@ class ReenableMarksTest {
         assertEquals(emptySet<String>(), prefs.pendingConflictCategories)
         assertFalse(AssignmentOverrideReconciler.isHeldForReenable(prefs.pendingConflictCategories))
     }
+
+    @Test
+    fun `assignments are not recorded as synced when the switch went off during the sync`() {
+        val switchedOn = categoriesSwitchedOn(prefs)
+        // Turned off while the sync ran, so its marks step left the marks alone.
+        prefs.syncAssignments = false
+
+        prefs.syncedCategories += categoriesSynced(switchedOn, prefs)
+
+        assertEquals(REENABLE_CATEGORIES - "assignments", prefs.syncedCategories)
+    }
+
+    @Test
+    fun `every category the sync read as on is recorded when none went off`() {
+        assertEquals(REENABLE_CATEGORIES, categoriesSynced(categoriesSwitchedOn(prefs), prefs))
+    }
 }

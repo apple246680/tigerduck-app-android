@@ -323,4 +323,75 @@ class AssignmentOverrideReconcilerTest {
             AssignmentOverrideReconciler.isHeldForReenable(setOf("courses", "course_colors", "course_names"))
         )
     }
+
+    // --- the Assignments sync switch (tigerduck-app-android#188, #209) ---
+
+    @Test
+    fun `with the Assignments switch off a full sync leaves this device's marks alone`() {
+        // Neither taking the server's marks nor sending this device's up as a
+        // first sync: the switch keeps the two apart, as on iOS.
+        assertEquals(
+            "Assignments sync is off",
+            AssignmentOverrideReconciler.reasonToLeaveMarks(syncsMarks = false, pendingConflictCategories = emptySet()),
+        )
+    }
+
+    @Test
+    fun `the assignments re-enable check leaves the marks alone too`() {
+        assertEquals(
+            "re-enable check pending",
+            AssignmentOverrideReconciler.reasonToLeaveMarks(syncsMarks = true, pendingConflictCategories = setOf("assignments")),
+        )
+    }
+
+    @Test
+    fun `with the switch on and no check pending a full sync syncs the marks`() {
+        assertEquals(
+            null,
+            AssignmentOverrideReconciler.reasonToLeaveMarks(syncsMarks = true, pendingConflictCategories = setOf("courses")),
+        )
+    }
+
+    // --- the background worker's mark step ---
+
+    private fun backgroundTakes(
+        syncsMarks: Boolean = true,
+        pending: Set<String> = emptySet(),
+        syncedBefore: Boolean = true,
+        serverIgnored: Set<String> = emptySet(),
+        localIgnored: Set<String> = emptySet(),
+    ) = AssignmentOverrideReconciler.backgroundTakesMarks(
+        syncsMarks = syncsMarks,
+        pendingConflictCategories = pending,
+        syncedBefore = syncedBefore,
+        serverIgnored = serverIgnored,
+        serverCompleted = emptySet(),
+        localIgnored = localIgnored,
+        localCompleted = emptySet(),
+    )
+
+    @Test
+    fun `the background sync takes the server's marks`() {
+        assertTrue(backgroundTakes(serverIgnored = setOf("1")))
+    }
+
+    @Test
+    fun `the background sync leaves the marks alone with the Assignments switch off`() {
+        assertFalse(backgroundTakes(syncsMarks = false, serverIgnored = setOf("1")))
+    }
+
+    @Test
+    fun `the background sync leaves the marks alone while the re-enable check is pending`() {
+        assertFalse(backgroundTakes(pending = setOf("assignments"), serverIgnored = setOf("1")))
+    }
+
+    @Test
+    fun `the background sync leaves a first sync's marks for Home to send up`() {
+        assertFalse(backgroundTakes(syncedBefore = false, localIgnored = setOf("1")))
+    }
+
+    @Test
+    fun `after the first sync the background sync takes an empty server too`() {
+        assertTrue(backgroundTakes(syncedBefore = true, localIgnored = setOf("1")))
+    }
 }

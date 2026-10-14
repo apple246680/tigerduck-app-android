@@ -55,6 +55,7 @@ import org.ntust.app.tigerduck.ui.component.ServerKind
 import org.ntust.app.tigerduck.ui.component.ServerStatus
 import org.ntust.app.tigerduck.ui.component.ServerStatusTracker
 import org.ntust.app.tigerduck.ui.screen.settings.categoriesSwitchedOn
+import org.ntust.app.tigerduck.ui.screen.settings.categoriesSynced
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.logSummary
 import org.ntust.app.tigerduck.widget.WidgetUpdater
@@ -113,6 +114,21 @@ class HomeBackendSync @Inject constructor(
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) {
 
+    private val markStep = AssignmentMarkStep(
+        switchOn = { prefs.syncAssignments },
+        pendingConflicts = { prefs.pendingConflictCategories },
+        syncedBefore = { prefs.assignmentMarksSyncedOnce },
+        store = object : AssignmentMarkStep.MarkStore {
+            override suspend fun ignored() = dataCache.loadIgnoredAssignments()
+            override suspend fun completed() = dataCache.loadMarkedCompletedAssignments()
+            override suspend fun replace(ignored: Set<String>, completed: Set<String>) {
+                dataCache.replaceIgnoredAssignments(ignored)
+                dataCache.replaceMarkedCompletedAssignments(completed)
+            }
+        },
+        send = pushApiClient::patchAssignmentOverride,
+    )
+
     /**
      * Pull everything from the backend and reconcile it into [state].
      *
@@ -138,15 +154,17 @@ class HomeBackendSync @Inject constructor(
             // Unsent course-ignore changes go first, so the snapshot has them.
             courseIgnoreSync.retryPending()
             val result = syncApiClient.fetchFullSync()
+            // One reading of the switches, for the steps below and for what
+            // this sync records as synced: one flipped meanwhile counts from the next.
+            val switchedOn = categoriesSwitchedOn(prefs)
             // Recorded at once, for this account only: a later step that
             // fails must not leave the next sync reading an empty server as
             // this phone's first.
-            if (syncAssignmentOverrides(state, result) && authService.isStillSignedInAs(account)) {
+            if (markStep.pull(state, result, syncsMarks = "assignments" in switchedOn) &&
+                authService.isStillSignedInAs(account)
+            ) {
                 prefs.assignmentMarksSyncedOnce = true
             }
-            // One reading of the switches, for the course steps below and for what
-            // this sync records as synced: one flipped meanwhile counts from the next.
-            val switchedOn = categoriesSwitchedOn(prefs)
             courseIgnoreSync.applySnapshot(result, generation)?.let { state.ignoredCourseKeys.value = it }
             // Course overrides and deletion detection always run regardless
             // of whether this was a first-time migration.
@@ -166,7 +184,7 @@ class HomeBackendSync @Inject constructor(
             markCourseSyncAt()
             // Only for the account this sync was for: recorded after a sign-out,
             // it would mark the next account's categories before their first sync.
-            if (authService.isStillSignedInAs(account)) prefs.syncedCategories += switchedOn
+            if (authService.isStillSignedInAs(account)) prefs.syncedCategories += categoriesSynced(switchedOn, prefs)
             state.lastKnownRevision = result.currentRevision
             ServerStatusTracker.set(ServerStatus.OK, ServerKind.BACKEND)
             prefs.setLastSyncSource(SyncSource.BACKEND)
@@ -274,70 +292,11 @@ class HomeBackendSync @Inject constructor(
                 runCatching { pushApiClient.patchAssignmentOverride(mid, c.localStatus) }
             }
         } else {
-            val outcome = AssignmentOverrideReconciler.serverWins(
-                serverIgnored = result.ignoredIds,
-                serverCompleted = result.completedIds,
-                inFlightIgnored = state.ignoredAssignmentIds.value,
-                inFlightCompleted = state.markedCompletedIds.value,
-                pendingOverrides = state.pendingOverrides,
-            )
-            commitOverrides(state, outcome)
+            markStep.keepServer(state, result)
             if (result.courseOverrides.isNotEmpty()) {
                 applyCourseOverrides(state, result.courseOverrides)
             }
         }
-    }
-
-    /**
-     * The assignment-mark step of [pull]. Returns whether this account's
-     * marks have now been through a sync here — taken from the server, or
-     * every one of them sent up as the first sync — which the caller records
-     * in [AppPreferences.assignmentMarksSyncedOnce].
-     */
-    private suspend fun syncAssignmentOverrides(state: HomeSyncState, result: BackendSyncResult): Boolean {
-        if (AssignmentOverrideReconciler.isHeldForReenable(prefs.pendingConflictCategories)) return false
-        val localIgnored = dataCache.loadIgnoredAssignments()
-        val localMarked = dataCache.loadMarkedCompletedAssignments()
-
-        if (AssignmentOverrideReconciler.isFirstUpload(
-                syncedBefore = prefs.assignmentMarksSyncedOnce,
-                serverIgnored = result.ignoredIds,
-                serverCompleted = result.completedIds,
-                localIgnored = localIgnored,
-                localCompleted = localMarked,
-            )
-        ) {
-            val allSent = sendFirstSyncMarks(localIgnored, localMarked, pushApiClient::patchAssignmentOverride)
-            return allSent
-        }
-
-        val byId = state.allAssignments.value.associateBy { it.assignmentId }
-        val outcome = AssignmentOverrideReconciler.reconcile(
-            serverIgnored = result.ignoredIds,
-            serverCompleted = result.completedIds,
-            localIgnored = localIgnored,
-            localCompleted = localMarked,
-            inFlightIgnored = state.ignoredAssignmentIds.value,
-            inFlightCompleted = state.markedCompletedIds.value,
-            pendingOverrides = state.pendingOverrides,
-            labelFor = { byId[it]?.title },
-        )
-        commitOverrides(state, outcome)
-        if (outcome.conflicts.isNotEmpty()) {
-            state.pendingResult = result
-            state.conflicts.value = outcome.conflicts
-        }
-        return true
-    }
-
-    private suspend fun commitOverrides(
-        state: HomeSyncState,
-        outcome: AssignmentOverrideReconciler.Outcome,
-    ) {
-        dataCache.replaceIgnoredAssignments(outcome.ignored)
-        dataCache.replaceMarkedCompletedAssignments(outcome.completed)
-        state.ignoredAssignmentIds.value = outcome.ignored
-        state.markedCompletedIds.value = outcome.completed
     }
 
     private suspend fun applyCourseOverrides(

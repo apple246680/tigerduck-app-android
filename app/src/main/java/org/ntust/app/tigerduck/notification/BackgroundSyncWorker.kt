@@ -170,23 +170,24 @@ class BackgroundSyncWorker @AssistedInject constructor(
             val result = syncApiClient.fetchFullSync()
             val localIgnored = dataCache.loadIgnoredAssignments()
             val localMarked = dataCache.loadMarkedCompletedAssignments()
-            // The account's first sync of its marks here, with marks the
-            // server lacks: they are left for Home's sync to send up. After
-            // it, an empty server means they were cleared on another device.
-            val isFirstTimeMigration = AssignmentOverrideReconciler.isFirstUpload(
+            // With the Assignments switch off, the re-enable check pending,
+            // or marks the server lacks on the account's first sync here
+            // (Home's sync sends those up), the marks stay as they are.
+            val takesMarks = AssignmentOverrideReconciler.backgroundTakesMarks(
+                syncsMarks = prefs.syncAssignments,
+                pendingConflictCategories = prefs.pendingConflictCategories,
                 syncedBefore = prefs.assignmentMarksSyncedOnce,
                 serverIgnored = result.ignoredIds,
                 serverCompleted = result.completedIds,
                 localIgnored = localIgnored,
                 localCompleted = localMarked,
             )
-            val held = AssignmentOverrideReconciler.isHeldForReenable(prefs.pendingConflictCategories)
-            if (!isFirstTimeMigration && !held) {
+            if (takesMarks) {
                 dataCache.replaceIgnoredAssignments(result.ignoredIds)
                 dataCache.replaceMarkedCompletedAssignments(result.completedIds)
                 if (authService.isStillSignedInAs(account)) prefs.assignmentMarksSyncedOnce = true
             }
-            val marksChanged = !isFirstTimeMigration && !held &&
+            val marksChanged = takesMarks &&
                 (result.ignoredIds != localIgnored || result.completedIds != localMarked)
             courseIgnoreSync.applySnapshot(result, generation)
 

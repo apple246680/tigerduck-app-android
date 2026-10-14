@@ -217,6 +217,37 @@ object AssignmentOverrideReconciler {
     fun isHeldForReenable(pendingConflictCategories: Set<String>): Boolean =
         REENABLE_CATEGORY in pendingConflictCategories
 
+    /**
+     * Why a full sync leaves this device's marks as they are — neither taking
+     * the server's nor sending its own up as a first sync — or null to sync
+     * them. [syncsMarks] is the Assignments sync switch: with it off, the
+     * done and ignored marks are this device's own, as on iOS. The re-enable
+     * check holds them too; see [isHeldForReenable].
+     */
+    fun reasonToLeaveMarks(syncsMarks: Boolean, pendingConflictCategories: Set<String>): String? = when {
+        !syncsMarks -> "Assignments sync is off"
+        isHeldForReenable(pendingConflictCategories) -> "re-enable check pending"
+        else -> null
+    }
+
+    /**
+     * Whether the background worker's full sync replaces this device's marks
+     * with the server's. Not with the Assignments switch off or the re-enable
+     * check pending ([reasonToLeaveMarks]), and not on the account's first
+     * sync here with marks the server lacks: the worker sends nothing up, and
+     * leaves them for Home's sync to ([isFirstUpload]).
+     */
+    fun backgroundTakesMarks(
+        syncsMarks: Boolean,
+        pendingConflictCategories: Set<String>,
+        syncedBefore: Boolean,
+        serverIgnored: Set<String>,
+        serverCompleted: Set<String>,
+        localIgnored: Set<String>,
+        localCompleted: Set<String>,
+    ): Boolean = reasonToLeaveMarks(syncsMarks, pendingConflictCategories) == null &&
+        !isFirstUpload(syncedBefore, serverIgnored, serverCompleted, localIgnored, localCompleted)
+
     private fun statusOf(id: String, ignored: Set<String>, completed: Set<String>): String = when (id) {
         in ignored -> STATUS_IGNORED
         in completed -> STATUS_COMPLETED
