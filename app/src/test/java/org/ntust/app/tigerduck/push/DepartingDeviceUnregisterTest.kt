@@ -297,6 +297,43 @@ class DepartingDeviceUnregisterTest {
         assertNull(store.pending)
     }
 
+    @Test
+    fun `saving the endpoint is not held up by an unregister on its way`() = runTest {
+        owe()
+        val held = CompletableDeferred<Int>().also { heldDelete = it }
+        val sending = async { unregister().send() }
+        runCurrent()
+        endpoint = "https://elsewhere.example/v3"
+
+        // Returns at once; the unregister on its way goes to the backend it is owed to.
+        unregister().dropIfEndpointMoved()
+
+        held.complete(503)
+        sending.await()
+        // Its next try finds the endpoint moved, and drops it then.
+        assertEquals(Outcome.DONE, unregister().send())
+        assertNull(store.pending)
+    }
+
+    @Test
+    fun `saving the endpoint over a debt that cannot be read does not fail`() = runTest {
+        val broken = object : PendingUnregisterStore {
+            override fun load(): PendingUnregister = throw SecurityException("unreadable")
+            override fun save(pending: PendingUnregister) {}
+            override fun clear() {}
+        }
+        val unregister = DepartingDeviceUnregister(
+            owed = OwedUnregister(broken),
+            deleteDevice = { _, _, _ -> 204 },
+            refresh = { _, _ -> DepartingRefresh.Refused },
+            hasSession = { false },
+            currentBaseUrl = { endpoint },
+            now = { now },
+        )
+
+        unregister.dropIfEndpointMoved()
+    }
+
     // What cannot be sent, or is never sent, is not kept for good
 
     @Test

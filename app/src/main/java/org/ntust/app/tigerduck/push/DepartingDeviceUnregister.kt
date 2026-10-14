@@ -149,8 +149,21 @@ class DepartingDeviceUnregister internal constructor(
      * rather than handed to the backend it names now, which did not issue them. For the setting's
      * own save, which re-registers the device at once.
      */
-    suspend fun dropIfEndpointMoved() = mutex.withLock {
-        store.load()?.let(::movedElsewhere)
+    fun dropIfEndpointMoved() {
+        // Not waiting for an unregister on its way, which can take a while: it goes to the
+        // backend it is owed to whatever the setting, and its next try checks the endpoint again.
+        if (!mutex.tryLock()) return
+        try {
+            val pending = try {
+                store.load()
+            } catch (e: Exception) {
+                Log.w(TAG, "owed unregister unreadable: ${e.javaClass.simpleName}")
+                null
+            }
+            pending?.let(::movedElsewhere)
+        } finally {
+            mutex.unlock()
+        }
     }
 
     // Under the mutex. Clears [pending] when the endpoint is not the one it is owed to.
