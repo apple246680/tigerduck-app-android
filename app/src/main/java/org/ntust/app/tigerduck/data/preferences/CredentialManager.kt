@@ -131,9 +131,8 @@ class CredentialManager @Inject constructor(@ApplicationContext context: Context
             .remove("ntust_student_id")
             .remove("ntust_password")
             .remove("moodle_token")
-            .remove(V3TokenStore.KEY_ACCESS_TOKEN)
-            .remove(V3TokenStore.KEY_REFRESH_TOKEN)
-            .remove(V3TokenStore.KEY_EXPIRES_AT)
+            // Not the backend session: AuthTokenManager.logout() drops it under
+            // its own lock, and hands it to the sign-out's unregister as it does.
             .apply()
     }
 

@@ -511,6 +511,18 @@ class AuthTokenManagerRefreshTest {
         assertEquals(DepartingRefresh.Unavailable, manager.refreshDeparting(departing()))
     }
 
+    @Test
+    fun `a sign-out hands back the session it wipes, with a refresh that landed before it`() = runTest {
+        val manager = manager(Reply.Pair("access-2", "refresh-2"))
+        assertEquals("Bearer access-2", manager.authHeader())
+
+        val departing = manager.logout()
+
+        assertEquals("refresh-2", departing?.refreshToken)
+        assertNull(tokens.refreshToken)
+        assertNull("nothing to hand back the second time", manager.logout())
+    }
+
     // A session refresh still on its way at sign-out, with the same token as the departing one
 
     @Test

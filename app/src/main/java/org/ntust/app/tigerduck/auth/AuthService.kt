@@ -306,15 +306,13 @@ class AuthService @Inject constructor(
     }
 
     fun logout() {
-        // Snapshot the session BEFORE wiping tokens: clearNtustCredentials() and
-        // authTokenManager.logout() both drop it, and pushRegistration.unregister()
-        // sends its DELETE afterwards, until the server has it — so without the
-        // departing session the device-unregister call would find none to go
-        // out with, and leak the device row.
-        val departing = authTokenManager.departingSession()
         credentials.clearNtustCredentials()
         credentials.clearLibraryCredentials()
-        authTokenManager.logout()
+        // The session it wipes, taken as it moves the generation: the
+        // pushRegistration.unregister() below sends its DELETE afterwards, until
+        // the server has it, and without the departing session it would find
+        // none to go out with, and leak the device row.
+        val departing = authTokenManager.logout()
         // A queued live_activity push, and an edit still waiting to be
         // confirmed, both belong to the account that is leaving. Neither may
         // reach whoever signs in next.

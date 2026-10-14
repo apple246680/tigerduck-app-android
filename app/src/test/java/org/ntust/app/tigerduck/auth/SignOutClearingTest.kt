@@ -60,4 +60,20 @@ class SignOutClearingTest {
         assertTrue("logout() wipes the cache", wiped >= 0)
         assertTrue("logout() redraws the widgets after the wipe", redrawn > wiped)
     }
+
+    @Test
+    fun `the departing session is the one the sign-out wipes, taken as it moves the generation`() {
+        // Taken before, a refresh landing in between would store a pair the unregister does not
+        // hold, and the token it holds would have been replaced.
+        val logout = body("fun logout()")
+        assertTrue(logout, Regex("""val departing = authTokenManager\.logout\(\)""").containsMatchIn(logout))
+        assertFalse(logout, "departingSession()" in logout)
+    }
+
+    @Test
+    fun `the school credentials' clearing leaves the session to the sign-out that takes it`() {
+        val credentials = File(appDir(), "src/main/java/org/ntust/app/tigerduck/data/preferences/CredentialManager.kt").readText()
+        val clear = credentials.substringAfter("fun clearNtustCredentials()").substringBefore("\n    }")
+        assertFalse(clear, "V3TokenStore." in clear)
+    }
 }

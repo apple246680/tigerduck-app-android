@@ -343,14 +343,21 @@ class AuthTokenManager(
     /**
      * Drops the pair, and keeps a login or refresh reply still on its way from
      * storing one. The next account's automatic sign-in then goes at once.
+     *
+     * Hands back the session it drops, for the sign-out's unregister: taken
+     * under the same lock, as the generation moves, so it is the pair a refresh
+     * landing just before stored, and nothing lands after.
      */
-    fun logout() {
+    fun logout(): DepartingSession? {
+        var departing: DepartingSession? = null
         synchronized(signInLock) {
+            departing = departingSession()
             generation++
             tokens.clear()
             signInUnderWay = null
             signInFailedAt = null
         }
+        return departing
     }
 
     /** Stores the pair unless [logout] has run since [signIn] was read, and says whether it did. */
