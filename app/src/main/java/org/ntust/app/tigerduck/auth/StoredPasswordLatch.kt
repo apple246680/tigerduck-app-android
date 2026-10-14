@@ -10,6 +10,8 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.network.MoodleWebserviceError
 import javax.inject.Inject
@@ -54,6 +56,15 @@ interface StoredPasswordLatch {
     fun clear()
 
     /**
+     * Held by every automatic post of the stored password, the SSO sign-ins' and the Moodle token
+     * renewal's alike, from its last look at the latch right before the post until it has read
+     * the school's answer and latched any refusal ([postAutomatically]): a refusal one of them
+     * gets lands before the next one looks, never while it is already posting. A sign-in the user
+     * makes never takes it.
+     */
+    val automaticPosts: Mutex
+
+    /**
      * One refusal. Not a data class: two refusals with the same message are still two, and a
      * banner closed for one shows again for the next.
      */
@@ -61,29 +72,60 @@ interface StoredPasswordLatch {
 }
 
 /**
+ * Runs [post], an automatic sign-in's post of the stored password through to reading the school's
+ * answer, holding [StoredPasswordLatch.automaticPosts], and not at all while a refusal holds:
+ * [refused] makes the error then. The look at the latch that counts is this one, made holding the
+ * lock, so no other automatic post's refusal can land between it and this post. [post] latches a
+ * refusal it gets before it returns.
+ */
+internal suspend fun <T> StoredPasswordLatch.postAutomatically(
+    refused: (StoredPasswordLatch.Rejection) -> Exception,
+    post: suspend () -> T,
+): T = automaticPosts.withLock {
+    rejection.value?.let { throw refused(it) }
+    post()
+}
+
+/**
+ * How a Moodle token harvest posts the password to NTUST's SSO: [post] runs `send`, which posts it
+ * and reads SSO's answer, throwing its refusal as [MoodleWebserviceError.SsoLoginRejected].
+ */
+internal interface PasswordPosting {
+    suspend fun <T> post(send: suspend () -> T): T
+
+    /** For credentials the user just typed: posted as they are, whatever the latch holds. */
+    object Typed : PasswordPosting {
+        override suspend fun <T> post(send: suspend () -> T): T = send()
+    }
+}
+
+/**
  * Runs [harvest], a Moodle token harvest the user did not start, which posts the stored
- * [password] to NTUST's SSO: not at all while the latch is set, and latching when SSO refuses it.
- * [harvest] runs the check it is handed right before the password goes out, so a refusal that
- * another sign-in latched meanwhile stops it too. The harvest a sign-in the user makes runs
- * without it.
+ * [password] to NTUST's SSO with the [PasswordPosting] it is handed: not at all while the latch is
+ * set, and latching when SSO refuses the password it posted. That posting takes
+ * [StoredPasswordLatch.automaticPosts] and checks the latch again right before the password goes
+ * out ([postAutomatically]), so a refusal another sign-in latched meanwhile stops it too. The
+ * harvest a sign-in the user makes posts with [PasswordPosting.Typed].
  */
 internal suspend fun <T> StoredPasswordLatch.guardAutomaticHarvest(
     studentId: String,
     password: String,
-    harvest: suspend (beforePosting: () -> Unit) -> T,
+    harvest: suspend (posting: PasswordPosting) -> T,
 ): T {
-    val refuseIfLatched = {
-        rejection.value?.let { throw MoodleWebserviceError.SsoLoginRejected(it.reason) }
-        Unit
-    }
-    refuseIfLatched()
+    rejection.value?.let { throw MoodleWebserviceError.SsoLoginRejected(it.reason) }
     val before = generation
-    return try {
-        harvest(refuseIfLatched)
-    } catch (e: MoodleWebserviceError.SsoLoginRejected) {
-        markRejected(before, studentId, password, e.reason)
-        throw e
-    }
+    val latch = this
+    return harvest(object : PasswordPosting {
+        override suspend fun <R> post(send: suspend () -> R): R =
+            latch.postAutomatically({ MoodleWebserviceError.SsoLoginRejected(it.reason) }) {
+                try {
+                    send()
+                } catch (e: MoodleWebserviceError.SsoLoginRejected) {
+                    latch.markRejected(before, studentId, password, e.reason)
+                    throw e
+                }
+            }
+    })
 }
 
 /**
@@ -109,6 +151,8 @@ class PersistedStoredPasswordLatch internal constructor(
 
     private val lock = Any()
     private var currentGeneration = 0
+
+    override val automaticPosts = Mutex()
 
     private val _rejection = MutableStateFlow(
         if (prefs.getBoolean(KEY_REJECTED, false)) {

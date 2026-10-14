@@ -3,18 +3,20 @@ package org.ntust.app.tigerduck.network
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.ntust.app.tigerduck.auth.PasswordPosting
 import org.ntust.app.tigerduck.auth.StoredPasswordLatch
 import org.ntust.app.tigerduck.auth.guardAutomaticHarvest
 
 /**
  * When [MoodleTokenService] signs in to SSO for a token, and where it keeps it. Apart from the
  * service's SSO flow so a test can run it: [login] is that flow, a student ID and password in, a
- * wstoken out. It runs `beforePosting` right before it posts the password to SSO.
+ * wstoken out. It posts the password, and reads SSO's answer to it, through the
+ * [PasswordPosting] it is handed.
  *
  * A refresh and a renewal sign in with the stored password the user did not just type, so they
- * run under [passwordLatch]: none at all once SSO has refused that password, a check again
- * right before the password goes out, and a refusal latched for the whole app. The sign-in the
- * user makes ([obtain]) posts what they typed, and its success lifts the latch.
+ * run under [passwordLatch]: none at all once SSO has refused that password, a check again right
+ * before the password goes out under the lock every automatic post takes, and a refusal latched
+ * for the whole app. The sign-in the user makes ([obtain]) posts what they typed.
  *
  * One sign-in at a time: the sign-in a user makes, a refresh and a renewal all take [mutex]. A
  * refresh and a renewal both go through [MoodleTokenRenewal], so both keep its pause and its stop
@@ -26,7 +28,7 @@ internal class MoodleTokenCoordinator(
     private val login: suspend (
         studentId: String,
         password: String,
-        beforePosting: () -> Unit,
+        posting: PasswordPosting,
     ) -> String,
     scope: CoroutineScope,
     now: () -> Long,
@@ -83,7 +85,7 @@ internal class MoodleTokenCoordinator(
      */
     suspend fun obtain(studentId: String, password: String): String = mutex.withLock {
         val normalized = studentId.trim().uppercase()
-        login(normalized, password) {}.also {
+        login(normalized, password, PasswordPosting.Typed).also {
             // Known as just got before it is stored, so a refresh that reads it takes it.
             renewal.reset(harvested = it, credentials = studentId to password)
             if (!tokens.storeIfSignedIn(normalized, it)) {
@@ -96,8 +98,8 @@ internal class MoodleTokenCoordinator(
     private suspend fun refreshUnlocked(): String {
         val sid = tokens.studentId ?: throw MoodleWebserviceError.MissingStoredCredentials()
         val pwd = tokens.password ?: throw MoodleWebserviceError.MissingStoredCredentials()
-        val token = passwordLatch.guardAutomaticHarvest(sid, pwd) { beforePosting ->
-            login(sid.trim().uppercase(), pwd, beforePosting)
+        val token = passwordLatch.guardAutomaticHarvest(sid, pwd) { posting ->
+            login(sid.trim().uppercase(), pwd, posting)
         }
         // Signed out while it ran: the token is the departing account's, and stored it would
         // answer for whoever signs in next.

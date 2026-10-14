@@ -11,6 +11,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import kotlinx.coroutines.CoroutineScope
 import org.ntust.app.tigerduck.auth.SIGN_IN_PAUSE_MS
+import org.ntust.app.tigerduck.auth.PasswordPosting
 import org.ntust.app.tigerduck.auth.StoredPasswordLatch
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.di.ApplicationScope
@@ -105,8 +106,8 @@ class MoodleTokenService internal constructor(
 
     private val coordinator = MoodleTokenCoordinator(
         tokens = tokens,
-        login = { studentId, password, beforePosting ->
-            performOidcLogin(studentId, password, beforePosting).wstoken.also {
+        login = { studentId, password, posting ->
+            performOidcLogin(studentId, password, posting).wstoken.also {
                 Log.i("MoodleTokenService", "harvested wstoken (len=${it.length})")
             }
         },
@@ -138,11 +139,11 @@ class MoodleTokenService internal constructor(
         val privatetoken: String?,
     )
 
-    /** [beforePosting] runs right before the password is posted to SSO, and may throw to stop it. */
+    /** [posting] posts the password to SSO and reads its answer; it may refuse to post it. */
     private suspend fun performOidcLogin(
         studentId: String,
         password: String,
-        beforePosting: () -> Unit,
+        posting: PasswordPosting,
     ): TokenTriple = withContext(Dispatchers.IO) {
         // The exact string form sent to the server is what Moodle HMACs against,
         // so keep this one copy and reuse it for both the query param and the
@@ -171,7 +172,7 @@ class MoodleTokenService internal constructor(
             studentId = studentId,
             password = password,
             passport = passport,
-            beforePosting = beforePosting,
+            posting = posting,
             remainingSteps = 6,
         )
     }
@@ -183,7 +184,7 @@ class MoodleTokenService internal constructor(
         studentId: String,
         password: String,
         passport: String,
-        beforePosting: () -> Unit,
+        posting: PasswordPosting,
         remainingSteps: Int,
     ): TokenTriple {
         if (remainingSteps <= 0) {
@@ -220,7 +221,7 @@ class MoodleTokenService internal constructor(
                 studentId = studentId,
                 password = password,
                 passport = passport,
-                beforePosting = beforePosting,
+                posting = posting,
                 remainingSteps = remainingSteps - 1,
             )
         }
@@ -253,22 +254,26 @@ class MoodleTokenService internal constructor(
                 "ReturnUrl" to fields.returnUrl,
                 "Uri" to fields.uri,
             )
-            beforePosting()
-            Log.i("MoodleTokenService", "posting SSO login → ${postUrl.redactForLog()}")
-            val (nextHtml, nextUrl) = postForm(
-                url = postUrl,
-                fields = payload,
-                referer = responseUrl.toString(),
-                origin = "https://ssoam2.ntust.edu.tw",
-            )
-
-            // If we're still at /account/login and neither a token nor an OIDC
-            // bridge is in sight, the credentials were rejected.
-            if (nextUrl.encodedPath.contains("/account/login") &&
-                extractMoodleMobileToken(nextHtml) == null &&
-                parseOIDCBridge(nextHtml) == null
-            ) {
-                throw MoodleWebserviceError.SsoLoginRejected(extractLoginError(nextHtml))
+            // The post and SSO's answer to it are one step for the latch: an automatic harvest
+            // posts under the lock every automatic post takes, and latches a refusal before it
+            // lets go.
+            val (nextHtml, nextUrl) = posting.post {
+                Log.i("MoodleTokenService", "posting SSO login → ${postUrl.redactForLog()}")
+                val answer = postForm(
+                    url = postUrl,
+                    fields = payload,
+                    referer = responseUrl.toString(),
+                    origin = "https://ssoam2.ntust.edu.tw",
+                )
+                // If we're still at /account/login and neither a token nor an OIDC
+                // bridge is in sight, the credentials were rejected.
+                if (answer.second.encodedPath.contains("/account/login") &&
+                    extractMoodleMobileToken(answer.first) == null &&
+                    parseOIDCBridge(answer.first) == null
+                ) {
+                    throw MoodleWebserviceError.SsoLoginRejected(extractLoginError(answer.first))
+                }
+                answer
             }
             return resolveTokenTriple(
                 html = nextHtml,
@@ -277,7 +282,7 @@ class MoodleTokenService internal constructor(
                 studentId = studentId,
                 password = password,
                 passport = passport,
-                beforePosting = beforePosting,
+                posting = posting,
                 remainingSteps = remainingSteps - 1,
             )
         }

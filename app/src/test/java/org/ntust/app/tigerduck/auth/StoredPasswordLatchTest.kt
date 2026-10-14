@@ -166,13 +166,26 @@ class StoredPasswordLatchTest {
         val latch = latch()
 
         val failure = runCatching {
-            latch.guardAutomaticHarvest("B00000000", "old-password") { _ ->
-                throw MoodleWebserviceError.SsoLoginRejected("Wrong password")
+            latch.guardAutomaticHarvest("B00000000", "old-password") { posting ->
+                posting.post { throw MoodleWebserviceError.SsoLoginRejected("Wrong password") }
             }
         }.exceptionOrNull()
 
         assertTrue("got $failure", failure is MoodleWebserviceError.SsoLoginRejected)
         assertEquals("Wrong password", latch.rejection.value?.reason)
+    }
+
+    @Test
+    fun `a refusal from a harvest that posted no password latches nothing`() = runTest {
+        val latch = latch()
+
+        runCatching {
+            latch.guardAutomaticHarvest("B00000000", "old-password") { _ ->
+                throw MoodleWebserviceError.SsoLoginRejected("Wrong password")
+            }
+        }
+
+        assertNull(latch.rejection.value)
     }
 
     @Test

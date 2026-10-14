@@ -8,6 +8,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.ntust.app.tigerduck.auth.StoredPasswordLatch
+import org.ntust.app.tigerduck.auth.postAutomatically
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -173,12 +174,28 @@ class SsoLoginService internal constructor(
         // The credentials go to the school's sign-in host and nowhere else, whatever the page
         // names as the form's action. As on the iPhone (ssoActionHostAllowlist).
         if (!isSignInHost(actionUrl)) throw SsoLoginError.InvalidResponse()
-        // Again right before the password goes out: another sign-in's refusal
-        // may have landed since the check above.
-        if (!typed) passwordLatch.rejection.value?.let { throw SsoLoginError.LoginFailed(it.reason) }
-        val loginResult = postForm(actionUrl, fields)
-        html = loginResult.first
-        url = loginResult.second
+        if (typed) return@withContext submitLoginForm(actionUrl, fields)
+        // Under the lock every automatic post of the stored password takes, with the latch
+        // checked again right before the password goes out: a refusal another sign-in got,
+        // the Moodle token renewal's included, has landed by then, and none lands while this
+        // one is posting.
+        passwordLatch.postAutomatically({ SsoLoginError.LoginFailed(it.reason) }) {
+            try {
+                submitLoginForm(actionUrl, fields)
+            } catch (e: SsoLoginError.LoginFailed) {
+                passwordLatch.markRejected(latchGeneration, studentId, password, e.reason)
+                throw e
+            }
+        }
+    }
+
+    /**
+     * Steps 5 to 7: posts the sign-in form's [fields] to [actionUrl] and follows the answer. Throws
+     * [SsoLoginError.LoginFailed] with the school's message when the school kept the sign-in on its
+     * form, and for nothing else.
+     */
+    private fun submitLoginForm(actionUrl: HttpUrl, fields: List<Pair<String, String>>): Boolean {
+        var (html, url) = postForm(actionUrl, fields)
 
         // Step 6: Resolve OIDC bridge forms after login
         val afterLogin = resolveOIDCBridgeForms(html, url)
@@ -187,13 +204,11 @@ class SsoLoginService internal constructor(
 
         // Step 7: Check if still on SSO page
         if (HtmlParser.isSSOLoginPage(html, url)) {
-            val reason = HtmlParser.loginErrorMessage(html)
-            if (!typed) passwordLatch.markRejected(latchGeneration, studentId, password, reason)
-            throw SsoLoginError.LoginFailed(reason)
+            throw SsoLoginError.LoginFailed(HtmlParser.loginErrorMessage(html))
         }
 
         sessionManager.markLoginSuccess()
-        true
+        return true
     }
 
     private fun fetchPage(url: String): Pair<String, HttpUrl> {

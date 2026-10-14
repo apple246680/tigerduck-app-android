@@ -36,11 +36,10 @@ class MoodleTokenCoordinatorTest {
 
     private fun kotlinx.coroutines.test.TestScope.coordinator() = MoodleTokenCoordinator(
         tokens = tokens,
-        login = { id, password, beforePosting ->
+        login = { id, password, posting ->
             logins += id
             loginGate?.await()
-            beforePosting()
-            login(id, password)
+            posting.post { login(id, password) }
         },
         scope = backgroundScope,
         now = { now },
@@ -115,7 +114,7 @@ class MoodleTokenCoordinatorTest {
         assertEquals("the refused password is not sent again", 1, logins.size)
 
         // And the other way round: a refresh SSO refuses stops the renewals after it.
-        val other = MoodleTokenCoordinator(tokens, { id, _, _ -> logins += id; throw MoodleWebserviceError.SsoLoginRejected(null) }, backgroundScope, { now }, 300_000L, InMemoryStoredPasswordLatch())
+        val other = MoodleTokenCoordinator(tokens, { id, _, posting -> logins += id; posting.post { throw MoodleWebserviceError.SsoLoginRejected(null) } }, backgroundScope, { now }, 300_000L, InMemoryStoredPasswordLatch())
         runCatching { other.refresh() }
         runCatching { other.refresh() }
         runCatching { other.renew("dead") }
@@ -198,7 +197,7 @@ class MoodleTokenCoordinatorTest {
     @Test
     fun `refusals are kept in the app-wide latch, which a sign-in by hand lifts`() = runTest(UnconfinedTestDispatcher()) {
         tokens.token = "dead"
-        val first = MoodleTokenCoordinator(tokens, { id, _, _ -> logins += id; throw MoodleWebserviceError.SsoLoginRejected("wrong") }, backgroundScope, { now }, 300_000L, latch)
+        val first = MoodleTokenCoordinator(tokens, { id, _, posting -> logins += id; posting.post { throw MoodleWebserviceError.SsoLoginRejected("wrong") } }, backgroundScope, { now }, 300_000L, latch)
         runCatching { first.renew("dead") }
         assertEquals("wrong", latch.rejection.value?.reason)
 
@@ -217,12 +216,13 @@ class MoodleTokenCoordinatorTest {
         var posted = false
         val coordinator = MoodleTokenCoordinator(
             tokens,
-            { _, _, beforePosting ->
+            { _, _, posting ->
                 // Another sign-in's refusal lands while this one is on its way to the form.
                 latch.markRejected(latch.generation, "B11300001", "pw", "Locked")
-                beforePosting()
-                posted = true
-                "fresh"
+                posting.post {
+                    posted = true
+                    "fresh"
+                }
             },
             backgroundScope, { now }, 300_000L, latch,
         )
