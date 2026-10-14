@@ -483,6 +483,7 @@ class ClassroomUsageServiceTest {
         val harness = Harness(demo = { demo })
 
         assertEquals(demo, harness.usage(wednesday).usage)
+        assertEquals(demo, harness.service.keptUsage(wednesday)?.usage)
         assertTrue(harness.transport.sent.isEmpty())
     }
 }

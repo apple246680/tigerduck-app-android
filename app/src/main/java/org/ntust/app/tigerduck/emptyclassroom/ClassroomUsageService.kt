@@ -103,9 +103,14 @@ class ClassroomUsageService internal constructor(
     private val epoch = AtomicInteger()
     private val oneAtATime = Mutex()
 
-    /** The day as last read, to show while it refreshes; null once it is too old to show as current. */
-    fun keptUsage(day: LocalDate): KeptUsage? =
-        kept[ClassroomUsageParser.dayNumber(day)]?.takeIf { nowMs() - it.fetchedAtMs < STALE_LIMIT_MS }
+    /**
+     * The day as last read, to show while it refreshes; null once it is too old to show as current.
+     * The demo account's day is always at hand, so a visit shows it at once instead of loading.
+     */
+    fun keptUsage(day: LocalDate): KeptUsage? {
+        demo(day)?.let { return KeptUsage(it, nowMs()) }
+        return kept[ClassroomUsageParser.dayNumber(day)]?.takeIf { nowMs() - it.fetchedAtMs < STALE_LIMIT_MS }
+    }
 
     /** [isToday] sets only how long the day stays fresh: today's date is posted like any other. */
     suspend fun usage(day: LocalDate, isToday: Boolean, force: Boolean, credentials: Credentials): KeptUsage {

@@ -13,9 +13,12 @@ import org.junit.Test
 import org.ntust.app.tigerduck.academic.AcademicCalendar
 import org.ntust.app.tigerduck.academic.Holiday
 import org.ntust.app.tigerduck.academic.SemesterTerm
+import org.ntust.app.tigerduck.emptyclassroom.CampusUsage
 import org.ntust.app.tigerduck.emptyclassroom.ClassroomPageFixtures as Pages
 import org.ntust.app.tigerduck.emptyclassroom.ClassroomUsageService
 import org.ntust.app.tigerduck.emptyclassroom.FakeCour01Transport
+import org.ntust.app.tigerduck.emptyclassroom.RoomSlotUse
+import org.ntust.app.tigerduck.emptyclassroom.RoomUsage
 import org.ntust.app.tigerduck.mail.MainDispatcherRule
 import org.ntust.app.tigerduck.shared.Course
 import java.io.IOException
@@ -60,11 +63,11 @@ class EmptyClassroomViewModelTest {
         override fun isOffline(error: Throwable) = offline || error is IOException
     }
 
-    private class Harness(now: LocalDateTime) {
+    private class Harness(now: LocalDateTime, demo: (LocalDate) -> CampusUsage? = { null }) {
         val env = FakeEnvironment(now)
         val transport = FakeCour01Transport()
         var clockMs = 1_000_000L
-        val service = ClassroomUsageService(transport, { _, _ -> true }, {}, { null }, { clockMs }, Dispatchers.Unconfined)
+        val service = ClassroomUsageService(transport, { _, _ -> true }, {}, demo, { clockMs }, Dispatchers.Unconfined)
         val model = EmptyClassroomViewModel(service, env)
 
         fun serve(html: String?, gate: CompletableDeferred<Unit>? = null) = transport.serve(html, gate)
@@ -402,6 +405,21 @@ class EmptyClassroomViewModelTest {
         harness.model.accountChanged()
         assertEquals(listOf("TR-214"), harness.rooms)
         assertNull(harness.state.openRoom)
+    }
+
+    @Test
+    fun `the demo account's day shows at once on the next visit, so an open room's sheet stays`() {
+        val demo = CampusUsage(listOf(RoomUsage("TR-214", List(14) { RoomSlotUse.Free })), emptyMap())
+        val harness = Harness(time(14, 10, 5), demo = { demo })
+        harness.model.appear()
+        harness.model.open(harness.state.usage!!.rooms.first())
+
+        // A trip to the background, or the activity rebuilt for a dark-mode change.
+        harness.model.disappear()
+        harness.model.appear()
+
+        assertEquals("TR-214", harness.state.openRoom?.room)
+        assertEquals(0, harness.requests)
     }
 
     @Test
