@@ -84,6 +84,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.BuildConfig
+import org.ntust.app.tigerduck.AppUrls
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.ui.screen.debug.ApiEndpointDebugScreen
 import org.ntust.app.tigerduck.ui.component.OutlinedAccountIdField
@@ -91,12 +92,6 @@ import org.ntust.app.tigerduck.ui.component.PasswordTrailingIcons
 import org.ntust.app.tigerduck.ui.component.SecureScreen
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
 
-private const val URL_TIGERDUCK_WEBSITE = "https://tigerduck.app"
-private const val URL_TIGERDUCK_GITHUB = "https://github.com/tigerduck-app"
-private const val URL_PRIVACY_POLICY = "https://tigerduck.app/privacy-policy"
-private const val URL_DELETE_ACCOUNT = "https://tigerduck.app/delete-account"
-private const val URL_SERVER_STATUS = "https://status.tigerduck.app/"
-private const val URL_LEARN_MORE_TIGERSYNC = "https://tigerduck.app/tigersync"
 private val isFdroidFlavor: Boolean
     get() = BuildConfig.FLAVOR.equals("fdroid", ignoreCase = true)
 @Composable
@@ -267,12 +262,12 @@ fun OnboardingScreen(
                     LinkRow(
                         icon = Icons.Filled.Public,
                         label = stringResource(R.string.onboarding_welcome_website_label),
-                        url = URL_TIGERDUCK_WEBSITE,
+                        url = AppUrls.WEBSITE,
                     )
                     LinkRow(
                         icon = Icons.Filled.Code,
                         label = stringResource(R.string.onboarding_welcome_github_label),
-                        url = URL_TIGERDUCK_GITHUB,
+                        url = AppUrls.GITHUB,
                     )
                 }
 
@@ -302,13 +297,13 @@ fun OnboardingScreen(
                     ) {
                         PrivacyCheckRow(
                             label = stringResource(R.string.onboarding_privacy_policy_label),
-                            url = URL_PRIVACY_POLICY,
+                            url = AppUrls.PRIVACY_POLICY,
                             checked = privacyPolicyAccepted,
                             onCheckedChange = { privacyPolicyAccepted = it },
                         )
                         PrivacyCheckRow(
                             label = stringResource(R.string.onboarding_privacy_delete_account_label),
-                            url = URL_DELETE_ACCOUNT,
+                            url = AppUrls.DELETE_ACCOUNT,
                             checked = deleteAccountAccepted,
                             onCheckedChange = { deleteAccountAccepted = it },
                         )
@@ -383,17 +378,17 @@ fun OnboardingScreen(
                             LinkRow(
                                 icon = Icons.Filled.Info,
                                 label = stringResource(R.string.settings_learn_more_backend),
-                                url = URL_LEARN_MORE_TIGERSYNC,
+                                url = AppUrls.LEARN_MORE_TIGERSYNC,
                             )
                             LinkRow(
                                 icon = Icons.Filled.Shield,
                                 label = stringResource(R.string.onboarding_privacy_policy_label),
-                                url = URL_PRIVACY_POLICY,
+                                url = AppUrls.PRIVACY_POLICY,
                             )
                             LinkRow(
                                 icon = Icons.Filled.AccountCircle,
                                 label = stringResource(R.string.onboarding_privacy_delete_account_label),
-                                url = URL_DELETE_ACCOUNT,
+                                url = AppUrls.DELETE_ACCOUNT,
                             )
                         }
                     }
@@ -451,7 +446,7 @@ fun OnboardingScreen(
                                 // one, then give up and skip. A sign-in that
                                 // fails here has no other way to tell the user
                                 // whether the backend is the reason.
-                                TextButton(onClick = { openUrl(context, URL_SERVER_STATUS) }) {
+                                TextButton(onClick = { openUrl(context, AppUrls.SERVER_STATUS) }) {
                                     Text(stringResource(R.string.settings_check_server_status))
                                 }
                                 // Not while a sign-in is in flight: it would

@@ -26,7 +26,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -48,10 +47,12 @@ import org.ntust.app.tigerduck.serverpush.ServerPopupRequest
 import org.ntust.app.tigerduck.serverpush.ServerPushIntentToken
 import org.ntust.app.tigerduck.serverpush.ServerPushPopupCoordinator
 import org.ntust.app.tigerduck.ui.AppState
+import org.ntust.app.tigerduck.ui.BrowserPreference
 import org.ntust.app.tigerduck.ui.component.TigerDuckDialog
 import org.ntust.app.tigerduck.ui.firsttrigger.FirstTriggerPromptController
 import org.ntust.app.tigerduck.ui.firsttrigger.FirstTriggerPromptHost
 import org.ntust.app.tigerduck.ui.navigation.AppNavigation
+import org.ntust.app.tigerduck.ui.openLink
 import org.ntust.app.tigerduck.ui.screen.update.UpdatePromptDialog
 import org.ntust.app.tigerduck.ui.screen.whatsnew.WhatsNewCatalog
 import org.ntust.app.tigerduck.ui.screen.whatsnew.WhatsNewFlow
@@ -538,7 +539,7 @@ private fun UpdateRequiredHost() {
     // Per-composition, not persisted: the gate never un-latches, so without
     // this the dialog would immediately re-show itself.
     var acknowledged by rememberSaveable { mutableStateOf(false) }
-    val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
     if (!retired || acknowledged) return
 
     AlertDialog(
@@ -547,7 +548,7 @@ private fun UpdateRequiredHost() {
         text = { Text(stringResource(R.string.update_required_message)) },
         confirmButton = {
             TextButton(onClick = {
-                uriHandler.openUri(TIGERDUCK_WEBSITE_URL)
+                openLink(context, AppUrls.WEBSITE, BrowserPreference.SYSTEM)
                 acknowledged = true
             }) {
                 Text(stringResource(R.string.update_required_action))
@@ -560,8 +561,6 @@ private fun UpdateRequiredHost() {
         },
     )
 }
-
-private const val TIGERDUCK_WEBSITE_URL = "https://tigerduck.app"
 
 /** Page ids of a pending What's New sheet, kept across a config-change recreation. */
 private const val KEY_WHATS_NEW_PAGE_IDS = "whatsNewPageIds"

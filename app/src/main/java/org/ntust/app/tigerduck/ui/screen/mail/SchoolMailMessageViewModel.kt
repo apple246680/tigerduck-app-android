@@ -609,7 +609,7 @@ class SchoolMailMessageViewModel @Inject constructor(
         private val UNSAFE_NAME = Regex("[\\\\/:*?\"<>|\\u0000-\\u001f]")
 
         /**
-         * The only schemes `openLink` can actually launch, and therefore the only ones
+         * The only schemes `openBodyLink` can actually launch, and therefore the only ones
          * [targetOf] offers an Open button for. Both sides read this one list, so the dialog
          * cannot drift into an enabled Open that does nothing -- which is what it showed for
          * every other scheme, `tel:`/`ftp:`/`intent:` included. (The sanitizer's own `a[href]`
