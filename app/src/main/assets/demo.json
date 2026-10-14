@@ -348,6 +348,314 @@
             }
           }
         ],
+        "forums": [
+          {
+            "id": 95011,
+            "name": {
+              "zh": "課程討論區",
+              "en": "Course discussion"
+            },
+            "intro": {
+              "zh": "作業與課程內容的問題請在這裡發問。",
+              "en": "Ask about homework and course content here."
+            },
+            "discussions": [
+              {
+                "id": 96001,
+                "pinned": true,
+                "title": {
+                  "zh": "討論區使用規則",
+                  "en": "How to use this forum"
+                },
+                "posts": [
+                  {
+                    "id": 960010,
+                    "created": "2026-09-15T10:00",
+                    "author": {
+                      "zh": "王小明",
+                      "en": "Wang Hsiao-Ming"
+                    },
+                    "authorId": 9101,
+                    "message": {
+                      "zh": "<p>發問前請先搜尋是否有人問過，並在標題寫明作業編號。</p>",
+                      "en": "<p>Search before you ask, and put the homework number in the title.</p>"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": 96002,
+                "title": {
+                  "zh": "作業三：刪除節點後要如何重新平衡？",
+                  "en": "Homework 3: how do we rebalance after a deletion?"
+                },
+                "posts": [
+                  {
+                    "id": 960020,
+                    "created": "2026-10-05T21:10",
+                    "author": {
+                      "zh": "陳怡君",
+                      "en": "Chen Yi-Chun"
+                    },
+                    "authorId": 9003,
+                    "message": {
+                      "zh": "<p>刪除有兩個子節點的節點時，要用前驅還是後繼取代？兩種寫法的旋轉次數會不同嗎？</p>",
+                      "en": "<p>When deleting a node with two children, should we replace it with its predecessor or its successor? Does the number of rotations differ?</p>"
+                    }
+                  },
+                  {
+                    "id": 960021,
+                    "parent": 960020,
+                    "created": "2026-10-05T22:30",
+                    "author": {
+                      "zh": "林助教",
+                      "en": "TA Lin"
+                    },
+                    "authorId": 9102,
+                    "message": {
+                      "zh": "<p>兩種都可以，請在報告中說明你的選擇。旋轉次數最多都是 O(log n)。</p>",
+                      "en": "<p>Either is fine; explain your choice in the report. Both need at most O(log n) rotations.</p>"
+                    },
+                    "attachments": [
+                      {
+                        "name": "avl-delete.pdf",
+                        "size": 96256,
+                        "mime": "application/pdf"
+                      }
+                    ]
+                  },
+                  {
+                    "id": 960022,
+                    "parent": 960021,
+                    "created": "2026-10-06T08:45",
+                    "author": {
+                      "zh": "張家豪",
+                      "en": "Chang Chia-Hao"
+                    },
+                    "authorId": 9004,
+                    "unread": true,
+                    "message": {
+                      "zh": "<p>請問測試資料需要包含重複的鍵值嗎？</p>",
+                      "en": "<p>Do the test cases need to include duplicate keys?</p>"
+                    }
+                  },
+                  {
+                    "id": 960023,
+                    "parent": 960022,
+                    "created": "2026-10-06T09:20",
+                    "author": {
+                      "zh": "林助教",
+                      "en": "TA Lin"
+                    },
+                    "authorId": 9102,
+                    "unread": true,
+                    "message": {
+                      "zh": "<p>不需要，可以假設鍵值都不重複。</p>",
+                      "en": "<p>No, you may assume every key is distinct.</p>"
+                    }
+                  },
+                  {
+                    "id": 960024,
+                    "parent": 960023,
+                    "created": "2026-10-06T12:05",
+                    "author": {
+                      "zh": "張家豪",
+                      "en": "Chang Chia-Hao"
+                    },
+                    "authorId": 9004,
+                    "unread": true,
+                    "message": {
+                      "zh": "<p>了解，謝謝助教！</p>",
+                      "en": "<p>Got it, thanks!</p>"
+                    }
+                  },
+                  {
+                    "id": 960025,
+                    "parent": 960020,
+                    "created": "2026-10-06T13:40",
+                    "author": {
+                      "zh": "黃郁婷",
+                      "en": "Huang Yu-Ting"
+                    },
+                    "authorId": 9005,
+                    "deleted": true,
+                    "message": {
+                      "zh": "<p>此貼文已被刪除。</p>",
+                      "en": "<p>This post has been removed.</p>"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": 96003,
+                "title": {
+                  "zh": "期中考可以帶計算機嗎？",
+                  "en": "Can we bring a calculator to the midterm?"
+                },
+                "posts": [
+                  {
+                    "id": 960030,
+                    "created": "2026-10-13T19:00",
+                    "author": {
+                      "zh": "示範同學",
+                      "en": "Demo Student"
+                    },
+                    "authorId": 9001,
+                    "message": {
+                      "zh": "<p>想確認期中考是否可以使用計算機。</p>",
+                      "en": "<p>Is a calculator allowed in the midterm?</p>"
+                    }
+                  },
+                  {
+                    "id": 960031,
+                    "parent": 960030,
+                    "created": "2026-10-14T09:15",
+                    "author": {
+                      "zh": "王小明",
+                      "en": "Wang Hsiao-Ming"
+                    },
+                    "authorId": 9101,
+                    "message": {
+                      "zh": "<p>不需要，考題不會用到計算機。</p>",
+                      "en": "<p>You won't need one; no question calls for it.</p>"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "materials": [
+          {
+            "id": 1,
+            "name": {
+              "zh": "",
+              "en": ""
+            },
+            "items": [
+              {
+                "id": 905101,
+                "type": "file",
+                "name": {
+                  "zh": "課程大綱",
+                  "en": "Syllabus"
+                },
+                "file": {
+                  "name": "syllabus.pdf",
+                  "size": 284512,
+                  "mime": "application/pdf",
+                  "modified": "2026-09-01T09:00"
+                }
+              },
+              {
+                "id": 905102,
+                "type": "link",
+                "name": {
+                  "zh": "課程錄影（YouTube 播放清單）",
+                  "en": "Lecture recordings (YouTube playlist)"
+                },
+                "url": "https://www.youtube.com/playlist?list=PLdemo-data-structures"
+              }
+            ]
+          },
+          {
+            "id": 2,
+            "name": {
+              "zh": "第 1 週：陣列與串列",
+              "en": "Week 1: arrays and lists"
+            },
+            "items": [
+              {
+                "id": 905103,
+                "type": "file",
+                "name": {
+                  "zh": "第 1 週投影片",
+                  "en": "Week 1 slides"
+                },
+                "file": {
+                  "name": "week1-arrays-lists.pptx",
+                  "size": 3145728,
+                  "mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                  "modified": "2026-09-14T08:00"
+                }
+              },
+              {
+                "id": 905104,
+                "type": "folder",
+                "name": {
+                  "zh": "範例程式",
+                  "en": "Example code"
+                },
+                "files": [
+                  {
+                    "name": "linked_list.cpp",
+                    "size": 4096,
+                    "mime": "text/x-c++src",
+                    "modified": "2026-09-14T08:05"
+                  },
+                  {
+                    "name": "array_stack.cpp",
+                    "size": 3072,
+                    "mime": "text/x-c++src",
+                    "modified": "2026-09-14T08:05"
+                  },
+                  {
+                    "name": "examples.zip",
+                    "size": 20480,
+                    "mime": "application/zip",
+                    "modified": "2026-09-14T08:06"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 3,
+            "name": {
+              "zh": "第 5 週：平衡二元樹",
+              "en": "Week 5: balanced binary trees"
+            },
+            "items": [
+              {
+                "id": 905105,
+                "type": "file",
+                "name": {
+                  "zh": "AVL 樹講義",
+                  "en": "AVL tree notes"
+                },
+                "file": {
+                  "name": "avl-trees.pdf",
+                  "size": 512000,
+                  "mime": "application/pdf",
+                  "modified": "2026-10-12T08:00"
+                }
+              },
+              {
+                "id": 905106,
+                "type": "file",
+                "name": {
+                  "zh": "作業三評分標準",
+                  "en": "Homework 3 rubric"
+                },
+                "file": {
+                  "name": "hw3-rubric.xlsx",
+                  "size": 18432,
+                  "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                  "modified": "2026-09-28T20:00"
+                }
+              },
+              {
+                "id": 905107,
+                "type": "link",
+                "name": {
+                  "zh": "AVL 樹視覺化",
+                  "en": "AVL tree visualisation"
+                },
+                "url": "https://www.cs.usfca.edu/~galles/visualization/AVLtree.html"
+              }
+            ]
+          }
+        ],
         "grades": [
           {
             "name": {
