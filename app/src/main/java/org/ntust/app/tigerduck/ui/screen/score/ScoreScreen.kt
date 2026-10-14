@@ -53,6 +53,7 @@ import org.ntust.app.tigerduck.ui.component.PageHeader
 import org.ntust.app.tigerduck.ui.component.ServerKind
 import org.ntust.app.tigerduck.ui.component.SyncStatusDot
 import org.ntust.app.tigerduck.ui.component.TigerPullToRefresh
+import org.ntust.app.tigerduck.ui.screen.signin.AutoSignInFailedBanner
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
 import org.ntust.app.tigerduck.util.formatCredits
 
@@ -98,6 +99,7 @@ fun ScoreScreen(
                         isLoading = isRefreshing,
                     )
                 }
+                AutoSignInFailedBanner()
 
                 when {
                     !isLoggedIn -> EmptyStateView(

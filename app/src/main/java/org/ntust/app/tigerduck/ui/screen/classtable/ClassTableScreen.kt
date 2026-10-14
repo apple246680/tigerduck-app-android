@@ -290,6 +290,7 @@ fun ClassTableScreen(
                         }
                     }
                 }
+                org.ntust.app.tigerduck.ui.screen.signin.AutoSignInFailedBanner(Modifier.padding(bottom = 8.dp))
 
                 if (!isLoggedIn) {
                     org.ntust.app.tigerduck.ui.component.EmptyStateView(

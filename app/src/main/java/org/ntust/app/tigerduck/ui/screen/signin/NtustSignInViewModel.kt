@@ -9,9 +9,19 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.auth.AuthTokenManager
+import org.ntust.app.tigerduck.auth.StoredPasswordLatch
 import org.ntust.app.tigerduck.notification.BackgroundSyncWorker
 import org.ntust.app.tigerduck.ui.AppState
 import javax.inject.Inject
+
+/**
+ * The refusal the "Automatic sign-in failed" banner shows: [rejection], unless it is the one the
+ * user closed this run ([dismissed]).
+ */
+internal fun bannerRejection(
+    rejection: StoredPasswordLatch.Rejection?,
+    dismissed: StoredPasswordLatch.Rejection?,
+): StoredPasswordLatch.Rejection? = rejection?.takeIf { it !== dismissed }
 
 /**
  * Whether the TigerSync status asks the user to sign in again, in place of the latest error: sync
@@ -28,8 +38,9 @@ internal fun asksToSignInAgain(
 ): Boolean = syncEnabled && credentialsReadable && !hasBackendSession && lastSignInFailed
 
 /**
- * "Sign in again" after the automatic sign-in failed: the TigerSync status row, and the school
- * sign-in sheet it opens over any page ([NtustSignInSheetHost]). The sheet signs in as the stored account; the backend sign-in that
+ * "Sign in again" after the automatic sign-in failed: the banner on Home, the class table and
+ * Score, the TigerSync status row, and the school sign-in sheet they open over any page
+ * ([NtustSignInSheetHost]). The sheet signs in as the stored account; the backend sign-in that
  * follows it signs in to TigerSync too.
  */
 @HiltViewModel
@@ -37,9 +48,11 @@ class NtustSignInViewModel @Inject constructor(
     private val appState: AppState,
     private val authService: AuthService,
     private val authTokenManager: AuthTokenManager,
+    passwordLatch: StoredPasswordLatch,
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
 
+    val rejection: StateFlow<StoredPasswordLatch.Rejection?> = passwordLatch.rejection
     val lastSignInFailed: StateFlow<Boolean> = authTokenManager.lastSignInFailed
     val isLoggingIn: StateFlow<Boolean> = authService.isLoggingIn
     val loginError: StateFlow<String?> = authService.loginError
@@ -48,6 +61,9 @@ class NtustSignInViewModel @Inject constructor(
 
     /** Snapshot state, so a composable reading it follows the request. */
     val sheetRequested: Boolean get() = appState.ntustSignInSheetRequested
+
+    /** Snapshot state, so a composable reading it follows a close on another page. */
+    val dismissedRejection: StoredPasswordLatch.Rejection? get() = appState.dismissedPasswordRejection
 
     /** [asksToSignInAgain] for this device now, after [lastSignInFailed]. */
     fun asksToSignInAgain(syncEnabled: Boolean, lastSignInFailed: Boolean): Boolean = asksToSignInAgain(
@@ -66,6 +82,10 @@ class NtustSignInViewModel @Inject constructor(
     fun dismissSheet() {
         appState.ntustSignInSheetRequested = false
         authService.clearLoginError()
+    }
+
+    fun dismissBanner(rejection: StoredPasswordLatch.Rejection) {
+        appState.dismissedPasswordRejection = rejection
     }
 
     fun signIn(studentId: String, password: String) {

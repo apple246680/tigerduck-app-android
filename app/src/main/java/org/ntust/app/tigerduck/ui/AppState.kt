@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.BuildConfig
 import org.ntust.app.tigerduck.auth.AuthService
+import org.ntust.app.tigerduck.auth.StoredPasswordLatch
 import org.ntust.app.tigerduck.data.DataMigration
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.model.AppFeature
@@ -449,6 +450,11 @@ class AppState @Inject constructor(
     // sign-in over whatever page asked (NtustSignInSheetHost), as the iPhone
     // does. Not persisted.
     var ntustSignInSheetRequested by mutableStateOf(false)
+
+    // The refusal whose "Automatic sign-in failed" banner the user closed. It
+    // stays closed on every page for the rest of this run; a later refusal is
+    // another object and shows again. Not persisted.
+    var dismissedPasswordRejection by mutableStateOf<StoredPasswordLatch.Rejection?>(null)
 
     private var configuredTabsState by mutableStateOf(prefs.configuredTabs)
 

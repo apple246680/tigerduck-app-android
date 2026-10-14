@@ -66,6 +66,9 @@ import org.ntust.app.tigerduck.ui.component.SyncStatusDot
 import org.ntust.app.tigerduck.ui.component.TigerPullToRefresh
 import org.ntust.app.tigerduck.ui.component.rememberAppClockVersion
 import org.ntust.app.tigerduck.ui.component.PageLeftEffect
+import org.ntust.app.tigerduck.ui.screen.signin.AutoSignInFailedBanner
+import org.ntust.app.tigerduck.ui.screen.signin.NtustSignInViewModel
+import org.ntust.app.tigerduck.ui.screen.signin.bannerRejection
 import java.util.Calendar
 import org.ntust.app.tigerduck.util.formatCredits
 
@@ -116,6 +119,8 @@ fun HomeScreen(
     val syncConflicts by viewModel.syncConflicts.collectAsStateWithLifecycle()
     var showComingSoon by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val signInViewModel: NtustSignInViewModel = hiltViewModel()
+    val passwordRejection by signInViewModel.rejection.collectAsStateWithLifecycle()
 
     var isEditing by remember { mutableStateOf(false) }
     var showAddSectionDialog by remember { mutableStateOf(false) }
@@ -218,6 +223,14 @@ fun HomeScreen(
                                 syncedAtMs = schoolDataSyncedAtMs,
                             )
                         }
+                    }
+                }
+
+                // As its own item only while shown: an empty one would still
+                // take the list's spacing.
+                if (bannerRejection(passwordRejection, signInViewModel.dismissedRejection) != null) {
+                    item(key = "autoSignInFailed") {
+                        AutoSignInFailedBanner(viewModel = signInViewModel)
                     }
                 }
 
