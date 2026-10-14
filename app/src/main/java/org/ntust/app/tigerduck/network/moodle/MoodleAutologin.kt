@@ -63,25 +63,28 @@ class MoodleAutologin internal constructor(
     private var lastKeyAtMs: Long? = null
     private var requesting = false
 
+    /** [url] behind a one-time sign-in where [signedIn] gives one, else [url]. */
+    suspend fun url(url: String): String = signedIn(url) ?: url
+
     /**
-     * [url] behind a one-time sign-in when it is an https page on the Moodle site, else [url].
-     * Without a key the page opens signed out rather than later: Moodle refuses a key within
-     * [KEY_INTERVAL_MS] of the last one, a request already on its way gets the only key coming,
-     * and the reader is waiting on the page, so a failed request is not retried and a key slower
-     * than [KEY_WAIT_MS] is not waited for. A key that arrives after a sign-out is dropped too: it
-     * would sign the browser in to the account that left.
+     * [url] behind a one-time sign-in when it is a page [isSignInTarget] allows, else null, when
+     * the page opens as it is. Without a key the page opens signed out rather than later: Moodle
+     * refuses a key within [KEY_INTERVAL_MS] of the last one, a request already on its way gets
+     * the only key coming, and the reader is waiting on the page, so a failed request is not
+     * retried and a key slower than [KEY_WAIT_MS] is not waited for. A key that arrives after a
+     * sign-out is dropped too: it would sign the browser in to the account that left.
      */
-    suspend fun url(url: String): String {
-        if (!isMoodlePage(url)) return url
+    suspend fun signedIn(url: String): String? {
+        if (!isSignInTarget(url)) return null
         val generation = signInGeneration()
         val request = synchronized(lock) {
-            if (requesting || !isKeyDue()) return url
+            if (requesting || !isKeyDue()) return null
             requesting = true
             startKeyRequest(generation)
         }
-        val key = withTimeoutOrNull(KEY_WAIT_MS) { request.await() } ?: return url
-        if (!isStillSignedIn(generation)) return url
-        return signedInUrl(key, url) ?: url
+        val key = withTimeoutOrNull(KEY_WAIT_MS) { request.await() } ?: return null
+        if (!isStillSignedIn(generation)) return null
+        return signedInUrl(key, url)
     }
 
     /**
@@ -135,10 +138,22 @@ class MoodleAutologin internal constructor(
          */
         const val KEY_WAIT_MS = 3_000L
 
-        fun isMoodlePage(url: String): Boolean {
+        /**
+         * Whether [url] is a page the browser may be signed in for: https on the Moodle site
+         * itself, on its own port and with no user in the address, and not one of Moodle's own
+         * sign-in or app-launch pages, which a key has no business going to.
+         */
+        fun isSignInTarget(url: String): Boolean {
             val parsed = url.toHttpUrlOrNull() ?: return false
-            return parsed.scheme == "https" && parsed.host.equals(MoodleWebservice.SITE_HOST, ignoreCase = true)
+            if (parsed.scheme != "https" || parsed.port != 443) return false
+            if (!parsed.host.equals(MoodleWebservice.SITE_HOST, ignoreCase = true)) return false
+            if (parsed.username.isNotEmpty() || parsed.password.isNotEmpty()) return false
+            val path = parsed.encodedPath.lowercase()
+            return UNSIGNED_PATHS.none { path.startsWith(it) }
         }
+
+        /** Moodle's sign-in pages and the app's own token and key pages. */
+        private val UNSIGNED_PATHS = listOf("/login/", "/admin/tool/mobile/")
 
         /**
          * The `autologin.php` link from [key] with the account, the key and the page to go on to,

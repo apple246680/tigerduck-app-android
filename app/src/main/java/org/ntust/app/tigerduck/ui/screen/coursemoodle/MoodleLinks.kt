@@ -3,14 +3,17 @@ package org.ntust.app.tigerduck.ui.screen.coursemoodle
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.util.Log
 import android.webkit.MimeTypeMap
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -77,16 +80,86 @@ fun openMoodlePage(context: Context, path: String) {
 
 /**
  * Opens [url], a page on the Moodle site, in the browser [browserPreference] picks (the Browser
- * setting when null), signed in through [MoodleAutologin] where a key comes in time, else as it
- * is. The key is asked for in the app's scope, so leaving the screen meanwhile does not stop the
- * page opening.
+ * setting when null), signed in where it may be; see [SignedInMoodleWebPages].
  */
-fun openMoodleWebPage(context: Context, url: String, browserPreference: String? = null) {
-    val links = EntryPointAccessors.fromApplication(context.applicationContext, MoodleLinksEntryPoint::class.java)
-    links.appScope().launch(Dispatchers.Main.immediate) {
-        val target = links.autologin().url(url)
-        openMailLink(context, target, browserPreference ?: links.appPreferences().browserPreference)
+fun openMoodleWebPage(
+    context: Context,
+    url: String,
+    browserPreference: String? = null,
+    pages: () -> MoodleWebPages = { MoodleWebPages.of(context) },
+) {
+    pages().open(context, url, browserPreference)
+}
+
+/** Opens a page on the Moodle site; [SignedInMoodleWebPages] in the app, stand-ins in tests. */
+fun interface MoodleWebPages {
+    /** [browserPreference] is the Browser setting's value, or null for the setting as it is. */
+    fun open(context: Context, url: String, browserPreference: String?)
+
+    companion object {
+        fun of(context: Context): MoodleWebPages {
+            val links = EntryPointAccessors.fromApplication(context.applicationContext, MoodleLinksEntryPoint::class.java)
+            return SignedInMoodleWebPages(
+                signIn = links.autologin()::signedIn,
+                browserPreference = { links.appPreferences().browserPreference },
+                scope = links.appScope(),
+            )
+        }
     }
+}
+
+/**
+ * Opens a page on the Moodle site signed in through [signIn] where a key comes in time, else as
+ * a plain link. A signed-in link carries a one-time key, so it goes only to the default browser,
+ * named in the intent, or a Custom Tab of it, never to whatever app claims the link; with no
+ * browser to name, no key is asked for at all. The key is asked for in [scope], the app's, so
+ * leaving the screen meanwhile does not stop the page opening.
+ */
+internal class SignedInMoodleWebPages(
+    private val signIn: suspend (String) -> String?,
+    private val browserPreference: () -> String,
+    private val scope: CoroutineScope,
+    private val main: CoroutineDispatcher = Dispatchers.Main.immediate,
+) : MoodleWebPages {
+    override fun open(context: Context, url: String, browserPreference: String?) {
+        val preference = browserPreference ?: this.browserPreference()
+        val browser = if (MoodleAutologin.isSignInTarget(url)) defaultBrowserPackage(context.packageManager) else null
+        if (browser == null) {
+            openMailLink(context, url, preference)
+            return
+        }
+        scope.launch(main) {
+            val signedIn = signIn(url)
+            if (signedIn == null) {
+                openMailLink(context, url, preference)
+            } else {
+                runCatching { context.startActivity(signedInPageIntent(context, signedIn, browser, inApp = preference == "inApp")) }
+                    .onFailure { openMailLink(context, url, preference) }
+            }
+        }
+    }
+}
+
+/** [url], signed in, for [browser] alone: a Custom Tab of it in the app, else the browser itself. */
+internal fun signedInPageIntent(context: Context, url: String, browser: String, inApp: Boolean): Intent {
+    val intent = if (inApp) CustomTabsIntent.Builder().build().intent else Intent(Intent.ACTION_VIEW)
+    intent.data = url.toUri()
+    intent.setPackage(browser)
+    intent.addCategory(Intent.CATEGORY_BROWSABLE)
+    if (!inApp || context !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    return intent
+}
+
+/**
+ * The browser that opens a web page by default, or the only browser there is; null with several
+ * and none chosen, or none at all.
+ */
+internal fun defaultBrowserPackage(packageManager: PackageManager): String? {
+    val probe = Intent(Intent.ACTION_VIEW, "https://example.com/".toUri()).addCategory(Intent.CATEGORY_BROWSABLE)
+    val browsers = packageManager.queryIntentActivities(probe, 0).map { it.activityInfo.packageName }.toSet()
+    val chosen = packageManager.resolveActivity(probe, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
+    // With no default the system's chooser answers, which is no browser.
+    return chosen?.takeIf { it in browsers } ?: browsers.singleOrNull()
 }
 
 @EntryPoint
@@ -100,20 +173,24 @@ internal interface MoodleLinksEntryPoint {
 }
 
 /**
- * Opens a link from Moodle content, such as an announcement's message: a Moodle page signed in, as
- * [openMoodleWebPage] opens it, with a `webservice/pluginfile.php` link rewritten to the web path
- * and its token dropped, so no key leaves the app; any other web page as the Browser setting
- * asks; mail as a new message.
+ * Opens a link from Moodle content, such as an announcement's message: a page on the Moodle site
+ * as [openMoodleWebPage] opens it, signed in where it may be, with a `webservice/pluginfile.php`
+ * link rewritten to the web path and its token dropped, so no key leaves the app; any other web
+ * page as the Browser setting asks; mail as a new message.
  */
-fun openMoodleContentLink(context: Context, url: String, browserPreference: String) {
+fun openMoodleContentLink(
+    context: Context,
+    url: String,
+    browserPreference: String,
+    pages: () -> MoodleWebPages = { MoodleWebPages.of(context) },
+) {
     val uri = url.toUri()
     when {
         uri.scheme.equals("mailto", ignoreCase = true) -> {
             runCatching { context.startActivity(Intent(Intent.ACTION_SENDTO, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
         }
-        MoodleAutologin.isMoodlePage(url) -> openMoodleWebPage(context, moodleWebLink(url), browserPreference)
         uri.host.equals(MoodleWebservice.SITE_HOST, ignoreCase = true) ->
-            openMailLink(context, moodleWebLink(url), browserPreference)
+            openMoodleWebPage(context, moodleWebLink(url), browserPreference, pages)
         else -> openMailLink(context, url, browserPreference)
     }
 }

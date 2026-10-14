@@ -13,6 +13,16 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- The browsers, so a Moodle page signed in with a one-time key is handed to the default
+         one by name rather than to whatever app claims the link (ui/screen/coursemoodle/MoodleLinks.kt). -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
     <!-- enableOnBackInvokedCallback: Android 16 turns predictive back on by
          itself for targetSdk 36; this extends it to Android 13–15, so on 14
          and 15 a back swipe drags the screen with the finger there too. -->
