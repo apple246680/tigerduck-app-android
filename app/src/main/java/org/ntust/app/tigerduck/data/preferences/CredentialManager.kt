@@ -11,6 +11,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import org.ntust.app.tigerduck.mail.store.MailCredentialStore
 import org.ntust.app.tigerduck.shared.LibraryAccountGate
 import org.ntust.app.tigerduck.shared.LibraryCredentialStore
+import org.ntust.app.tigerduck.shared.sameStudentId
 import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -160,15 +161,15 @@ class CredentialManager private constructor(
 
     /**
      * The library sign-out a school sign-out makes: the library account goes
-     * when it is [ifSchoolAccount]'s, the departing student ID, compared without case, as the school sign-in
-     * upper-cases the ID; another student's stays. Either way the school
+     * when it is [ifSchoolAccount]'s, the departing student ID, compared as
+     * [sameStudentId] does; another student's stays. Either way the school
      * sign-in's own library step, if still out, stores nothing. Atomic with
      * the library's saves, so that step cannot store the departing account
      * after this looked. Returns whether the library account went.
      */
     fun clearLibraryCredentials(ifSchoolAccount: String?): Boolean = libraryAccount.atomically {
         schoolAccount++
-        val same = ifSchoolAccount != null && libraryUsername.equals(ifSchoolAccount, ignoreCase = true)
+        val same = ifSchoolAccount != null && sameStudentId(libraryUsername, ifSchoolAccount)
         if (same) clearLibraryCredentials()
         same
     }

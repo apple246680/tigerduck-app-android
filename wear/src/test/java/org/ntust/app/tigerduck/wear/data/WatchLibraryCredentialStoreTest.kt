@@ -83,6 +83,17 @@ class WatchLibraryCredentialStoreTest {
     }
 
     @Test
+    fun `the same account with spaces around it from the phone is not another account`() {
+        push(" b10000001 ")
+        val generation = store.libraryAccountGeneration
+
+        push("B10000001")
+
+        assertTrue(signIn(generation))
+        assertEquals("token", store.libraryToken)
+    }
+
+    @Test
     fun `a purge keeps a sign-in begun before it from storing the account`() {
         push("B10000001")
         val generation = store.libraryAccountGeneration

@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import org.ntust.app.tigerduck.shared.LibraryAccountGate
 import org.ntust.app.tigerduck.shared.LibraryCredentialStore
+import org.ntust.app.tigerduck.shared.sameStudentId
 
 /**
  * Watch-side mirror of the phone's library credentials, populated by the
@@ -121,7 +122,7 @@ class WatchLibraryCredentialStore @VisibleForTesting internal constructor(
                 .putLong(KEY_ISSUED_AT_MS, issuedAtMs)
             if (token == null) edit.remove(KEY_TOKEN) else edit.putString(KEY_TOKEN, token)
             edit.putLong(KEY_LAST_VERSION, version)
-            if (prefs.getString(KEY_USERNAME, null).equals(username, ignoreCase = true)) {
+            if (sameStudentId(prefs.getString(KEY_USERNAME, null), username)) {
                 edit.apply()
             } else {
                 account.replaceAccount { edit.apply() }

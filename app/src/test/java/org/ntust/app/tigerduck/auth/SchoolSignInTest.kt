@@ -257,6 +257,18 @@ class SchoolSignInTest {
         assertEquals("token", library.libraryToken)
     }
 
+    /** A user name stored before the library form trimmed it can carry spaces around it. */
+    @Test
+    fun `the same student's library account is not kept as another's though its stored name carries spaces`() = runTest {
+        library.saveLibrarySignIn(library.libraryAccountGeneration, " b11234567 ", "library", "expired", 1L, byUser = true)
+
+        assertTrue(signIn.typed("B11234567", "pw"))
+
+        assertEquals(1, librarySignIns)
+        assertEquals("B11234567", library.libraryUsername)
+        assertEquals("token", library.libraryToken)
+    }
+
     @Test
     fun `no stored account signs nothing in`() = runTest {
         storedId = null

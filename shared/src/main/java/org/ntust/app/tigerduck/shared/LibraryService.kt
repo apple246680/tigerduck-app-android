@@ -105,13 +105,13 @@ class LibraryService(
 
     /**
      * Whether [hasAccount] holds for a library account of another student ID
-     * than [studentId], compared without case. A school sign-in keeps such an
+     * than [studentId], compared as [sameStudentId] does. A school sign-in keeps such an
      * account, as a school sign-out does.
      */
     fun hasAccountOtherThan(studentId: String): Boolean {
         if (!hasAccount) return false
         val username = credentials.libraryUsername ?: return false
-        return !username.equals(studentId, ignoreCase = true)
+        return !sameStudentId(username, studentId)
     }
 
     /**

@@ -157,4 +157,19 @@ class CredentialManagerSchoolSignOutTest {
         assertEquals("token-1", credentials.libraryToken)
         assertTrue(credentials.isLibraryTokenValid)
     }
+
+    /**
+     * A user name stored before the library form trimmed it can carry spaces around it; it is
+     * still the same student's account.
+     */
+    @Test
+    fun `the same student's library account goes though its stored name carries spaces`() {
+        credentials.ntustStudentId = "B11234567"
+        libraryAccount(" b11234567 ")
+
+        assertTrue(credentials.signOutSchoolAccount())
+
+        assertNull(credentials.libraryUsername)
+        assertNull(credentials.libraryPassword)
+    }
 }

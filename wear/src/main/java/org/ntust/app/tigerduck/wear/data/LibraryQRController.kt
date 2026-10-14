@@ -19,6 +19,7 @@ import kotlinx.coroutines.withContext
 import org.ntust.app.tigerduck.shared.LibraryApi
 import org.ntust.app.tigerduck.shared.LibraryQRRenderer
 import org.ntust.app.tigerduck.shared.LibraryServiceError
+import org.ntust.app.tigerduck.shared.sameStudentId
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -81,10 +82,10 @@ class LibraryQRController(
                 // Another account's code is not this one's. Taken off as the account changes,
                 // before collectLatest waits for the previous account's cycle to end, which a
                 // fetch still running can hold up.
-                .onEach { account -> if (!account.equals(shownAccount, ignoreCase = true)) clearCode() }
+                .onEach { account -> if (!sameStudentId(account, shownAccount)) clearCode() }
                 // collectLatest cancels and joins the previous account's cycle the same way.
                 .collectLatest { account ->
-                    if (!account.equals(shownAccount, ignoreCase = true)) clearCode()
+                    if (!sameStudentId(account, shownAccount)) clearCode()
                     // Until a fetch fails, as before: the page is opened again for another try.
                     while (refresh(qrSidePx, account)) countDown()
                 }

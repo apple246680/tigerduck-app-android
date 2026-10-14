@@ -102,8 +102,7 @@ class LibraryAccountGate {
      * signed out since [read] was read, or, unless [byUser], another account
      * was stored since, or [stillCurrent] is false; says whether it did.
      * Replacing [storedUsername]'s account with another moves the generation.
-     * Student IDs are compared without case: the school sign-in upper-cases
-     * them, the library form keeps what was typed.
+     * Student IDs are compared as [sameStudentId] does.
      */
     fun saveIfCurrent(
         read: Int,
@@ -115,7 +114,7 @@ class LibraryAccountGate {
     ): Boolean = synchronized(this) {
         val refused = if (byUser) signedOutAt > read else generation != read
         if (refused || !stillCurrent()) return false
-        if (!storedUsername().equals(username, ignoreCase = true)) generation++
+        if (!sameStudentId(storedUsername(), username)) generation++
         save()
         true
     }

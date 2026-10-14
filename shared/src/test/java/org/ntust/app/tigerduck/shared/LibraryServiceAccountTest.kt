@@ -346,4 +346,15 @@ class LibraryServiceAccountTest {
             release.countDown()
         }
     }
+
+    /** A user name stored before the library form trimmed it can carry spaces around it. */
+    @Test
+    fun `a stored name with spaces around it is not another account`() = runBlocking {
+        store.storeExpired(" b11234567 ", "pw")
+        val generation = store.libraryAccountGeneration
+
+        assertTrue(store.saveLibrarySignIn(generation, "B11234567", "pw", "fresh", Long.MAX_VALUE, byUser = true))
+
+        assertEquals(generation, store.libraryAccountGeneration)
+    }
 }
