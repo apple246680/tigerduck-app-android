@@ -2,6 +2,7 @@ package org.ntust.app.tigerduck.ui.screen.settings
 
 import android.util.Log
 import kotlinx.coroutines.CancellationException
+import java.util.concurrent.atomic.AtomicBoolean
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
 import org.ntust.app.tigerduck.push.PushApiClient
 import org.ntust.app.tigerduck.shared.Course
@@ -94,23 +95,58 @@ internal interface UseLocalHost {
 }
 
 /**
+ * Use Local's latch on its terms (`DataCache.beginReset`), which keeps full
+ * syncs off them until it has sent its requests. A term a class-table reset
+ * already holds is left to that reset. Released once: a second [release]
+ * would let go of a reset that latched the term since.
+ */
+internal class UseLocalLatch(semesters: List<String>, private val host: UseLocalHost) {
+    val held: List<String> = semesters.filter(host::beginReset)
+    private val released = AtomicBoolean(false)
+
+    fun release() {
+        if (released.compareAndSet(false, true)) held.forEach(host::endReset)
+    }
+}
+
+/**
+ * Lets the courses re-enable check's hold on the course list go
+ * ([releaseHold]) once the user has answered it, latching Use Local's terms
+ * first when [useLocal]: a sync between the two would reconcile the course
+ * list and un-hide a course deleted here, which the server still lists,
+ * before Use Local could send its delete. [semesters] must be cheap and
+ * synchronous: this runs on the tap.
+ */
+internal fun handOverCourseHold(
+    useLocal: Boolean,
+    semesters: () -> List<String>,
+    host: UseLocalHost,
+    releaseHold: () -> Unit,
+): UseLocalLatch? {
+    val latch = if (useLocal) UseLocalLatch(semesters(), host) else null
+    releaseHold()
+    return latch
+}
+
+/**
  * [keepLocalCourses] over every term in [terms], latched as a class-table
  * reset's are and stamped as reset when it ends, so a sync that read a term
  * mid-way does not un-hide the courses the upload puts back before their
  * deletes. A failure asks again ([UseLocalHost.askAgain]): until a term's
  * upload lands, the server holds none of its courses, and the reset's
  * tombstones hide them on every other device. Stopped by a sign-out, it asks
- * and stamps nothing for the next account; the latch goes either way.
+ * and stamps nothing for the next account; the [latch], taken on the tap by
+ * [handOverCourseHold], goes either way.
  */
 internal suspend fun useLocalCourses(
     terms: List<Pair<String, List<Course>>>,
     hiding: Set<String>,
     backend: CourseSyncBackend,
+    latch: UseLocalLatch,
     host: UseLocalHost,
     now: () -> Long,
     isCurrent: () -> Boolean,
 ) {
-    val latched = terms.map { it.first }.filter(host::beginReset)
     try {
         try {
             keepLocalCourses(terms, hiding, backend, isCurrent)
@@ -122,8 +158,8 @@ internal suspend fun useLocalCourses(
         }
         // Before the latch goes, so no sync reads a term between the two.
         val doneAt = now()
-        for (semester in latched) host.stampReset(semester, doneAt)
+        for (semester in latch.held) host.stampReset(semester, doneAt)
     } finally {
-        latched.forEach(host::endReset)
+        latch.release()
     }
 }

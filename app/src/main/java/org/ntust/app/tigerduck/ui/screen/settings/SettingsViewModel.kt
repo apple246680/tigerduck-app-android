@@ -340,7 +340,16 @@ class SettingsViewModel @Inject constructor(
         // and tied to this account: a sign-out ends it, and drops any write
         // still on its way.
         val holdsCourseIgnores = "assignments" in conflict.categories
-        prefs.pendingConflictCategories = if (holdsCourseIgnores) setOf("assignments") else emptySet()
+        // Use Local's terms are latched before the courses check lets the
+        // course list go: a sync in between would un-hide a course deleted
+        // here before Use Local sends its delete.
+        val latch = handOverCourseHold(
+            useLocal = keepLocal && "courses" in conflict.categories,
+            semesters = semesterCatalog::availableSemesters,
+            host = useLocalHost,
+        ) {
+            prefs.pendingConflictCategories = if (holdsCourseIgnores) setOf("assignments") else emptySet()
+        }
         val generation = dataCache.userDataGeneration
         resolutions.start()
         appScope.launch(DataCache.Generation(generation)) {
@@ -350,10 +359,12 @@ class SettingsViewModel @Inject constructor(
                         authService.authState.first { !it }
                         this@coroutineScope.cancel()
                     }
-                    resolve(conflict, keepLocal, generation)
+                    resolve(conflict, keepLocal, generation, latch)
                     signOut.cancel()
                 }
             } finally {
+                // Already let go when Use Local ran; this covers a sign-out before it.
+                latch?.release()
                 if (resolutions.finish()) {
                     prefs.pendingConflictCategories = prefs.pendingConflictCategories - "assignments"
                 }
@@ -362,9 +373,14 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    private suspend fun resolve(conflict: ReenableConflict, keepLocal: Boolean, generation: Int) {
+    private suspend fun resolve(
+        conflict: ReenableConflict,
+        keepLocal: Boolean,
+        generation: Int,
+        latch: UseLocalLatch?,
+    ) {
         if (keepLocal) {
-            if ("courses" in conflict.categories) sendLocalCourses(generation)
+            if (latch != null) sendLocalCourses(generation, latch)
             if ("course_colors" in conflict.categories) {
                 val courses = dataCache.loadCourses()
                 for (course in courses) {
@@ -483,18 +499,21 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    private val useLocalHost = object : UseLocalHost {
+        override fun beginReset(semester: String) = dataCache.beginReset(semester)
+        override fun endReset(semester: String) = dataCache.endReset(semester)
+        override suspend fun stampReset(semester: String, atMs: Long) =
+            dataCache.saveSemesterResetAt(semester, atMs)
+        override fun askAgain() = markCategoryReenabled("courses")
+    }
+
     /** Use Local for courses, every term this phone knows — see [useLocalCourses]. */
-    private suspend fun sendLocalCourses(generation: Int) = useLocalCourses(
+    private suspend fun sendLocalCourses(generation: Int, latch: UseLocalLatch) = useLocalCourses(
         terms = semesterCatalog.availableSemesters().map { it to dataCache.loadCourses(it) },
         hiding = dataCache.loadDeletedCourseNos(),
         backend = PushCourseSyncBackend(pushApiClient),
-        host = object : UseLocalHost {
-            override fun beginReset(semester: String) = dataCache.beginReset(semester)
-            override fun endReset(semester: String) = dataCache.endReset(semester)
-            override suspend fun stampReset(semester: String, atMs: Long) =
-                dataCache.saveSemesterResetAt(semester, atMs)
-            override fun askAgain() = markCategoryReenabled("courses")
-        },
+        latch = latch,
+        host = useLocalHost,
         now = System::currentTimeMillis,
         isCurrent = { dataCache.userDataGeneration == generation },
     )

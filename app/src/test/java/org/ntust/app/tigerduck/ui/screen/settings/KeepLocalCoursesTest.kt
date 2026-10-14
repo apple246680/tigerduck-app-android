@@ -188,6 +188,7 @@ class UseLocalCoursesTest {
         terms = terms.toList(),
         hiding = emptySet(),
         backend = server,
+        latch = UseLocalLatch(terms.map { it.first }, host),
         host = host,
         now = { 42L },
         isCurrent = { current },
@@ -238,6 +239,60 @@ class UseLocalCoursesTest {
 
         assertEquals(setOf("1142"), held)
         assertTrue("release 1142" !in events)
+    }
+}
+
+/**
+ * Use Local takes its terms' latches before the courses re-enable check lets
+ * the course list go ([handOverCourseHold]), and lets them go once
+ * ([UseLocalLatch]). Taken later, a sync in between un-hid the course
+ * deleted here before Use Local could send its delete (#153 again).
+ */
+class UseLocalLatchTest {
+
+    private val events = mutableListOf<String>()
+    private val held = mutableSetOf<String>()
+
+    private val host = object : UseLocalHost {
+        override fun beginReset(semester: String): Boolean = held.add(semester).also { if (it) events += "latch $semester" }
+        override fun endReset(semester: String) {
+            held.remove(semester)
+            events += "release $semester"
+        }
+        override suspend fun stampReset(semester: String, atMs: Long) = Unit
+        override fun askAgain() = Unit
+    }
+
+    @Test
+    fun `the terms are latched before the course list's hold goes`() {
+        val latch = handOverCourseHold(useLocal = true, semesters = { listOf("1151", "1142") }, host = host) {
+            events += "hold released"
+        }
+
+        assertEquals(listOf("latch 1151", "latch 1142", "hold released"), events)
+        assertEquals(listOf("1151", "1142"), latch?.held)
+    }
+
+    @Test
+    fun `Use Server latches nothing`() {
+        val latch = handOverCourseHold(useLocal = false, semesters = { listOf("1151") }, host = host) {
+            events += "hold released"
+        }
+
+        assertEquals(null, latch)
+        assertEquals(listOf("hold released"), events)
+    }
+
+    @Test
+    fun `a latch lets its terms go once, never a later reset's`() {
+        val latch = UseLocalLatch(listOf("1151"), host)
+        latch.release()
+        // A class-table reset of the term starts.
+        host.beginReset("1151")
+
+        latch.release()
+
+        assertEquals(setOf("1151"), held)
     }
 }
 
