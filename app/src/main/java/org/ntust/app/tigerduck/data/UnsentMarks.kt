@@ -28,17 +28,19 @@ internal fun interface MarkSender {
  * phone's value for it and sends it again first, until it lands. The iPhone
  * app's outbox does the same.
  *
- * Nothing goes out, and a new tap is not kept, while [sends] is false: with
- * the Assignments switch off the marks are this phone's own, and while the
- * assignments re-enable check is pending the user's answer decides them. A
- * mark already waiting stays until marks are sent again, or until the server's
- * marks are taken over this phone's ([forget]). Account-scoped: wiped with the
- * user data at sign-out.
+ * With the Assignments switch or TigerSync off ([records] false) the marks
+ * are this phone's own: a tap goes nowhere and is not kept, but replaces a
+ * mark waiting for the same assignment. While the assignments re-enable
+ * check is pending ([sends] false) a tap is kept but not sent, as the user's
+ * answer decides the marks. What waits goes out once marks are sent again,
+ * or is dropped when the server's marks are taken over this phone's
+ * ([forget]). Account-scoped: wiped with the user data at sign-out.
  */
 @Singleton
 class UnsentMarks internal constructor(
     private val dataCache: DataCache,
     private val sender: MarkSender,
+    private val records: () -> Boolean,
     private val sends: () -> Boolean,
     private val signInGeneration: () -> Int,
 ) {
@@ -50,6 +52,7 @@ class UnsentMarks internal constructor(
     ) : this(
         dataCache = dataCache,
         sender = MarkSender(pushApiClient::patchAssignmentOverride),
+        records = { recordsMarks(prefs) },
         sends = { sendsMarks(prefs) },
         signInGeneration = { authTokenManager.signInGeneration },
     )
@@ -63,15 +66,27 @@ class UnsentMarks internal constructor(
     /** The ids whose last tap has not reached the server; a sync keeps this phone's value for them. */
     suspend fun ids(): Set<String> = dataCache.loadUnsentMarks().keys
 
-    /** A tap that set [assignmentId] to [status]: sent at once, and kept until the server has it. */
+    /**
+     * A tap that set [assignmentId] to [status]: kept until the server has
+     * it, and sent at once unless the re-enable check holds the marks. Made
+     * while marks do not sync, it is this phone's own and goes nowhere, but
+     * it replaces a mark still waiting for the same assignment, which would
+     * otherwise go up later over it.
+     */
     suspend fun send(assignmentId: String, status: String) {
-        if (!sends()) return
         val generation = dataCache.userDataGeneration
         val signIn = signInGeneration()
+        if (!records()) {
+            mutex.withLock {
+                val waiting = dataCache.loadUnsentMarks()
+                if (assignmentId in waiting) dataCache.saveUnsentMarks(waiting - assignmentId, generation)
+            }
+            return
+        }
         val kept = mutex.withLock {
             dataCache.saveUnsentMarks(dataCache.loadUnsentMarks() + (assignmentId to status), generation)
         }
-        if (kept) trySend(assignmentId, status, generation, signIn)
+        if (kept && sends()) trySend(assignmentId, status, generation, signIn)
     }
 
     /**
@@ -141,9 +156,11 @@ class UnsentMarks internal constructor(
         /** The re-enable conflict category the marks belong to. */
         private const val REENABLE_CATEGORY = "assignments"
 
-        /** Whether marks go out: cloud and assignment sync on, and no assignments re-enable check pending. */
+        /** Whether marks sync at all: cloud and assignment sync on. */
+        fun recordsMarks(prefs: AppPreferences): Boolean = prefs.cloudSyncEnabled && prefs.syncAssignments
+
+        /** Whether marks go out: they sync, and no assignments re-enable check is pending. */
         fun sendsMarks(prefs: AppPreferences): Boolean =
-            prefs.cloudSyncEnabled && prefs.syncAssignments &&
-                REENABLE_CATEGORY !in prefs.pendingConflictCategories
+            recordsMarks(prefs) && REENABLE_CATEGORY !in prefs.pendingConflictCategories
     }
 }

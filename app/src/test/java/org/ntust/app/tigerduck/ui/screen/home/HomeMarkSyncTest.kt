@@ -61,6 +61,7 @@ class HomeMarkSyncTest {
         unsent = UnsentMarks(
             cache,
             MarkSender { id, status, _ -> send(id, status) },
+            records = { prefs.syncAssignments },
             sends = { prefs.syncAssignments },
             signInGeneration = { 0 },
         )

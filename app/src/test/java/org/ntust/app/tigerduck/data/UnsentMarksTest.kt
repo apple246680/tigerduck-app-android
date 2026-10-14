@@ -32,6 +32,10 @@ class UnsentMarksTest {
 
     private val sent = mutableListOf<Pair<Int, String>>()
     private var answer: suspend (Int, String) -> Unit = { _, _ -> }
+    /** Mark sync on: the Assignments switch and TigerSync. */
+    private var records = true
+
+    /** And no assignments re-enable check holding the marks. */
     private var sends = true
 
     @Before
@@ -49,7 +53,8 @@ class UnsentMarksTest {
             sent += id to status
             answer(id, status)
         },
-        sends = { sends },
+        records = { records },
+        sends = { records && sends },
         signInGeneration = { signInGeneration },
     )
 
@@ -106,7 +111,7 @@ class UnsentMarksTest {
     fun `nothing is sent or kept with mark sync off, and what waits stays until it is on`() = runTest {
         answer = { _, _ -> throw IOException("offline") }
         marks.send("7", "ignored")
-        sends = false
+        records = false
 
         marks.send("8", "ignored")
         marks.retry()
@@ -242,5 +247,38 @@ class UnsentMarksTest {
         two.join()
 
         assertEquals(listOf(7 to "ignored"), sent)
+    }
+
+    @Test
+    fun `a tap made while marks do not sync replaces what waited for the same assignment`() = runTest {
+        // Marked done offline, then the Assignments switch went off, then the
+        // mark was cleared: the clear is the newer choice.
+        answer = { _, _ -> throw IOException("offline") }
+        marks.send("7", "locally_completed")
+        records = false
+        marks.send("7", "none")
+
+        records = true
+        answer = { _, _ -> }
+        sent.clear()
+        marks.retry()
+
+        assertEquals(emptyList<Pair<Int, String>>(), sent)
+        assertEquals(emptySet<String>(), marks.ids())
+    }
+
+    @Test
+    fun `a tap made while the re-enable check holds the marks waits, and goes up once it ends`() = runTest {
+        sends = false
+
+        marks.send("7", "ignored")
+        assertEquals(emptyList<Pair<Int, String>>(), sent)
+        assertEquals(setOf("7"), marks.ids())
+
+        sends = true
+        marks.retry()
+
+        assertEquals(listOf(7 to "ignored"), sent)
+        assertEquals(emptySet<String>(), marks.ids())
     }
 }
