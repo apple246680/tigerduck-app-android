@@ -16,6 +16,8 @@ class DepartingSession(
      * nowhere else: the API endpoint setting can name another host by the time they are sent.
      */
     val baseUrl: String,
+    /** The student it is for; null for a session stored before that was recorded. */
+    val studentId: String? = null,
 )
 
 /** What [AuthTokenManager.refreshDeparting] got back. */

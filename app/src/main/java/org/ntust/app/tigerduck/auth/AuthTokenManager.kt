@@ -217,7 +217,8 @@ class AuthTokenManager(
     fun departingSession(): DepartingSession? = synchronized(signInLock) {
         val access = tokens.accessToken ?: return null
         val refresh = tokens.refreshToken ?: return null
-        DepartingSession(access, refresh, tokens.expiresAt, baseUrl)
+        // The backend recorded at sign-in; the one set now for a pair stored before that was.
+        DepartingSession(access, refresh, tokens.expiresAt, tokens.issuedBy ?: baseUrl, tokens.studentId)
     }
 
     /**
@@ -307,8 +308,9 @@ class AuthTokenManager(
             })
         }
         val body = json.toString().toRequestBody(jsonType)
+        val issuer = baseUrl
         val request = Request.Builder()
-            .url("$baseUrl/auth/login")
+            .url("$issuer/auth/login")
             .post(body)
             .build()
         httpClient.newCall(request).execute().use { response ->
@@ -317,7 +319,8 @@ class AuthTokenManager(
             val accessToken = result.getString("access_token")
             val refreshToken = result.getString("refresh_token")
             val expiresIn = result.getInt("expires_in")
-            if (!saveIfSignedIn(signInGeneration, accessToken, refreshToken, now() + expiresIn * 1000L)) {
+            val expiresAt = now() + expiresIn * 1000L
+            if (!saveIfSignedIn(signInGeneration, accessToken, refreshToken, expiresAt, issuer, studentId)) {
                 throw AuthException("signed out during login")
             }
             LoginResult(
@@ -351,10 +354,17 @@ class AuthTokenManager(
     }
 
     /** Stores the pair unless [logout] has run since [signIn] was read, and says whether it did. */
-    private fun saveIfSignedIn(signIn: Int, access: String, refresh: String, expiresAt: Long): Boolean {
+    private fun saveIfSignedIn(
+        signIn: Int,
+        access: String,
+        refresh: String,
+        expiresAt: Long,
+        issuedBy: String? = null,
+        studentId: String? = null,
+    ): Boolean {
         synchronized(signInLock) {
             if (generation != signIn) return false
-            tokens.save(access, refresh, expiresAt)
+            tokens.save(access, refresh, expiresAt, issuedBy, studentId)
             return true
         }
     }

@@ -191,6 +191,31 @@ class AutomaticSignInTest {
         assertEquals(listOf("127.0.0.1", "127.0.0.1"), backend.received(REFRESH).map { it.host } + backend.received(UNREGISTER).map { it.host })
     }
 
+    // The departing session names the backend and the student its sign-in was for
+
+    @Test
+    fun `the departing session goes back to the backend that issued it, recorded at sign-in`() = runTest {
+        val manager = manager()
+        manager.login("B00000000", moodleToken = "moodle", moodlePrivateToken = null)
+        // Changed while signed in: the pair was still issued by the first backend.
+        prefs.announcementApiBaseUrlOverride = "http://10.0.0.9:9/v3"
+
+        val departing = manager.departingSession()!!
+
+        assertEquals("127.0.0.1", departing.baseUrl.toHttpUrl().host)
+        assertEquals("B00000000", departing.studentId)
+    }
+
+    @Test
+    fun `a pair stored before the backend was recorded falls back to the endpoint set`() = runTest {
+        tokens.save("access-1", "refresh-1", expiresAt = Long.MAX_VALUE)
+
+        val departing = manager().departingSession()!!
+
+        assertEquals(resolveAnnouncementEndpoint(prefs).url, departing.baseUrl)
+        assertNull(departing.studentId)
+    }
+
     // A sign-in and the unregister a sign-out still owes
 
     private fun owed(): Pair<OwedUnregister, () -> PendingUnregister?> {

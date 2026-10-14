@@ -62,7 +62,13 @@ class PendingUnregisterPrefsTest {
     // reset wipes the credentials.
 
     private fun owe() = PendingUnregisterPrefs(prefs)
-        .save(PendingUnregister("device-1", DepartingSession("access-1", "refresh-1", Long.MAX_VALUE, "https://backend.example/v3"), 0L))
+        .save(
+            PendingUnregister(
+                "device-1",
+                DepartingSession("access-1", "refresh-1", Long.MAX_VALUE, "https://backend.example/v3", "B11300001"),
+                0L,
+            ),
+        )
 
     @Test
     fun `the full reset's wipe keeps what is owed and takes every credential else`() {

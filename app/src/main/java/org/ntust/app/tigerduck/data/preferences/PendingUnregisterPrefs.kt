@@ -19,7 +19,9 @@ class PendingUnregisterPrefs internal constructor(private val prefs: SharedPrefe
         val access = prefs.getString(KEY_ACCESS_TOKEN, null) ?: return null
         val refresh = prefs.getString(KEY_REFRESH_TOKEN, null) ?: return null
         val baseUrl = prefs.getString(KEY_BASE_URL, null) ?: return null
-        val session = DepartingSession(access, refresh, prefs.getLong(KEY_EXPIRES_AT, 0L), baseUrl)
+        val session = DepartingSession(
+            access, refresh, prefs.getLong(KEY_EXPIRES_AT, 0L), baseUrl, prefs.getString(KEY_STUDENT_ID, null),
+        )
         return PendingUnregister(deviceId, session, prefs.getLong(KEY_OWED_AT, 0L))
     }
 
@@ -35,6 +37,7 @@ class PendingUnregisterPrefs internal constructor(private val prefs: SharedPrefe
             .putLong(KEY_EXPIRES_AT, pending.session.accessExpiresAt)
             .putString(KEY_BASE_URL, pending.session.baseUrl)
             .putLong(KEY_OWED_AT, pending.owedAt)
+            .apply { pending.session.studentId?.let { putString(KEY_STUDENT_ID, it) } ?: remove(KEY_STUDENT_ID) }
             .commit()
         if (!written) Log.w(TAG, "owed unregister not written to disk")
     }
@@ -47,6 +50,7 @@ class PendingUnregisterPrefs internal constructor(private val prefs: SharedPrefe
             .remove(KEY_EXPIRES_AT)
             .remove(KEY_BASE_URL)
             .remove(KEY_OWED_AT)
+            .remove(KEY_STUDENT_ID)
             .commit()
         if (!written) Log.w(TAG, "owed unregister not removed from disk")
     }
@@ -58,7 +62,11 @@ class PendingUnregisterPrefs internal constructor(private val prefs: SharedPrefe
         const val KEY_EXPIRES_AT = "departing_expires_at"
         const val KEY_BASE_URL = "departing_base_url"
         const val KEY_OWED_AT = "departing_owed_at"
-        val KEYS = setOf(KEY_DEVICE_ID, KEY_ACCESS_TOKEN, KEY_REFRESH_TOKEN, KEY_EXPIRES_AT, KEY_BASE_URL, KEY_OWED_AT)
+        const val KEY_STUDENT_ID = "departing_student_id"
+        val KEYS = setOf(
+            KEY_DEVICE_ID, KEY_ACCESS_TOKEN, KEY_REFRESH_TOKEN, KEY_EXPIRES_AT, KEY_BASE_URL, KEY_OWED_AT,
+            KEY_STUDENT_ID,
+        )
         private const val TAG = "PendingUnregisterPrefs"
     }
 }

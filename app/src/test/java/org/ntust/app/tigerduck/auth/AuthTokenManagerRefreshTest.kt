@@ -31,7 +31,9 @@ import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore.Companion.KEY_ACCESS_TOKEN
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore.Companion.KEY_EXPIRES_AT
+import org.ntust.app.tigerduck.data.preferences.V3TokenStore.Companion.KEY_ISSUED_BY
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore.Companion.KEY_REFRESH_TOKEN
+import org.ntust.app.tigerduck.data.preferences.V3TokenStore.Companion.KEY_STUDENT_ID
 import org.ntust.app.tigerduck.network.resolveAnnouncementEndpoint
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
@@ -130,7 +132,11 @@ class AuthTokenManagerRefreshTest {
 
         manager.login("B00000000", moodleToken = "moodle", moodlePrivateToken = null)
 
-        assertEquals(listOf(setOf(KEY_ACCESS_TOKEN, KEY_REFRESH_TOKEN, KEY_EXPIRES_AT)), file.commits)
+        // With the backend that issued it and the student it is for, for the sign-out's unregister.
+        assertEquals(
+            listOf(setOf(KEY_ACCESS_TOKEN, KEY_REFRESH_TOKEN, KEY_EXPIRES_AT, KEY_ISSUED_BY, KEY_STUDENT_ID)),
+            file.commits,
+        )
         assertEquals(0, file.applies)
         assertEquals("refresh-2", tokens.refreshToken)
     }
@@ -241,7 +247,10 @@ class AuthTokenManagerRefreshTest {
 
         assertEquals(1, relogins)
         assertNull(tokens.refreshToken)
-        assertEquals(listOf(setOf(KEY_ACCESS_TOKEN, KEY_REFRESH_TOKEN, KEY_EXPIRES_AT)), file.commits)
+        assertEquals(
+            listOf(setOf(KEY_ACCESS_TOKEN, KEY_REFRESH_TOKEN, KEY_EXPIRES_AT, KEY_ISSUED_BY, KEY_STUDENT_ID)),
+            file.commits,
+        )
         assertEquals(0, file.applies)
     }
 
