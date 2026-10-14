@@ -1,5 +1,6 @@
 package org.ntust.app.tigerduck.ui.screen.announcements
 
+import android.content.Context
 import android.content.Intent
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.Arrangement
@@ -58,6 +59,7 @@ import org.ntust.app.tigerduck.ui.component.scrollbar
 )
 @Composable
 fun AnnouncementDetailScreen(
+    browserPreference: String,
     onBack: () -> Unit,
     viewModel: AnnouncementDetailViewModel = hiltViewModel(),
 ) {
@@ -89,17 +91,7 @@ fun AnnouncementDetailScreen(
         floatingActionButton = {
             if (!sourceUrl.isNullOrEmpty()) {
                 ExtendedFloatingActionButton(
-                    onClick = {
-                        try {
-                            CustomTabsIntent.Builder().build().launchUrl(context, sourceUrl.toUri())
-                        } catch (_: Exception) {
-                            runCatching {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, sourceUrl.toUri())
-                                )
-                            }
-                        }
-                    },
+                    onClick = { openBulletinSource(context, sourceUrl, browserPreference) },
                     icon = {
                         Icon(Icons.Filled.OpenInBrowser, contentDescription = null)
                     },
@@ -305,4 +297,21 @@ private fun DetailBody(
             }
         }
     }
+}
+
+/**
+ * Opens a bulletin's source page the way the link-opening setting says: in an in-app browser tab,
+ * or in the system's default browser. A tab that cannot be launched falls back to the browser.
+ */
+internal fun openBulletinSource(context: Context, url: String, browserPreference: String) {
+    val uri = url.toUri()
+    if (browserPreference == "inApp") {
+        try {
+            CustomTabsIntent.Builder().build().launchUrl(context, uri)
+            return
+        } catch (_: Exception) {
+            // The browser below instead.
+        }
+    }
+    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
 }

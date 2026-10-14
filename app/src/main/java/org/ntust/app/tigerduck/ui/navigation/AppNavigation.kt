@@ -440,7 +440,7 @@ fun MainNavigation(
                 Screen.AnnouncementDetail.route,
                 arguments = listOf(navArgument("id") { type = NavType.IntType }),
             ) {
-                AnnouncementDetailScreen(onBack = { navController.popBackStack() })
+                AnnouncementDetailScreen(browserPreference = appState.browserPreference, onBack = { navController.popBackStack() })
             }
             page(Screen.AnnouncementSubscriptions.route) {
                 SubscriptionSettingsScreen(onBack = { navController.popBackStack() })
