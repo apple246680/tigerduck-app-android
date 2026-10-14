@@ -8,7 +8,15 @@ class MailRoutesTest {
     fun `folder names are percent-encoded in routes`() {
         assertEquals("schoolMail/message/INBOX/42", MailRoutes.message("INBOX", 42))
         assertEquals("schoolMail/message/Moodle%20%E8%AA%B2%E7%A8%8B/7", MailRoutes.message("Moodle 課程", 7))
-        assertEquals("schoolMail/compose?mode=REPLY&folder=INBOX&uid=42", MailRoutes.compose(ComposeMode.REPLY, "INBOX", 42))
-        assertEquals("schoolMail/compose?mode=NEW&folder=&uid=-1", MailRoutes.compose(ComposeMode.NEW))
+        assertEquals("schoolMail/compose?mode=REPLY&folder=INBOX&uid=42&mailto=", MailRoutes.compose(ComposeMode.REPLY, "INBOX", 42))
+        assertEquals("schoolMail/compose?mode=NEW&folder=&uid=-1&mailto=", MailRoutes.compose(ComposeMode.NEW))
+    }
+
+    @Test
+    fun `a mailto link rides along encoded, so its own query survives the route's`() {
+        assertEquals(
+            "schoolMail/compose?mode=NEW&folder=&uid=-1&mailto=mailto%3Aa%40x.tw%3Fsubject%3DHi%26body%3Da%2520b",
+            MailRoutes.compose(ComposeMode.NEW, mailto = "mailto:a@x.tw?subject=Hi&body=a%20b"),
+        )
     }
 }

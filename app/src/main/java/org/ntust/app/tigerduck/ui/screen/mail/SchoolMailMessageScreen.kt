@@ -118,10 +118,13 @@ fun SchoolMailMessageScreen(
     browserPreference: String,
     onBack: () -> Unit,
     onCompose: (mode: ComposeMode, folder: String, uid: Long) -> Unit,
+    /** A confirmed `mailto:` link, for School Mail's own compose to start from. */
+    onComposeMailto: (href: String) -> Unit,
     viewModel: SchoolMailMessageViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val sentCopyNotice by viewModel.sentCopyNotice.collectAsStateWithLifecycle()
+    val signedIn by viewModel.signedIn.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var menuOpen by remember { mutableStateOf(false) }
     var showMove by remember { mutableStateOf(false) }
@@ -428,7 +431,7 @@ fun SchoolMailMessageScreen(
             onOpen = {
                 pendingLink = null
                 pendingPlainLink = null
-                openLink(context, linkTarget.href, browserPreference)
+                openLink(context, linkTarget.href, browserPreference, if (signedIn) onComposeMailto else null)
             },
             onDismiss = {
                 pendingLink = null
@@ -801,13 +804,21 @@ private fun LinkDialog(target: SchoolMailMessageViewModel.LinkTarget, onOpen: ()
  * ([SchoolMailMessageViewModel.OPENABLE_SCHEMES]), so the two cannot drift apart into an enabled
  * button that silently does nothing. Nothing new is launchable: the set is exactly the schemes
  * this already handled.
+ *
+ * A `mailto:` link goes to [composeMailto], School Mail's own compose, so the answer goes out from
+ * the school account the mail came to, as on the iPhone. Signed out ([composeMailto] null) there
+ * is no account to send from, and the link goes to another mail app instead.
  */
-private fun openLink(context: Context, href: String, browserPreference: String) {
+internal fun openLink(context: Context, href: String, browserPreference: String, composeMailto: ((String) -> Unit)?) {
     val uri = Uri.parse(href)
     val scheme = uri.scheme?.lowercase()
     if (scheme !in SchoolMailMessageViewModel.OPENABLE_SCHEMES) return
     if (scheme == "mailto") {
-        runCatching { context.startActivity(Intent(Intent.ACTION_SENDTO, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        if (composeMailto != null) {
+            composeMailto(href)
+        } else {
+            runCatching { context.startActivity(Intent(Intent.ACTION_SENDTO, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        }
     } else {
         openMailLink(context, href, browserPreference)
     }

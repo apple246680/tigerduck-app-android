@@ -23,6 +23,7 @@ import org.ntust.app.tigerduck.mail.SchoolMailRepository
 import org.ntust.app.tigerduck.mail.SentCopyNotice
 import org.ntust.app.tigerduck.mail.SentCopyNotices
 import org.ntust.app.tigerduck.mail.compose.ComposeRules
+import org.ntust.app.tigerduck.mail.compose.MailtoLink
 import org.ntust.app.tigerduck.mail.compose.OutgoingAttachment
 import org.ntust.app.tigerduck.mail.compose.OutgoingMail
 import org.ntust.app.tigerduck.mail.sanitize.HtmlSanitizer
@@ -74,6 +75,10 @@ class SchoolMailComposeViewModel @Inject constructor(
         .getOrDefault(ComposeMode.NEW)
     private val sourceFolder: String = savedStateHandle.get<String>("folder").orEmpty()
     private val sourceUid: Long = savedStateHandle.get<Long>("uid") ?: -1L
+
+    /** A new mail started from a `mailto:` link tapped in a mail. */
+    private val mailto: MailtoLink.Draft? =
+        savedStateHandle.get<String>("mailto")?.takeIf { mode == ComposeMode.NEW }?.let(MailtoLink::parse)
 
     sealed interface ComposeError {
         data class InvalidRecipients(val tokens: List<String>) : ComposeError
@@ -175,6 +180,20 @@ class SchoolMailComposeViewModel @Inject constructor(
     }
 
     private fun runPrefill(labels: ComposePrefill.Labels) {
+        mailto?.let { link ->
+            // Filled in once, from the link alone: nothing to load, and the fields as the link
+            // left them are the baseline, so backing out untouched asks nothing.
+            _state.update {
+                val to = RecipientField.of(link.to)
+                val cc = RecipientField.of(link.cc)
+                it.copy(
+                    to = to, cc = cc, subject = link.subject, body = link.body,
+                    showCcBcc = cc.entries.isNotEmpty(),
+                    baseline = Fields(to.entries, cc.entries, emptyList(), link.subject, link.body, emptyList()),
+                )
+            }
+            return
+        }
         if (mode == ComposeMode.NEW || sourceUid < 0) return
         viewModelScope.launch {
             _state.update { it.copy(loading = true, loadError = null) }

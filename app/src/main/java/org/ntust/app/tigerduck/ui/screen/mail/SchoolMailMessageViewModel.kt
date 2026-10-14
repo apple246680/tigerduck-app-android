@@ -139,6 +139,9 @@ class SchoolMailMessageViewModel @Inject constructor(
     private val _state = MutableStateFlow(UiState(folder = folder))
     val state: StateFlow<UiState> = _state.asStateFlow()
 
+    /** Whether a confirmed `mailto:` link can open this app's own compose, which sends as the school account. */
+    val signedIn: StateFlow<Boolean> = account.signedIn
+
     /** A reply or forward sent from this mail went out without its copy reaching the sent folder. */
     val sentCopyNotice: StateFlow<SentCopyNotice?> = sentCopyNotices.notice
 

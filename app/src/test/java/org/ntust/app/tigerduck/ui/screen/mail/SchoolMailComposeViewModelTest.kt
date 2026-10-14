@@ -64,8 +64,8 @@ class SchoolMailComposeViewModelTest {
 
     // The same TestDispatcher backs both Dispatchers.Main and the injected @IoDispatcher, so a
     // withContext(io) hop stays synchronous under the test the way SchoolMailMessageViewModelTest does it.
-    private fun handle(mode: ComposeMode, folder: String = "", uid: Long = -1) =
-        SavedStateHandle(mapOf("mode" to mode.name, "folder" to folder, "uid" to uid))
+    private fun handle(mode: ComposeMode, folder: String = "", uid: Long = -1, mailto: String = "") =
+        SavedStateHandle(mapOf("mode" to mode.name, "folder" to folder, "uid" to uid, "mailto" to mailto))
 
     private fun vm(mode: ComposeMode, folder: String = "", uid: Long = -1) =
         SchoolMailComposeViewModel(handle(mode, folder, uid), repo, account, cache, noPicks, notices, main.dispatcher)
@@ -190,6 +190,26 @@ class SchoolMailComposeViewModelTest {
         vm.addPicked(listOf<Uri?>(null))
         assertEquals(ComposeError.TooLarge, vm.state.value.error)
         assertTrue(vm.state.value.attachments.isEmpty())
+    }
+
+    // --- a mailto link -----------------------------------------------------------------
+
+    @Test
+    fun `a mailto link starts a new mail from its fields, and leaving it untouched asks nothing`() {
+        val vm = SchoolMailComposeViewModel(
+            handle(ComposeMode.NEW, mailto = "mailto:office@mail.ntust.edu.tw?cc=b@x.tw&subject=%E8%AB%8B%E5%95%8F&body=Hi"),
+            repo, account, cache, noPicks, notices, main.dispatcher,
+        )
+        vm.prefill(labels)
+        val s = vm.state.value
+        assertEquals(listOf("office@mail.ntust.edu.tw"), s.to.entries)
+        assertEquals(listOf("b@x.tw"), s.cc.entries)
+        assertTrue(s.showCcBcc)
+        assertEquals("請問", s.subject)
+        assertEquals("Hi", s.body)
+        assertFalse("nothing typed yet", s.dirty)
+        vm.send()
+        assertEquals(listOf("office@mail.ntust.edu.tw"), repo.sent.single().first.to.map { it.address })
     }
 
     // --- the sent copy ---------------------------------------------------------------

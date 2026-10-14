@@ -129,7 +129,8 @@ sealed class Screen(val route: String) {
         fun route(folder: String, uid: Long) = MailRoutes.message(folder, uid)
     }
     object SchoolMailCompose : Screen(MailRoutes.COMPOSE) {
-        fun route(mode: ComposeMode, folder: String? = null, uid: Long? = null) = MailRoutes.compose(mode, folder, uid)
+        fun route(mode: ComposeMode, folder: String? = null, uid: Long? = null, mailto: String? = null) =
+            MailRoutes.compose(mode, folder, uid, mailto)
     }
     object CourseNameSizeSettings : Screen("courseNameSizeSettings")
     object CloudSync : Screen("cloudSync")
@@ -465,6 +466,7 @@ fun MainNavigation(
                     browserPreference = appState.browserPreference,
                     onBack = { navController.popBackStack() },
                     onCompose = { mode, folder, uid -> navController.navigate(Screen.SchoolMailCompose.route(mode, folder, uid)) },
+                    onComposeMailto = { href -> navController.navigate(Screen.SchoolMailCompose.route(ComposeMode.NEW, mailto = href)) },
                 )
             }
             page(
@@ -473,6 +475,7 @@ fun MainNavigation(
                     navArgument("mode") { type = NavType.StringType; defaultValue = ComposeMode.NEW.name },
                     navArgument("folder") { type = NavType.StringType; defaultValue = "" },
                     navArgument("uid") { type = NavType.LongType; defaultValue = -1L },
+                    navArgument("mailto") { type = NavType.StringType; defaultValue = "" },
                 ),
             ) {
                 org.ntust.app.tigerduck.ui.screen.mail.SchoolMailComposeScreen(onDone = { navController.popBackStack() })
