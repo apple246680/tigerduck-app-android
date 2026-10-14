@@ -65,6 +65,7 @@ class MoodleFileDownloads internal constructor(
     /** What every file's state is read from; it moves when a download starts, moves on or ends. */
     val snapshot: StateFlow<Snapshot> = _snapshot.asStateFlow()
 
+    /** The download on its way for each copy, by path. Every read and write holds this map's lock. */
     private val running = HashMap<String, Deferred<File?>>()
 
     /**
@@ -120,11 +121,17 @@ class MoodleFileDownloads internal constructor(
         val job = synchronized(running) {
             running[key]?.takeIf { it.isActive } ?: run {
                 _snapshot.update { it.copy(progress = it.progress + (key to 0f), failures = it.failures - key) }
-                scope.async { transfer(location, fetch, isCurrent) }.also { started ->
+                val owner = Owner()
+                scope.async { transfer(location, fetch, isCurrent) { share -> report(key, share, owner) } }.also { started ->
+                    owner.job = started
                     running[key] = started
                     started.invokeOnCompletion {
-                        synchronized(running) { if (running[key] === started) running.remove(key) }
-                        _snapshot.update { it.copy(progress = it.progress - key) }
+                        // Only its own: a download stopped and tapped again has another on its way
+                        // by the time this one has wound down.
+                        synchronized(running) {
+                            if (running[key] === started) running.remove(key)
+                            if (running[key] == null) _snapshot.update { it.copy(progress = it.progress - key) }
+                        }
                     }
                 }
             }
@@ -191,10 +198,17 @@ class MoodleFileDownloads internal constructor(
         }
     }
 
+    /** Which download a share of progress is from, set once that download is made. */
+    private class Owner {
+        @Volatile
+        var job: Deferred<File?>? = null
+    }
+
     private suspend fun transfer(
         location: File,
         fetch: suspend (File, (Float) -> Unit) -> Unit,
         isCurrent: () -> Boolean,
+        progress: (Float) -> Unit,
     ): File? {
         val key = location.path
         var part: File? = null
@@ -205,7 +219,7 @@ class MoodleFileDownloads internal constructor(
                 File.createTempFile(".dl", PART_SUFFIX, dir)
             }
             part = target
-            fetch(target) { share -> report(key, share) }
+            fetch(target, progress)
             currentCoroutineContext().ensureActive()
             // Landed after a sign-out: the next account must not find it.
             if (!isCurrent()) return null
@@ -238,12 +252,18 @@ class MoodleFileDownloads internal constructor(
         }
     }
 
-    /** Whole percents, so a large file redraws its row a hundred times at most. */
-    private fun report(key: String, share: Float) {
+    /**
+     * Whole percents, so a large file redraws its row a hundred times at most; only from the
+     * download now on its way for [key], not one stopped before it.
+     */
+    private fun report(key: String, share: Float, owner: Owner) {
         val percent = kotlin.math.floor(share.coerceIn(0f, 1f) * 100) / 100
-        _snapshot.update { snap ->
-            if (key !in snap.progress || snap.progress[key] == percent) snap
-            else snap.copy(progress = snap.progress + (key to percent))
+        synchronized(running) {
+            if (running[key] !== owner.job) return
+            _snapshot.update { snap ->
+                if (key !in snap.progress || snap.progress[key] == percent) snap
+                else snap.copy(progress = snap.progress + (key to percent))
+            }
         }
     }
 
