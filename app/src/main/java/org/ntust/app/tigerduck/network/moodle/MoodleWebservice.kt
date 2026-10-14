@@ -53,7 +53,11 @@ class MoodleWebservice internal constructor(
         suspend fun renew(rejected: String?): String
     }
 
-    /** The token [siteInfo] last answered for, with its answer; another token asks again. */
+    /**
+     * The token [siteInfo] last answered for, with its answer; another token asks again. Read
+     * outside the lock on the fast path, so written where every thread sees it at once.
+     */
+    @Volatile
     private var siteInfoCache: Pair<String, MoodleSiteInfo>? = null
     private val siteInfoLock = Mutex()
 
