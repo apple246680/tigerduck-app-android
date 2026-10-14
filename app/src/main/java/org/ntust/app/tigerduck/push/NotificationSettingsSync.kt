@@ -1,12 +1,12 @@
-// Writes this device's Live Update preferences AND its assignment-reminder
-// settings into the `notification` settings-document namespace (`GET/PUT
-// /v3/settings/notification`, design spec §4.6), and reads them back.
-// Android owns two keys in that document — `live_activity` and
-// `assignments` — each gated on its own "同步內容" switch
-// (`syncLiveActivity` / `syncAssignmentReminders`) plus `cloudSyncEnabled`.
-// `courses` belongs to somebody else — the course-reminder feature — and so
-// does whatever section a newer build of either platform adds to the same
-// namespace; this file only ever round-trips those unchanged.
+// Writes this device's Live Update preferences, its assignment-reminder
+// settings AND its class-reminder settings into the `notification`
+// settings-document namespace (`GET/PUT /v3/settings/notification`, design
+// spec §4.6), and reads them back. Android owns three keys in that document:
+// `live_activity` and `assignments`, each gated on its own "同步內容" switch
+// (`syncLiveActivity` / `syncAssignmentReminders`) plus `cloudSyncEnabled`,
+// and `courses`, gated on `cloudSyncEnabled` alone as on iOS. Whatever
+// section a newer build of either platform adds to the same namespace this
+// file only ever round-trips unchanged.
 //
 // The read half ([pullLiveActivitySettings], [pullAssignmentSettings]) is
 // what makes this sync rather than one-way replication: without it, an
@@ -78,6 +78,7 @@ import org.ntust.app.tigerduck.liveactivity.LiveActivitySyncUpdate
 import org.ntust.app.tigerduck.liveactivity.LiveActivitySyncValues
 import org.ntust.app.tigerduck.notification.AssignmentNotificationScheduler
 import org.ntust.app.tigerduck.notification.AssignmentReminderOffset
+import org.ntust.app.tigerduck.notification.ClassReminders
 import org.ntust.app.tigerduck.util.logSummary
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
@@ -231,10 +232,10 @@ internal fun merging(updates: JsonObject, into: JsonObject): JsonObject {
  * string literals so the wire keys come from one place, the model's
  * `@SerializedName`s. `assignments` and `courses` are left null and Gson
  * omits nulls, which is what keeps this object to `live_activity` alone:
- * `assignments`, which Android also owns, goes out in its own push
- * ([AssignmentSyncValues.documentUpdates]), and `courses` belongs to
- * somebody else, so neither appears in these `updates` and this merge
- * cannot touch them.
+ * `assignments` and `courses`, which Android also owns, go out in pushes of
+ * their own ([AssignmentSyncValues.documentUpdates],
+ * [ClassReminderSyncValues.documentUpdates]), so neither appears in these
+ * `updates` and this merge cannot touch them.
  *
  * Field-by-field mapping — the fixed set of five (do not add or infer
  * fields beyond these):
@@ -721,7 +722,7 @@ internal fun AssignmentSyncValues.documentUpdates(existing: JsonObject): JsonObj
 /**
  * Read-modify-write cycle for the document's `assignments` section —
  * the [pushLiveActivitySettings] of this section. Everything else in the
- * document, `courses` and any section this build has never heard of
+ * document, the other two sections and any this build has never heard of
  * included, travels back exactly as read (see [merging]). On a 409,
  * adopts the server's document and its revision and retries **exactly
  * once** — never loops. See [pushLiveActivitySettings] for why each of the
@@ -875,6 +876,198 @@ internal suspend fun pullAssignmentSettingsCatching(
     null
 }
 
+// ──────────────────────────── Courses section ─────────────────────────────
+//
+// Class reminders: `courses.enabled` and `courses.reminder_offsets_minutes`,
+// which iOS writes from its Class reminders screen and the backend reads to
+// push class reminders to iPhones and iPads (`server/push/course_reminders.py`,
+// `_course_prefs`). This phone posts its own reminders, so a value adopted
+// here is what arms them. Same push/pull shape as `assignments`, gated on
+// cloud sync and the session only: iOS has no 同步內容 switch for it either,
+// and syncs it whenever cloud sync is on.
+
+private const val COURSES_SECTION_KEY = "courses"
+private const val COURSES_ENABLED_KEY = "enabled"
+
+/**
+ * The class reminder values the `courses` section carries, plus
+ * [hasPickedLead], which decides whether a push writes the lead time. The
+ * local half of the mapping, as [AssignmentSyncValues] is for `assignments`;
+ * iOS's `isClassReminderEnabled` / `classReminderLeadMinutes` /
+ * `hasPickedClassReminderLead`. Not persisted, never Gson-deserialized.
+ */
+internal data class ClassReminderSyncValues(
+    val enabled: Boolean,
+    val leadMinutes: Int,
+    val hasPickedLead: Boolean,
+)
+
+/**
+ * The lead time to hold for the document's `courses.reminder_offsets_minutes`
+ * ([documentMinutes]), and whether it still counts as picked here. Mirrors
+ * iOS's `resolveClassReminderLead`:
+ *
+ * - no list: the document says nothing, so nothing changes;
+ * - a list: its smallest value when that is one of
+ *   [ClassReminders.LEAD_CHOICES_MINUTES], the current lead time otherwise.
+ *   Either way the pick is cleared, as the list is now this device's last
+ *   pick or another client's choice, and a push leaves it alone.
+ */
+internal fun resolveClassReminderLead(
+    documentMinutes: List<Int>?,
+    currentMinutes: Int,
+    currentPicked: Boolean,
+): Pair<Int, Boolean> {
+    if (documentMinutes == null) return currentMinutes to currentPicked
+    val smallest = documentMinutes.minOrNull()?.takeIf { it in ClassReminders.LEAD_CHOICES_MINUTES }
+    return (smallest ?: currentMinutes) to false
+}
+
+/**
+ * The `courses` section update, ready to splice over [existing] via
+ * [merging]: `enabled` always, and `reminder_offsets_minutes` as the one
+ * lead time only when the user picked it here since the document's list was
+ * adopted, or the document has no list. iOS's `coursesSection`.
+ *
+ * Left out otherwise, so the merge keeps the server's list, which may hold a
+ * value this build has no choice for. Also left out for a lead time carried
+ * over from the Live Update that is none of the choices: an iPhone would not
+ * adopt it and would show a different lead time from the one the backend
+ * then reminds it at.
+ */
+internal fun ClassReminderSyncValues.documentUpdates(existing: JsonObject): JsonObject {
+    val existingOffsets = existing.get(COURSES_SECTION_KEY)
+        ?.takeIf { it.isJsonObject }
+        ?.asJsonObject
+        ?.get(REMINDER_OFFSETS_MINUTES_KEY)
+        .asValidatedIntListOrNull()
+    val writesLead = (hasPickedLead || existingOffsets == null) &&
+        leadMinutes in ClassReminders.LEAD_CHOICES_MINUTES
+
+    val section = JsonObject()
+    section.addProperty(COURSES_ENABLED_KEY, enabled)
+    if (writesLead) section.add(REMINDER_OFFSETS_MINUTES_KEY, JsonArray().apply { add(leadMinutes) })
+
+    val root = JsonObject()
+    root.add(COURSES_SECTION_KEY, section)
+    return root
+}
+
+/**
+ * Read-modify-write cycle for the document's `courses` section — the
+ * [pushAssignmentSettings] of this section, with the same 409 handling and
+ * generation checks, and the update recomputed from each document it is
+ * merged over. Gated on [cloudSyncEnabled] and [isLoggedIn] only.
+ */
+internal suspend fun pushClassReminderSettings(
+    local: ClassReminderSyncValues,
+    transport: SettingsDocumentTransport,
+    cloudSyncEnabled: Boolean,
+    isLoggedIn: Boolean,
+    isCurrentGeneration: () -> Boolean = { true },
+): Boolean {
+    if (!cloudSyncEnabled || !isLoggedIn) return false
+    if (!isCurrentGeneration()) return false
+
+    val current = transport.read()
+    if (!isCurrentGeneration()) return false
+    var existing = current?.document ?: JsonObject()
+    var baseRevision = current?.revision
+
+    var conflicts = 0
+    while (true) {
+        val result = transport.write(
+            merging(local.documentUpdates(existing), into = existing),
+            baseRevision,
+            isCurrentGeneration,
+        )
+        when (result) {
+            is SettingsWriteResult.Written -> return true
+            SettingsWriteResult.Abandoned -> return false
+            is SettingsWriteResult.Conflict -> {
+                conflicts++
+                if (conflicts > 1) {
+                    throw SettingsDocumentApiException(
+                        "write $NOTIFICATION_SETTINGS_NAMESPACE: still conflicting after one rebase"
+                    )
+                }
+                existing = result.server.document
+                baseRevision = result.server.revision
+            }
+        }
+    }
+}
+
+/**
+ * Read half of the `courses` section — the [pullAssignmentSettings] of this
+ * section, returning the values to apply or null when there is nothing to
+ * apply, for the same reasons. `enabled` keeps [current]'s value unless the
+ * document holds a real boolean; the lead time goes through
+ * [resolveClassReminderLead].
+ */
+internal suspend fun pullClassReminderSettings(
+    current: ClassReminderSyncValues,
+    transport: SettingsDocumentTransport,
+    cloudSyncEnabled: Boolean,
+    isLoggedIn: Boolean,
+    isLocalDirty: () -> Boolean = { false },
+    onLocalDirty: () -> Unit = {},
+    isCurrentGeneration: () -> Boolean = { true },
+): ClassReminderSyncValues? {
+    if (!cloudSyncEnabled || !isLoggedIn) return null
+    if (!isCurrentGeneration()) return null
+
+    val section = transport.read()?.document
+        ?.get(COURSES_SECTION_KEY)
+        ?.takeIf { it.isJsonObject }
+        ?.asJsonObject
+
+    if (!isCurrentGeneration()) return null
+    if (isLocalDirty()) {
+        onLocalDirty()
+        return null
+    }
+    if (section == null) return null
+
+    val (leadMinutes, picked) = resolveClassReminderLead(
+        documentMinutes = section.get(REMINDER_OFFSETS_MINUTES_KEY).asValidatedIntListOrNull(),
+        currentMinutes = current.leadMinutes,
+        currentPicked = current.hasPickedLead,
+    )
+    return ClassReminderSyncValues(
+        enabled = section.get(COURSES_ENABLED_KEY).asValidatedBooleanOrNull() ?: current.enabled,
+        leadMinutes = leadMinutes,
+        hasPickedLead = picked,
+    )
+}
+
+/** [pullClassReminderSettings], with a transport failure reported through [onFailure] instead of thrown. */
+internal suspend fun pullClassReminderSettingsCatching(
+    current: ClassReminderSyncValues,
+    transport: SettingsDocumentTransport,
+    cloudSyncEnabled: Boolean,
+    isLoggedIn: Boolean,
+    isLocalDirty: () -> Boolean = { false },
+    onLocalDirty: () -> Unit = {},
+    isCurrentGeneration: () -> Boolean = { true },
+    onFailure: (Throwable) -> Unit = {},
+): ClassReminderSyncValues? = try {
+    pullClassReminderSettings(
+        current,
+        transport,
+        cloudSyncEnabled,
+        isLoggedIn,
+        isLocalDirty,
+        onLocalDirty,
+        isCurrentGeneration,
+    )
+} catch (e: CancellationException) {
+    throw e
+} catch (e: Exception) {
+    onFailure(e)
+    null
+}
+
 /**
  * How many additional attempts [NotificationSettingsSync]'s coalesced push
  * loop makes after a push fails, before giving up until the next trigger:
@@ -962,6 +1155,22 @@ internal interface AssignmentReminderSyncStore {
 }
 
 /**
+ * The class reminder values [NotificationSettingsSync] reads and writes, the
+ * `courses` section's [AssignmentReminderSyncStore]. Backed by
+ * [org.ntust.app.tigerduck.data.preferences.AppPreferences], whose writes to
+ * [enabled] and [leadMinutes] signal LiveActivityManager to re-arm the
+ * reminders, a pull's included.
+ */
+internal interface ClassReminderSyncStore {
+    var enabled: Boolean
+    var leadMinutes: Int
+    var hasPickedLead: Boolean
+
+    /** The courses-section mirror of `LiveActivityPreferences.hasUnconfirmedSyncEdit`. */
+    var hasUnconfirmedEdit: Boolean
+}
+
+/**
  * What a pull that changes the assignment-reminder settings does to the
  * reminders already armed on this device. Android fires these reminders
  * itself (the backend delivers assignment reminders only to iPhone and
@@ -988,6 +1197,7 @@ class NotificationSettingsSync internal constructor(
     private val liveActivityPreferences: LiveActivityPreferences,
     private val assignmentStore: AssignmentReminderSyncStore,
     private val assignmentAlarms: AssignmentReminderAlarms,
+    private val classReminderStore: ClassReminderSyncStore,
     private val cloudSyncEnabled: () -> Boolean,
     private val syncLiveActivity: () -> Boolean,
     private val syncAssignmentReminders: () -> Boolean,
@@ -1044,6 +1254,20 @@ class NotificationSettingsSync internal constructor(
                     appPreferences.notifyAssignmentOffsets,
                 )
             }
+        },
+        classReminderStore = object : ClassReminderSyncStore {
+            override var enabled: Boolean
+                get() = appPreferences.classReminderEnabled
+                set(value) { appPreferences.classReminderEnabled = value }
+            override var leadMinutes: Int
+                get() = appPreferences.classReminderLeadMinutes
+                set(value) { appPreferences.classReminderLeadMinutes = value }
+            override var hasPickedLead: Boolean
+                get() = appPreferences.hasPickedClassReminderLead
+                set(value) { appPreferences.hasPickedClassReminderLead = value }
+            override var hasUnconfirmedEdit: Boolean
+                get() = appPreferences.hasUnconfirmedClassReminderSyncEdit
+                set(value) { appPreferences.hasUnconfirmedClassReminderSyncEdit = value }
         },
         cloudSyncEnabled = { appPreferences.cloudSyncEnabled },
         syncLiveActivity = { appPreferences.syncLiveActivity },
@@ -1207,6 +1431,18 @@ class NotificationSettingsSync internal constructor(
     }
 
     /**
+     * The courses-section mirror of [markUnconfirmedAndPush]: marks
+     * [ClassReminderSyncStore.hasUnconfirmedEdit] and queues a push. Called
+     * only for an edit to the class reminder's switch or lead time
+     * ([org.ntust.app.tigerduck.ui.screen.settings.ClassReminderSettingsViewModel]).
+     */
+    fun markClassReminderUnconfirmedAndPush() {
+        classReminderStore.hasUnconfirmedEdit = true
+        consecutiveFailures = 0
+        pending.trySend(generation.get())
+    }
+
+    /**
      * Queues a push only if an earlier edit — live_activity's, assignments',
      * or both — is still unconfirmed, and never marks anything: with nothing
      * pending it does nothing at all, and the next pull is free to adopt
@@ -1230,7 +1466,10 @@ class NotificationSettingsSync internal constructor(
      * [markUnconfirmedAndPush] does.
      */
     fun pushIfUnconfirmed() {
-        if (!liveActivityPreferences.hasUnconfirmedSyncEdit && !assignmentStore.hasUnconfirmedEdit) return
+        if (!liveActivityPreferences.hasUnconfirmedSyncEdit &&
+            !assignmentStore.hasUnconfirmedEdit &&
+            !classReminderStore.hasUnconfirmedEdit
+        ) return
         consecutiveFailures = 0
         pending.trySend(generation.get())
     }
@@ -1259,6 +1498,7 @@ class NotificationSettingsSync internal constructor(
         generation.incrementAndGet()
         liveActivityPreferences.hasUnconfirmedSyncEdit = false
         assignmentStore.hasUnconfirmedEdit = false
+        classReminderStore.hasUnconfirmedEdit = false
     }
 
     /**
@@ -1343,6 +1583,7 @@ class NotificationSettingsSync internal constructor(
             // it is for is catching an edit that lands while one is on the
             // wire, and a snapshot taken after the read already contains it.
             val expected = assignmentValues()
+            val expectedClassReminder = classReminderValues()
 
             val liveActivityAttempted = pullLiveActivitySettingsCatching(
                 preferences = liveActivityPreferences,
@@ -1380,13 +1621,40 @@ class NotificationSettingsSync internal constructor(
                 assignmentsChanged = true
             }
 
+            // Class reminders: the same guards as assignments. What is
+            // applied re-arms the reminders through AppPreferences' change
+            // signal, which LiveActivityManager follows.
+            var classReminderReadFailed = false
+            val pulledClassReminder = pullClassReminderSettingsCatching(
+                current = expectedClassReminder,
+                transport = pullTransport,
+                cloudSyncEnabled = cloudSync,
+                isLoggedIn = loggedIn,
+                isLocalDirty = {
+                    classReminderStore.hasUnconfirmedEdit || classReminderValues() != expectedClassReminder
+                },
+                onLocalDirty = { pushIfUnconfirmed() },
+                isCurrentGeneration = isCurrentGeneration,
+                onFailure = { e ->
+                    classReminderReadFailed = true
+                    Log.w(TAG, "pulling class reminder settings failed: ${e.logSummary()}")
+                },
+            )
+            if (pulledClassReminder != null && pulledClassReminder != expectedClassReminder) {
+                classReminderStore.enabled = pulledClassReminder.enabled
+                classReminderStore.leadMinutes = pulledClassReminder.leadMinutes
+                classReminderStore.hasPickedLead = pulledClassReminder.hasPickedLead
+            }
+            val classReminderAttempted =
+                cloudSync && loggedIn && !classReminderReadFailed && isCurrentGeneration()
+
             // A response the account guard abandoned is not an applied read,
             // whatever the gates said when it went out — and the alarm work
             // below hangs off assignmentsChanged, which that abandon leaves
             // false, so a logout's cancelled reminders stay cancelled.
             val assignmentsAttempted =
                 cloudSync && assignmentsSynced && loggedIn && !assignmentReadFailed && isCurrentGeneration()
-            liveActivityAttempted || assignmentsAttempted
+            liveActivityAttempted || assignmentsAttempted || classReminderAttempted
         }
 
         // Outside the lock: local work that no push has to wait for.
@@ -1398,6 +1666,12 @@ class NotificationSettingsSync internal constructor(
 
     private fun assignmentValues() =
         AssignmentSyncValues(enabled = assignmentStore.enabled, offsets = assignmentStore.offsets)
+
+    private fun classReminderValues() = ClassReminderSyncValues(
+        enabled = classReminderStore.enabled,
+        leadMinutes = classReminderStore.leadMinutes,
+        hasPickedLead = classReminderStore.hasPickedLead,
+    )
 
     /**
      * Fails loudly, in debug builds, if [pullNow] runs anywhere but the main
@@ -1506,7 +1780,22 @@ class NotificationSettingsSync internal constructor(
             }
         }
 
-        return liveActivitySucceeded || assignmentsSucceeded
+        var classReminderSucceeded = false
+        if (classReminderStore.hasUnconfirmedEdit) {
+            val sentClassReminder = classReminderValues()
+            classReminderSucceeded = pushClassReminderSettings(
+                local = sentClassReminder,
+                transport = transport,
+                cloudSyncEnabled = cloudSyncEnabled(),
+                isLoggedIn = isLoggedIn(),
+                isCurrentGeneration = { queuedGeneration == generation.get() },
+            )
+            if (classReminderSucceeded && classReminderValues() == sentClassReminder) {
+                classReminderStore.hasUnconfirmedEdit = false
+            }
+        }
+
+        return liveActivitySucceeded || assignmentsSucceeded || classReminderSucceeded
     }
 
     private companion object {
