@@ -482,8 +482,8 @@ private fun EventRow(
             )
         }
         if (notifyOnHoliday != null && onNotifyOnHolidayChange != null) {
-            // Replaces the timestamp rather than joining it: a holiday is an
-            // all-day thing, so "00:00" was never telling the user anything.
+            // Where a timed row has its time: a holiday is a whole day, so it
+            // has none to show.
             //
             // The switch is labelled rather than bare: on its own it asked
             // the user to guess what it governed, and a screen reader had
@@ -499,7 +499,9 @@ private fun EventRow(
                 checked = notifyOnHoliday,
                 onCheckedChange = onNotifyOnHolidayChange,
             )
-        } else {
+        } else if (!event.isAllDay) {
+            // A whole day has no time worth showing: "00:00" read as a
+            // midnight deadline.
             Text(
                 timeFmt.format(event.date),
                 style = MaterialTheme.typography.labelSmall,
