@@ -40,6 +40,10 @@ interface WidgetThemeEntryPoint {
 abstract class BaseClassTableWidget(
     private val layout: WidgetLayout,
     sizeMode: SizeMode = SizeMode.Exact,
+    /** Where the settings come from: Hilt's, except in a test, which has no Hilt. */
+    private val preferencesOf: (Context) -> AppPreferences = ::widgetPreferences,
+    /** What the widget draws: [WidgetDataLoader.load], except in a test. */
+    private val loadState: suspend (Context) -> WidgetState = WidgetDataLoader::load,
 ) : GlanceAppWidget() {
 
     // SizeMode.Exact lets layouts read LocalSize.current (used by Week and
@@ -50,7 +54,7 @@ abstract class BaseClassTableWidget(
     override val sizeMode: SizeMode = sizeMode
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val prefs = prefs(context)
+        val prefs = preferencesOf(context)
         val tapIntent = Intent(context, MainActivity::class.java)
             .putExtra("start_route", "classTable")
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -69,7 +73,7 @@ abstract class BaseClassTableWidget(
 
             var state by remember { mutableStateOf<WidgetState?>(null) }
             LaunchedEffect(tick) {
-                state = WidgetDataLoader.load(context)
+                state = loadState(context)
             }
             val s = state
             if (s == null) {
@@ -92,12 +96,14 @@ abstract class BaseClassTableWidget(
         }
     }
 
-    private fun prefs(context: Context): AppPreferences =
-        EntryPointAccessors.fromApplication(
-            context.applicationContext,
-            WidgetThemeEntryPoint::class.java,
-        ).appPreferences()
 }
+
+/** The app's settings, as every widget reads them. */
+internal fun widgetPreferences(context: Context): AppPreferences =
+    EntryPointAccessors.fromApplication(
+        context.applicationContext,
+        WidgetThemeEntryPoint::class.java,
+    ).appPreferences()
 
 /**
  * [context] in the app's own language, for the strings a widget draws.

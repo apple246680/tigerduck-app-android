@@ -34,9 +34,9 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextAlign
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
-import dagger.hilt.android.EntryPointAccessors
 import org.ntust.app.tigerduck.MainActivity
 import org.ntust.app.tigerduck.R
+import org.ntust.app.tigerduck.data.preferences.AppPreferences
 
 /**
  * 1x1 home-screen widget that deep-links straight to the library QR page.
@@ -45,14 +45,15 @@ import org.ntust.app.tigerduck.R
  * toggle always routes the user to Settings with the enable-prompt instead
  * of a dead Library screen.
  */
-class LibraryShortcutWidget : GlanceAppWidget() {
+class LibraryShortcutWidget(
+    /** Where the settings come from: Hilt's, except in a test, which has no Hilt. */
+    private val preferencesOf: (Context) -> AppPreferences = ::widgetPreferences,
+) : GlanceAppWidget() {
 
     override val sizeMode: SizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val prefs = EntryPointAccessors
-            .fromApplication(context.applicationContext, WidgetThemeEntryPoint::class.java)
-            .appPreferences()
+        val prefs = preferencesOf(context)
         val tapIntent = Intent(context, MainActivity::class.java)
             .putExtra("start_route", ROUTE_SENTINEL)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)

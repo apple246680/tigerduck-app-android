@@ -13,11 +13,13 @@ import androidx.glance.appwidget.state.updateAppWidgetState
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import org.ntust.app.tigerduck.data.cache.DataCache
+import org.ntust.app.tigerduck.data.preferences.UiLanguageMonitor
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.util.logSummary
 import org.ntust.app.tigerduck.widget.receivers.NextClassDarkWidget
@@ -44,11 +46,22 @@ class WidgetUpdater @Inject constructor(
     private val boundaryScheduler: WidgetBoundaryScheduler,
     private val analyticsLogger: AnalyticsLogger,
     @param:ApplicationScope private val scope: CoroutineScope,
+    uiLanguage: UiLanguageMonitor,
 ) {
     private val boundaryLock = Mutex()
     private var boundaryInFlight = false
     private val boundaryFinishers = mutableListOf<() -> Unit>()
     private var hasLoggedWidgetAnalytics = false
+
+    init {
+        // A widget keeps the language it was last drawn in until something
+        // redraws it, which without this is the next period boundary, data
+        // change or half-hourly update. Conflated: only the last of a burst
+        // matters. TigerDuckApp injects this, so it listens from launch.
+        scope.launch {
+            uiLanguage.changes.conflate().collect { updateAll() }
+        }
+    }
 
     suspend fun updateAll() {
         // Bump the per-widget tick BEFORE asking Glance to recompose. The
