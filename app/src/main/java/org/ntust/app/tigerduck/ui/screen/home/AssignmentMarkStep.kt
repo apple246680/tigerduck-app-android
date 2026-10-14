@@ -1,6 +1,9 @@
 package org.ntust.app.tigerduck.ui.screen.home
 
 import android.util.Log
+import org.ntust.app.tigerduck.data.UnsentMarks
+import org.ntust.app.tigerduck.data.cache.DataCache
+import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.push.BackendSyncResult
 
 /**
@@ -103,7 +106,29 @@ internal class AssignmentMarkStep(
         state.markedCompletedIds.value = outcome.completed
     }
 
-    private companion object {
-        const val TAG = "HomeViewModel"
+    companion object {
+        private const val TAG = "HomeViewModel"
+
+        /** The step over this phone's preferences and files, as Home's sync runs it. */
+        fun over(
+            prefs: AppPreferences,
+            dataCache: DataCache,
+            unsentMarks: UnsentMarks,
+            send: suspend (assignmentId: Int, status: String) -> Unit,
+        ) = AssignmentMarkStep(
+            switchOn = { prefs.syncAssignments },
+            pendingConflicts = { prefs.pendingConflictCategories },
+            syncedBefore = { prefs.assignmentMarksSyncedOnce },
+            store = object : MarkStore {
+                override suspend fun ignored() = dataCache.loadIgnoredAssignments()
+                override suspend fun completed() = dataCache.loadMarkedCompletedAssignments()
+                override suspend fun replace(ignored: Set<String>, completed: Set<String>) {
+                    dataCache.replaceIgnoredAssignments(ignored)
+                    dataCache.replaceMarkedCompletedAssignments(completed)
+                }
+            },
+            send = send,
+            unsent = unsentMarks::ids,
+        )
     }
 }

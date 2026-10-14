@@ -116,20 +116,8 @@ class HomeBackendSync @Inject constructor(
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) {
 
-    private val markStep = AssignmentMarkStep(
-        switchOn = { prefs.syncAssignments },
-        pendingConflicts = { prefs.pendingConflictCategories },
-        syncedBefore = { prefs.assignmentMarksSyncedOnce },
-        store = object : AssignmentMarkStep.MarkStore {
-            override suspend fun ignored() = dataCache.loadIgnoredAssignments()
-            override suspend fun completed() = dataCache.loadMarkedCompletedAssignments()
-            override suspend fun replace(ignored: Set<String>, completed: Set<String>) {
-                dataCache.replaceIgnoredAssignments(ignored)
-                dataCache.replaceMarkedCompletedAssignments(completed)
-            }
-        },
-        send = pushApiClient::patchAssignmentOverride,
-        unsent = unsentMarks::ids,
+    private val markStep = AssignmentMarkStep.over(
+        prefs, dataCache, unsentMarks, pushApiClient::patchAssignmentOverride,
     )
 
     /**
