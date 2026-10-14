@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.BulletinReadStateStore
 import org.ntust.app.tigerduck.data.BulletinRepository
 import org.ntust.app.tigerduck.data.RefreshPolicy
@@ -37,6 +38,32 @@ import javax.inject.Inject
  * day, and the ones a user subscribes to are pushed.
  */
 internal val AnnouncementsRefreshPolicy = RefreshPolicy()
+
+/**
+ * The empty list's title and message. With bulletins loaded but none shown, a filter, a search or
+ * unread only is what hid them, and the message says nothing matches rather than that there is
+ * nothing at all.
+ */
+internal fun bulletinEmptyText(hasItems: Boolean, unreadOnly: Boolean, hasActiveFilter: Boolean): Pair<Int, Int> = when {
+    !hasItems -> R.string.bulletin_no_bulletins_title to R.string.bulletin_no_bulletins_message
+    else -> (if (unreadOnly) R.string.bulletin_no_unread_title else R.string.bulletin_no_bulletins_title) to
+        (if (unreadOnly || hasActiveFilter) R.string.bulletin_no_match_message else R.string.bulletin_no_bulletins_message)
+}
+
+internal enum class BulletinPlaceholder { EMPTY, FAILED }
+
+/**
+ * What stands in for an empty list, or null for none: the failure only while there are no
+ * bulletins at all -- bulletins a filter or search hides are still there, and saying the load
+ * failed would hide that it was the filter -- and the empty state once a load has answered or
+ * bulletins are in hand.
+ */
+internal fun bulletinPlaceholder(hasItems: Boolean, hasDisplayed: Boolean, loadState: AnnouncementsViewModel.LoadState): BulletinPlaceholder? = when {
+    hasDisplayed -> null
+    !hasItems && loadState is AnnouncementsViewModel.LoadState.Failed -> BulletinPlaceholder.FAILED
+    hasItems || loadState is AnnouncementsViewModel.LoadState.Loaded -> BulletinPlaceholder.EMPTY
+    else -> null
+}
 
 /**
  * Drives AnnouncementsScreen. Ports BulletinsViewModel.swift faithfully:
@@ -83,6 +110,10 @@ class AnnouncementsViewModel @Inject constructor(
     ) {
         val hasUnread: Boolean
             get() = filtered.any { it.id !in readIds }
+
+        /** A department, category or search narrows the list, so an empty one has hidden bulletins. */
+        val hasActiveFilter: Boolean
+            get() = selectedOrgs.isNotEmpty() || selectedTags.isNotEmpty() || searchText.isNotBlank()
     }
 
     private val _state = MutableStateFlow(

@@ -211,29 +211,34 @@ fun AnnouncementsScreen(
                     listTopAnchor()
                     val displayed = state.displayed
                     val loadState = state.loadState
+                    val placeholder = bulletinPlaceholder(state.items.isNotEmpty(), displayed.isNotEmpty(), loadState)
                     when {
-                        displayed.isEmpty() && loadState is AnnouncementsViewModel.LoadState.Loaded -> {
+                        placeholder == BulletinPlaceholder.EMPTY -> {
                             if (canShowEmptyState) {
                                 item(key = "empty-state") {
+                                    val (title, message) = bulletinEmptyText(
+                                        hasItems = state.items.isNotEmpty(),
+                                        unreadOnly = state.unreadOnly,
+                                        hasActiveFilter = state.hasActiveFilter,
+                                    )
                                     CenteredEmptyState(
                                         modifier = Modifier.fillHeightBelowChrome(appBar, viewportHeightPx),
-                                        title = stringResource(
-                                            if (state.unreadOnly) R.string.bulletin_no_unread_title
-                                            else R.string.bulletin_no_bulletins_title
-                                        ),
-                                        message = stringResource(R.string.bulletin_no_bulletins_message),
+                                        title = stringResource(title),
+                                        message = stringResource(message),
                                     )
                                 }
                             }
                         }
 
-                        displayed.isEmpty() && loadState is AnnouncementsViewModel.LoadState.Failed -> {
+                        placeholder == BulletinPlaceholder.FAILED && loadState is AnnouncementsViewModel.LoadState.Failed -> {
                             if (canShowEmptyState) {
                                 item(key = "failed-state") {
                                     CenteredEmptyState(
                                         modifier = Modifier.fillHeightBelowChrome(appBar, viewportHeightPx),
                                         title = stringResource(R.string.bulletin_load_failed_title),
                                         message = loadState.message,
+                                        actionLabel = stringResource(R.string.action_retry),
+                                        onAction = viewModel::refresh,
                                     )
                                 }
                             }
@@ -355,6 +360,8 @@ private fun CenteredEmptyState(
     modifier: Modifier,
     title: String,
     message: String,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
 ) {
     Box(
         modifier = modifier.fillMaxWidth(),
@@ -364,6 +371,8 @@ private fun CenteredEmptyState(
             icon = Icons.Filled.Campaign,
             title = title,
             message = message,
+            actionLabel = actionLabel,
+            onAction = onAction,
         )
     }
 }
