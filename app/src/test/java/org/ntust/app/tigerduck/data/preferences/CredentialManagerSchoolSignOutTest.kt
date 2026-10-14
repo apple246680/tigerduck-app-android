@@ -17,8 +17,9 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
- * A school sign-out takes the library account of the same student ID, and
- * leaves one signed in with another ID, as on the iPhone.
+ * A school sign-out takes the library account of the same student ID, read
+ * before the school account is wiped, and leaves one signed in with another
+ * ID, as on the iPhone.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
@@ -39,6 +40,31 @@ class CredentialManagerSchoolSignOutTest {
         assertTrue(
             credentials.saveLibrarySignIn(credentials.libraryAccountGeneration, username, "pw", "token", Long.MAX_VALUE, byUser = true),
         )
+    }
+
+    @Test
+    fun `the same student's library account goes with the school account`() {
+        credentials.ntustStudentId = "B10000001"
+        credentials.ntustPassword = "school"
+        libraryAccount("B10000001")
+
+        assertTrue(credentials.signOutSchoolAccount())
+
+        assertNull(credentials.ntustStudentId)
+        assertNull(credentials.ntustPassword)
+        assertNull(credentials.libraryUsername)
+    }
+
+    @Test
+    fun `another student's library account stays through the school sign-out`() {
+        credentials.ntustStudentId = "B10000001"
+        credentials.ntustPassword = "school"
+        libraryAccount("B10000009")
+
+        assertFalse(credentials.signOutSchoolAccount())
+
+        assertNull(credentials.ntustStudentId)
+        assertEquals("B10000009", credentials.libraryUsername)
     }
 
     @Test
