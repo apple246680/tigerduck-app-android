@@ -90,36 +90,53 @@ class MoodleFeed<T : Any>(
     }
 
     /**
+     * Changes made here while a fetch runs, to apply again on its answer, which was read from
+     * Moodle before them; null while none runs.
+     */
+    private var changesDuringFetch: MutableList<(T) -> T>? = null
+
+    /**
      * Applies a change made here, such as a discussion read, keeping the time of the fetch the
-     * value came from.
+     * value came from. A fetch under way applies it again to its answer, so the answer does not
+     * undo it.
      */
     fun update(change: (T) -> T) {
         if (!context.isCurrent()) return
-        var saved: Pair<T, Long>? = null
-        _state.update { current ->
-            val value = current.value ?: return@update current
-            val fetchedAt = current.fetchedAtMs ?: return@update current
+        // Every write of the value takes this lock, so a fetch's answer and a change made here
+        // cannot pass each other.
+        val saved = synchronized(this) {
+            changesDuringFetch?.add(change)
+            val current = _state.value
+            val value = current.value ?: return
+            val fetchedAt = current.fetchedAtMs ?: return
             val changed = change(value)
-            saved = changed to fetchedAt
-            current.copy(value = changed)
+            _state.update { it.copy(value = changed) }
+            changed to fetchedAt
         }
-        saved?.let { (value, fetchedAt) -> scope.launch { context.cache.save(value, fetchedAt, name) } }
+        scope.launch { context.cache.save(saved.first, saved.second, name) }
     }
 
     private suspend fun run(fetch: suspend () -> T) {
         awaitCache()
         _state.update { it.copy(isRefreshing = true) }
+        synchronized(this) { changesDuringFetch = mutableListOf() }
         try {
-            val fresh = fetch()
+            val answer = fetch()
             if (!context.isCurrent()) return
             val now = context.now()
-            _state.update { it.copy(value = fresh, fetchedAtMs = now, failure = null) }
+            val fresh = synchronized(this) {
+                val changes = changesDuringFetch.orEmpty()
+                changesDuringFetch = null
+                changes.fold(answer) { value, change -> change(value) }
+                    .also { kept -> _state.update { it.copy(value = kept, fetchedAtMs = now, failure = null) } }
+            }
             context.cache.save(fresh, now, name)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             if (context.isCurrent()) _state.update { it.copy(failure = e) }
         } finally {
+            synchronized(this) { changesDuringFetch = null }
             _state.update { it.copy(isRefreshing = false) }
         }
     }

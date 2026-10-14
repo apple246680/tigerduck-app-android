@@ -55,13 +55,17 @@ class MoodleCourseStoreTest {
         val viewed = mutableListOf<Int>()
 
         override suspend fun functions() = allowed
+        var gateForums: CompletableDeferred<Unit>? = null
         override suspend fun forums(courseIds: List<Int>): List<MoodleForum> {
             forumCalls++
+            gateForums?.await()
             return forumList.filter { it.courseId in courseIds }
         }
         var failNextPage = false
+        var discussionsGate: CompletableDeferred<Unit>? = null
         override suspend fun discussions(forumId: Int, page: Int): List<MoodleDiscussion> {
             discussionCalls++
+            discussionsGate?.await()
             if (failNextPage) {
                 failNextPage = false
                 throw IOException("offline")
@@ -588,5 +592,48 @@ class MoodleCourseStoreTest {
         assertEquals("1151", MoodleCourseStore.term(5, ids))
         assertEquals("1142", MoodleCourseStore.term(3, ids))
         assertNull("none known", MoodleCourseStore.term(99, ids))
+    }
+
+    @Test
+    fun `an announcement opened while the list refreshes stays read`() = runTest(UnconfinedTestDispatcher()) {
+        api.forumList = listOf(testForum(1, courseId = 5, type = "news", count = 2, unread = 1))
+        api.pages = mapOf(0 to listOf(testDiscussion(10, unread = 1), testDiscussion(11)))
+        val store = store()
+        store.refreshForums()
+        val pages = store.announcementPages()!!
+        pages.refresh()
+
+        // The answer under way was read before Moodle logged the view, so it still says unread.
+        api.discussionsGate = CompletableDeferred()
+        val refresh = async { pages.refresh() }
+        runCurrent()
+        store.open(pages.list.value!!.discussions.first { it.id == 10 })
+        api.discussionsGate!!.complete(Unit)
+        refresh.await()
+
+        assertEquals(0, pages.list.value!!.discussions.first { it.id == 10 }.unreadCount)
+        assertEquals(false, store.sectionRows.value.single().hasUnread)
+        @Suppress("UNCHECKED_CAST")
+        val saved = cache.files["courses/5/announcements"]!!.first as org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussionList
+        assertEquals("and so it is kept", 0, saved.discussions.first { it.id == 10 }.unreadCount)
+    }
+
+    @Test
+    fun `a section row's dot cleared while the forums refresh stays cleared`() = runTest(UnconfinedTestDispatcher()) {
+        api.forumList = listOf(testForum(1, courseId = 5, type = "news", count = 2, unread = 1))
+        api.pages = mapOf(0 to listOf(testDiscussion(10, unread = 1), testDiscussion(11)))
+        val store = store()
+        store.refreshForums()
+        val pages = store.announcementPages()!!
+        pages.refresh()
+
+        api.gateForums = CompletableDeferred()
+        val refresh = async { store.refreshForums() }
+        runCurrent()
+        store.open(pages.list.value!!.discussions.first { it.id == 10 })
+        api.gateForums!!.complete(Unit)
+        refresh.await()
+
+        assertEquals(false, store.sectionRows.value.single().hasUnread)
     }
 }
