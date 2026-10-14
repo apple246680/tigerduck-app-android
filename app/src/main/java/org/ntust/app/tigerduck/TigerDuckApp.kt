@@ -66,6 +66,9 @@ class TigerDuckApp : Application(), Configuration.Provider {
     @Inject
     lateinit var notificationChannels: NotificationChannelRegistrar
 
+    @Inject
+    lateinit var librarySession: org.ntust.app.tigerduck.library.LibrarySession
+
     // The DI singleton, not a private scope: it carries a logging
     // CoroutineExceptionHandler (see CoroutineModule) so a failure in the
     // safety-net publishes below can't crash the process pre-first-frame.
@@ -122,6 +125,9 @@ class TigerDuckApp : Application(), Configuration.Provider {
         }
         appScope.launch {
             authService.authState.collect {
+                // A school sign-in can sign in to the library too, and a
+                // school sign-out can take the library account with it.
+                librarySession.refresh()
                 wearBridge.publish()
                 // Auth state flips when SSO + library login finishes (or
                 // when logout clears creds), so this is also the right

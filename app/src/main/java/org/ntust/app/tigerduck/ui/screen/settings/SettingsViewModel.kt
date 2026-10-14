@@ -493,14 +493,10 @@ class SettingsViewModel @Inject constructor(
 
     val isNtustLoggedIn: StateFlow<Boolean> = authService.authState
 
-    private val _isLibraryLoggedIn = MutableStateFlow(librarySignedIn())
-    val isLibraryLoggedIn: StateFlow<Boolean> = _isLibraryLoggedIn
-
-    private fun librarySignedIn(): Boolean =
-        credentials.isLibraryTokenValid || demoAccount.isLibrarySignedIn
+    val isLibraryLoggedIn: StateFlow<Boolean> = appState.librarySession.signedIn
 
     fun refreshLoginState() {
-        _isLibraryLoggedIn.value = librarySignedIn()
+        appState.librarySession.refresh()
     }
 
     fun loginNtust(studentId: String, password: String) {
@@ -515,7 +511,7 @@ class SettingsViewModel @Inject constructor(
         // application-scoped coroutine, so it survives ViewModel destruction
         // when the user navigates away from Settings immediately after logout.
         authService.logout()
-        _isLibraryLoggedIn.value = false
+        appState.librarySession.refresh()
         notificationScheduler.cancelAllTracked()
         liveActivityManager.stop()
         BackgroundSyncWorker.cancel(context)
@@ -529,7 +525,7 @@ class SettingsViewModel @Inject constructor(
                 // The demo library password signs in on the device, with or
                 // without the demo account; see [DemoAccount.signInLibrary].
                 if (demoAccount.signInLibrary(username, password)) {
-                    _isLibraryLoggedIn.value = true
+                    appState.librarySession.refresh()
                     return@launch
                 }
                 // The demo account itself never reaches the library, so
@@ -540,7 +536,7 @@ class SettingsViewModel @Inject constructor(
                 }
                 libraryService.login(username, password, credentials.libraryAccountGeneration, byUser = true)
                 demoAccount.signOutLibrary()
-                _isLibraryLoggedIn.value = true
+                appState.librarySession.refresh()
                 // The NTUST authState collector in TigerDuckApp pushes library
                 // credentials on NTUST login/logout, but a Settings-only
                 // library login/logout doesn't flip that state — so mirror the
@@ -558,7 +554,7 @@ class SettingsViewModel @Inject constructor(
     fun logoutLibrary() {
         demoAccount.signOutLibrary()
         credentials.clearLibraryCredentials()
-        _isLibraryLoggedIn.value = false
+        appState.librarySession.refresh()
         viewModelScope.launch { wearBridge.publishLibraryCredentials() }
     }
 

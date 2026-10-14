@@ -14,16 +14,19 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.sensor.FlipDetector
 import org.ntust.app.tigerduck.ui.component.ContentCard
 import org.ntust.app.tigerduck.ui.component.NoTopBarInsets
+import org.ntust.app.tigerduck.ui.navigation.FlipToLibraryGate
 
 /**
  * 圖書館及相關功能: flip-to-library. Settings' 其他設定 section links here,
@@ -37,6 +40,7 @@ fun LibrarySettingsScreen(
 ) {
     val context = LocalContext.current
     val flipSensorSupported = remember(context) { FlipDetector.isSupported(context) }
+    val signedIn by viewModel.isLibraryLoggedIn.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -66,8 +70,11 @@ fun LibrarySettingsScreen(
                 ContentCard {
                     SettingsToggleRow(
                         label = stringResource(R.string.settings_flip_to_library_title),
-                        checked = viewModel.appState.flipToLibraryEnabled && flipSensorSupported,
-                        enabled = flipSensorSupported,
+                        checked = flipSensorSupported && FlipToLibraryGate.switchReadsOn(
+                            enabled = viewModel.appState.flipToLibraryEnabled,
+                            signedInToLibrary = signedIn,
+                        ),
+                        enabled = flipSensorSupported && FlipToLibraryGate.switchTakesInput(signedIn),
                         subtitle = if (flipSensorSupported) {
                             stringResource(R.string.settings_flip_to_library_summary)
                         } else {

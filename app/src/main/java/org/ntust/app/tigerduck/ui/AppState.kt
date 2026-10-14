@@ -29,6 +29,7 @@ import org.ntust.app.tigerduck.data.preferences.CourseNameScale
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.data.preferences.LibraryTabAddMigration
 import org.ntust.app.tigerduck.data.preferences.effectiveCloudSyncEnabled
+import org.ntust.app.tigerduck.library.LibrarySession
 import org.ntust.app.tigerduck.network.CalendarService
 import org.ntust.app.tigerduck.network.NtustSessionManager
 import org.ntust.app.tigerduck.notification.AssignmentReminderOffset
@@ -81,6 +82,7 @@ class AppState @Inject constructor(
     private val pushRegistration: org.ntust.app.tigerduck.push.PushRegistrationService,
     private val demoAccount: org.ntust.app.tigerduck.demo.DemoAccount,
     private val mailAccount: org.ntust.app.tigerduck.mail.MailAccount,
+    val librarySession: LibrarySession,
 ) {
     /**
      * Whether the demo account was signed in when this process started.
@@ -487,8 +489,8 @@ class AppState @Inject constructor(
     // this name must mean "signed in", not "has a warm SSO cookie".
     val isNtustLoggedIn: Boolean get() = authService.authState.value
 
-    @Suppress("unused")
-    val isLibraryLoggedIn: Boolean get() = credentials.isLibraryTokenValid
+    /** Whether a library account is signed in, as Settings shows it; see [LibrarySession]. */
+    val isLibraryLoggedIn: Boolean get() = librarySession.signedIn.value
 
     fun completeOnboarding() {
         hasCompletedOnboarding = true
@@ -568,6 +570,7 @@ class AppState @Inject constructor(
                 hapticDurationStates[scenario] = prefs.hapticDurationMs(scenario)
             }
 
+            librarySession.refresh()
             _needsUserReset.value = false
         }
     }

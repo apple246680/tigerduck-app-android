@@ -12,6 +12,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import dagger.hilt.EntryPoint
@@ -32,18 +33,17 @@ import org.ntust.app.tigerduck.ui.haptics.Haptics
  *
  * The detector is registered only while:
  *   - the device has a rotation-vector sensor, AND
- *   - the user has opted in via `appState.flipToLibraryEnabled`, AND
+ *   - [FlipToLibraryGate.isArmed]: the user has turned it on via
+ *     `appState.flipToLibraryEnabled` and a library account is signed in, as
+ *     the switch in Settings shows it, AND
  *   - the host activity is at least STARTED.
  *
- * The library-session check ([AppState.isLibraryLoggedIn]) runs at fire time
- * inside the callback, not as a registration gate, because
- * [org.ntust.app.tigerduck.data.preferences.CredentialManager] only exposes
- * synchronous accessors — adding a flow purely for this gate is more plumbing
- * than the feature warrants.
+ * A flip checks the sign-in again as it fires: the token can run out between
+ * the last [org.ntust.app.tigerduck.library.LibrarySession.refresh] and the flip.
  *
  * Net effect: when the user flips the phone face-down with a valid library
- * session, the nav controller jumps to [Screen.Library]; flips with no session
- * or already-on-Library are silently no-op.
+ * session, the nav controller jumps to [Screen.Library]; a flip while already
+ * on Library is a no-op.
  */
 @Composable
 fun FlipToLibraryEffect(
@@ -61,10 +61,14 @@ fun FlipToLibraryEffect(
         ).firstTriggerPromptController()
     }
 
-    // Reading the Compose-state-backed properties here makes the enclosing
-    // composition observe changes, so the DisposableEffect below restarts
-    // when the user toggles either setting.
-    val enabled = appState.flipToLibraryEnabled
+    // Reading the Compose-state-backed switch and the sign-in here makes the
+    // enclosing composition observe changes, so the DisposableEffect below
+    // restarts when either changes.
+    val signedIn by appState.librarySession.signedIn.collectAsStateWithLifecycle()
+    val armed = FlipToLibraryGate.isArmed(
+        enabled = appState.flipToLibraryEnabled,
+        signedInToLibrary = signedIn,
+    )
 
     // Cold-start race: MainNavigation installs this effect before NavHost
     // declares its graph, so a flip during initial composition lands before
@@ -90,7 +94,7 @@ fun FlipToLibraryEffect(
             // otherwise a signed-out user who flips by accident taps Keep,
             // burns the one-time prompt, and their first *working* flip after
             // signing in jumps straight to Library with no explanation.
-            if (!appState.isLibraryLoggedIn) return@FlipDetector
+            if (!appState.librarySession.refresh()) return@FlipDetector
             // First-trigger UX: the first successful flip surfaces a root-level
             // keep/turn-off prompt instead of jumping tabs, so the user isn't
             // dropped into an unfamiliar screen before agreeing to the gesture.
@@ -115,23 +119,23 @@ fun FlipToLibraryEffect(
                 .first()
             // Re-check gates at consume time — `enabled` and the session
             // can change while the back stack is being built.
-            if (appState.flipToLibraryEnabled && appState.isLibraryLoggedIn) {
+            if (appState.flipToLibraryEnabled && appState.librarySession.refresh()) {
                 navigateToLibrary(navController, context)
             }
             pendingFlip = false
         }
     }
 
-    DisposableEffect(enabled, lifecycle) {
+    DisposableEffect(armed, lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_START -> if (enabled) detector.register()
+                Lifecycle.Event.ON_START -> if (armed) detector.register()
                 Lifecycle.Event.ON_STOP -> detector.unregister()
                 else -> Unit
             }
         }
         lifecycle.addObserver(observer)
-        if (enabled && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+        if (armed && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
             detector.register()
         }
         onDispose {
@@ -139,6 +143,20 @@ fun FlipToLibraryEffect(
             detector.unregister()
         }
     }
+}
+
+/**
+ * Whether flip-to-library listens, and what its switch in Settings shows. The
+ * flip opens the library's QR code, which needs a signed-in library account, so
+ * until one is the switch reads off and takes no input; the choice it holds
+ * comes back with the sign-in.
+ */
+internal object FlipToLibraryGate {
+    fun isArmed(enabled: Boolean, signedInToLibrary: Boolean): Boolean = enabled && signedInToLibrary
+
+    fun switchReadsOn(enabled: Boolean, signedInToLibrary: Boolean): Boolean = enabled && signedInToLibrary
+
+    fun switchTakesInput(signedInToLibrary: Boolean): Boolean = signedInToLibrary
 }
 
 private fun navigateToLibrary(navController: NavController, context: Context) {

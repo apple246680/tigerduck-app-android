@@ -19,6 +19,7 @@ import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.debug.DebugFixtureStore
 import org.ntust.app.tigerduck.demo.DemoAccount
+import org.ntust.app.tigerduck.library.LibrarySession
 import org.ntust.app.tigerduck.shared.LibraryQRRenderer
 import org.ntust.app.tigerduck.shared.LibraryService
 import org.ntust.app.tigerduck.wear.WearScheduleBridge
@@ -31,6 +32,7 @@ class LibraryViewModel @Inject constructor(
     private val wearBridge: WearScheduleBridge,
     private val debugFixtures: DebugFixtureStore,
     private val demoAccount: DemoAccount,
+    private val librarySession: LibrarySession,
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -99,6 +101,7 @@ class LibraryViewModel @Inject constructor(
                 // The demo library password signs in on the device, with or
                 // without the demo account; see [DemoAccount.signInLibrary].
                 if (demoAccount.signInLibrary(username, password)) {
+                    librarySession.refresh()
                     _isLoggedIn.value = true
                     _storedUsername.value = resolveUsername()
                     refreshQR()
@@ -112,6 +115,7 @@ class LibraryViewModel @Inject constructor(
                 }
                 libraryService.login(username, password, credentials.libraryAccountGeneration, byUser = true)
                 demoAccount.signOutLibrary()
+                librarySession.refresh()
                 _isLoggedIn.value = true
                 _storedUsername.value = username
                 // Push the fresh credentials to the paired watch so its
@@ -152,6 +156,7 @@ class LibraryViewModel @Inject constructor(
                 // If the failure means our session is gone, drop back to the
                 // login prompt instead of looping on a dead token.
                 if (!credentials.isLibraryTokenValid) {
+                    librarySession.refresh()
                     _isLoggedIn.value = false
                     _qrBitmap.value = null
                     countdownJob?.cancel()

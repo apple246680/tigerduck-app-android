@@ -248,6 +248,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // The library token runs out with time, and the flip listens only while it is valid.
+        appState.librarySession.refresh()
         refreshAcademicCalendar()
         liveActivityManager.refresh()
         updateChecker.resume(this)
