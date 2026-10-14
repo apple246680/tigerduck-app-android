@@ -33,9 +33,12 @@ import org.ntust.app.tigerduck.auth.AuthTokenManager
 import org.ntust.app.tigerduck.auth.AuthTokenManager.SignInAttempt
 import org.ntust.app.tigerduck.auth.DepartingSession
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
+import org.ntust.app.tigerduck.data.preferences.PendingUnregisterPrefs
+import org.ntust.app.tigerduck.data.preferences.clearAllButOwedUnregister
 import org.ntust.app.tigerduck.data.preferences.UiLanguageMonitor
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore
 import org.ntust.app.tigerduck.debug.DebugFixtureStore
+import org.ntust.app.tigerduck.notification.BackgroundSyncWorker
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
@@ -79,7 +82,11 @@ class PushRegistrationServiceTest {
     }
 
     /** With [signsIn], a request that finds no session signs in as AuthService's sign-in does. */
-    private fun TestScope.service(signedIn: Boolean = true, signsIn: Boolean = false): PushRegistrationService {
+    private fun TestScope.service(
+        signedIn: Boolean = true,
+        signsIn: Boolean = false,
+        owedStore: PendingUnregisterStore = owed,
+    ): PushRegistrationService {
         if (signedIn) signIn()
         val auth = AuthTokenManager(tokens, backend.client, prefs, deviceUuid = "device-1")
         if (signsIn) {
@@ -99,7 +106,7 @@ class PushRegistrationServiceTest {
             scope = backgroundScope,
             fixtures = DebugFixtureStore(context),
             departingUnregister = DepartingDeviceUnregister(
-                store = owed,
+                store = owedStore,
                 deleteDevice = PushApiClient(backend.client, prefs, auth)::deleteDevice,
                 refresh = auth::refreshDeparting,
                 hasSession = { auth.isLoggedIn },
@@ -347,6 +354,25 @@ class PushRegistrationServiceTest {
 
         assertEquals(1, deletes().size)
         assertNull(owed.pending)
+    }
+
+    @Test
+    fun `a full reset after an unregister that failed keeps it owed and queued`() = runTest {
+        // The credential store the reset wipes, plainly: Robolectric has no keystore.
+        val credentials = context.getSharedPreferences("credentials-test", Context.MODE_PRIVATE)
+        val store = PendingUnregisterPrefs(credentials)
+        val service = service(signedIn = false, owedStore = store)
+        backend.answer(deleteEndpoint(), 503)
+
+        service.unregister(DepartingSession("access-1", "refresh-1", accessExpiresAt = Long.MAX_VALUE))
+        awaitUntil { deletes().isNotEmpty() && unregisterWork().isNotEmpty() }
+        // What the full reset runs after the sign-out: the sign-out's effects stop the
+        // background sync, and CredentialManager.clearAll() wipes the credentials.
+        BackgroundSyncWorker.cancel(context)
+        clearAllButOwedUnregister(credentials)
+
+        assertEquals("access-1", store.load()?.session?.accessToken)
+        assertEquals(listOf(WorkInfo.State.ENQUEUED), unregisterWork())
     }
 
     @Test

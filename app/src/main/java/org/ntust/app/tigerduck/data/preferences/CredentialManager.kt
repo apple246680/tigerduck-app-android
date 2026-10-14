@@ -171,7 +171,8 @@ class CredentialManager @Inject constructor(@ApplicationContext context: Context
 
     /** Wipe every credential key. Used by the full-reset flow. */
     fun clearAll() {
-        prefs.edit().clear().apply()
+        // All but the device unregister a sign-out still owes; see PendingUnregisterPrefs.
+        clearAllButOwedUnregister(prefs)
     }
 
     companion object {
