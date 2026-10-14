@@ -393,17 +393,6 @@ class AppState @Inject constructor(
     fun setNotifyAssignmentOffsetEnabled(offset: AssignmentReminderOffset, enabled: Boolean) =
         assignmentReminderSettings.setOffsetEnabled(offset, enabled)
 
-    private var libraryFeatureEnabledState by mutableStateOf(prefs.libraryFeatureEnabled)
-
-    var libraryFeatureEnabled: Boolean
-        get() = libraryFeatureEnabledState
-        set(value) {
-            if (libraryFeatureEnabledState == value) return
-            libraryFeatureEnabledState = value
-            prefs.libraryFeatureEnabled = value
-        }
-
-
     private var flipToLibraryEnabledState by mutableStateOf(prefs.flipToLibraryEnabled)
 
     var flipToLibraryEnabled: Boolean
@@ -435,12 +424,6 @@ class AppState @Inject constructor(
             disableScreenCaptureProtectionState = value
             prefs.disableScreenCaptureProtection = value
         }
-
-    // Transient signal from the library-shortcut widget: when the user taps
-    // the widget while the library feature is disabled, we navigate to
-    // Settings and flip this so SettingsScreen surfaces an "enable first"
-    // dialog. Not persisted — lives only within the process.
-    var pendingLibraryEnablePrompt by mutableStateOf(false)
 
     // Transient signal from signed-out empty states (Home, ClassTable,
     // Calendar, Score): when the user taps the lock icon we navigate to
@@ -532,7 +515,7 @@ class AppState @Inject constructor(
      * leftover cache is precisely what makes the "fresh start" it promises
      * not one. [CredentialManager.clearAll] and [AppPreferences.clearAllPrefs]
      * both clear their whole store, so the library account and every library
-     * preference (feature toggle, flip-to-open consent) go with them —
+     * preference (flip-to-open consent) go with them —
      * neither needs naming here, and neither should be, since a named list
      * silently stops being complete.
      */
@@ -576,7 +559,6 @@ class AppState @Inject constructor(
             }
             rotationModeState = prefs.rotationMode
             assignmentReminderSettings.reload()
-            libraryFeatureEnabledState = prefs.libraryFeatureEnabled
             flipToLibraryEnabledState = prefs.flipToLibraryEnabled
             cloudSyncEnabledState = prefs.cloudSyncEnabled
             disableScreenCaptureProtectionState = prefs.disableScreenCaptureProtection

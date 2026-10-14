@@ -79,9 +79,6 @@ enum class AppFeature(val id: String) {
             else -> null
         }
 
-    val isLibraryRelated: Boolean
-        get() = this == LIBRARY || this == DISCUSSION_ROOM || this == LIBRARY_LECTURE
-
     val isSchoolMail: Boolean
         get() = this == SCHOOL_MAIL
 

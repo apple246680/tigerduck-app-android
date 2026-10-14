@@ -39,10 +39,8 @@ import org.ntust.app.tigerduck.R
 
 /**
  * 1x1 home-screen widget that deep-links straight to the library QR page.
- * The tap target encodes the sentinel `start_route = "libraryShortcut"`;
- * MainNavigation resolves it at launch time so an intervening feature-disable
- * toggle always routes the user to Settings with the enable-prompt instead
- * of a dead Library screen.
+ * The tap target encodes the sentinel `start_route = "libraryShortcut"`,
+ * which MainNavigation resolves to the Library page at launch time.
  */
 class LibraryShortcutWidget : GlanceAppWidget() {
 

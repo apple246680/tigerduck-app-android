@@ -33,9 +33,6 @@ import org.ntust.app.tigerduck.ui.haptics.Haptics
  * The detector is registered only while:
  *   - the device has a rotation-vector sensor, AND
  *   - the user has opted in via `appState.flipToLibraryEnabled`, AND
- *   - the parent Library feature itself is on (`appState.libraryFeatureEnabled`),
- *     so disabling Library actually stops the sensor instead of leaving it
- *     running while every callback bails at a fire-time guard, AND
  *   - the host activity is at least STARTED.
  *
  * The library-session check ([AppState.isLibraryLoggedIn]) runs at fire time
@@ -67,7 +64,7 @@ fun FlipToLibraryEffect(
     // Reading the Compose-state-backed properties here makes the enclosing
     // composition observe changes, so the DisposableEffect below restarts
     // when the user toggles either setting.
-    val enabled = appState.flipToLibraryEnabled && appState.libraryFeatureEnabled
+    val enabled = appState.flipToLibraryEnabled
 
     // Cold-start race: MainNavigation installs this effect before NavHost
     // declares its graph, so a flip during initial composition lands before
@@ -83,10 +80,9 @@ fun FlipToLibraryEffect(
         FlipDetector(context) {
             // Fire-time guards. All checks are synchronous and main-thread —
             // sensor callbacks deliver on the main thread by default. Re-checking
-            // both gates (not just libraryFeatureEnabled) closes the brief window
-            // where the user toggles flipToLibrary off and a sensor event lands
-            // before DisposableEffect restarts and unregisters the detector.
-            if (!appState.libraryFeatureEnabled) return@FlipDetector
+            // the switch closes the brief window where the user toggles
+            // flipToLibrary off and a sensor event lands before
+            // DisposableEffect restarts and unregisters the detector.
             if (!appState.flipToLibraryEnabled) return@FlipDetector
             // Gate the prompt behind the library session. The first-trigger
             // prompt explains the gesture in lieu of navigating, so it must
@@ -119,10 +115,7 @@ fun FlipToLibraryEffect(
                 .first()
             // Re-check gates at consume time — `enabled` and the session
             // can change while the back stack is being built.
-            if (appState.flipToLibraryEnabled &&
-                appState.libraryFeatureEnabled &&
-                appState.isLibraryLoggedIn
-            ) {
+            if (appState.flipToLibraryEnabled && appState.isLibraryLoggedIn) {
                 navigateToLibrary(navController, context)
             }
             pendingFlip = false

@@ -491,10 +491,6 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
         get() = prefs.getBoolean("analyticsEnabled", false)
         set(value) = prefs.edit().putBoolean("analyticsEnabled", value).apply()
 
-    var libraryFeatureEnabled: Boolean
-        get() = prefs.getBoolean(LEGACY_LIBRARY_OPT_IN, false)
-        set(value) = prefs.edit().putBoolean(LEGACY_LIBRARY_OPT_IN, value).apply()
-
     // Defaults ON (matching iOS): the user discovers the gesture on their first
     // accidental flip, where the first-trigger prompt explains it and offers to
     // turn it off. The sensor still only runs while the parent Library feature

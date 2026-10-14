@@ -38,7 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.model.AppFeature
-import org.ntust.app.tigerduck.ui.AppState
+import org.ntust.app.tigerduck.data.model.FeatureCategory
 import org.ntust.app.tigerduck.ui.component.ComingSoonDialog
 import org.ntust.app.tigerduck.ui.component.PageHeader
 import org.ntust.app.tigerduck.ui.component.SectionHeader
@@ -53,20 +53,23 @@ private val implementedFeatures = setOf(
     AppFeature.MORE, AppFeature.SETTINGS
 )
 
-@Composable
-fun MoreScreen(navController: NavController, appState: AppState) {
-    var showNotImplemented by remember { mutableStateOf(false) }
+/** The More page's first section: the pages a tab can show too. */
+private val pageFeatures =
+    listOf(AppFeature.HOME, AppFeature.CLASS_TABLE, AppFeature.CALENDAR, AppFeature.SCHOOL_MAIL)
 
-    val pageFeatures = listOf(AppFeature.HOME, AppFeature.CLASS_TABLE, AppFeature.CALENDAR, AppFeature.SCHOOL_MAIL)
-
-    val grouped = AppFeature.moreFeatures
-        .filter { feature ->
-            feature !in pageFeatures &&
-                    (!feature.isLibraryRelated || appState.libraryFeatureEnabled)
-        }
+/** The More page's sections after the pages: every other shipped feature, by category. */
+internal fun moreCategorySections(): List<Pair<FeatureCategory?, List<AppFeature>>> =
+    AppFeature.moreFeatures
+        .filter { feature -> feature !in pageFeatures }
         .groupBy { it.category }
         .toList()
         .sortedBy { (cat, _) -> cat?.ordinal ?: 99 }
+
+@Composable
+fun MoreScreen(navController: NavController) {
+    var showNotImplemented by remember { mutableStateOf(false) }
+
+    val grouped = moreCategorySections()
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val columns = featureGridColumns(maxWidth)
