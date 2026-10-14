@@ -48,11 +48,31 @@ class LibraryService(
     private val gson = Gson()
     private val tokenMutex = Mutex()
 
-    suspend fun login(username: String, password: String): String = tokenMutex.withLock {
-        loginInternal(username, password)
+    /**
+     * Signs in and stores the account and its token. Once the library account
+     * has signed out since [accountGeneration] was read, the answer is the
+     * departing account's: it stores nothing, and this throws
+     * [LibraryServiceError.CredentialsNotFound]. A sign-in the app makes on its
+     * own ([byUser] false) also yields to another account stored meanwhile; one
+     * the user asked for replaces it. The caller reads the generation from the
+     * store when its sign-in starts: right before this call, or earlier, as the
+     * school sign-in does before its SSO step.
+     */
+    suspend fun login(
+        username: String,
+        password: String,
+        accountGeneration: Int,
+        byUser: Boolean,
+    ): String = tokenMutex.withLock {
+        loginInternal(username, password, accountGeneration, byUser)
     }
 
-    private suspend fun loginInternal(username: String, password: String): String =
+    private suspend fun loginInternal(
+        username: String,
+        password: String,
+        accountGeneration: Int,
+        byUser: Boolean,
+    ): String =
         withContext(Dispatchers.IO) {
             val body = gson.toJson(LibraryLoginRequest(username, password))
                 .toRequestBody("application/json".toMediaType())
@@ -76,16 +96,24 @@ class LibraryService(
                     )
                 }
 
-                credentials.libraryUsername = username
-                credentials.libraryPassword = password
-                credentials.libraryToken = loginResponse.data.token
-                credentials.libraryTokenExpiry = loginResponse.data.expirationTimeStamp
-
-                loginResponse.data.token
+                val token = loginResponse.data.token
+                val stored = credentials.saveLibrarySignIn(
+                    accountGeneration,
+                    username,
+                    password,
+                    token,
+                    loginResponse.data.expirationTimeStamp,
+                    byUser,
+                )
+                if (!stored) throw LibraryServiceError.CredentialsNotFound()
+                token
             }
         }
 
     suspend fun ensureToken(): String = tokenMutex.withLock {
+        // Before the account it signs in with, so a sign-out after this keeps
+        // the answer from being stored.
+        val accountGeneration = credentials.libraryAccountGeneration
         val token = credentials.libraryToken
         if (token != null && credentials.isLibraryTokenValid) return@withLock token
 
@@ -94,7 +122,7 @@ class LibraryService(
         val password = credentials.libraryPassword
             ?: throw LibraryServiceError.CredentialsNotFound()
 
-        loginInternal(username, password)
+        loginInternal(username, password, accountGeneration, byUser = false)
     }
 
     suspend fun generateQRCode(): String = withContext(Dispatchers.IO) {
