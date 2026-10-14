@@ -72,6 +72,10 @@ class UnsentMarks internal constructor(
     /** The ids whose last tap has not reached the server; a sync keeps this phone's value for them. */
     suspend fun ids(): Set<String> = waiting().keys
 
+    /** The status each of those taps set, by assignment id. */
+    suspend fun statuses(): Map<String, String> =
+        waiting().mapNotNull { (id, mark) -> mark.status?.let { id to it } }.toMap()
+
     /**
      * A tap that set [assignmentId] to [status]: kept until the server has
      * it, and sent at once unless the re-enable check holds the marks. Made

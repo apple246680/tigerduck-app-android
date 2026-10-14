@@ -400,9 +400,7 @@ class AssignmentOverrideReconcilerTest {
         val out = AssignmentOverrideReconciler.backgroundMarks(
             serverIgnored = emptySet(),
             serverCompleted = setOf("2"),
-            localIgnored = emptySet(),
-            localCompleted = setOf("3"),
-            unsent = setOf("3"),
+            unsent = mapOf("3" to STATUS_COMPLETED),
         )
 
         assertEquals(setOf("2", "3"), out.completed)
@@ -414,11 +412,23 @@ class AssignmentOverrideReconcilerTest {
         val out = AssignmentOverrideReconciler.backgroundMarks(
             serverIgnored = setOf("1"),
             serverCompleted = emptySet(),
-            localIgnored = emptySet(),
-            localCompleted = emptySet(),
-            unsent = setOf("1"),
+            unsent = mapOf("1" to STATUS_NONE),
         )
 
+        assertEquals(emptySet<String>(), out.ignored)
+    }
+
+    @Test
+    fun `the background sync takes a waiting mark's status from the mark, not from an older read`() {
+        // Marked done on Home after the worker read this phone's marks: the
+        // waiting mark is the newer statement (Greptile on #306).
+        val out = AssignmentOverrideReconciler.backgroundMarks(
+            serverIgnored = setOf("3"),
+            serverCompleted = emptySet(),
+            unsent = mapOf("3" to STATUS_COMPLETED),
+        )
+
+        assertEquals(setOf("3"), out.completed)
         assertEquals(emptySet<String>(), out.ignored)
     }
 }

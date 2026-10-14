@@ -189,9 +189,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
             val marks = AssignmentOverrideReconciler.backgroundMarks(
                 serverIgnored = result.ignoredIds,
                 serverCompleted = result.completedIds,
-                localIgnored = localIgnored,
-                localCompleted = localMarked,
-                unsent = unsentMarks.ids(),
+                unsent = unsentMarks.statuses(),
             )
             if (takesMarks) {
                 dataCache.replaceIgnoredAssignments(marks.ignored)

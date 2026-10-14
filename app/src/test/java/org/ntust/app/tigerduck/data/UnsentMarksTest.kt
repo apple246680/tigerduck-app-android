@@ -370,4 +370,13 @@ class UnsentMarksTest {
         assertEquals(listOf(7 to "ignored"), sent)
         assertEquals(emptySet<String>(), marks.ids())
     }
+
+    @Test
+    fun `the status each waiting mark set is at hand for a sync to apply`() = runTest {
+        answer = { _, _ -> throw IOException("offline") }
+        marks.send("7", "locally_completed")
+        marks.send("8", "none")
+
+        assertEquals(mapOf("7" to "locally_completed", "8" to "none"), marks.statuses())
+    }
 }

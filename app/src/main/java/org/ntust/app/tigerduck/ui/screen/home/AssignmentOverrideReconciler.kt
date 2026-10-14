@@ -255,21 +255,19 @@ object AssignmentOverrideReconciler {
     /**
      * This device's marks after the background worker's full sync takes the
      * server's ([backgroundTakesMarks]): the server's, except marks tapped
-     * here whose PATCH has not landed ([unsent], see `UnsentMarks`), which
-     * keep this device's value whether they set or clear the mark.
+     * here whose PATCH has not landed ([unsent], see `UnsentMarks`, by id),
+     * which take the status the tap set, whether it sets or clears the mark.
+     * The status comes from the waiting mark itself, not from a read of this
+     * device's marks: a tap made after that read would be undone.
      */
     fun backgroundMarks(
         serverIgnored: Set<String>,
         serverCompleted: Set<String>,
-        localIgnored: Set<String>,
-        localCompleted: Set<String>,
-        unsent: Set<String>,
-    ): Outcome = serverWins(
-        serverIgnored = serverIgnored,
-        serverCompleted = serverCompleted,
-        inFlightIgnored = localIgnored,
-        inFlightCompleted = localCompleted,
-        pendingOverrides = unsent,
+        unsent: Map<String, String>,
+    ): Outcome = Outcome(
+        ignored = serverIgnored - unsent.keys + unsent.filterValues { it == STATUS_IGNORED }.keys,
+        completed = serverCompleted - unsent.keys + unsent.filterValues { it == STATUS_COMPLETED }.keys,
+        conflicts = emptyList(),
     )
 
     private fun statusOf(id: String, ignored: Set<String>, completed: Set<String>): String = when (id) {
