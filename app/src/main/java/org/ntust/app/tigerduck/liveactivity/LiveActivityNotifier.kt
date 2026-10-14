@@ -354,7 +354,12 @@ class LiveActivityNotifier @Inject constructor(
 
     private fun wantsSoundFor(scenario: LiveActivityScenario): Boolean = when (scenario) {
         LiveActivityScenario.IN_CLASS -> preferences.soundInClass
-        LiveActivityScenario.CLASS_PREPARING -> preferences.soundClassPreparing
+        // The class reminder already sounds for the coming class, so with
+        // class reminders on, the Live Update turning to the same class stays
+        // quiet rather than alerting a second time. Its own sound is for
+        // those who have class reminders off.
+        LiveActivityScenario.CLASS_PREPARING ->
+            preferences.soundClassPreparing && !appPreferences.classReminderEnabled
         LiveActivityScenario.ASSIGNMENT_URGENT -> preferences.soundAssignment
     }
 
