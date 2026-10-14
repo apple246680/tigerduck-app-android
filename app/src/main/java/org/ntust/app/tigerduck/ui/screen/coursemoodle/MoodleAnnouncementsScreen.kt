@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material3.Badge
@@ -63,8 +64,10 @@ import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.moodle.MoodleCourseStore
 import org.ntust.app.tigerduck.data.moodle.MoodleDiscussionPages
 import org.ntust.app.tigerduck.data.moodle.MoodleDiscussions
+import org.ntust.app.tigerduck.data.moodle.MoodlePersonName
 import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussion
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
+import java.text.NumberFormat
 
 /**
  * A course's announcements, from its news forum on Moodle: pinned ones first, then newest first,
@@ -133,6 +136,7 @@ private fun ForumsFirstLoad(store: MoodleCourseStore) {
 internal fun DiscussionList(
     pages: MoodleDiscussionPages,
     onOpen: (MoodleDiscussion) -> Unit,
+    showsFooter: Boolean = false,
 ) {
     val list by pages.list.collectAsStateWithLifecycle()
     val feed by pages.feed.state.collectAsStateWithLifecycle()
@@ -185,6 +189,7 @@ internal fun DiscussionList(
                         discussion = discussion,
                         dateSeconds = if (pages.byModified) discussion.modified else discussion.created,
                         onClick = { onOpen(discussion) },
+                        showsFooter = showsFooter,
                     )
                 }
                 if (loadingMore) {
@@ -227,11 +232,17 @@ private fun PageRetry(failure: Throwable, onRetry: () -> Unit) {
 
 /**
  * A discussion in a list: unread dot and bold title, pin, paperclip and time, then two lines of
- * its message. A long press offers "Open in Moodle".
+ * its message, and with [showsFooter], as a forum's discussions show, the author and the number
+ * of replies. A long press offers "Open in Moodle".
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun MoodleDiscussionCard(discussion: MoodleDiscussion, dateSeconds: Long, onClick: () -> Unit) {
+internal fun MoodleDiscussionCard(
+    discussion: MoodleDiscussion,
+    dateSeconds: Long,
+    onClick: () -> Unit,
+    showsFooter: Boolean = false,
+) {
     val context = LocalContext.current
     var menu by remember { mutableStateOf(false) }
     val unread = discussion.unreadCount > 0
@@ -239,8 +250,12 @@ internal fun MoodleDiscussionCard(discussion: MoodleDiscussion, dateSeconds: Lon
     val pinnedLabel = stringResource(R.string.course_forum_pinned)
     val attachmentsLabel = stringResource(R.string.school_mail_attachments)
     val openInMoodle = stringResource(R.string.action_open_in_moodle)
+    val replyLabel = stringResource(R.string.school_mail_reply)
     val date = remember(dateSeconds) { MoodleDates.listDate(dateSeconds, System.currentTimeMillis()) }
-    val spoken = remember(discussion, date) {
+    val author = discussion.authorName?.let(MoodlePersonName::displayName)?.takeIf { it.isNotEmpty() }
+    val replies = remember(discussion.replyCount) { NumberFormat.getIntegerInstance().format(discussion.replyCount) }
+    val footer = showsFooter && (author != null || discussion.replyCount > 0)
+    val spoken = remember(discussion, date, showsFooter) {
         listOfNotNull(
             unreadLabel.takeIf { unread },
             pinnedLabel.takeIf { discussion.isPinned },
@@ -248,6 +263,8 @@ internal fun MoodleDiscussionCard(discussion: MoodleDiscussion, dateSeconds: Lon
             MoodleDates.dateTime(dateSeconds),
             discussion.preview.takeIf { it.isNotEmpty() },
             attachmentsLabel.takeIf { discussion.attachments.isNotEmpty() },
+            author.takeIf { showsFooter },
+            "$replyLabel $replies".takeIf { showsFooter && discussion.replyCount > 0 },
         ).joinToString(", ")
     }
     Box {
@@ -319,6 +336,7 @@ internal fun MoodleDiscussionCard(discussion: MoodleDiscussion, dateSeconds: Lon
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+                if (footer) DiscussionFooter(author, discussion.replyCount, replies)
             }
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -330,6 +348,40 @@ internal fun MoodleDiscussionCard(discussion: MoodleDiscussion, dateSeconds: Lon
                     openMoodlePage(context, MoodlePage.discussion(discussion.id))
                 },
             )
+        }
+    }
+}
+
+/** A forum discussion's footer: its author's avatar and name, and a bubble with its reply count. */
+@Composable
+private fun DiscussionFooter(author: String?, replyCount: Int, replies: String) {
+    val secondary = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.padding(top = 2.dp),
+    ) {
+        if (author != null) {
+            MoodleAvatar(author, picture = null, size = 18.dp)
+            Text(
+                author,
+                style = MaterialTheme.typography.labelMedium,
+                color = secondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+        } else {
+            Spacer(Modifier.weight(1f))
+        }
+        if (replyCount > 0) {
+            Icon(
+                Icons.AutoMirrored.Outlined.Chat,
+                contentDescription = null,
+                tint = secondary,
+                modifier = Modifier.size(14.dp),
+            )
+            Text(replies, style = MaterialTheme.typography.labelMedium, color = secondary, maxLines = 1)
         }
     }
 }

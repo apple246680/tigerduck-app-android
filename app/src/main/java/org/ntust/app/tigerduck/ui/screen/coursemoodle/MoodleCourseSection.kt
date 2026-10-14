@@ -111,12 +111,16 @@ internal fun MoodleCourseSection(
     }
 }
 
-private fun route(kind: MoodleSectionRow.Kind, store: MoodleCourseStore): String? = when (kind) {
+/** The Forums row opens the course's one forum itself, and the list of them otherwise. */
+internal fun route(kind: MoodleSectionRow.Kind, store: MoodleCourseStore): String? = when (kind) {
     MoodleSectionRow.Kind.ANNOUNCEMENTS -> MoodleRoutes.announcements(store.courseId)
+    // With its screen.
+    MoodleSectionRow.Kind.MATERIALS -> null
     MoodleSectionRow.Kind.GRADES -> MoodleRoutes.grades(store.courseId)
     MoodleSectionRow.Kind.MEMBERS -> MoodleRoutes.members(store.courseId)
-    // With their screens: the materials, and the forums list or the one forum a course has.
-    MoodleSectionRow.Kind.MATERIALS, MoodleSectionRow.Kind.FORUMS -> null
+    MoodleSectionRow.Kind.FORUMS -> store.generalForums.value.singleOrNull()
+        ?.let { MoodleRoutes.forum(store.courseId, it.id) }
+        ?: MoodleRoutes.forums(store.courseId)
 }
 
 /** Keeps the section's data fresh while the course detail shows, rows or none: the first fetch brings them. */

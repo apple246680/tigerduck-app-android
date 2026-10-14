@@ -75,6 +75,9 @@ import org.ntust.app.tigerduck.ui.screen.classtable.CourseDetailScreen
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleAnnouncementScreen
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleAnnouncementsScreen
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleCourseViewModel
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleDiscussionScreen
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleForumScreen
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleForumsScreen
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleGradesScreen
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleMemberScreen
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleMembersScreen
@@ -457,6 +460,35 @@ fun MainNavigation(
                     browserPreference = appState.browserPreference,
                     onBack = { navController.popIfTop(entry) },
                     onOpenRoute = { navController.navigate(it) },
+                )
+            }
+            page(MoodleRoutes.FORUMS, arguments = listOf(moodleCourseArg)) { entry ->
+                MoodleForumsScreen(
+                    onBack = { navController.popIfTop(entry) },
+                    onOpenRoute = { navController.navigate(it) },
+                )
+            }
+            val moodleForumArg = navArgument(MoodleRoutes.ARG_FORUM_ID) { type = NavType.IntType }
+            page(MoodleRoutes.FORUM, arguments = listOf(moodleCourseArg, moodleForumArg)) { entry ->
+                MoodleForumScreen(
+                    forumId = entry.arguments?.getInt(MoodleRoutes.ARG_FORUM_ID) ?: 0,
+                    onBack = { navController.popIfTop(entry) },
+                    onOpenRoute = { navController.navigate(it) },
+                )
+            }
+            page(
+                MoodleRoutes.DISCUSSION,
+                arguments = listOf(
+                    moodleCourseArg,
+                    moodleForumArg,
+                    navArgument(MoodleRoutes.ARG_DISCUSSION_ID) { type = NavType.IntType },
+                ),
+            ) { entry ->
+                MoodleDiscussionScreen(
+                    forumId = entry.arguments?.getInt(MoodleRoutes.ARG_FORUM_ID) ?: 0,
+                    discussionId = entry.arguments?.getInt(MoodleRoutes.ARG_DISCUSSION_ID) ?: 0,
+                    browserPreference = appState.browserPreference,
+                    onBack = { navController.popIfTop(entry) },
                 )
             }
             page(MoodleRoutes.GRADES, arguments = listOf(moodleCourseArg)) { entry ->
