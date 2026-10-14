@@ -196,38 +196,6 @@ fun MainNavigation(
 ) {
     val navController = rememberNavController()
     FlipToLibraryEffect(navController = navController, appState = appState)
-    LaunchedEffect(widgetStartRoute) {
-        widgetStartRoute ?: return@LaunchedEffect
-        // The library-shortcut widget emits a sentinel instead of a direct
-        // route so the feature gate is re-evaluated at tap time. If library
-        // has been turned off since the widget was placed, reroute to
-        // Settings and raise the "enable first" prompt.
-        val target = if (widgetStartRoute == LibraryShortcutWidget.ROUTE_SENTINEL) {
-            if (appState.libraryFeatureEnabled) {
-                Screen.Library.route
-            } else {
-                appState.pendingLibraryEnablePrompt = true
-                Screen.Settings.route
-            }
-        } else {
-            widgetStartRoute
-        }
-        // Cold-start path: this effect can fire in the same composition that
-        // first declares the NavHost (further down). navigate() before the
-        // graph is registered silently no-ops, so block on the first back-stack
-        // entry — which only appears once NavHost has installed its graph and
-        // routed to startDestination.
-        snapshotFlow { navController.currentBackStackEntry }
-            .filterNotNull()
-            .first()
-        navController.navigate(target) {
-            launchSingleTop = true
-        }
-        // Consume so that re-tapping the same notification (which delivers the
-        // identical route string) re-fires this LaunchedEffect instead of
-        // being deduped by the same key.
-        onStartRouteConsumed()
-    }
     // Hoist Home / ClassTable / Calendar VMs to the activity scope so they
     // exist from app open and survive tab switches. load() is called once
     // here on first composition; the per-screen LaunchedEffect that also
@@ -283,10 +251,7 @@ fun MainNavigation(
         val screenName = route.replace(Regex("/[{][^}]+[}]"), "")
         analyticsLogger.log("screen_view", mapOf("screen_name" to screenName))
     }
-    val selectedTabRoute = when (currentRoute) {
-        Screen.Settings.route, Screen.TabEditor.route -> Screen.More.route
-        else -> currentRoute
-    }
+    val selectedTabRoute = selectedTabRoute(currentRoute)
 
     val context = LocalContext.current
     val backPressExitHint = stringResource(R.string.app_exit_confirm_toast)
@@ -299,6 +264,39 @@ fun MainNavigation(
     // so reordering via TabEditor doesn't pop to a removed route.
     val startDest = remember { configuredTabs.firstOrNull()?.toRoute() ?: Screen.Home.route }
     val popUpToDest = configuredTabs.firstOrNull()?.toRoute() ?: Screen.Home.route
+
+    LaunchedEffect(widgetStartRoute) {
+        widgetStartRoute ?: return@LaunchedEffect
+        // The library-shortcut widget emits a sentinel instead of a direct
+        // route so the feature gate is re-evaluated at tap time. If library
+        // has been turned off since the widget was placed, reroute to
+        // Settings and raise the "enable first" prompt.
+        val target = if (widgetStartRoute == LibraryShortcutWidget.ROUTE_SENTINEL) {
+            if (appState.libraryFeatureEnabled) {
+                Screen.Library.route
+            } else {
+                appState.pendingLibraryEnablePrompt = true
+                Screen.Settings.route
+            }
+        } else {
+            widgetStartRoute
+        }
+        // Cold-start path: this effect can fire in the same composition that
+        // first declares the NavHost (further down). navigate() before the
+        // graph is registered silently no-ops, so block on the first back-stack
+        // entry — which only appears once NavHost has installed its graph and
+        // routed to startDestination.
+        snapshotFlow { navController.currentBackStackEntry }
+            .filterNotNull()
+            .first()
+        // A tab through the bottom bar's own path: launchSingleTop alone looks only at the page on
+        // top, and pushed a second class table over its course detail.
+        navController.openStartRoute(target, tabRoutes, firstTab = popUpToDest, tabTap)
+        // Consume so that re-tapping the same notification (which delivers the
+        // identical route string) re-fires this LaunchedEffect instead of
+        // being deduped by the same key.
+        onStartRouteConsumed()
+    }
 
     // Two-press-to-exit on the leftmost tab. Deeper BackHandlers (e.g., Home
     // edit mode) register later in composition and still win. startDest is
@@ -731,6 +729,25 @@ fun MainNavigation(
                 PlaceholderScreen(AppFeature.fromId(featureId))
             }
         }
+    }
+}
+
+/** The tab the bottom bar shows selected on [route]: a page's own tab, or the one it was opened from. */
+internal fun selectedTabRoute(route: String?): String? = when {
+    route == Screen.Settings.route || route == Screen.TabEditor.route -> Screen.More.route
+    route == MoodleRoutes.COURSE_DETAIL || route?.startsWith(MoodleRoutes.PREFIX) == true -> Screen.ClassTable.route
+    else -> route
+}
+
+/**
+ * Opens [target] from outside the app, a widget or a notification: a tab as the bottom bar opens
+ * it, so a page pushed over it is cleared rather than covered by a second copy of the tab.
+ */
+internal fun NavController.openStartRoute(target: String, tabRoutes: Set<String>, firstTab: String, tabTap: TabTap) {
+    if (target in tabRoutes) {
+        navigateToTab(target, firstTab, tabTap)
+    } else {
+        navigate(target) { launchSingleTop = true }
     }
 }
 

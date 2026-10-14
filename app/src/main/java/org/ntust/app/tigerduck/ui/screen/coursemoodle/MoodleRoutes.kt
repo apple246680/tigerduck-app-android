@@ -9,6 +9,9 @@ object MoodleRoutes {
     /** The course detail of the class table's selected course. */
     const val COURSE_DETAIL = "classTable/course"
 
+    /** What every Moodle page's route starts with. */
+    const val PREFIX = "courseMoodle/"
+
     const val ANNOUNCEMENTS = "courseMoodle/{courseId}/announcements"
     const val ANNOUNCEMENT = "courseMoodle/{courseId}/announcements/{discussionId}"
     const val GRADES = "courseMoodle/{courseId}/grades"

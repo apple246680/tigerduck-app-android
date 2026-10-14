@@ -133,3 +133,47 @@ class PopIfTopTest {
         assertEquals("classTable/course", navController.currentBackStackEntry?.destination?.route)
     }
 }
+
+/** A widget or notification opening a tab from a page pushed over it lands on that tab, not a second copy of it. */
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class)
+class StartRouteTest {
+
+    @get:Rule
+    val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+    private lateinit var navController: NavHostController
+
+    @Test
+    fun `opening the class table from its course detail goes back to it`() {
+        composeRule.setContent {
+            navController = rememberNavController()
+            NavHost(navController = navController, startDestination = "home") {
+                composable("home") {}
+                composable("classTable") {}
+                composable("classTable/course") {}
+            }
+        }
+        composeRule.runOnIdle {
+            navController.navigate("classTable")
+            navController.navigate("classTable/course")
+        }
+        composeRule.waitForIdle()
+
+        composeRule.runOnIdle {
+            navController.openStartRoute("classTable", tabRoutes = setOf("home", "classTable"), firstTab = "home", TabTap())
+        }
+        composeRule.waitForIdle()
+
+        assertEquals("classTable", navController.currentBackStackEntry?.destination?.route)
+        assertEquals("home", navController.previousBackStackEntry?.destination?.route)
+    }
+
+    @Test
+    fun `a course page and its Moodle pages keep the class table tab selected`() {
+        assertEquals("classTable", selectedTabRoute("classTable/course"))
+        assertEquals("classTable", selectedTabRoute("courseMoodle/{courseId}/members/{memberId}"))
+        assertEquals("more", selectedTabRoute("settings"))
+        assertEquals("calendar", selectedTabRoute("calendar"))
+    }
+}
