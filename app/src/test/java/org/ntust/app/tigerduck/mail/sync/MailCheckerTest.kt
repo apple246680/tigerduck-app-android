@@ -39,8 +39,9 @@ class MailCheckerTest {
     private val notifier = RecordingNotifier()
     private val scheduler = RecordingScheduler()
     private var now = 1_000_000L
+    private val credentialStore = InMemoryCredentialStore()
     private val account by lazy {
-        MailAccount(InMemoryCredentialStore(), state, server.factory(), MailCache(tmp.root), FakeDemoGate(), schoolMailSite(), scheduler, notifier, testApplicationScope())
+        MailAccount(credentialStore, state, server.factory(), MailCache(tmp.root), FakeDemoGate(), schoolMailSite(), scheduler, notifier, testApplicationScope())
     }
 
     private fun checker(
@@ -383,6 +384,36 @@ class MailCheckerTest {
 
         assertEquals(newValidity, state.inboxUidValidity)
         assertEquals(2L, state.inboxSeenUidNext)
+    }
+
+    /**
+     * A check that starts while a sign-out is part way through reads the account and its
+     * generation together: the departing account with the generation after it would count as
+     * current, and the check would post that student's mail after the sign-out.
+     */
+    @Test
+    fun `a check started mid-sign-out holds the account with its own generation or nothing`() = runTest {
+        account.signIn("b10000001", "pw")
+        server.deliver("the departing student's mail")
+        val c = checker()
+        var outcome: CheckOutcome? = null
+        var checking: Thread? = null
+        credentialStore.beforeClear = {
+            credentialStore.beforeClear = null
+            val done = CountDownLatch(1)
+            checking = thread {
+                outcome = runBlocking { c.check(CheckSource.ALARM) }
+                done.countDown()
+            }
+            // Given the time to finish first if it could; held behind the sign-out, it cannot.
+            done.await(300, TimeUnit.MILLISECONDS)
+        }
+
+        signOutAndSettle()
+        checking!!.join(5_000)
+
+        assertTrue(notifier.posted.isEmpty())
+        assertEquals(CheckOutcome.NotSignedIn, outcome)
     }
 
     @Test

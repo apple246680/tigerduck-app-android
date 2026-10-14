@@ -29,7 +29,11 @@ fun schoolMailSite(): MailSite = MailSite(InMemoryMailDevServerStore())
 class InMemoryCredentialStore : MailCredentialStore {
     override var mailStudentId: String? = null
     override var mailPassword: String? = null
+
+    /** Fires inside [clearMailCredentials], before anything is removed: lets a test act mid-sign-out. */
+    var beforeClear: (() -> Unit)? = null
     override fun clearMailCredentials() {
+        beforeClear?.invoke()
         mailStudentId = null
         mailPassword = null
     }

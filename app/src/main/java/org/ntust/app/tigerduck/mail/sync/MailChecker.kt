@@ -83,10 +83,11 @@ class MailChecker @Inject constructor(
     }
 
     private suspend fun run(source: CheckSource): CheckOutcome = withContext(Dispatchers.IO) {
-        // Before the account, so a sign-out or a sign-in from here on, even the same student's
-        // again, makes this check's results the sign-in before's.
-        val generation = account.accountGeneration
-        val credentials = account.credentialsOrNull() ?: return@withContext CheckOutcome.NotSignedIn
+        // The account with its generation, read together: a sign-out or a sign-in from here on,
+        // even the same student's again, makes this check's results the sign-in before's.
+        val signedIn = account.snapshot() ?: return@withContext CheckOutcome.NotSignedIn
+        val generation = signedIn.generation
+        val credentials = signedIn.credentials
         if (state.authFailed || !state.notificationsEnabled) return@withContext CheckOutcome.Disabled
         if (source == CheckSource.FOREGROUND) {
             val now = clock.now()

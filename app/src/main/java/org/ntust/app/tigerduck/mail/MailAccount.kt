@@ -65,12 +65,23 @@ class MailAccount @Inject constructor(
 
     private val generation = AtomicInteger()
 
+    // Held while a sign-in or sign-out changes the account and its generation, and while
+    // [snapshot] reads them, so a reader never pairs one account with the other's generation.
+    private val accountLock = Any()
+
     /**
-     * Moved by every sign-in and sign-out. Work that reads the account and then runs on reads this
-     * first: once it has moved, the work holds an account that left, even when the same student
-     * has signed in again since.
+     * Moved by every sign-in and sign-out. Work that reads the account through [snapshot] and then
+     * runs on compares this with the snapshot's: once it has moved, the work holds an account
+     * that left, even when the same student has signed in again since.
      */
     val accountGeneration: Int get() = generation.get()
+
+    /** The signed-in account and its [accountGeneration], read together; null while signed out. */
+    class Snapshot(val generation: Int, val credentials: MailCredentials)
+
+    fun snapshot(): Snapshot? = synchronized(accountLock) {
+        credentialsOrNull()?.let { Snapshot(generation.get(), it) }
+    }
 
     /**
      * The signed-in student's own address, without decrypting the password the way
@@ -132,10 +143,12 @@ class MailAccount @Inject constructor(
      * cancelling the notifications are IO and finish on their own.
      */
     fun signOut() {
-        // First, so a check asking from here on is already told its account left.
-        generation.incrementAndGet()
         scheduler.cancel()
-        credentials.clearMailCredentials()
+        // Together, so a snapshot holds the departing account with its own generation or nothing.
+        synchronized(accountLock) {
+            generation.incrementAndGet()
+            credentials.clearMailCredentials()
+        }
         state.clear()
         _signedIn.value = false
         _authFailed.value = false
@@ -154,9 +167,11 @@ class MailAccount @Inject constructor(
     }
 
     private fun save(creds: MailCredentials) {
-        generation.incrementAndGet()
-        credentials.mailStudentId = creds.studentId
-        credentials.mailPassword = creds.password
+        synchronized(accountLock) {
+            generation.incrementAndGet()
+            credentials.mailStudentId = creds.studentId
+            credentials.mailPassword = creds.password
+        }
         state.authFailed = false
         _authFailed.value = false
         _signedIn.value = true
