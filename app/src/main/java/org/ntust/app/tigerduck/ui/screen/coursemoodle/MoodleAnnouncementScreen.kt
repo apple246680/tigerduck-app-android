@@ -91,6 +91,9 @@ fun MoodleAnnouncementScreen(
     val list = pages?.list?.collectAsStateWithLifecycle()?.value
     val discussion = list?.discussions?.firstOrNull { it.id == discussionId }
 
+    // Opened with nothing cached to show it from, as after the system ended the app.
+    LaunchedEffect(store) { store?.ensureAnnouncement(discussionId) }
+
     // Coming back from a screen pushed over this one is not another opening.
     var opened by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(discussion != null) {

@@ -144,6 +144,19 @@ class MoodleCourseStore(
     fun announcementPages(): MoodleDiscussionPages? = currentNewsForum()?.let(::discussions)
 
     /**
+     * What an announcement opened with nothing cached needs, as after the system ended the app:
+     * the course's forums, then its announcements, each fetched only when the cache lacks it.
+     */
+    suspend fun ensureAnnouncement(discussionId: Int) {
+        awaitCache()
+        if (currentNewsForum() == null) refreshForums()
+        val pages = announcementPages() ?: return
+        pages.feed.awaitCache()
+        val listed = pages.feed.value?.takeIf { it.forumId == pages.forumId }?.discussions.orEmpty()
+        if (listed.none { it.id == discussionId }) pages.refresh()
+    }
+
+    /**
      * An announcement opened on screen: its unread mark goes here and on the section row at once,
      * and Moodle logs the view, which marks it read there. A list load never marks anything read.
      * The view event is best effort and not retried.
@@ -181,6 +194,12 @@ class MoodleCourseStore(
     fun member(id: Int?): MoodleMember? {
         id ?: return null
         return members.value?.members?.firstOrNull { it.id == id }
+    }
+
+    /** What a member's page opened with nothing cached needs: the members, when the cache lacks them. */
+    suspend fun ensureMember(memberId: Int) {
+        awaitCache()
+        if (member(memberId) == null) refreshMembers()
     }
 
     /**

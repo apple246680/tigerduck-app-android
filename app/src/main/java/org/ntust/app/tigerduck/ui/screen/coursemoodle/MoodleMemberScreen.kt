@@ -72,6 +72,8 @@ fun MoodleMemberScreen(
     val pictures = current?.pictures?.collectAsStateWithLifecycle()?.value.orEmpty()
     val member = members?.members?.firstOrNull { it.id == memberId }
     LaunchedEffect(member?.pictureUrl) { if (member != null && current != null) current.loadPicture(member) }
+    // Opened with no members cached, as after the system ended the app.
+    LaunchedEffect(current) { current?.ensureMember(memberId) }
 
     Scaffold(
         topBar = {

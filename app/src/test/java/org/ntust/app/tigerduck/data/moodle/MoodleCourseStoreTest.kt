@@ -45,15 +45,22 @@ class MoodleCourseStoreTest {
         var forumList = listOf<MoodleForum>()
         var pages = mapOf<Int, List<MoodleDiscussion>>()
         var gradeCalls = 0
+        var forumCalls = 0
+        var discussionCalls = 0
+        var memberCalls = 0
         var gate: CompletableDeferred<Unit>? = null
         var gradesAnswer: () -> List<MoodleGradeItem> = { emptyList() }
         var membersAnswer: () -> MoodleMemberList = { MoodleMemberList(null, emptyList()) }
         val viewed = mutableListOf<Int>()
 
         override suspend fun functions() = allowed
-        override suspend fun forums(courseIds: List<Int>) = forumList.filter { it.courseId in courseIds }
+        override suspend fun forums(courseIds: List<Int>): List<MoodleForum> {
+            forumCalls++
+            return forumList.filter { it.courseId in courseIds }
+        }
         var failNextPage = false
         override suspend fun discussions(forumId: Int, page: Int): List<MoodleDiscussion> {
+            discussionCalls++
             if (failNextPage) {
                 failNextPage = false
                 throw IOException("offline")
@@ -63,7 +70,10 @@ class MoodleCourseStoreTest {
         override suspend fun markViewed(discussionId: Int, isCurrent: () -> Boolean) {
             viewed += discussionId
         }
-        override suspend fun members(courseId: Int) = membersAnswer()
+        override suspend fun members(courseId: Int): MoodleMemberList {
+            memberCalls++
+            return membersAnswer()
+        }
         override suspend fun picture(url: String) = ByteArray(0)
         override suspend fun gradeItems(courseId: Int): List<MoodleGradeItem> {
             gradeCalls++
@@ -226,5 +236,37 @@ class MoodleCourseStoreTest {
         assertNull(pages.pageFailure.value)
         assertEquals(21, pages.list.value!!.discussions.size)
         assertEquals(false, pages.list.value!!.hasMore)
+    }
+
+    @Test
+    fun `an announcement opened with nothing cached fetches the forums and the list, once`() = runTest(UnconfinedTestDispatcher()) {
+        api.forumList = listOf(testForum(1, courseId = 5, type = "news", count = 1))
+        api.pages = mapOf(0 to listOf(testDiscussion(10)))
+        val store = store()
+
+        store.ensureAnnouncement(10)
+
+        assertEquals(1, api.forumCalls)
+        assertEquals(1, api.discussionCalls)
+        assertEquals(listOf(10), store.announcementPages()!!.list.value!!.discussions.map { it.id })
+
+        store.ensureAnnouncement(10)
+        assertEquals("what is there is not fetched again", 1 to 1, api.forumCalls to api.discussionCalls)
+    }
+
+    @Test
+    fun `a member opened with nothing cached fetches the members, once`() = runTest(UnconfinedTestDispatcher()) {
+        api.membersAnswer = {
+            MoodleMemberList(1, listOf(org.ntust.app.tigerduck.network.model.moodle.MoodleMember(
+                7, "B1 @ Amy", null, null, null, emptyList(), emptyList(), null, "", emptyList(), emptyList(),
+            )))
+        }
+        val store = store()
+
+        store.ensureMember(7)
+        store.ensureMember(7)
+
+        assertEquals(1, api.memberCalls)
+        assertEquals("B1 @ Amy", store.member(7)!!.fullName)
     }
 }
