@@ -172,8 +172,12 @@ class LibraryQRCycleTest {
         val cycle = LibraryQRCycle(
             scope = backgroundScope,
             fetch = {
-                account = 2
-                "previous account's code"
+                if (account == 1) {
+                    account = 2
+                    "previous account's code"
+                } else {
+                    "code of the account signed in now"
+                }
             },
             render = { "image of $it" },
             account = { account },
@@ -187,7 +191,7 @@ class LibraryQRCycleTest {
         cycle.start()
         runCurrent()
 
-        assertNull(cycle.image.value)
+        assertEquals("image of code of the account signed in now", cycle.image.value)
     }
 
     @Test

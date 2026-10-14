@@ -1,5 +1,6 @@
 package org.ntust.app.tigerduck.ui.screen.library
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +29,9 @@ class LibraryPassStateTest {
     /** Whether the stores still hold an account the page can show the pass for. */
     private var hasAccount = true
 
+    /** The account a code is for, as [LibraryPageAccount.codeAccount] counts it. */
+    private var account = 1
+
     /** The library sign-in state Settings and the flip follow. */
     private val signedIn = MutableStateFlow(true)
 
@@ -43,7 +47,7 @@ class LibraryPassStateTest {
     private fun TestScope.pass(): LibraryPassState<String> = LibraryPassState(
         scope = backgroundScope,
         hasAccount = { hasAccount },
-        codeAccount = { 1 },
+        codeAccount = { account },
         fetch = {
             fetched++
             fetches.removeFirstOrNull()?.invoke() ?: "code-$fetched"
@@ -168,5 +172,35 @@ class LibraryPassStateTest {
         runCurrent()
         assertFalse(pass.isLoggedIn.value)
         assertNull(pass.errors.value)
+    }
+
+    /**
+     * The account signs out elsewhere and another signs in while a code request is out: the
+     * code that request brings is the previous account's, the previous code is too, and the
+     * page goes on with a code of the account signed in now.
+     */
+    @Test
+    fun `another account signed in while a code request is out gets its own code`() = runTest {
+        val answer = CompletableDeferred<String>()
+        val pass = pass()
+        pass.load()
+        runCurrent()
+        assertEquals("image of code-1", pass.image.value)
+        fetches += { answer.await() }
+        advanceTimeBy(30_000)
+        runCurrent()
+
+        hasAccount = false
+        signedIn.value = false
+        runCurrent()
+        account = 2
+        hasAccount = true
+        signedIn.value = true
+        answer.complete("previous account's code")
+        runCurrent()
+
+        assertTrue(pass.isLoggedIn.value)
+        assertEquals("image of code-3", pass.image.value)
+        assertEquals(30, pass.countdown.value)
     }
 }

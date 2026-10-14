@@ -111,11 +111,18 @@ internal class LibraryQRCycle<Image : Any>(
                 Outcome.SHOWN -> countDown(LibraryApi.QR_VALID_SECONDS)
                 Outcome.FAILED -> waitToRetry(retryDelaySeconds(consecutiveErrors) * 1000L)
                 Outcome.ENDED -> return
+                // The code on screen is the previous account's too. Another
+                // account signed in meanwhile gets its own at once; with none,
+                // the sign-out ends the page.
+                Outcome.ACCOUNT_CHANGED -> {
+                    clearCode()
+                    if (!sessionValid()) return
+                }
             }
         }
     }
 
-    private enum class Outcome { SHOWN, FAILED, ENDED }
+    private enum class Outcome { SHOWN, FAILED, ENDED, ACCOUNT_CHANGED }
 
     /** Shows the cached code while it has time left, and counts it down; returns whether it did. */
     private suspend fun showCached(): Boolean {
@@ -148,7 +155,7 @@ internal class LibraryQRCycle<Image : Any>(
             val rendered = render(payload)
             // Signed out, or another account signed in, while the request was
             // out: this code is the previous account's.
-            if (account() != forAccount) return Outcome.ENDED
+            if (account() != forAccount) return Outcome.ACCOUNT_CHANGED
             val issuedAt = now()
             cache.store(payload, rendered, forAccount, issuedAt)
             _image.value = rendered
@@ -159,7 +166,7 @@ internal class LibraryQRCycle<Image : Any>(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (account() != forAccount) return Outcome.ENDED
+            if (account() != forAccount) return Outcome.ACCOUNT_CHANGED
             errors.value = describe(e)
             if (!sessionValid()) {
                 cache.clear()
