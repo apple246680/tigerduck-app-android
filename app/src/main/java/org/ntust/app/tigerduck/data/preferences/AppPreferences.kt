@@ -629,8 +629,8 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
 
     /**
      * On sign-out, this stamp, the background worker's two below,
-     * [syncedCategories], [assignmentMarksSyncedOnce] and
-     * [lastSeenCoursesResetAt]: what they record
+     * [syncedCategories], [assignmentMarksSyncedOnce],
+     * [lastSeenCoursesResetAt] and the assignment upload ledger: what they record
      * belonged to the account that left, and the next account's worker must
      * not wait out the old one's hour before its first sync.
      */
@@ -642,8 +642,36 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
             .remove("syncedCategories")
             .remove("assignmentMarksSyncedOnce")
             .remove("lastSeenCoursesResetAt")
+            .remove("assignmentsUploadFingerprint")
+            .remove("assignmentsUploadedAtMs")
             .apply()
         _schoolDataSyncedAtMs.value = 0L
+    }
+
+    /**
+     * The assignment list the backend last accepted from this phone, as a
+     * fingerprint, and when; see `push.UploadLedger`. Forgotten at sign-out
+     * by [clearSyncStamps] and when a sync switch comes back on by
+     * [forgetUploads].
+     */
+    var assignmentsUploadFingerprint: String?
+        get() = prefs.getString("assignmentsUploadFingerprint", null)
+        set(value) = prefs.edit().putString("assignmentsUploadFingerprint", value).apply()
+
+    var assignmentsUploadedAtMs: Long
+        get() = prefs.getLong("assignmentsUploadedAtMs", 0L)
+        set(value) = prefs.edit().putLong("assignmentsUploadedAtMs", value).apply()
+
+    /**
+     * Forgets the list the backend last accepted, so the next upload goes
+     * whatever it holds: the backend may have dropped it while a sync switch
+     * was off on every device.
+     */
+    fun forgetUploads() {
+        prefs.edit()
+            .remove("assignmentsUploadFingerprint")
+            .remove("assignmentsUploadedAtMs")
+            .apply()
     }
 
     /** When the background worker last synced with the backend, epoch ms. */
