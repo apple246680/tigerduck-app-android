@@ -61,4 +61,32 @@ class SyncStampsTest {
         prefs.clearSyncStamps()
         assertEquals(0L, prefs.legacyLastCourseSyncAtMs)
     }
+
+    @Test
+    fun `any sync switch turned back on forgets the upload ledger, wherever it is turned`() {
+        // Onboarding's TigerSync step sets the switches directly, not through
+        // the Settings screens.
+        for (flip in listOf<(Boolean) -> Unit>(
+            { prefs.cloudSyncEnabled = it },
+            { prefs.syncCourses = it },
+            { prefs.syncCourseColors = it },
+            { prefs.syncCourseNames = it },
+            { prefs.syncAssignments = it },
+        )) {
+            flip(false)
+            keep()
+            flip(true)
+            assertNull(prefs.assignmentsUploadFingerprint)
+        }
+    }
+
+    @Test
+    fun `a switch set on again while on keeps the ledger`() {
+        prefs.syncAssignments = true
+        keep()
+
+        prefs.syncAssignments = true
+
+        assertEquals("abc", prefs.assignmentsUploadFingerprint)
+    }
 }

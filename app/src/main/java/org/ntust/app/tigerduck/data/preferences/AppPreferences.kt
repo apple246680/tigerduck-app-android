@@ -126,23 +126,34 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
     // getter anyway.
     var cloudSyncEnabled: Boolean
         get() = effectiveCloudSyncEnabled(prefs.getBoolean("cloudSyncEnabled", true))
-        set(value) = prefs.edit().putBoolean("cloudSyncEnabled", value).apply()
+        set(value) = setSyncSwitch("cloudSyncEnabled", value)
 
     var syncCourses: Boolean
         get() = prefs.getBoolean("syncCourses", true)
-        set(value) = prefs.edit().putBoolean("syncCourses", value).apply()
+        set(value) = setSyncSwitch("syncCourses", value)
 
     var syncCourseColors: Boolean
         get() = prefs.getBoolean("syncCourseColors", true)
-        set(value) = prefs.edit().putBoolean("syncCourseColors", value).apply()
+        set(value) = setSyncSwitch("syncCourseColors", value)
 
     var syncCourseNames: Boolean
         get() = prefs.getBoolean("syncCourseNames", true)
-        set(value) = prefs.edit().putBoolean("syncCourseNames", value).apply()
+        set(value) = setSyncSwitch("syncCourseNames", value)
 
     var syncAssignments: Boolean
         get() = prefs.getBoolean("syncAssignments", true)
-        set(value) = prefs.edit().putBoolean("syncAssignments", value).apply()
+        set(value) = setSyncSwitch("syncAssignments", value)
+
+    /**
+     * Stores a sync switch, and forgets the upload ledger ([forgetUploads])
+     * when it goes from off to on, wherever it is turned: the backend may
+     * have dropped the lists while it was off on every device.
+     */
+    private fun setSyncSwitch(key: String, value: Boolean) {
+        val wasOn = prefs.getBoolean(key, true)
+        prefs.edit().putBoolean(key, value).apply()
+        if (value && !wasOn) forgetUploads()
+    }
 
     // Flips so NotificationSettingsSync can reconcile: turning this switch
     // back on doesn't itself change notifyAssignments/notifyAssignmentOffsets,

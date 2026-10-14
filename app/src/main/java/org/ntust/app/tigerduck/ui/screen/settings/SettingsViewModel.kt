@@ -140,8 +140,6 @@ class SettingsViewModel @Inject constructor(
     fun pushCloudSyncEnabled(enabled: Boolean) {
         ServerStatusTracker.setCloudSyncEnabled(enabled)
         if (enabled) {
-            // As for a category switched back on: see markCategoryReenabled.
-            prefs.forgetUploads()
             // Fail closed: the preference is recorded only once the server
             // has accepted the device, so a failed registration cannot leave
             // the app believing it is syncing when it is not. The service
@@ -195,9 +193,6 @@ class SettingsViewModel @Inject constructor(
     val reenableConflict: StateFlow<ReenableConflict?> = _reenableConflict
 
     fun markCategoryReenabled(category: String) {
-        // The backend may have dropped the lists while the category was off
-        // on every device, as iOS's markCategoryReenabled assumes.
-        prefs.forgetUploads()
         markForReenableCheck(prefs, category, signedIn = authService.authState.value)
     }
 
