@@ -194,6 +194,19 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
+    fun `the list keeps paging while unread only hides its last rows`() {
+        repo.pageSize = 2
+        repo.add("INBOX", mailSummary(1), mailSummary(2), mailSummary(3, seen = true), mailSummary(4))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setUnreadOnly(true)
+        // 3 is read, so 4 is the last row on screen while the list's own last row is 3.
+        assertEquals(listOf(4L), vm.state.value.displayed.map { it.uid })
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertEquals(listOf(4L, 2L, 1L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
     fun `an older page updates the rows it covers and drops the ones the server no longer lists`() {
         repo.pageSize = 2
         repo.add("INBOX", mailSummary(1), mailSummary(2), mailSummary(3), mailSummary(4))

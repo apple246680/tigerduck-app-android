@@ -260,14 +260,18 @@ class SchoolMailListViewModel @Inject constructor(
         viewModelScope.launch { runSearch() }
     }
 
+    /**
+     * [last] is the last row on screen, so it is matched against [UiState.displayed]: under unread
+     * only, the list's own last row can be a read one the screen never shows.
+     */
     fun loadMoreIfNeeded(last: MailRow) {
         val s = _state.value
+        if (s.isPaginating || s.displayed.lastOrNull()?.key != last.key) return
         if (s.searchResults != null) {
-            if (s.isPaginating || s.displayed.lastOrNull()?.key != last.key) return
             if (unfetchedMatches.values.any { it.isNotEmpty() }) viewModelScope.launch { loadMoreSearchResults() }
             return
         }
-        if (s.isPaginating || s.cursors.isEmpty() || s.messages.lastOrNull()?.key != last.key) return
+        if (s.cursors.isEmpty()) return
         viewModelScope.launch { paginate() }
     }
 
