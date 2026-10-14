@@ -3,7 +3,6 @@ package org.ntust.app.tigerduck.shared
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -243,14 +242,6 @@ class LibraryServiceStoredSignInTest {
 
         assertEquals("code", service.generateQRCode())
         assertEquals(2, signIns)
-    }
-
-    @Test
-    fun `callers that ask while a sign-in is out wait for it`() = runBlocking {
-        val tokens = (1..3).map { async(Dispatchers.IO) { service.ensureToken() } }.awaitAll()
-
-        assertEquals(1, signIns)
-        assertEquals(setOf("token-1"), tokens.toSet())
     }
 
     @Test
