@@ -438,6 +438,24 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
         get() = prefs.getBoolean("previousDefaultTabsChecked", false)
         set(value) = prefs.edit().putBoolean("previousDefaultTabsChecked", value).apply()
 
+    /**
+     * Set once this install has been through [LibraryTabAddMigration]. A flag
+     * rather than a [dataSchemaVersion] step, like [previousDefaultTabsChecked].
+     */
+    var libraryTabAddChecked: Boolean
+        get() = prefs.getBoolean("libraryTabAddChecked", false)
+        set(value) = prefs.edit().putBoolean("libraryTabAddChecked", value).apply()
+
+    /**
+     * The old library opt-in switch, read once and deleted: whether this
+     * install had the library on before it was always on.
+     */
+    fun takeLegacyLibraryOptIn(): Boolean {
+        val wasOn = prefs.getBoolean(LEGACY_LIBRARY_OPT_IN, false)
+        prefs.edit().remove(LEGACY_LIBRARY_OPT_IN).apply()
+        return wasOn
+    }
+
     var invertSliderDirection: Boolean
         get() = prefs.getBoolean("invertSliderDirection", false)
         set(value) = prefs.edit().putBoolean("invertSliderDirection", value).apply()
@@ -474,8 +492,8 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
         set(value) = prefs.edit().putBoolean("analyticsEnabled", value).apply()
 
     var libraryFeatureEnabled: Boolean
-        get() = prefs.getBoolean("libraryFeatureEnabled", false)
-        set(value) = prefs.edit().putBoolean("libraryFeatureEnabled", value).apply()
+        get() = prefs.getBoolean(LEGACY_LIBRARY_OPT_IN, false)
+        set(value) = prefs.edit().putBoolean(LEGACY_LIBRARY_OPT_IN, value).apply()
 
     // Defaults ON (matching iOS): the user discovers the gesture on their first
     // accidental flip, where the first-trigger prompt explains it and offers to
@@ -825,6 +843,9 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
 
         /** Comma is safe: NTUST semester codes are `[0-9]{3}[12H]`. */
         private const val SEMESTER_LIST_DELIMITER = ","
+
+        /** The library opt-in switch's key, kept only to read it once (see [takeLegacyLibraryOptIn]). */
+        private const val LEGACY_LIBRARY_OPT_IN = "libraryFeatureEnabled"
 
         const val MIN_TUNABLE_HAPTIC_DURATION_MS = 5
         const val MAX_TUNABLE_HAPTIC_DURATION_MS = 60

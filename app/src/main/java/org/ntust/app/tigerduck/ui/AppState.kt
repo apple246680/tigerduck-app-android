@@ -27,6 +27,7 @@ import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CourseNameScale
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
+import org.ntust.app.tigerduck.data.preferences.LibraryTabAddMigration
 import org.ntust.app.tigerduck.data.preferences.effectiveCloudSyncEnabled
 import org.ntust.app.tigerduck.network.CalendarService
 import org.ntust.app.tigerduck.network.NtustSessionManager
@@ -146,6 +147,9 @@ class AppState @Inject constructor(
         if (cleaned != saved) {
             prefs.configuredTabs = cleaned.ifEmpty { AppFeature.defaultTabs }
         }
+        // After the pin and the clean-up above, so a pre-2.3.0 bar the pin
+        // stores gets Library too, and a slot the clean-up frees counts.
+        LibraryTabAddMigration.runIfNeeded(prefs)
     }
 
     private var hasCompletedOnboardingState by mutableStateOf(prefs.hasCompletedOnboarding)
@@ -545,8 +549,10 @@ class AppState @Inject constructor(
             prefs.dataSchemaVersion = DataMigration.CURRENT_SCHEMA
             // Same for the pre-2.3.0 bottom-bar check: once the user onboards
             // again, the next launch would otherwise pin the old Calendar bar
-            // on what is now a fresh start.
+            // on what is now a fresh start. And for the Library one, which
+            // would add Library back to a bar the user has set up since.
             prefs.previousDefaultTabsChecked = true
+            prefs.libraryTabAddChecked = true
 
             // The mutableState caches above were seeded from prefs at init
             // time. Re-read so the UI shows defaults instead of ghost values
