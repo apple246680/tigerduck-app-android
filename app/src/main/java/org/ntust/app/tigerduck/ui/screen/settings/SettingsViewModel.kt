@@ -219,27 +219,16 @@ class SettingsViewModel @Inject constructor(
                 val diffs = mutableListOf<String>()
 
                 if ("courses" in pending) {
-                    val semester = courseService.currentSemesterCode()
-                    val allCachedNos = dataCache.loadCourses().map { it.courseNo }.toSet()
-                    val deletedNos = CourseTombstoneKeys.hiddenIn(
-                        semester, dataCache.loadDeletedCourseNos()
-                    )
-                    val localNos = allCachedNos - deletedNos
-                    // The cache holds one term; the server now holds them all,
-                    // so compare against this term's slice or every other
-                    // semester reads as a server-only difference.
-                    val serverNos = result.serverCourses
-                        .filter { it.semester == semester }
-                        .map { it.courseNo }
-                        .toSet()
-                        .ifEmpty { result.serverCourseNos }
-                    Log.i(TAG, "[reenable] courses: cached=${allCachedNos.size} deleted=${deletedNos.size} effective=${localNos.size} server=${serverNos.size}")
-                    Log.d(TAG, "[reenable] courses local=${localNos.sorted()}")
-                    Log.d(TAG, "[reenable] courses server=${serverNos.sorted()}")
-                    if (localNos != serverNos) {
-                        val localOnly = (localNos - serverNos).size
-                        val serverOnly = (serverNos - localNos).size
-                        Log.i(TAG, "[reenable] courses DIFFER: localOnly=$localOnly serverOnly=$serverOnly")
+                    // Every term Use Local acts on: the server's and the
+                    // catalogue's — see courseListDifference.
+                    val terms = (result.serverCourses.map { it.semester } + semesterCatalog.availableSemesters())
+                        .filterTo(sortedSetOf()) { it.isNotBlank() }
+                    val cached = terms.associateWith { term -> dataCache.loadCourses(term).map { it.courseNo } }
+                    val diff = courseListDifference(result.serverCourses, cached, dataCache.loadDeletedCourseNos())
+                    val localOnly = diff.localOnly
+                    val serverOnly = diff.serverOnly
+                    Log.i(TAG, "[reenable] courses: terms=${terms.size} localOnly=$localOnly serverOnly=$serverOnly")
+                    if (diff.differs) {
                         diffs.add(when {
                             localOnly > 0 && serverOnly > 0 -> context.getString(R.string.sync_conflict_reenable_courses, localOnly.toString(), serverOnly.toString())
                             localOnly > 0 -> context.getString(R.string.sync_conflict_reenable_courses_local_only, localOnly.toString())
