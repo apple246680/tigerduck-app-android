@@ -138,6 +138,19 @@ class CredentialManager private constructor(
         }
     }
 
+    /**
+     * The library sign-out a school sign-out makes: the library account goes
+     * when it is [ifSchoolAccount]'s, the departing student ID, compared without case, as the school sign-in
+     * upper-cases the ID; another student's stays. Either way the school
+     * sign-in's own library step, if still out, stores nothing. Returns whether
+     * the library account went.
+     */
+    fun clearLibraryCredentials(ifSchoolAccount: String?): Boolean {
+        val same = ifSchoolAccount != null && libraryUsername.equals(ifSchoolAccount, ignoreCase = true)
+        if (same) clearLibraryCredentials() else libraryAccount.endAppSignIns()
+        return same
+    }
+
     // ── School mail — its own account, never shared with the NTUST or library one ──
 
     override var mailStudentId: String?

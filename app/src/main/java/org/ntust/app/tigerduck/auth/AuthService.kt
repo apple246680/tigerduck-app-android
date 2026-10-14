@@ -281,6 +281,8 @@ class AuthService @Inject constructor(
     }
 
     fun logout() {
+        // Read before the wipe below: the library account goes only if it is this student's.
+        val departingStudentId = credentials.ntustStudentId
         // Snapshot the bearer BEFORE wiping tokens: clearNtustCredentials() and
         // authTokenManager.logout() both null the v3 access token, and
         // pushRegistration.unregister() runs its DELETE fire-and-forget on its
@@ -288,7 +290,7 @@ class AuthService @Inject constructor(
         // would find no session to go out with, and leak the device row.
         val authHeader = authTokenManager.currentAuthHeader()
         credentials.clearNtustCredentials()
-        credentials.clearLibraryCredentials()
+        credentials.clearLibraryCredentials(ifSchoolAccount = departingStudentId)
         authTokenManager.logout()
         // A queued live_activity push, and an edit still waiting to be
         // confirmed, both belong to the account that is leaving. Neither may

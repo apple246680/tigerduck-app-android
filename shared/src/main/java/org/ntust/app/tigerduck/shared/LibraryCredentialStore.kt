@@ -79,6 +79,12 @@ class LibraryAccountGate {
         remove()
     }
 
+    /**
+     * Keeps the sign-ins the app makes on its own that are still out from
+     * storing anything, without a sign-out: one the user asked for still can.
+     */
+    fun endAppSignIns(): Unit = synchronized(this) { generation++ }
+
     /** Runs [block] while the generation is still [read], atomic with sign-outs and saves; null once it moved. */
     fun <T> whileCurrent(read: Int, block: () -> T): T? = synchronized(this) {
         if (generation == read) block() else null
