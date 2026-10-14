@@ -9,6 +9,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.ntust.app.tigerduck.AppConstants
+import org.ntust.app.tigerduck.academic.AcademicCalendar
 import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.shared.clock.ClockOverride
@@ -64,7 +65,14 @@ class ClassPreparingNotificationSchedulerTest {
 
     @Test
     fun `each block of a course meeting twice is announced with its own room`() {
-        scheduler.scheduleAll(listOf(twice), emptyMap(), leadTimeSec = 600)
+        // Every argument named, the calendar ones too: they lose their defaults in #342.
+        scheduler.scheduleAll(
+            courses = listOf(twice),
+            skippedDates = emptyMap(),
+            leadTimeSec = 600,
+            calendar = AcademicCalendar.EMPTY,
+            optedInHolidayIds = emptySet(),
+        )
 
         assertEquals(
             listOf("TR-313", "TR-412"),
