@@ -4,8 +4,8 @@ name: CI
 # Gradle invocation in the repo's lifecycle was the release workflow itself,
 # so a compile error or failing test could ride a merged PR all the way to
 # release day. Keep this lean: compile both phone flavors + wear, build the
-# wear release artifacts the release workflow ships, run every JVM unit test,
-# and test the scripts the release workflows run.
+# phone's and the watch's R8 release builds, run every JVM unit test, and test
+# the scripts the release workflows run.
 # No emulator, no lint baseline churn.
 
 on:
@@ -45,6 +45,14 @@ jobs:
           # wear-release-unsigned.apk.
           - leg: wear release
             tasks: :wear:assembleRelease :wear:bundleRelease
+          # The phone's release builds, minified like the watch's, so a missing
+          # keep rule shows up here and not on release day: the last two
+          # upgrade crashes came from R8 renaming what Gson reads. Unsigned for
+          # the same reason, and built without google-services.json, which only
+          # the release workflow decodes; app/build.gradle.kts skips the plugin
+          # without it, as for the debug legs.
+          - leg: phone release
+            tasks: :app:assemblePlayRelease :app:assembleFdroidRelease
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
