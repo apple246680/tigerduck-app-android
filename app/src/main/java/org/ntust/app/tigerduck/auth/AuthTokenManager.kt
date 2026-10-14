@@ -457,7 +457,7 @@ class AuthTokenManager(
     data class LoginResult(val accessToken: String, val deviceId: String)
     class AuthException(message: String) : Exception(message)
 
-    private companion object {
+    internal companion object {
         const val TAG = "AuthTokenManager"
         const val REFRESH_TIMEOUT_SECONDS = 20L
 

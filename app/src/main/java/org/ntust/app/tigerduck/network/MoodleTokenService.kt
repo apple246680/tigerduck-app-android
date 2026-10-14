@@ -11,7 +11,10 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import kotlinx.coroutines.CoroutineScope
+import org.ntust.app.tigerduck.auth.AuthTokenManager
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
+import org.ntust.app.tigerduck.di.ApplicationScope
 import java.net.SocketTimeoutException
 import java.security.SecureRandom
 import javax.inject.Inject
@@ -40,6 +43,7 @@ import javax.inject.Singleton
 class MoodleTokenService @Inject constructor(
     private val sessionManager: NtustSessionManager,
     private val credentialManager: CredentialManager,
+    @param:ApplicationScope appScope: CoroutineScope,
 ) {
     private val mutex = Mutex()
     private val moodleBaseUrl = "https://moodle2.ntust.edu.tw".toHttpUrl()
@@ -73,24 +77,30 @@ class MoodleTokenService @Inject constructor(
 
     fun currentToken(): String? = credentialManager.moodleToken
 
-    suspend fun clearToken() {
-        credentialManager.moodleToken = null
-    }
-
     /** Fetch a fresh token using stored NTUST credentials. */
     suspend fun refreshToken(): String = mutex.withLock { refreshUnlocked() }
 
+    private val renewal = MoodleTokenRenewal(
+        storedToken = { credentialManager.moodleToken },
+        credentials = {
+            val id = credentialManager.ntustStudentId
+            val password = credentialManager.ntustPassword
+            if (id == null || password == null) null else id to password
+        },
+        harvest = { mutex.withLock { refreshUnlocked() } },
+        now = System::currentTimeMillis,
+        scope = appScope,
+        pauseMs = AuthTokenManager.SIGN_IN_PAUSE_MS,
+    )
+
     /**
-     * A token in place of [rejected], which is null when none was stored. The stored token is
-     * replaced only once a new one is in hand, so a renewal that fails, as during Moodle
-     * maintenance, leaves the old one rather than none. When another caller already renewed it
-     * while this one waited, that token is handed back and no second SSO sign-in runs.
+     * A token in place of [rejected], which is null when none was stored, for a Moodle call that
+     * found its token dead. The stored token is replaced only once a new one is in hand, so a
+     * renewal that fails, as during Moodle maintenance, leaves the old one rather than none.
+     * Concurrent callers share one SSO sign-in, a failed one pauses the next, and credentials SSO
+     * refused are not sent again until they change; see [MoodleTokenRenewal].
      */
-    suspend fun renewToken(rejected: String?): String = mutex.withLock {
-        val stored = credentialManager.moodleToken
-        if (!stored.isNullOrEmpty() && stored != rejected) return@withLock stored
-        refreshUnlocked()
-    }
+    suspend fun renewToken(rejected: String?): String = renewal.renew(rejected)
 
     private suspend fun refreshUnlocked(): String {
         val sid = credentialManager.ntustStudentId
@@ -109,11 +119,16 @@ class MoodleTokenService @Inject constructor(
     }
 
     /** Fetch a fresh token using the supplied credentials (first-time login). */
-    suspend fun obtainToken(studentId: String, password: String): String = mutex.withLock {
-        val triple = performOidcLogin(studentId.trim().uppercase(), password)
-        credentialManager.moodleToken = triple.wstoken
-        Log.i("MoodleTokenService", "obtained wstoken (len=${triple.wstoken.length})")
-        triple.wstoken
+    suspend fun obtainToken(studentId: String, password: String): String {
+        val token = mutex.withLock {
+            val triple = performOidcLogin(studentId.trim().uppercase(), password)
+            credentialManager.moodleToken = triple.wstoken
+            Log.i("MoodleTokenService", "obtained wstoken (len=${triple.wstoken.length})")
+            triple.wstoken
+        }
+        // A sign-in by hand went through: what failed before no longer holds renewals back.
+        renewal.reset()
+        return token
     }
 
     private data class TokenTriple(
