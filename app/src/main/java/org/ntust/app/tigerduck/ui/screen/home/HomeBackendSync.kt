@@ -331,12 +331,16 @@ class HomeBackendSync @Inject constructor(
             courses = courses,
             overrides = overrides,
             syncColors = syncColors,
-        )?.let { updated ->
+        )?.let { outcome ->
+            val updated = outcome.courses
             Log.i(TAG, "[sync-color] applying ${updated.count { c -> c.customColorHex != null }} custom colors")
             state.allCourses.value = updated
             TigerDuckTheme.buildCourseColorMap(updated)
             dataCache.saveCourses(updated)
             widgetUpdater.requestUpdate()
+            sendMovedColors(updated, outcome.moved) { moodleId, hex ->
+                pushApiClient.patchCourseOverride(moodleId, colorHex = hex)
+            }
         }
     }
 
@@ -490,6 +494,29 @@ class HomeBackendSync @Inject constructor(
         const val TAG = "HomeViewModel"
         const val SYNC_PREFS = "tigerduck_sync"
         const val KEY_LAST_COURSE_SYNC_AT = "last_course_sync_at"
+    }
+}
+
+/**
+ * Sends each course the colour pass moved ([moved], by course number) its new
+ * colour through [patch], by the Moodle id the backend keys the course by, in
+ * course-number order. A course without one is skipped, as a pick on the class
+ * table skips it, and a failure is left for the next sync to find again.
+ */
+internal suspend fun sendMovedColors(
+    courses: List<Course>,
+    moved: Map<String, String>,
+    patch: suspend (moodleId: String, hex: String) -> Unit,
+) {
+    for ((courseNo, hex) in moved.toSortedMap()) {
+        val moodleId = courses.find { it.courseNo == courseNo }?.moodleIdNumber ?: continue
+        try {
+            patch(moodleId, hex)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w("HomeViewModel", "[sync-color] moved colour PATCH failed: ${e.logSummary()}")
+        }
     }
 }
 

@@ -35,6 +35,12 @@ data class CourseOverrideResult(
     val ignoreAssignmentsUpdatedAt: String? = null,
     /** The course's numeric Moodle id, once a client has sent it. */
     val moodleNumericCourseId: Int? = null,
+    /**
+     * When a device last set [colorHex], as the backend's ISO-8601 time.
+     * Null from a backend that does not send it, and on a row whose colour
+     * came with an upload rather than a pick.
+     */
+    val colorHexUpdatedAt: String? = null,
 )
 
 data class ServerCourse(
@@ -345,6 +351,7 @@ internal fun parseCourseOverrides(
                 moodleNumericCourseId = co.optLong("moodle_course_id", 0L)
                     .takeIf { it in 1..Int.MAX_VALUE }
                     ?.toInt(),
+                colorHexUpdatedAt = nullableString(co, "color_hex_updated_at"),
             )
         )
     }

@@ -47,4 +47,25 @@ class CourseOverrideParseTest {
         assertNull(kept.ignoreAssignmentsUpdatedAt)
         assertNull(kept.moodleNumericCourseId)
     }
+
+    @Test
+    fun `the time of the colour pick is read, and is null when the backend leaves it out`() {
+        val json = JSONObject(
+            """
+            {"course_overrides":[
+              {"moodle_id":"1141CS1001301","course_no":"CS1001301","color_hex":"#FF0000",
+               "color_hex_updated_at":"2026-10-10T16:42:49.666640+00:00"},
+              {"moodle_id":"1141CS1001302","course_no":"CS1001302","color_hex":"#00FF00",
+               "color_hex_updated_at":null},
+              {"moodle_id":"1141CS1001303","course_no":"CS1001303","color_hex":"#0000FF"}
+            ]}
+            """.trimIndent()
+        )
+
+        val (picked, uploaded, older) = parseCourseOverrides(json, emptyMap())
+
+        assertEquals("2026-10-10T16:42:49.666640+00:00", picked.colorHexUpdatedAt)
+        assertNull(uploaded.colorHexUpdatedAt)
+        assertNull(older.colorHexUpdatedAt)
+    }
 }

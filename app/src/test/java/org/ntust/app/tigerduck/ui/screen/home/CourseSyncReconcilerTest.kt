@@ -444,7 +444,8 @@ class CourseSyncReconcilerTest {
             overrides = listOf(CourseOverrideResult("m1", "A", "#FF0000")),
             syncColors = true,
         )
-        assertEquals("#FF0000", updated!!.single().customColorHex)
+        assertEquals("#FF0000", updated!!.courses.single().customColorHex)
+        assertEquals(emptyMap<String, String>(), updated.moved)
     }
 
     @Test
@@ -455,7 +456,7 @@ class CourseSyncReconcilerTest {
             overrides = listOf(CourseOverrideResult("m9", courseNo = null, colorHex = "#00FF00")),
             syncColors = true,
         )
-        assertEquals("#00FF00", updated!!.single().customColorHex)
+        assertEquals("#00FF00", updated!!.courses.single().customColorHex)
     }
 
     @Test
@@ -464,6 +465,95 @@ class CourseSyncReconcilerTest {
         assertNull(
             CourseSyncReconciler.applyColorOverrides(
                 listOf(course), listOf(CourseOverrideResult("m1", "A", "#FF0000")), syncColors = true
+            )
+        )
+    }
+
+    private fun colour(no: String, hex: String, at: String?) =
+        CourseOverrideResult("1141$no", no, hex, colorHexUpdatedAt = at)
+
+    @Test
+    fun `two courses the server holds on one colour settle apart, the latest pick keeping it`() {
+        // An older build left A and B both red on the server. Applied row by
+        // row both stayed red on every Android phone (tigerduck-app-android#295).
+        val outcome = CourseSyncReconciler.applyColorOverrides(
+            courses = listOf(local("A"), local("B"), local("C")),
+            overrides = listOf(
+                colour("B", "#FF6B6B", "2026-10-10T08:00:00.000002+00:00"),
+                colour("A", "#FF6B6B", "2026-10-10T08:00:00.000001+00:00"),
+            ),
+            syncColors = true,
+        )!!
+
+        val byNo = outcome.courses.associateBy { it.courseNo }
+        assertEquals("#FF6B6B", byNo.getValue("B").customColorHex)
+        val moved = byNo.getValue("A").customColorHex
+        assertTrue("A moved to a colour of its own", moved != null && moved != "#FF6B6B")
+        assertEquals("the server is told where A went", mapOf("A" to moved), outcome.moved)
+        assertNull(byNo.getValue("C").customColorHex)
+    }
+
+    @Test
+    fun `a row with no pick time counts as the oldest, and ties go by course number`() {
+        val outcome = CourseSyncReconciler.applyColorOverrides(
+            courses = listOf(local("A"), local("B"), local("C"), local("D")),
+            overrides = listOf(
+                colour("A", "#FF6B6B", "2026-10-10T08:00:00+00:00"),
+                colour("C", "#FF6B6B", null),
+                colour("D", "#4ECDC4", "2026-10-10T09:00:00+00:00"),
+                colour("B", "#4ECDC4", "2026-10-10T09:00:00+00:00"),
+            ),
+            syncColors = true,
+        )!!
+
+        val byNo = outcome.courses.associateBy { it.courseNo }
+        assertEquals("#FF6B6B", byNo.getValue("A").customColorHex)
+        assertEquals("#4ECDC4", byNo.getValue("D").customColorHex)
+        assertEquals(setOf("B", "C"), outcome.moved.keys)
+        for ((no, hex) in outcome.moved) assertEquals(hex, byNo.getValue(no).customColorHex)
+    }
+
+    @Test
+    fun `the same rows in any order settle the same way`() {
+        val rows = listOf(
+            colour("A", "#FF6B6B", "2026-10-10T08:00:01+00:00"),
+            colour("B", "#FF6B6B", "2026-10-10T08:00:02+00:00"),
+            colour("C", "#FF6B6B", "2026-10-10T08:00:03+00:00"),
+        )
+        val courses = listOf(local("A"), local("B"), local("C"))
+
+        val forward = CourseSyncReconciler.applyColorOverrides(courses, rows, syncColors = true)!!
+        val backward = CourseSyncReconciler.applyColorOverrides(courses, rows.reversed(), syncColors = true)!!
+
+        assertEquals(forward, backward)
+        assertEquals(setOf("A", "B"), forward.moved.keys)
+        assertEquals(3, forward.courses.map { it.customColorHex }.toSet().size)
+    }
+
+    @Test
+    fun `a course pinned here to a colour the server gives another course moves off it`() {
+        val outcome = CourseSyncReconciler.applyColorOverrides(
+            courses = listOf(local("A"), Course(courseNo = "B", courseName = "B", customColorHex = "#FF6B6B")),
+            overrides = listOf(colour("A", "#FF6B6B", "2026-10-10T08:00:00+00:00")),
+            syncColors = true,
+        )!!
+
+        val byNo = outcome.courses.associateBy { it.courseNo }
+        assertEquals("#FF6B6B", byNo.getValue("A").customColorHex)
+        assertEquals(setOf("B"), outcome.moved.keys)
+    }
+
+    @Test
+    fun `colours the server already holds apart move nothing`() {
+        val courses = listOf(
+            Course(courseNo = "A", courseName = "A", customColorHex = "#FF6B6B"),
+            Course(courseNo = "B", courseName = "B", customColorHex = "#4ECDC4"),
+        )
+        assertNull(
+            CourseSyncReconciler.applyColorOverrides(
+                courses,
+                listOf(colour("A", "#FF6B6B", null), colour("B", "#4ECDC4", null)),
+                syncColors = true,
             )
         )
     }
