@@ -110,7 +110,8 @@ class MoodleWebservice internal constructor(
      */
     fun download(request: Request, accepts: (contentType: String?) -> Boolean): ByteArray =
         client().newCall(request).execute().use { response ->
-            val type = response.body.contentType()?.toString() ?: response.header("Content-Type")?.substringBefore(';')?.trim()?.lowercase()
+            // The bare type: Moodle sends its errors as `application/json; charset=utf-8`.
+            val type = baseType(response.body.contentType()?.toString() ?: response.header("Content-Type"))
             if (type == "application/json") {
                 MoodleWebserviceError.fromJsonBody(response.body.string())?.let { throw it }
                 throw MoodleWebserviceError.MalformedResponse("json in place of a file")

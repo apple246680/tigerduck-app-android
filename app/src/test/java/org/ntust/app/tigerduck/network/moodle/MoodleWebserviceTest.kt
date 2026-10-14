@@ -262,4 +262,22 @@ class MoodleWebserviceTest {
 
         assertTrue(call!!.isCanceled())
     }
+
+    @Test
+    fun `a dead token on a picture download is the token error, charset and all`() {
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("")
+                .header("Content-Type", "application/json; charset=utf-8")
+                .body("""{"errorcode":"invalidtoken","exception":"moodle_exception"}""".toResponseBody("application/json; charset=utf-8".toMediaType()))
+                .build()
+        }.build()
+
+        assertThrows(MoodleWebserviceError.InvalidToken::class.java) {
+            MoodleWebservice({ client }, Tokens("t1")).download(fileRequest) { it?.startsWith("image/") == true }
+        }
+    }
 }
