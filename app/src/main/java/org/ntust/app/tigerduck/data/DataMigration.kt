@@ -248,7 +248,11 @@ class DataMigration @Inject constructor(
          * dropped too: those builds went on applying the server's marks while
          * it waited, so nothing of this phone's is left to ask about, and kept
          * it would hold the marks, and the marks still waiting to go up, until
-         * TigerSync was next opened.
+         * TigerSync was next opened. The trade-off: on the rare install where
+         * no v2.3.1 sync succeeded between marks changed with sync off and
+         * this update, the first sync after it takes the server's value for
+         * an assignment only one side has marked, where the check would have
+         * asked.
          */
         internal fun settleReenableCheck(prefs: AppPreferences, signedIn: Boolean) {
             if (signedIn) {
