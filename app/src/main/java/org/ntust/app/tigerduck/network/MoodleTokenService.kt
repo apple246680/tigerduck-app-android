@@ -83,6 +83,8 @@ class MoodleTokenService @Inject constructor(
                 }
             override val studentId: String? get() = credentialManager.ntustStudentId
             override val password: String? get() = credentialManager.ntustPassword
+            override fun storeIfSignedIn(studentId: String, token: String): Boolean =
+                credentialManager.storeMoodleTokenIfSignedIn(studentId, token)
         },
         login = { studentId, password ->
             performOidcLogin(studentId, password).wstoken.also {

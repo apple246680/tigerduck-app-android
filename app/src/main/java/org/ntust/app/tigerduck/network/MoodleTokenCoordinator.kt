@@ -27,6 +27,12 @@ internal class MoodleTokenCoordinator(
         var token: String?
         val studentId: String?
         val password: String?
+
+        /**
+         * Stores [token] only while [studentId] is still the stored account, as one step with a
+         * sign-out's clear, so a sign-out can never land between the check and the store.
+         */
+        fun storeIfSignedIn(studentId: String, token: String): Boolean
     }
 
     private val mutex = Mutex()
@@ -63,7 +69,7 @@ internal class MoodleTokenCoordinator(
     suspend fun obtain(studentId: String, password: String): String = mutex.withLock {
         login(studentId.trim().uppercase(), password).also {
             // Known as just got before it is stored, so a refresh that reads it takes it.
-            renewal.reset(harvested = it)
+            renewal.reset(harvested = it, credentials = studentId to password)
             tokens.token = it
         }
     }
@@ -74,8 +80,7 @@ internal class MoodleTokenCoordinator(
         val token = login(sid.trim().uppercase(), pwd)
         // Signed out while it ran: the token is the departing account's, and stored it would
         // answer for whoever signs in next.
-        if (tokens.studentId != sid) throw MoodleWebserviceError.MissingStoredCredentials()
-        tokens.token = token
+        if (!tokens.storeIfSignedIn(sid, token)) throw MoodleWebserviceError.MissingStoredCredentials()
         return token
     }
 }

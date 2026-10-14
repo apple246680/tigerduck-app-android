@@ -19,6 +19,11 @@ class MoodleTokenCoordinatorTest {
         override var token: String? = null
         override var studentId: String? = "B11300001"
         override var password: String? = "pw"
+        override fun storeIfSignedIn(studentId: String, token: String): Boolean {
+            if (this.studentId != studentId) return false
+            this.token = token
+            return true
+        }
     }
 
     private val tokens = Tokens()
@@ -176,6 +181,7 @@ class MoodleTokenCoordinatorTest {
                 }
             override val studentId: String? = "B11300001"
             override val password: String? = "pw"
+            override fun storeIfSignedIn(studentId: String, token: String) = true.also { this.token = token }
         }
         coordinator = MoodleTokenCoordinator(storing, { id, _ -> logins += id; "token-${logins.size}" }, backgroundScope, { now }, 300_000L)
 
@@ -205,5 +211,81 @@ class MoodleTokenCoordinatorTest {
 
         second.obtain("B11300001", "pw")
         assertTrue("a sign-in by hand clears it", refusal.refused.isEmpty())
+    }
+
+    @Test
+    fun `a refresh does not take a token a renewal is already replacing`() = runTest(UnconfinedTestDispatcher()) {
+        val coordinator = coordinator()
+        val obtained = coordinator.obtain("B11300001", "pw")
+        // Moodle answers that token is dead, and a renewal starts.
+        loginGate = CompletableDeferred()
+        val renewal = async { coordinator.renew(rejected = obtained) }
+        runCurrent()
+
+        val refresh = async { coordinator.refresh() }
+        runCurrent()
+        loginGate!!.complete(Unit)
+
+        assertEquals(renewal.await(), refresh.await())
+        assertTrue("not the dead one", refresh.await() != obtained)
+        assertEquals(2, logins.size)
+    }
+
+    @Test
+    fun `a token Moodle rejected is not handed out as just got, even when its renewal failed`() = runTest(UnconfinedTestDispatcher()) {
+        val coordinator = coordinator()
+        val obtained = coordinator.obtain("B11300001", "pw")
+        login = { _, _ -> throw MoodleWebserviceError.SiteMaintenance() }
+        runCatching { coordinator.renew(rejected = obtained) }
+
+        val error = runCatching { coordinator.refresh() }.exceptionOrNull()
+
+        assertTrue("the renewal's failure, not the dead token: $error", error is MoodleWebserviceError.SiteMaintenance)
+        assertEquals(2, logins.size)
+    }
+
+    @Test
+    fun `a token just got for one account is not handed out for another`() = runTest(UnconfinedTestDispatcher()) {
+        val coordinator = coordinator()
+        val first = coordinator.obtain("B11300001", "pw")
+        // Another account's credentials, with the first account's token still stored.
+        tokens.studentId = "B11300002"
+        tokens.password = "pw2"
+
+        val refreshed = coordinator.refresh()
+
+        assertTrue(refreshed != first)
+        assertEquals(listOf("B11300001", "B11300002"), logins)
+    }
+
+    @Test
+    fun `a sign-out right after a refresh checked the account leaves no token behind`() = runTest(UnconfinedTestDispatcher()) {
+        var loggedIn = false
+        var signedOut = false
+        val racing = object : MoodleTokenCoordinator.Tokens {
+            private var id: String? = "B11300001"
+            override var token: String? = null
+            override var password: String? = "pw"
+            // The sign-out lands the moment the account is read after the SSO answer.
+            override val studentId: String? get() = id.also { if (loggedIn && !signedOut) signOut() }
+            // Atomic with a sign-out, as the credential store makes it.
+            override fun storeIfSignedIn(studentId: String, token: String): Boolean {
+                if (id != studentId) return false
+                this.token = token
+                return true
+            }
+            fun signOut() {
+                signedOut = true
+                id = null
+                password = null
+                token = null
+            }
+        }
+        val coordinator = MoodleTokenCoordinator(racing, { id, _ -> logins += id; loggedIn = true; "departing" }, backgroundScope, { now }, 300_000L)
+
+        runCatching { coordinator.refresh() }
+        if (!signedOut) racing.signOut()
+
+        assertNull("the departing account's token stays out of the store", racing.token)
     }
 }
