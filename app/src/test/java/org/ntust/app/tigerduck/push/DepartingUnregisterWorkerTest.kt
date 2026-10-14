@@ -40,7 +40,7 @@ class DepartingUnregisterWorkerTest {
     private val unregister = DepartingDeviceUnregister(
         owed = OwedUnregister(store),
         deleteDevice = { _, _, _ -> throw IOException("offline") },
-        refresh = { DepartingRefresh.Unavailable },
+        refresh = { _, _ -> DepartingRefresh.Unavailable },
         hasSession = { false },
         currentBaseUrl = { BACKEND },
         now = { 0L },

@@ -485,30 +485,45 @@ class AuthTokenManagerRefreshTest {
     private fun departing() = DepartingSession("access-1", "refresh-1", 0L, "http://127.0.0.1:9/v3")
 
     @Test
-    fun `a departing refresh whose reply was lost is sent once more with the same token`() = runTest {
+    fun `a departing refresh whose reply was lost says so, and the next send takes the pair`() = runTest {
         val manager = manager(Reply.Lost, Reply.Pair("access-2", "refresh-2"))
 
-        val reply = manager.refreshDeparting(departing())
+        assertEquals(DepartingRefresh.NoReply, manager.refreshDeparting(departing(), sendsWithoutReply = 0))
+        val reply = manager.refreshDeparting(departing(), sendsWithoutReply = 1)
 
         assertEquals("refresh-2", (reply as DepartingRefresh.Refreshed).session.refreshToken)
         assertEquals(listOf("refresh-1", "refresh-1"), sentRefreshTokens)
     }
 
     @Test
-    fun `a departing refresh lost twice is given up, never sent again later`() = runTest {
+    fun `a departing token gone twice without a reply is never sent a third time`() = runTest {
         // Within its grace the backend answers a rotated token once more; any later send of it is
         // taken for reuse, which revokes the session and leaves the unregister nothing to go out as.
-        val manager = manager(Reply.Lost, Reply.Lost)
+        val manager = manager(Reply.Pair("access-3", "refresh-3"))
 
-        assertEquals(DepartingRefresh.Refused, manager.refreshDeparting(departing()))
-        assertEquals(listOf("refresh-1", "refresh-1"), sentRefreshTokens)
+        // Two counted with the debt, by a process that has ended since.
+        assertEquals(DepartingRefresh.Refused, manager.refreshDeparting(departing(), sendsWithoutReply = 2))
+        assertEquals(emptyList<String>(), sentRefreshTokens)
     }
 
     @Test
     fun `a departing refresh the backend did not take is left for a later try`() = runTest {
         val manager = manager(Reply.Status(503))
 
-        assertEquals(DepartingRefresh.Unavailable, manager.refreshDeparting(departing()))
+        assertEquals(DepartingRefresh.Unavailable, manager.refreshDeparting(departing(), sendsWithoutReply = 0))
+    }
+
+    @Test
+    fun `the departing session carries the session's own sends without a reply`() = runTest {
+        val manager = manager(Reply.Lost, Reply.Lost)
+        // Signed out as the resend goes, after the first send's reply was lost.
+        var departing: DepartingSession? = null
+        var sends = 0
+        onRefreshSent = { if (++sends == 2) departing = manager.logout() }
+
+        assertNull(manager.authHeader())
+
+        assertEquals(1, departing?.sendsWithoutReply)
     }
 
     @Test
@@ -537,7 +552,7 @@ class AuthTokenManagerRefreshTest {
         }
         assertNull(manager.authHeader())
 
-        val reply = manager.refreshDeparting(departing!!)
+        val reply = manager.refreshDeparting(departing!!, sendsWithoutReply = 0)
 
         assertEquals("refresh-2", (reply as DepartingRefresh.Refreshed).session.refreshToken)
         assertEquals(listOf("refresh-1"), sentRefreshTokens)
@@ -560,7 +575,7 @@ class AuthTokenManagerRefreshTest {
         val sessionRefresh = async(Dispatchers.IO) { manager.authHeader() }
         assertTrue(sent.await(5, TimeUnit.SECONDS))
 
-        val unregisterRefresh = async(Dispatchers.IO) { manager.refreshDeparting(departing!!) }
+        val unregisterRefresh = async(Dispatchers.IO) { manager.refreshDeparting(departing!!, sendsWithoutReply = 0) }
         Thread.sleep(300)
         answer.countDown()
 
@@ -586,7 +601,7 @@ class AuthTokenManagerRefreshTest {
         assertTrue(sent.await(5, TimeUnit.SECONDS))
 
         // Left for a later try, rather than holding up whoever waits on the unregister.
-        assertEquals(DepartingRefresh.Unavailable, manager.refreshDeparting(departing!!))
+        assertEquals(DepartingRefresh.Unavailable, manager.refreshDeparting(departing!!, sendsWithoutReply = 0))
         assertEquals(listOf("refresh-1"), sentRefreshTokens)
 
         answer.countDown()
@@ -603,7 +618,7 @@ class AuthTokenManagerRefreshTest {
         onRefreshSent = { if (++sends == 2) manager.logout() }
         assertNull(manager.authHeader())
 
-        assertEquals(DepartingRefresh.Refused, manager.refreshDeparting(departing))
+        assertEquals(DepartingRefresh.Refused, manager.refreshDeparting(departing, sendsWithoutReply = 0))
         assertEquals(listOf("refresh-1", "refresh-1"), sentRefreshTokens)
     }
 

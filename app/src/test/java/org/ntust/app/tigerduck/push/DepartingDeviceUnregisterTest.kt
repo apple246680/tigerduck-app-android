@@ -73,8 +73,10 @@ class DepartingDeviceUnregisterTest {
                 else -> reply as Int
             }
         },
-        refresh = { session ->
+        refresh = { session, sendsWithoutReply ->
             assertEquals("the refresh goes to the backend that issued the token", BACKEND, session.baseUrl)
+            // As AuthTokenManager.refreshDeparting: a token gone twice without a reply is not sent.
+            if (sendsWithoutReply >= 2) return@DepartingDeviceUnregister DepartingRefresh.Refused
             refreshes += session.refreshToken
             onRefresh()
             refreshGate?.await()
@@ -340,6 +342,48 @@ class DepartingDeviceUnregisterTest {
 
         assertEquals("refresh-2", store.pending?.session?.refreshToken)
         assertEquals("stopped, it sends nothing more", emptyList<String>(), deletes)
+    }
+
+    @Test
+    fun `a lost reply is sent once more, and a second is given up`() = runTest {
+        owe(expiresAt = now - 1)
+        refreshReplies += DepartingRefresh.NoReply
+        refreshReplies += DepartingRefresh.NoReply
+        refreshReplies += refreshed("access-2", "refresh-2")
+
+        assertEquals(Outcome.DONE, unregister().send())
+
+        assertEquals(listOf("refresh-1", "refresh-1"), refreshes)
+        assertEquals(emptyList<String>(), deletes)
+        assertNull(store.pending)
+    }
+
+    @Test
+    fun `a send is counted before it goes, so a process ended during it never leads to a third`() = runTest {
+        owe(expiresAt = now - 1)
+        refreshReplies += DepartingRefresh.NoReply
+        // The resend never finishes in this process.
+        onRefresh = { if (refreshes.size == 2) throw IllegalStateException("process ended") }
+        assertEquals(Outcome.RETRY, unregister().send())
+        assertEquals(2, store.pending?.unansweredRefreshes)
+
+        // The next launch.
+        onRefresh = {}
+        refreshReplies += refreshed("access-2", "refresh-2")
+        assertEquals(Outcome.DONE, unregister().send())
+
+        assertEquals(listOf("refresh-1", "refresh-1"), refreshes)
+        assertEquals(emptyList<String>(), deletes)
+    }
+
+    @Test
+    fun `an answer that cannot be read counts as one that never came`() = runTest {
+        owe(expiresAt = now - 1)
+        refreshThrows = JSONException("no access_token")
+
+        assertEquals(Outcome.RETRY, unregister().send())
+
+        assertEquals(1, store.pending?.unansweredRefreshes)
     }
 
     @Test

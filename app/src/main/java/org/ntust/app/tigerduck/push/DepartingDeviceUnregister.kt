@@ -23,7 +23,15 @@ class PendingUnregister(
     val session: DepartingSession,
     /** When the sign-out owed it, epoch ms. */
     val owedAt: Long,
-)
+    /**
+     * How many sends of [session]'s refresh token in a row got no reply, raised before each goes
+     * out: kept across launches, so a process ended during a send cannot lead to a third.
+     */
+    val unansweredRefreshes: Int = 0,
+) {
+    fun with(session: DepartingSession = this.session, unansweredRefreshes: Int = this.unansweredRefreshes) =
+        PendingUnregister(deviceId, session, owedAt, unansweredRefreshes)
+}
 
 /** Keeps the owed unregister between launches. It holds tokens, so it is stored encrypted. */
 interface PendingUnregisterStore {
@@ -51,7 +59,7 @@ class DepartingDeviceUnregister internal constructor(
     private val owed: OwedUnregister,
     /** The HTTP status; throws [IOException] when no reply came back. */
     private val deleteDevice: suspend (base: String, deviceId: String, accessToken: String) -> Int,
-    private val refresh: suspend (DepartingSession) -> DepartingRefresh,
+    private val refresh: suspend (DepartingSession, sendsWithoutReply: Int) -> DepartingRefresh,
     private val hasSession: () -> Boolean,
     /** The backend the app talks to now, which the API endpoint setting decides. */
     private val currentBaseUrl: () -> String,
@@ -87,7 +95,7 @@ class DepartingDeviceUnregister internal constructor(
 
     /** Keeps the unregister of [deviceId] as [session] until the server has it, in place of any owed before. */
     suspend fun owe(deviceId: String, session: DepartingSession) =
-        mutex.withLock { store.save(PendingUnregister(deviceId, session, now())) }
+        mutex.withLock { store.save(PendingUnregister(deviceId, session, now(), session.sendsWithoutReply)) }
 
     /** Gives up on the debt, dropping the tokens it is kept with. */
     suspend fun abandon() = mutex.withLock { drop() }
@@ -195,12 +203,30 @@ class DepartingDeviceUnregister internal constructor(
      * be lost, and the token kept is one the server would take for reuse.
      */
     private suspend fun renew(pending: PendingUnregister): PendingUnregister? = withContext(NonCancellable) {
-        val reply = refresh(pending.session)
+        var current = pending
+        var reply: DepartingRefresh
+        do {
+            // Counted before it goes out: a process ended during the send has it counted. A reply
+            // that cannot be read throws, and stays counted, as one that never came.
+            val sending = current.with(unansweredRefreshes = current.unansweredRefreshes + 1)
+            store.save(sending)
+            reply = refresh(current.session, current.unansweredRefreshes)
+            // Sent once more at most: the next call refuses at two.
+            if (reply == DepartingRefresh.NoReply) current = sending
+        } while (reply == DepartingRefresh.NoReply)
         refreshUnavailable = reply == DepartingRefresh.Unavailable
-        if (reply !is DepartingRefresh.Refreshed) return@withContext null
-        // Kept before the DELETE: the server rotated the refresh token, and would take the one it
-        // replaced for reuse if a later retry sent it.
-        PendingUnregister(pending.deviceId, reply.session, pending.owedAt).also(store::save)
+        when (reply) {
+            // Kept before the DELETE: the server rotated the refresh token, and would take the one
+            // it replaced for reuse if a later retry sent it.
+            is DepartingRefresh.Refreshed ->
+                current.with(session = reply.session, unansweredRefreshes = 0).also(store::save)
+            DepartingRefresh.Unavailable -> {
+                // Not taken, or never sent: the count stands as it was.
+                store.save(current)
+                null
+            }
+            else -> null
+        }
     }
 
     private fun afterFailedRefresh(): Outcome =

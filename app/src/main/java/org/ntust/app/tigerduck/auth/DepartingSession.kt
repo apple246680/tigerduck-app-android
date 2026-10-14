@@ -18,6 +18,8 @@ class DepartingSession(
     val baseUrl: String,
     /** The student it is for; null for a session stored before that was recorded. */
     val studentId: String? = null,
+    /** How many of the session's own sends of [refreshToken] in a row got no reply, at sign-out. */
+    val sendsWithoutReply: Int = 0,
 )
 
 /** What [AuthTokenManager.refreshDeparting] got back. */
@@ -30,4 +32,10 @@ sealed interface DepartingRefresh {
 
     /** A 429 or a 5xx, or a send that never left the phone: worth trying again later with the same token. */
     data object Unavailable : DepartingRefresh
+
+    /**
+     * Sent, and no reply came back: the backend may have rotated the token. Sent again at most
+     * once (see [AuthTokenManager.refreshDeparting]); a third send would be taken for reuse.
+     */
+    data object NoReply : DepartingRefresh
 }

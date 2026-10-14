@@ -152,7 +152,7 @@ class AutomaticSignInTest {
         accountStored = false
         manager.logout()
 
-        val reply = manager.refreshDeparting(departing)
+        val reply = manager.refreshDeparting(departing, sendsWithoutReply = 0)
 
         assertEquals("access-2", (reply as DepartingRefresh.Refreshed).session.accessToken)
         assertEquals("refresh-2", reply.session.refreshToken)
@@ -167,10 +167,10 @@ class AutomaticSignInTest {
         val manager = manager()
         val departing = DepartingSession("access-1", "refresh-1", 0L, resolveAnnouncementEndpoint(prefs).url)
         backend.answer(REFRESH, 401)
-        assertEquals(DepartingRefresh.Refused, manager.refreshDeparting(departing))
+        assertEquals(DepartingRefresh.Refused, manager.refreshDeparting(departing, sendsWithoutReply = 0))
 
         backend.answer(REFRESH, 503)
-        assertEquals(DepartingRefresh.Unavailable, manager.refreshDeparting(departing))
+        assertEquals(DepartingRefresh.Unavailable, manager.refreshDeparting(departing, sendsWithoutReply = 0))
     }
 
     @Test
@@ -184,7 +184,7 @@ class AutomaticSignInTest {
         prefs.announcementApiBaseUrlOverride = "http://10.0.0.9:9/v3"
         assertEquals("10.0.0.9", resolveAnnouncementEndpoint(prefs).url.toHttpUrl().host)
 
-        val refreshed = manager.refreshDeparting(departing) as DepartingRefresh.Refreshed
+        val refreshed = manager.refreshDeparting(departing, sendsWithoutReply = 0) as DepartingRefresh.Refreshed
         PushApiClient(backend.client, prefs, manager)
             .deleteDevice(refreshed.session.baseUrl, "device-1", refreshed.session.accessToken)
 

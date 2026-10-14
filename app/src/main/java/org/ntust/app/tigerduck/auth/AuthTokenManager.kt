@@ -221,18 +221,23 @@ class AuthTokenManager(
         val access = tokens.accessToken ?: return null
         val refresh = tokens.refreshToken ?: return null
         // The backend recorded at sign-in; the one set now for a pair stored before that was.
-        DepartingSession(access, refresh, tokens.expiresAt, tokens.issuedBy ?: baseUrl, tokens.studentId)
+        DepartingSession(
+            access, refresh, tokens.expiresAt, tokens.issuedBy ?: baseUrl, tokens.studentId, sendsWithoutReply(refresh),
+        )
     }
 
     /**
-     * Refreshes a [DepartingSession] for the sign-out's device unregister.
-     * Stores nothing: the pair is the departing account's, and the session
-     * here is whoever signs in next. Sent once more at once when no reply came
-     * back, and a resend that does not refresh is [DepartingRefresh.Refused],
-     * as [sendWithOneResend] has it: the token may have been rotated, and a
-     * later send of it would be taken for reuse.
+     * Sends one refresh of a [DepartingSession] for the sign-out's device
+     * unregister. Stores nothing: the pair is the departing account's, and the
+     * session here is whoever signs in next.
+     *
+     * [sendsWithoutReply] is how many sends of the token got no reply, which
+     * the caller keeps with the debt across launches; this process's own count
+     * is taken too. At two, nothing is sent and the refresh is
+     * [DepartingRefresh.Refused]: within its grace the backend answers a
+     * rotated token once more, and takes a later send of it for reuse.
      */
-    suspend fun refreshDeparting(departing: DepartingSession): DepartingRefresh {
+    suspend fun refreshDeparting(departing: DepartingSession, sendsWithoutReply: Int): DepartingRefresh {
         val token = departing.refreshToken
         // The session's own refresh of this token may still be on its way, sent
         // before the sign-out: its pair is waited for and taken rather than the
@@ -247,21 +252,18 @@ class AuthTokenManager(
         return withContext(Dispatchers.IO) {
             // To the backend that issued the session, whatever the endpoint setting says now.
             val base = departing.baseUrl
-            val outcome = takeUnstoredPair(token) ?: run {
-                var sent: RefreshOutcome
-                do {
-                    // Two sends without a reply already, this one's or the
-                    // session's: a third would be taken for reuse.
-                    if (sendsWithoutReply(token) >= 2) return@run RefreshOutcome.Refused
-                    sent = send(token, DEPARTING, base)
-                } while (sent == RefreshOutcome.NoReply)
-                sent
-            }
+            val outcome = takeUnstoredPair(token)
+                ?: if (maxOf(sendsWithoutReply, sendsWithoutReply(token)) >= 2) {
+                    RefreshOutcome.Refused
+                } else {
+                    send(token, DEPARTING, base)
+                }
             when (outcome) {
                 is RefreshOutcome.Refreshed -> DepartingRefresh.Refreshed(
-                    DepartingSession(outcome.accessToken, outcome.refreshToken, outcome.expiresAt, base),
+                    DepartingSession(outcome.accessToken, outcome.refreshToken, outcome.expiresAt, base, departing.studentId),
                 )
-                RefreshOutcome.Refused, RefreshOutcome.NoReply -> DepartingRefresh.Refused
+                RefreshOutcome.Refused -> DepartingRefresh.Refused
+                RefreshOutcome.NoReply -> DepartingRefresh.NoReply
                 RefreshOutcome.Unavailable -> DepartingRefresh.Unavailable
             }
         }
