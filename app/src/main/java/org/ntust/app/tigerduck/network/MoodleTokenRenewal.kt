@@ -146,6 +146,11 @@ internal class MoodleTokenRenewal(
 /**
  * Which stored credentials NTUST's SSO refused, so they are not sent again until they change.
  * Each is named by a fingerprint of the student ID and password, never the password itself.
+ *
+ * The fingerprint is an unsalted SHA-256, fit only to compare in memory. An implementation that
+ * persists the refusal must not write it: it keys an HMAC with a secret held in the Android
+ * Keystore or generated per install, keeps the result in the encrypted credential store, and
+ * is cleared on sign-out and on a full reset.
  */
 internal interface StoredPasswordRefusal {
     fun isRefused(fingerprint: String): Boolean
