@@ -214,6 +214,24 @@ class DataCacheTest {
         assertEquals(before + 2, cache.assignmentMarksVersion.value)
     }
 
+    @Test
+    fun `marks a re-enable answer adopts are written and announced, a swipe's are not`() = runTest {
+        // Home re-reads its marks on the announcement, before its next swipe
+        // can write the old ones back (tigerduck-app-android#189). Its own
+        // writes must not set that off: reading them back could undo a newer
+        // swipe.
+        val before = cache.marksAdoptedVersion.value
+
+        cache.adoptAssignmentMarks(ignored = setOf("a"), completed = setOf("b"))
+        cache.saveIgnoredAssignments(setOf("c"))
+        cache.saveMarkedCompletedAssignments(setOf("d"))
+
+        assertEquals(before + 1, cache.marksAdoptedVersion.value)
+        cache.adoptAssignmentMarks(ignored = setOf("a"), completed = setOf("b"))
+        assertEquals(setOf("a"), cache.loadIgnoredAssignments())
+        assertEquals(setOf("b"), cache.loadMarkedCompletedAssignments())
+    }
+
     private companion object {
         // Only a broken lock waits this long; it fails the test instead of hanging the suite.
         const val WAIT_SECONDS = 5L

@@ -253,6 +253,9 @@ class HomeViewModel @Inject constructor(
     private val saveIgnoredChannel = Channel<Set<String>>(Channel.CONFLATED)
     private val saveMarkedCompletedChannel = Channel<Set<String>>(Channel.CONFLATED)
 
+    // Swipes on Home, counted on the main thread; see reloadAdoptedMarks.
+    private var markTaps = 0
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
@@ -399,6 +402,22 @@ class HomeViewModel @Inject constructor(
                 _ignoredCourseKeys.value = courseKeys
                 TigerDuckTheme.buildCourseColorMap(courses)
                 updateCoursesAndAssignments(courses, assignments)
+            }
+        }
+        viewModelScope.launch {
+            // Marks a re-enable answer took (Use Server): read now, or the
+            // next swipe writes the ones held here back over them.
+            dataCache.marksAdoptedVersion.drop(1).collect {
+                if (!authService.authState.value) return@collect
+                val account = authService.storedStudentId
+                reloadAdoptedMarks(
+                    read = { dataCache.loadIgnoredAssignments() to dataCache.loadMarkedCompletedAssignments() },
+                    tapsMade = { markTaps },
+                    stillSignedIn = { authService.isStillSignedInAs(account) },
+                ) { ignored, completed ->
+                    _ignoredAssignmentIds.value = ignored
+                    _markedCompletedIds.value = completed
+                }
             }
         }
         viewModelScope.launch {
@@ -915,6 +934,7 @@ class HomeViewModel @Inject constructor(
         statusWhenSet: String,
     ) {
         val id = assignment.assignmentId
+        markTaps++
         val wasSet = id in primary.value
         primary.update { if (wasSet) it - id else it + id }
         if (!wasSet) {
@@ -989,6 +1009,24 @@ class HomeViewModel @Inject constructor(
         _sections.value = sections
         prefs.homeSections = sections
     }
+}
+
+/**
+ * Home's take-up of marks a re-enable answer wrote (`DataCache.adoptAssignmentMarks`):
+ * [read] the files and [apply] them, unless a swipe was made meanwhile
+ * ([tapsMade] moved), which the read may predate and must not undo, or the
+ * account signed out, whose marks they were.
+ */
+internal suspend fun reloadAdoptedMarks(
+    read: suspend () -> Pair<Set<String>, Set<String>>,
+    tapsMade: () -> Int,
+    stillSignedIn: () -> Boolean,
+    apply: (ignored: Set<String>, completed: Set<String>) -> Unit,
+) {
+    val tapsBefore = tapsMade()
+    val (ignored, completed) = read()
+    if (tapsMade() != tapsBefore || !stillSignedIn()) return
+    apply(ignored, completed)
 }
 
 /**

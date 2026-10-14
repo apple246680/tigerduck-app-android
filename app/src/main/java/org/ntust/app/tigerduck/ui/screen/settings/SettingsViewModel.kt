@@ -425,8 +425,8 @@ class SettingsViewModel @Inject constructor(
             if ("assignments" in conflict.categories) {
                 // The server's marks win, so taps still waiting to go up are dropped.
                 unsentMarks.forget()
-                dataCache.replaceIgnoredAssignments(emptySet())
-                dataCache.replaceMarkedCompletedAssignments(emptySet())
+                // Adopted, not replaced: Home reads them again at once.
+                dataCache.adoptAssignmentMarks(emptySet(), emptySet())
             }
             val result = runCatching { syncApiClient.fetchFullSync() }.getOrNull()
             if (result != null) {
@@ -480,8 +480,7 @@ class SettingsViewModel @Inject constructor(
                     dataCache.saveCourseCustomNames(localNames)
                 }
                 if ("assignments" in conflict.categories) {
-                    dataCache.replaceIgnoredAssignments(result.ignoredIds)
-                    dataCache.replaceMarkedCompletedAssignments(result.completedIds)
+                    dataCache.adoptAssignmentMarks(result.ignoredIds, result.completedIds)
                 }
             }
             if ("assignments" in conflict.categories && prefs.syncCourses) {

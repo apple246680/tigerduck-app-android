@@ -89,6 +89,25 @@ class DataCache @Inject constructor(
         companion object Key : CoroutineContext.Key<Generation>
     }
 
+    private val _marksAdoptedVersion = MutableStateFlow(0)
+
+    /**
+     * Bumped after [adoptAssignmentMarks], for Home to read the marks again
+     * before its next swipe writes the ones it holds back over them.
+     */
+    val marksAdoptedVersion: StateFlow<Int> = _marksAdoptedVersion.asStateFlow()
+
+    /**
+     * Replaces the ignored and marked-done sets with the ones a re-enable
+     * answer took (Use Server), and says so on [marksAdoptedVersion]. Not for
+     * Home's own writes: reading those back could undo a newer swipe.
+     */
+    suspend fun adoptAssignmentMarks(ignored: Set<String>, completed: Set<String>) {
+        saveIgnoredAssignments(ignored)
+        saveMarkedCompletedAssignments(completed)
+        _marksAdoptedVersion.update { it + 1 }
+    }
+
     suspend fun replaceIgnoredAssignments(ids: Set<String>) = saveIgnoredAssignments(ids)
 
     suspend fun replaceMarkedCompletedAssignments(ids: Set<String>) =
