@@ -107,7 +107,7 @@ class PushRegistrationServiceTest {
             scope = backgroundScope,
             fixtures = DebugFixtureStore(context),
             departingUnregister = DepartingDeviceUnregister(
-                store = owedStore,
+                owed = OwedUnregister(owedStore),
                 deleteDevice = PushApiClient(backend.client, prefs, auth)::deleteDevice,
                 refresh = auth::refreshDeparting,
                 hasSession = { auth.isLoggedIn },

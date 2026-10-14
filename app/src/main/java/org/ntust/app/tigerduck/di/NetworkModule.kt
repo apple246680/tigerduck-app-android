@@ -11,6 +11,7 @@ import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.debug.DemoModeInterceptor
 import org.ntust.app.tigerduck.network.ApiVersionInterceptor
+import org.ntust.app.tigerduck.push.OwedUnregister
 import org.ntust.app.tigerduck.push.PushIdentity
 import org.ntust.app.tigerduck.shared.LibraryService
 import java.util.concurrent.TimeUnit
@@ -67,10 +68,12 @@ object NetworkModule {
         httpClient: OkHttpClient,
         identity: PushIdentity,
         prefs: AppPreferences,
+        owedUnregister: OwedUnregister,
     ): AuthTokenManager = AuthTokenManager(
         tokens = credentials.v3Tokens,
         httpClient = httpClient,
         prefs = prefs,
         deviceUuid = identity.uuid(),
+        owedUnregister = owedUnregister,
     )
 }

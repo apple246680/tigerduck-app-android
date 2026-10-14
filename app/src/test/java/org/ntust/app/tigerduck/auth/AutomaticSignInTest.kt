@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import com.google.gson.JsonObject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runCurrent
@@ -23,6 +24,9 @@ import org.ntust.app.tigerduck.data.preferences.V3TokenStore
 import org.ntust.app.tigerduck.network.BulletinApiClient
 import org.ntust.app.tigerduck.network.resolveAnnouncementEndpoint
 import org.ntust.app.tigerduck.push.AnonymousDeviceRequest
+import org.ntust.app.tigerduck.push.OwedUnregister
+import org.ntust.app.tigerduck.push.PendingUnregister
+import org.ntust.app.tigerduck.push.PendingUnregisterStore
 import org.ntust.app.tigerduck.push.DeviceRegisterRequest
 import org.ntust.app.tigerduck.push.PushApiClient
 import org.ntust.app.tigerduck.push.PushTokenIn
@@ -185,6 +189,53 @@ class AutomaticSignInTest {
             .deleteDevice(refreshed.session.baseUrl, "device-1", refreshed.session.accessToken)
 
         assertEquals(listOf("127.0.0.1", "127.0.0.1"), backend.received(REFRESH).map { it.host } + backend.received(UNREGISTER).map { it.host })
+    }
+
+    // A sign-in and the unregister a sign-out still owes
+
+    private fun owed(): Pair<OwedUnregister, () -> PendingUnregister?> {
+        var pending: PendingUnregister? = PendingUnregister(
+            "device-1",
+            DepartingSession("access-0", "refresh-0", Long.MAX_VALUE, resolveAnnouncementEndpoint(prefs).url),
+        )
+        val store = object : PendingUnregisterStore {
+            override fun load() = pending
+            override fun save(pending: PendingUnregister) {}
+            override fun clear() {
+                pending = null
+            }
+        }
+        return OwedUnregister(store) to { pending }
+    }
+
+    @Test
+    fun `a sign-in that lands ends the owed unregister, one turned down keeps it`() = runTest {
+        val (owed, pending) = owed()
+        val manager = manager(owedUnregister = owed)
+
+        backend.answer(LOGIN, 503)
+        runCatching { manager.login("B00000000", moodleToken = "moodle", moodlePrivateToken = null) }
+        assertEquals("device-1", pending()?.deviceId)
+
+        manager.login("B00000000", moodleToken = "moodle", moodlePrivateToken = null)
+        assertNull(pending())
+    }
+
+    @Test
+    fun `a sign-in waits for the owed unregister's lock before its login goes out`() = runTest {
+        val (owed, _) = owed()
+        val manager = manager(owedUnregister = owed)
+        owed.mutex.lock()
+
+        val signingIn = async(Dispatchers.Default) {
+            manager.login("B00000000", moodleToken = "moodle", moodlePrivateToken = null)
+        }
+        Thread.sleep(300)
+        assertEquals(emptyList<String>(), backend.endpoints())
+
+        owed.mutex.unlock()
+        signingIn.await()
+        assertEquals(listOf(LOGIN), backend.endpoints())
     }
 
     // Signing in again, and the pause after a failure
@@ -367,7 +418,14 @@ class AutomaticSignInTest {
         assertEquals(1, backend.received(LOGIN).size)
     }
 
-    private fun manager() = AuthTokenManager(tokens, backend.client, prefs, "device-1", now = { clock }).apply {
+    private fun manager(owedUnregister: OwedUnregister? = null) = AuthTokenManager(
+        tokens,
+        backend.client,
+        prefs,
+        "device-1",
+        now = { clock },
+        owedUnregister = owedUnregister,
+    ).apply {
         // Stands in for AuthService's, which sends the stored account through login().
         signInWithStoredAccount = { signIn ->
             if (accountStored) loginAsTheUser(signIn) else SignInAttempt.NOTHING_TO_SEND

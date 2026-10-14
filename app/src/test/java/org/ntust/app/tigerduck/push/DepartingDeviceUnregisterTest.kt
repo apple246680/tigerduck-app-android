@@ -1,5 +1,8 @@
 package org.ntust.app.tigerduck.push
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -30,6 +33,10 @@ class DepartingDeviceUnregisterTest {
     }
 
     private val store = MemoryStore()
+    private val owed = OwedUnregister(store)
+
+    /** Holds the next DELETE until the test completes it with a status. */
+    private var heldDelete: CompletableDeferred<Int>? = null
 
     /** Each DELETE as "device token". */
     private val deletes = mutableListOf<String>()
@@ -40,14 +47,18 @@ class DepartingDeviceUnregisterTest {
     private val refreshReplies = ArrayDeque<DepartingRefresh>()
     private var signedInSince = false
 
+    /** Runs as each refresh is sent, before its reply. */
+    private var onRefresh: () -> Unit = {}
+
     /** The backend the API endpoint setting names now. */
     private var endpoint = BACKEND
 
     private fun unregister() = DepartingDeviceUnregister(
-        store = store,
+        owed = owed,
         deleteDevice = { base, device, token ->
             assertEquals("the DELETE goes to the backend that issued the token", BACKEND, base)
             deletes += "$device $token"
+            heldDelete?.let { held -> heldDelete = null; return@DepartingDeviceUnregister held.await() }
             when (val reply = deleteReplies.removeFirstOrNull() ?: 204) {
                 is IOException -> throw reply
                 else -> reply as Int
@@ -56,6 +67,7 @@ class DepartingDeviceUnregisterTest {
         refresh = { session ->
             assertEquals("the refresh goes to the backend that issued the token", BACKEND, session.baseUrl)
             refreshes += session.refreshToken
+            onRefresh()
             refreshReplies.removeFirstOrNull() ?: DepartingRefresh.Refused
         },
         hasSession = { signedInSince },
@@ -196,6 +208,48 @@ class DepartingDeviceUnregisterTest {
 
         endpoint = "https://elsewhere.example/v3"
         unregister().dropIfEndpointMoved()
+        assertNull(store.pending)
+    }
+
+    // A sign-in of the same account while the unregister is on its way
+
+    @Test
+    fun `a sign-in waits for an unregister on its way, then ends the debt`() = runTest {
+        owe()
+        val held = CompletableDeferred<Int>().also { heldDelete = it }
+        val events = mutableListOf<String>()
+        val sending = async { unregister().send().also { events += "unregister $it" } }
+        runCurrent()
+        val signingIn = async { owed.signingIn { events += "login" } }
+        runCurrent()
+        assertEquals("the login waits for the DELETE", emptyList<String>(), events)
+
+        held.complete(503)
+        sending.await()
+        signingIn.await()
+
+        assertEquals(listOf("unregister RETRY", "login"), events)
+        assertNull("signed in, the device is the new session's", store.pending)
+    }
+
+    @Test
+    fun `a sign-in that fails leaves the debt`() = runTest {
+        owe()
+
+        runCatching { owed.signingIn { throw IllegalStateException("login refused") } }
+
+        assertEquals("device-1", store.pending?.deviceId)
+    }
+
+    @Test
+    fun `a session that appears while the token is refreshed stops the DELETE`() = runTest {
+        owe(expiresAt = now - 1)
+        refreshReplies += refreshed("access-2", "refresh-2")
+        onRefresh = { signedInSince = true }
+
+        assertEquals(Outcome.DONE, unregister().send())
+
+        assertEquals(emptyList<String>(), deletes)
         assertNull(store.pending)
     }
 

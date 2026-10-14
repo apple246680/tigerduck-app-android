@@ -2,13 +2,11 @@ package org.ntust.app.tigerduck.push
 
 import android.util.Log
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.ntust.app.tigerduck.auth.AuthTokenManager
 import org.ntust.app.tigerduck.auth.DepartingRefresh
 import org.ntust.app.tigerduck.auth.DepartingSession
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
-import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.network.resolveAnnouncementEndpoint
 import org.ntust.app.tigerduck.util.logSummary
 import java.io.IOException
@@ -41,7 +39,7 @@ interface PendingUnregisterStore {
  */
 @Singleton
 class DepartingDeviceUnregister internal constructor(
-    private val store: PendingUnregisterStore,
+    private val owed: OwedUnregister,
     /** The HTTP status; throws [IOException] when no reply came back. */
     private val deleteDevice: suspend (base: String, deviceId: String, accessToken: String) -> Int,
     private val refresh: suspend (DepartingSession) -> DepartingRefresh,
@@ -52,12 +50,12 @@ class DepartingDeviceUnregister internal constructor(
 ) {
     @Inject
     constructor(
-        credentials: CredentialManager,
+        owed: OwedUnregister,
         api: PushApiClient,
         authTokenManager: AuthTokenManager,
         prefs: AppPreferences,
     ) : this(
-        store = credentials.pendingUnregister,
+        owed = owed,
         deleteDevice = api::deleteDevice,
         refresh = authTokenManager::refreshDeparting,
         hasSession = { authTokenManager.isLoggedIn },
@@ -73,7 +71,10 @@ class DepartingDeviceUnregister internal constructor(
         RETRY,
     }
 
-    private val mutex = Mutex()
+    private val store = owed.store
+
+    // Shared with a backend sign-in; see OwedUnregister.signingIn.
+    private val mutex = owed.mutex
 
     /** Keeps [pending] until the server has it, in place of any owed before. */
     suspend fun owe(pending: PendingUnregister) = mutex.withLock { store.save(pending) }
@@ -115,6 +116,9 @@ class DepartingDeviceUnregister internal constructor(
         return true
     }
 
+    // Checked again right before each DELETE as well as before anything is sent: a session that
+    // appeared meanwhile is a sign-in's, which moved the device to its account (class comment).
+    // Its login waits for this lock, so this is a second line rather than the first.
     private suspend fun sendAs(pending: PendingUnregister): Outcome {
         var current = pending
         var refreshed = false
@@ -122,10 +126,12 @@ class DepartingDeviceUnregister internal constructor(
             current = renew(current) ?: return afterFailedRefresh()
             refreshed = true
         }
+        if (hasSession()) return Outcome.DONE
         var status = deleteDevice(current.session.baseUrl, current.deviceId, current.session.accessToken)
         if (status == 401 && !refreshed) {
             // Turned down before its time, a revoked token, say: a refreshed one may still go out.
             current = renew(current) ?: return afterFailedRefresh()
+            if (hasSession()) return Outcome.DONE
             status = deleteDevice(current.session.baseUrl, current.deviceId, current.session.accessToken)
         }
         return when {

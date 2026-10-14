@@ -12,6 +12,7 @@ import org.junit.runner.RunWith
 import org.ntust.app.tigerduck.auth.DepartingRefresh
 import org.ntust.app.tigerduck.auth.DepartingSession
 import org.ntust.app.tigerduck.push.DepartingDeviceUnregister
+import org.ntust.app.tigerduck.push.OwedUnregister
 import org.ntust.app.tigerduck.push.PendingUnregister
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
@@ -86,7 +87,7 @@ class PendingUnregisterPrefsTest {
         val tokens = V3TokenStore(prefs)
         val deletes = mutableListOf<String>()
         fun unregister() = DepartingDeviceUnregister(
-            store = PendingUnregisterPrefs(prefs),
+            owed = OwedUnregister(PendingUnregisterPrefs(prefs)),
             deleteDevice = { _, device, token -> deletes += "$device $token"; 204 },
             refresh = { DepartingRefresh.Refused },
             hasSession = { tokens.refreshToken != null },

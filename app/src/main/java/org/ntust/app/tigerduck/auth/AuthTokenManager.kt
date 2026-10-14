@@ -2,6 +2,7 @@ package org.ntust.app.tigerduck.auth
 
 import android.util.Log
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
@@ -16,6 +17,7 @@ import org.ntust.app.tigerduck.BuildConfig
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore
 import org.ntust.app.tigerduck.network.resolveAnnouncementEndpoint
+import org.ntust.app.tigerduck.push.OwedUnregister
 import org.ntust.app.tigerduck.push.currentDeviceModel
 import org.ntust.app.tigerduck.util.logSummary
 import java.io.IOException
@@ -39,6 +41,8 @@ class AuthTokenManager(
     private val prefs: AppPreferences,
     private val deviceUuid: String,
     private val now: () -> Long = System::currentTimeMillis,
+    // The unregister a sign-out owes, which a login waits for and then ends; see [login].
+    private val owedUnregister: OwedUnregister? = null,
 ) {
     private val refreshMutex = Mutex()
     private val jsonType = "application/json".toMediaType()
@@ -252,7 +256,7 @@ class AuthTokenManager(
         moodlePrivateToken: String?,
         platform: String = "android",
         signInGeneration: Int = this.signInGeneration,
-    ): LoginResult = withContext(Dispatchers.IO) {
+    ): LoginResult = signingIn {
         if (moodleToken.isBlank()) throw AuthException("no Moodle token")
         val json = JSONObject().apply {
             put("student_id", studentId)
@@ -285,6 +289,16 @@ class AuthTokenManager(
                 deviceId = result.getString("device_id"),
             )
         }
+    }
+
+    /**
+     * A backend login, on the I/O dispatcher and under the lock of the
+     * unregister a sign-out owes, which a login that lands ends: see
+     * [OwedUnregister.signingIn].
+     */
+    private suspend fun <T> signingIn(login: suspend CoroutineScope.() -> T): T = withContext(Dispatchers.IO) {
+        val owed = owedUnregister ?: return@withContext login()
+        owed.signingIn { login() }
     }
 
     /**
