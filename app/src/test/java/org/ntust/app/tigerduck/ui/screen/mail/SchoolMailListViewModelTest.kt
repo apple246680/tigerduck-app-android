@@ -130,6 +130,50 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
+    fun `search results keep paging past the first page as the list scrolls`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..5L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray(), mailSummary(6, subject = "other"))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        assertEquals(listOf(5L, 4L), vm.state.value.displayed.map { it.uid })
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertEquals(listOf(5L, 4L, 3L, 2L, 1L), vm.state.value.displayed.map { it.uid })
+        assertEquals(listOf("INBOX" to listOf(3L, 2L, 1L)), repo.searchPages)
+        // The matches have run out; scrolling to the end again asks for nothing.
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertEquals(1, repo.searchPages.size)
+    }
+
+    @Test
+    fun `a search whose first page shows nothing under unread only fetches on until something shows`() {
+        repo.pageSize = 2
+        repo.add("INBOX", mailSummary(1, subject = "期中考 1"), mailSummary(2, subject = "期中考 2", seen = true), mailSummary(3, subject = "期中考 3", seen = true))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setUnreadOnly(true)
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        // No row on screen means no last row to scroll to, so the search cannot wait for one.
+        assertEquals(listOf(1L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `clearing the search drops the matches it had left to fetch`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..5L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        vm.setSearchText("")
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertTrue(repo.searchPages.isEmpty())
+        assertNull(vm.state.value.searchResults)
+    }
+
+    @Test
     fun `swiping toggles read on the server and in the list`() {
         repo.add("INBOX", mailSummary(1))
         vm.load()

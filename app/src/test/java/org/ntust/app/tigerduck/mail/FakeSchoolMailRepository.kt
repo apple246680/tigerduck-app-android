@@ -219,7 +219,18 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         foldersTouched += folder
         searchError?.let { throw it }
         val hits = sorted(folder).filter { query in it.subject }
-        return if (searchUnsupported) SearchOutcome.LoadedOnly(hits) else SearchOutcome.Server(hits)
+        // Paged like the real repository: the newest [pageSize] matches, the rest left to fetch.
+        return if (searchUnsupported) SearchOutcome.LoadedOnly(hits)
+        else SearchOutcome.Server(hits.take(pageSize), hits.drop(pageSize).map { it.uid })
+    }
+
+    /** Every `(folder, uids)` handed to [searchPage], in order. */
+    val searchPages = mutableListOf<Pair<String, List<Long>>>()
+
+    override suspend fun searchPage(folder: String, uids: List<Long>): List<MailSummary> {
+        foldersTouched += folder
+        searchPages += folder to uids
+        return sorted(folder).filter { it.uid in uids }
     }
 
     var rawSourceError: MailError? = null

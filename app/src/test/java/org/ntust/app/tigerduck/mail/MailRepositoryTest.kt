@@ -268,6 +268,16 @@ class MailRepositoryTest {
     }
 
     @Test
+    fun `search returns the newest page of matches and keeps the rest to fetch`() = runTest {
+        val uids = (1..MailRepository.PAGE_SIZE + 2).map { server.deliver("期中考 $it") }
+        val repo = TestSetup(backgroundScope).signedIn()
+        val outcome = repo.search("INBOX", "期中") as SearchOutcome.Server
+        assertEquals(uids.takeLast(MailRepository.PAGE_SIZE).reversed(), outcome.messages.map { it.uid })
+        assertEquals(uids.take(2).reversed(), outcome.remaining)
+        assertEquals(uids.take(2).reversed(), repo.searchPage("INBOX", outcome.remaining).map { it.uid })
+    }
+
+    @Test
     fun `sending uses the display name and marks the original answered`() = runTest {
         val uid = server.deliver("question")
         val setup = TestSetup(backgroundScope)

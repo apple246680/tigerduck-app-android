@@ -14,6 +14,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.mail.MailAccount
 import org.ntust.app.tigerduck.mail.MailError
+import org.ntust.app.tigerduck.mail.MailRepository
 import org.ntust.app.tigerduck.mail.MailSite
 import org.ntust.app.tigerduck.mail.SchoolMailRepository
 import org.ntust.app.tigerduck.mail.SearchOutcome
@@ -140,6 +141,18 @@ class SchoolMailListViewModel @Inject constructor(
      */
     private var prefetchDone = false
 
+    /**
+     * The server matches the last search has not fetched yet, per folder, newest first: what
+     * scrolling to the end of the results fetches next ([loadMoreSearchResults]).
+     */
+    private var unfetchedMatches: Map<String, List<Long>> = emptyMap()
+
+    /**
+     * Bumped by every search submitted or cleared, so a page of results still on its way for an
+     * earlier query is dropped rather than added to this one's.
+     */
+    private var searchGeneration = 0
+
     init {
         // Signing out must not leave the previous account's mail on screen for
         // whoever signs in next (spec §7.5).
@@ -149,6 +162,7 @@ class SchoolMailListViewModel @Inject constructor(
                     prefetchJob?.cancel()
                     prefetchJob = null
                     prefetchDone = false
+                    forgetSearch()
                     _state.value = UiState()
                 }
             }
@@ -213,6 +227,7 @@ class SchoolMailListViewModel @Inject constructor(
         if (selection == _state.value.selected) return
         prefetchJob?.cancel()
         prefetchJob = null
+        forgetSearch()
         _state.update {
             it.copy(selected = selection, messages = emptyList(), cursors = emptyMap(), searchResults = null, searchText = "", searchLocalOnly = false)
         }
@@ -229,8 +244,16 @@ class SchoolMailListViewModel @Inject constructor(
 
     fun setUnreadOnly(value: Boolean) = _state.update { it.copy(unreadOnly = value) }
 
-    fun setSearchText(text: String) = _state.update {
-        if (text.isBlank()) it.copy(searchText = text, searchResults = null, searchLocalOnly = false) else it.copy(searchText = text)
+    fun setSearchText(text: String) {
+        if (text.isBlank()) forgetSearch()
+        _state.update {
+            if (text.isBlank()) it.copy(searchText = text, searchResults = null, searchLocalOnly = false) else it.copy(searchText = text)
+        }
+    }
+
+    private fun forgetSearch() {
+        searchGeneration++
+        unfetchedMatches = emptyMap()
     }
 
     fun submitSearch() {
@@ -239,7 +262,12 @@ class SchoolMailListViewModel @Inject constructor(
 
     fun loadMoreIfNeeded(last: MailRow) {
         val s = _state.value
-        if (s.searchResults != null || s.isPaginating || s.cursors.isEmpty() || s.messages.lastOrNull()?.key != last.key) return
+        if (s.searchResults != null) {
+            if (s.isPaginating || s.displayed.lastOrNull()?.key != last.key) return
+            if (unfetchedMatches.values.any { it.isNotEmpty() }) viewModelScope.launch { loadMoreSearchResults() }
+            return
+        }
+        if (s.isPaginating || s.cursors.isEmpty() || s.messages.lastOrNull()?.key != last.key) return
         viewModelScope.launch { paginate() }
     }
 
@@ -437,6 +465,8 @@ class SchoolMailListViewModel @Inject constructor(
     private suspend fun runSearch() {
         val selection = _state.value.selected
         val query = _state.value.searchText.trim()
+        forgetSearch()
+        val generation = searchGeneration
         if (query.isEmpty()) {
             _state.update { it.copy(searchResults = null, searchLocalOnly = false) }
             return
@@ -461,8 +491,11 @@ class SchoolMailListViewModel @Inject constructor(
                     )
                 }
             }
-            if (_state.value.selected != selection) return
+            if (_state.value.selected != selection || generation != searchGeneration) return
             val rows = outcomes.flatMap { (folder, outcome) -> outcome.messages.map { MailRow(folder, it) } }
+            unfetchedMatches = outcomes.mapNotNull { (folder, outcome) ->
+                (outcome as? SearchOutcome.Server)?.remaining?.takeIf { it.isNotEmpty() }?.let { folder to it }
+            }.toMap()
             _state.update {
                 it.copy(
                     searchResults = ordered(selection, rows),
@@ -470,8 +503,49 @@ class SchoolMailListViewModel @Inject constructor(
                 )
             }
             failure?.let(::actionFail)
+            // Nothing on screen means no last row to scroll to, however many matches are left.
+            if (_state.value.displayed.isEmpty()) loadMoreSearchResults()
         } finally {
             _state.update { it.copy(isSearching = false) }
+        }
+    }
+
+    /**
+     * The next page of each folder's [unfetchedMatches], added to the results. A page can add
+     * nothing that shows -- every match since deleted, or read under unread only -- and then no
+     * new last row appears to ask for the next one, so this keeps going until the end of the list
+     * moves or the matches run out. A failure stops it and says so; the page it was fetching
+     * stays unfetched for the next scroll to try again.
+     */
+    private suspend fun loadMoreSearchResults() {
+        val selection = _state.value.selected
+        val generation = searchGeneration
+        val end = _state.value.displayed.lastOrNull()?.key
+        _state.update { it.copy(isPaginating = true) }
+        try {
+            while (_state.value.displayed.lastOrNull()?.key == end) {
+                val pending = unfetchedMatches.filterValues { it.isNotEmpty() }
+                if (pending.isEmpty()) return
+                for ((folder, uids) in pending) {
+                    val batch = uids.take(MailRepository.PAGE_SIZE)
+                    val more = try {
+                        repository.searchPage(folder, batch)
+                    } catch (e: MailError) {
+                        if (generation == searchGeneration) actionFail(e)
+                        return
+                    }
+                    if (_state.value.selected != selection || generation != searchGeneration) return
+                    unfetchedMatches = unfetchedMatches + (folder to uids.drop(batch.size))
+                    _state.update { st ->
+                        val results = st.searchResults ?: return@update st
+                        val listed = results.mapTo(HashSet()) { it.key }
+                        val added = more.map { MailRow(folder, it) }.filter { it.key !in listed }
+                        st.copy(searchResults = ordered(selection, results + added))
+                    }
+                }
+            }
+        } finally {
+            _state.update { it.copy(isPaginating = false) }
         }
     }
 

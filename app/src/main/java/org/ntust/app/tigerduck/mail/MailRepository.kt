@@ -36,7 +36,13 @@ import javax.inject.Singleton
 
 sealed interface SearchOutcome {
     val messages: List<MailSummary>
-    data class Server(override val messages: List<MailSummary>) : SearchOutcome
+
+    /**
+     * The newest page of the server's matches, and [remaining]: the UIDs of every match not
+     * fetched yet, newest first, for [SchoolMailRepository.searchPage] to fetch as the list
+     * scrolls.
+     */
+    data class Server(override val messages: List<MailSummary>, val remaining: List<Long> = emptyList()) : SearchOutcome
     /** The server couldn't search; these are matches among already-loaded mail. */
     data class LoadedOnly(override val messages: List<MailSummary>) : SearchOutcome
 }
@@ -72,6 +78,9 @@ interface SchoolMailRepository {
     suspend fun deletesPermanently(folder: String): Boolean
     suspend fun delete(folder: String, uid: Long)
     suspend fun search(folder: String, query: String): SearchOutcome
+
+    /** The summaries of [uids], matches [search] left in [SearchOutcome.Server.remaining]; mail gone since is left out. */
+    suspend fun searchPage(folder: String, uids: List<Long>): List<MailSummary>
 
     /** Cache-first like [body], so revisiting a mail's source never re-downloads it. */
     suspend fun rawSource(folder: String, uid: Long): String
@@ -352,12 +361,20 @@ class MailRepository @Inject constructor(
         val q = query.trim()
         if (account.isDemo) return SearchOutcome.LoadedOnly(demoPage(folder).messages.filter { matchesLoadedMail(it, q) })
         return try {
-            val uids = withSession { it.search(folder, q) }.take(PAGE_SIZE)
-            SearchOutcome.Server(withSession { it.fetchByUids(folder, uids) })
+            // Newest first, so the first page is the newest matches and the rest page back.
+            val matches = withSession { it.search(folder, q) }
+            val newest = matches.take(PAGE_SIZE)
+            SearchOutcome.Server(withSession { it.fetchByUids(folder, newest) }, matches.drop(newest.size))
         } catch (e: MailError.SearchUnsupported) {
             val loaded = cachedPage(folder)?.messages.orEmpty()
             SearchOutcome.LoadedOnly(loaded.filter { matchesLoadedMail(it, q) })
         }
+    }
+
+    override suspend fun searchPage(folder: String, uids: List<Long>): List<MailSummary> {
+        // The demo search answers from the loaded mail, which leaves nothing to fetch later.
+        if (account.isDemo) return emptyList()
+        return withSession { it.fetchByUids(folder, uids) }
     }
 
     /**
