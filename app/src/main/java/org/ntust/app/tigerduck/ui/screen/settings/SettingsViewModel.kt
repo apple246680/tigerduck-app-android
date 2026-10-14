@@ -144,12 +144,12 @@ class SettingsViewModel @Inject constructor(
     fun pushCloudSyncEnabled(enabled: Boolean) {
         ServerStatusTracker.setCloudSyncEnabled(enabled)
         if (enabled) {
-            // Fail closed: record the preference only once the server has
-            // accepted the device, so a failed registration cannot leave the
-            // app believing it is syncing when it is not.
+            // Fail closed: the preference is recorded only once the server
+            // has accepted the device, so a failed registration cannot leave
+            // the app believing it is syncing when it is not. The service
+            // records it, before any registration crossing the PATCH ends.
             viewModelScope.launch {
                 runCatching { pushRegistration.updateCloudSyncEnabled(true) }
-                    .onSuccess { prefs.cloudSyncEnabled = true }
                     .onFailure {
                         ServerStatusTracker.setCloudSyncEnabled(false)
                         Log.w(TAG, "enabling cloud sync failed: ${it.logSummary()}")

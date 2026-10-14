@@ -85,6 +85,19 @@ class PushRegistrationService @Inject constructor(
     // for endRegistration to start after it unless that one covered it.
     private var registrationAskedWhileRunning = false
 
+    // Guarded by [mutex]. The backoff was started over while a registration
+    // ran, whose failure then does not count; see failureCounts.
+    private var streakResetWhileRunning = false
+
+    // Guarded by [mutex]. Passes that registered the account and ended, and
+    // the switch the last of them sent: for the switch's PATCH to tell
+    // whether one crossed it; see updateCloudSyncEnabled.
+    private var accountPassesEnded = 0
+    private var lastAccountPass: RegistrationPass? = null
+
+    // Flips of the TigerSync switch asked for; see recordsSwitchOn.
+    private val switchRequests = java.util.concurrent.atomic.AtomicInteger()
+
     private val prefs: SharedPreferences =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
@@ -124,8 +137,18 @@ class PushRegistrationService @Inject constructor(
         }
     }
 
+    /** A sign-in starts the backoff over, as iOS's `registerAgain` does. */
     suspend fun onSignedIn() {
-        scheduleRegister()
+        mutex.withLock {
+            startStreakOver()
+            requestRegistration()
+        }
+    }
+
+    /** Starts the backoff over, with [mutex] held; a pass running now does not count its failure. */
+    private fun startStreakOver() {
+        consecutiveRegistrationFailures = 0
+        if (registrationsRunning > 0) streakResetWhileRunning = true
     }
 
     /**
@@ -359,6 +382,18 @@ class PushRegistrationService @Inject constructor(
     private suspend fun endRegistration(token: String?, pass: RegistrationPass?) {
         mutex.withLock {
             registrationsRunning--
+            if (registrationsRunning == 0) streakResetWhileRunning = false
+            if (pass != null && pass.landed && pass.withAccount) {
+                accountPassesEnded++
+                lastAccountPass = pass
+            }
+            // The switch flipped while this pass was out: register again with
+            // it as it is now, whatever else was asked meanwhile.
+            if (pass?.leftSwitchBehind(appPreferences.cloudSyncEnabled) == true && authTokenManager.isLoggedIn) {
+                registrationAskedWhileRunning = false
+                requestRegistration()
+                return@withLock
+            }
             if (registrationsRunning > 0 || !registrationAskedWhileRunning) return@withLock
             registrationAskedWhileRunning = false
             val covered = pass?.covers(
@@ -476,8 +511,9 @@ class PushRegistrationService @Inject constructor(
     private suspend fun recordRegistrationAttempt(landed: Boolean, countsAsFailure: Boolean = true) {
         mutex.withLock {
             lastRegistrationAttemptAt = SystemClock.elapsedRealtime()
+            val counts = countsAsFailure && failureCounts(streakResetWhileRunning)
             val next = RegistrationAttemptState(registrationOwed, consecutiveRegistrationFailures)
-                .afterRegistrationAttempt(landed, countsAsFailure)
+                .afterRegistrationAttempt(landed, counts)
             registrationOwed = next.registrationOwed
             consecutiveRegistrationFailures = next.consecutiveFailures
         }
@@ -660,12 +696,24 @@ class PushRegistrationService @Inject constructor(
      * until one lands, is made again with the retry's backoff started over.
      * Also after a refused PATCH: the server answers 404 for a device it holds
      * no row for, and only a registration adds one. The refusal is still
-     * thrown, as `SettingsViewModel.pushCloudSyncEnabled` records the switch
-     * only when this returns.
+     * thrown.
+     *
+     * Turning it on is recorded here once the server has accepted it (fail
+     * closed), unless it was turned off again meanwhile; turning it off is
+     * recorded by the caller before this runs (fail open). A registration
+     * sends the switch as it reads it when it goes out, so one that crossed
+     * this PATCH registers again with the switch as it is now: here for one
+     * that ended while the PATCH was out, in endRegistration for one still
+     * running (tigerduck-app-android#200).
      */
     suspend fun updateCloudSyncEnabled(enabled: Boolean) {
-        if (fixtures.demoMode) return
+        val request = switchRequests.incrementAndGet()
+        if (fixtures.demoMode) {
+            if (enabled && recordsSwitchOn(request, switchRequests.get())) appPreferences.cloudSyncEnabled = true
+            return
+        }
         val deviceId = identity.uuid()
+        val passesBefore = mutex.withLock { accountPassesEnded }
         val refusal = try {
             api.updateDevicePreferences(deviceId, cloudSyncEnabled = enabled)
             null
@@ -674,9 +722,25 @@ class PushRegistrationService @Inject constructor(
         } catch (e: Exception) {
             e
         }
-        if (enabled && _diagnostic.value.lastError != null) {
-            mutex.withLock { consecutiveRegistrationFailures = 0 }
-            scheduleRegister()
+        // Recorded here rather than by the caller once this returns, so a
+        // registration that ends from now on reads it.
+        if (refusal == null && enabled && recordsSwitchOn(request, switchRequests.get())) {
+            appPreferences.cloudSyncEnabled = true
+        }
+        mutex.withLock {
+            if (enabled && _diagnostic.value.lastError != null) {
+                startStreakOver()
+                requestRegistration()
+            } else if (
+                accountPassesEnded != passesBefore &&
+                lastAccountPass?.leftSwitchBehind(appPreferences.cloudSyncEnabled) == true &&
+                authTokenManager.isLoggedIn
+            ) {
+                // A registration that read the switch before this PATCH ended
+                // while it was out; its request may have reached the server
+                // after this one. One still running is checked as it ends.
+                requestRegistration()
+            }
         }
         if (refusal != null) throw refusal
     }
@@ -831,6 +895,33 @@ internal fun RegistrationPass.covers(
     cloudSyncNow: Boolean,
 ): Boolean = landed && sentToken == tokenNow &&
     (if (withAccount) cloudSyncEnabled == cloudSyncNow else !signedInNow)
+
+/**
+ * Whether this pass, ended, left the server holding a TigerSync switch other
+ * than the one this phone has now ([cloudSyncNow]): it registered the account
+ * with the switch as it read it when it was sent, and the switch was flipped
+ * while it was out. Its request may have reached the server after the
+ * switch's own PATCH and undone it, so the registration goes again with the
+ * switch as it is now (tigerduck-app-android#200).
+ */
+internal fun RegistrationPass.leftSwitchBehind(cloudSyncNow: Boolean): Boolean =
+    landed && withAccount && cloudSyncEnabled != cloudSyncNow
+
+/**
+ * Whether a switch's PATCH that ended may record the switch as on: it was the
+ * last flip asked for ([request] is still [latest]). A flip back off made
+ * while it was out has already recorded off, and recording on over it would
+ * leave this phone syncing with the server told otherwise.
+ */
+internal fun recordsSwitchOn(request: Int, latest: Int): Boolean = request == latest
+
+/**
+ * Whether a failed registration climbs the retry's backoff: not when the
+ * backoff was started over while it ran (a sign-in, or TigerSync turned on
+ * after a failure), as iOS's `registerAgain` does not count it either; the
+ * registration that follows at once starts the streak.
+ */
+internal fun failureCounts(streakResetWhileRunning: Boolean): Boolean = !streakResetWhileRunning
 
 /**
  * What a registration request does: the bookkeeping it leaves behind, and

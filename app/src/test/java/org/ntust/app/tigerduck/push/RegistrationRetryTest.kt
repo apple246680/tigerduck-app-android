@@ -206,4 +206,39 @@ class RegistrationRetryTest {
         )
         assertTrue(sentOff.covers(sentToken = "fcm-1", tokenNow = "fcm-1", signedInNow = true, cloudSyncNow = false))
     }
+
+    // ---- the TigerSync switch crossing a registration (tigerduck-app-android#200) ----
+
+    @Test
+    fun `a registration that sent the switch before it was flipped goes again`() {
+        val sentOn = RegistrationPass(landed = true, withAccount = true, cloudSyncEnabled = true)
+
+        assertTrue("turned off while it was out: it may have turned sync back on", sentOn.leftSwitchBehind(cloudSyncNow = false))
+        assertFalse(sentOn.leftSwitchBehind(cloudSyncNow = true))
+        assertTrue(
+            "turned on while it was out",
+            RegistrationPass(landed = true, withAccount = true, cloudSyncEnabled = false).leftSwitchBehind(cloudSyncNow = true),
+        )
+    }
+
+    @Test
+    fun `a pass that sent no switch leaves none behind`() {
+        assertFalse("announced the device alone", RegistrationPass(landed = true).leftSwitchBehind(cloudSyncNow = true))
+        assertFalse(
+            "never reached the server",
+            RegistrationPass(landed = false, withAccount = true, cloudSyncEnabled = true).leftSwitchBehind(cloudSyncNow = false),
+        )
+    }
+
+    @Test
+    fun `turning TigerSync on is recorded only if it was not turned off meanwhile`() {
+        assertTrue(recordsSwitchOn(request = 3, latest = 3))
+        assertFalse(recordsSwitchOn(request = 3, latest = 4))
+    }
+
+    @Test
+    fun `a failure after the backoff was started over during it does not count`() {
+        assertFalse(failureCounts(streakResetWhileRunning = true))
+        assertTrue(failureCounts(streakResetWhileRunning = false))
+    }
 }
