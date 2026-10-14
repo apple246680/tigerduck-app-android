@@ -52,6 +52,20 @@ class MoodleLogicTest {
     }
 
     @Test
+    fun `a course with a total but no graded activity shown keeps its grades row`() {
+        val onlyTotal = MoodleCourseGrades(listOf(grade(2, grade = null), grade(3, type = "course")))
+
+        assertEquals(
+            MoodleSectionRow(MoodleSectionRow.Kind.GRADES, 0, false),
+            MoodleSections.rows(null, 5, onlyTotal, null).single(),
+        )
+        assertTrue(
+            "nothing shown, total included, has no row",
+            MoodleSections.rows(null, 5, MoodleCourseGrades(listOf(grade(3, grade = null, type = "course"))), null).isEmpty(),
+        )
+    }
+
+    @Test
     fun `the members row needs someone besides the account`() {
         val list = MoodleMemberList(ownId = 1, members = listOf(member(1, "Me"), member(2, "You")))
         val rows = MoodleSections.rows(null, 5, null, list)

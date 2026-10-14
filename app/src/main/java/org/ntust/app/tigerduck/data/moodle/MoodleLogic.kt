@@ -61,7 +61,10 @@ object MoodleSections {
             rows += MoodleSectionRow(MoodleSectionRow.Kind.ANNOUNCEMENTS, it.discussionCount, it.unreadPostCount > 0)
         }
         val graded = grades?.let(MoodleGrades::graded)?.size ?: 0
-        if (graded > 0) rows += MoodleSectionRow(MoodleSectionRow.Kind.GRADES, graded, false)
+        // A course total shown is worth the row on its own, graded activities shown or none.
+        if (graded > 0 || grades?.let(MoodleGrades::total) != null) {
+            rows += MoodleSectionRow(MoodleSectionRow.Kind.GRADES, graded, false)
+        }
         if (members != null && MoodleMembers.showsOthers(members)) {
             rows += MoodleSectionRow(MoodleSectionRow.Kind.MEMBERS, members.members.size, false)
         }
