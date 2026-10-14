@@ -41,15 +41,19 @@ class LiveActivityManagerTest {
         var armedCourses: List<Course> = emptyList()
         var cancels = 0
 
+        /** What [scheduleAll] reports as the next class's start. */
+        var nextClassStart: Long? = null
+
         override fun scheduleAll(
             courses: List<Course>,
             skippedDates: Map<String, List<String>>,
             leadTimeSec: Long,
             calendar: AcademicCalendar,
             optedInHolidayIds: Set<Int>,
-        ) {
+        ): Long? {
             armedLeadSec = leadTimeSec
             armedCourses = courses
+            return nextClassStart
         }
 
         override fun cancelAllTracked() {

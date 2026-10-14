@@ -158,10 +158,11 @@ class LiveActivityManager internal constructor(
 
         // Before the Live Update's own gate: class reminders have a switch of
         // their own and no longer stop with the Live Update.
-        armClassReminders(signedIn, skipped, calendar, optedIn)
+        val nextClassStart = armClassReminders(signedIn, skipped, calendar, optedIn)
         // And whatever the Live Update shows: with a due-soon assignment
         // shown first, the switch to "in class" that cleared these may never
-        // come. The boundary alarm at class start brings a refresh here.
+        // come. The boundary alarm at class start brings a refresh here,
+        // with the Live Update off too (see below).
         notifier.clearStartedClassBanners(AppClock.nowMillis())
 
         if (!preferences.isEnabled || !signedIn) {
@@ -175,7 +176,11 @@ class LiveActivityManager internal constructor(
                 )
             }
             notifier.cancel()
+            // With no Live Update to follow, the boundary alarm is kept only
+            // to clear a class reminder's banner when its class begins, as
+            // the banner's own timeout is a hint that can come late.
             boundaryScheduler.cancel()
+            classStartWakeAt(AppClock.nowMillis(), nextClassStart)?.let(boundaryScheduler::scheduleAt)
             return
         }
         val now = Date(AppClock.nowMillis())
@@ -214,24 +219,27 @@ class LiveActivityManager internal constructor(
      * Keeps the class reminder alarms in step with the course list and the
      * class reminder's own switch and lead time ([ClassReminders]), so a
      * reminder fires even while the app is closed. Signing out cancels them.
+     *
+     * Returns the start of the next class they cover, or null when none are
+     * armed; see [ClassReminderAlarms.scheduleAll].
      */
     private suspend fun armClassReminders(
         signedIn: Boolean,
         skipped: Map<String, List<String>>,
         calendar: org.ntust.app.tigerduck.academic.AcademicCalendar,
         optedIn: Set<Int>,
-    ) {
+    ): Long? {
         val settings = ClassReminderSettings(appPrefs.classReminderEnabled, appPrefs.classReminderLeadMinutes)
         val leadSec = ClassReminders.leadSecondsToArm(settings, signedIn)
         if (leadSec == null) {
             classPreparingScheduler.cancelAllTracked()
-            return
+            return null
         }
         // The full course list, never one emptied for a quiet day: the
         // scheduler reaches ten days ahead and does its own per-day check,
         // so handing it today's emptiness would cancel next week's reminders
         // too.
-        classPreparingScheduler.scheduleAll(
+        return classPreparingScheduler.scheduleAll(
             courses = dataCache.loadCourses(),
             skippedDates = skipped,
             leadTimeSec = leadSec,
@@ -320,6 +328,14 @@ class LiveActivityManager internal constructor(
         const val PROGRESS_TICK_MS = 2 * 60_000L
     }
 }
+
+/**
+ * When the boundary alarm fires with no Live Update to follow: just after the
+ * next class a reminder covers begins ([nextClassStartMs]), padded and floored
+ * as [boundaryTriggerAt] does, or null for no class.
+ */
+internal fun classStartWakeAt(nowMs: Long, nextClassStartMs: Long?): Long? =
+    nextClassStartMs?.takeIf { it > nowMs }?.let { (it + 1_000L).coerceAtLeast(nowMs + 30_000L) }
 
 /** When the boundary alarm fires: the earliest of [candidates] still ahead of [nowMs]. */
 internal fun boundaryTriggerAt(nowMs: Long, candidates: List<Long>): Long {

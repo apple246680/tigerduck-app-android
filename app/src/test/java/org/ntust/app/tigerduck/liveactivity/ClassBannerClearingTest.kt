@@ -1,6 +1,7 @@
 package org.ntust.app.tigerduck.liveactivity
 
 import android.Manifest
+import android.app.AlarmManager
 import android.app.Application
 import android.app.Notification
 import android.app.NotificationManager
@@ -90,30 +91,46 @@ class ClassBannerClearingTest {
         assertTrue("no banner or summary left", !anyClassNotification())
     }
 
+    private val calendarStore = AcademicCalendarStore(context, OkHttpClient(), appPrefs)
+    private val dataCache = DataCache(context, calendarStore)
+
+    /**
+     * The real manager, over class reminder alarms that report
+     * [nextClassStart] as the start of the next class they cover.
+     */
+    private fun liveActivityManager(nextClassStart: Long? = null) = LiveActivityManager(
+        preferences = liveUpdate,
+        notifier = notifier,
+        dataCache = dataCache,
+        isSignedIn = { true },
+        appPrefs = appPrefs,
+        classPreparingScheduler = object : ClassReminderAlarms {
+            override fun scheduleAll(
+                courses: List<Course>,
+                skippedDates: Map<String, List<String>>,
+                leadTimeSec: Long,
+                calendar: AcademicCalendar,
+                optedInHolidayIds: Set<Int>,
+            ): Long? = nextClassStart
+            override fun cancelAllTracked() = Unit
+        },
+        academicCalendar = calendarStore,
+        boundaryScheduler = LiveActivityBoundaryScheduler(context),
+        appScope = scope,
+    )
+
+    /** When the Live Update's wake-up alarm, the one that brings a refresh, is set for. */
+    private fun refreshWakes(): List<Long> =
+        shadowOf(context.getSystemService(AlarmManager::class.java)).scheduledAlarms
+            .filter {
+                it.type == AlarmManager.RTC_WAKEUP &&
+                    shadowOf(it.operation).savedIntent.action == LiveActivityBoundaryScheduler.ACTION_BOUNDARY
+            }
+            .map { it.triggerAtMs }
+
     @Test
     fun `a refresh clears a started banner while the Live Update shows a deadline`() {
-        val calendar = AcademicCalendarStore(context, OkHttpClient(), appPrefs)
-        val dataCache = DataCache(context, calendar)
-        val manager = LiveActivityManager(
-            preferences = liveUpdate,
-            notifier = notifier,
-            dataCache = dataCache,
-            isSignedIn = { true },
-            appPrefs = appPrefs,
-            classPreparingScheduler = object : ClassReminderAlarms {
-                override fun scheduleAll(
-                    courses: List<Course>,
-                    skippedDates: Map<String, List<String>>,
-                    leadTimeSec: Long,
-                    calendar: AcademicCalendar,
-                    optedInHolidayIds: Set<Int>,
-                ) = Unit
-                override fun cancelAllTracked() = Unit
-            },
-            academicCalendar = calendar,
-            boundaryScheduler = LiveActivityBoundaryScheduler(context),
-            appScope = scope,
-        )
+        val manager = liveActivityManager()
         runBlocking {
             dataCache.saveAssignments(
                 listOf(
@@ -138,5 +155,45 @@ class ClassBannerClearingTest {
             }.id,
         )
         assertTrue(!anyClassNotification())
+    }
+
+    @Test
+    fun `with the Live Update off, a refresh is still kept for when the next class begins`() {
+        liveUpdate.isEnabled = false
+        appPrefs.classReminderEnabled = true
+        val classStart = now + 5 * 60_000L
+        banner(1, startMs = classStart)
+
+        runBlocking { liveActivityManager(nextClassStart = classStart).refreshAndWait() }
+
+        assertEquals("the banner stays until its class begins", setOf(1), bannerIds())
+        assertEquals(listOf(classStart + 1_000L), refreshWakes())
+    }
+
+    @Test
+    fun `with the Live Update off, the refresh at class start clears the banner and waits for the next class`() {
+        liveUpdate.isEnabled = false
+        appPrefs.classReminderEnabled = true
+        banner(1, startMs = now - 1_000L)
+        val nextWeek = now + 7 * DAY_MS
+
+        runBlocking { liveActivityManager(nextClassStart = nextWeek).refreshAndWait() }
+
+        assertTrue(!anyClassNotification())
+        assertEquals(listOf(nextWeek + 1_000L), refreshWakes())
+    }
+
+    @Test
+    fun `with the Live Update and class reminders both off, no refresh is kept waiting`() {
+        liveUpdate.isEnabled = false
+        appPrefs.classReminderEnabled = false
+
+        runBlocking { liveActivityManager(nextClassStart = now + 5 * 60_000L).refreshAndWait() }
+
+        assertEquals(emptyList<Long>(), refreshWakes())
+    }
+
+    private companion object {
+        const val DAY_MS = 24 * 60 * 60_000L
     }
 }

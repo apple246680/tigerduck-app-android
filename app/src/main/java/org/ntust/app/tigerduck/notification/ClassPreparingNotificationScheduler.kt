@@ -48,23 +48,27 @@ class ClassPreparingNotificationScheduler @Inject constructor(
         leadTimeSec: Long,
         calendar: AcademicCalendar,
         optedInHolidayIds: Set<Int>,
-    ) = synchronized(schedulerLock) {
+    ): Long? = synchronized(schedulerLock) {
         // Load the persisted slotId→requestCode map BEFORE cancelling so cancel
         // looks up the same code each alarm was originally registered with.
         // Previously we hashed slotId into the requestCode, which could collide
         // across two different slots and silently overwrite the earlier alarm.
         val codeMap = loadCodeMap()
         cancelAllTrackedLocked(codeMap)
-        if (leadTimeSec <= 0 || courses.isEmpty()) return@synchronized
+        if (leadTimeSec <= 0 || courses.isEmpty()) return@synchronized null
 
         val now = AppClock.nowMillis()
         val scheduled = mutableSetOf<String>()
         var nextCode = trackerPrefs.getInt(KEY_NEXT_CODE, 1)
+        var nextClassStart: Long? = null
 
         for (slot in upcomingSlots(
             courses, skippedDates, daysAhead = DAYS_AHEAD,
             calendar = calendar, optedInHolidayIds = optedInHolidayIds,
         )) {
+            // Before the trigger check: a class whose reminder has gone off
+            // still has its banner up until it begins.
+            if (slot.startMs > now) nextClassStart = minOf(nextClassStart ?: slot.startMs, slot.startMs)
             val triggerTime = slot.startMs - leadTimeSec * 1000
             if (triggerTime <= now) continue
 
@@ -132,6 +136,7 @@ class ClassPreparingNotificationScheduler @Inject constructor(
             .putString(KEY_CODE_MAP, encodeCodeMap(codeMap))
             .putInt(KEY_NEXT_CODE, nextCode)
             .apply()
+        nextClassStart
     }
 
     override fun cancelAllTracked() = synchronized(schedulerLock) {

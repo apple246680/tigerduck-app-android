@@ -12,6 +12,10 @@ interface ClassReminderAlarms {
     /**
      * Arms a reminder [leadTimeSec] ahead of each class of [courses] in the
      * days ahead, replacing every one armed before.
+     *
+     * Returns the start of the next class these reminders cover, epoch ms in
+     * AppClock time, or null for none. A class whose reminder has already
+     * gone off counts until it begins, as its banner is still up then.
      */
     fun scheduleAll(
         courses: List<Course>,
@@ -19,7 +23,7 @@ interface ClassReminderAlarms {
         leadTimeSec: Long,
         calendar: AcademicCalendar,
         optedInHolidayIds: Set<Int>,
-    )
+    ): Long?
 
     /** Cancels every reminder armed. */
     fun cancelAllTracked()
