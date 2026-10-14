@@ -1,9 +1,13 @@
 package org.ntust.app.tigerduck.ui
 
 import android.app.Application
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.ResolveInfo
+import android.net.Uri
+import android.os.Bundle
+import android.os.FileUriExposedException
 import androidx.browser.customtabs.CustomTabsIntent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -31,13 +35,16 @@ class OpenLinkTest {
         shadowOf(context).checkActivities(true)
     }
 
-    private fun installBrowser() {
+    private fun installBrowser() = installHandler(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+
+    /** An app on the phone that takes [intent], so only openLink itself can refuse it. */
+    private fun installHandler(intent: Intent) {
         shadowOf(context.packageManager).addResolveInfoForIntent(
-            Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)),
+            intent,
             ResolveInfo().apply {
                 activityInfo = ActivityInfo().apply {
-                    packageName = "com.example.browser"
-                    name = "com.example.browser.Main"
+                    packageName = "com.example.handler"
+                    name = "com.example.handler.Main"
                 }
             },
         )
@@ -78,6 +85,62 @@ class OpenLinkTest {
         listOf(BrowserPreference.SYSTEM, BrowserPreference.IN_APP).forEach { preference ->
             assertTrue(preference, openLink(context, url, preference))
             assertTrue(preference, started()!!.flags and Intent.FLAG_ACTIVITY_NEW_TASK != 0)
+        }
+    }
+
+    @Test
+    fun `a file link is refused, even with an app that would view it`() {
+        // Handing a file:// URI to another app throws FileUriExposedException on every
+        // supported Android, and no web page needs one.
+        val file = "file:///sdcard/Download/notes.pdf"
+        installHandler(Intent(Intent.ACTION_VIEW, Uri.parse(file)))
+        listOf(BrowserPreference.SYSTEM, BrowserPreference.IN_APP).forEach { preference ->
+            assertFalse(preference, openLink(context, file, preference))
+            assertNull(preference, started())
+        }
+    }
+
+    @Test
+    fun `a javascript link is refused, even with a browser that would run it`() {
+        val script = "javascript:alert(1)"
+        installHandler(Intent(Intent.ACTION_VIEW, Uri.parse(script)))
+        listOf(BrowserPreference.SYSTEM, BrowserPreference.IN_APP).forEach { preference ->
+            assertFalse(preference, openLink(context, script, preference))
+            assertNull(preference, started())
+        }
+    }
+
+    @Test
+    fun `a mail link opens a new message rather than a browser`() {
+        val mail = "mailto:someone@example.com"
+        installHandler(Intent(Intent.ACTION_SENDTO, Uri.parse(mail)))
+        listOf(BrowserPreference.SYSTEM, BrowserPreference.IN_APP).forEach { preference ->
+            assertTrue(preference, openLink(context, mail, preference))
+            val intent = started()!!
+            assertEquals(preference, Intent.ACTION_SENDTO, intent.action)
+            assertEquals(preference, mail, intent.dataString)
+            assertFalse("not a Custom Tab", intent.hasExtra(CustomTabsIntent.EXTRA_SESSION))
+        }
+    }
+
+    @Test
+    fun `an upper-case scheme still reaches the browser`() {
+        // Android matches intent schemes case-sensitively, unlike RFC 3986.
+        installBrowser()
+        assertTrue(openLink(context, "HTTPS://tigerduck.app/privacy-policy", BrowserPreference.SYSTEM))
+        assertEquals(url, started()!!.dataString)
+    }
+
+    @Test
+    fun `a launch the platform refuses is reported, not thrown`() {
+        val refusing = object : ContextWrapper(context) {
+            override fun startActivity(intent: Intent) = throw FileUriExposedException("refused")
+
+            // A Custom Tab launches through this overload.
+            override fun startActivity(intent: Intent, options: Bundle?) = throw FileUriExposedException("refused")
+        }
+        listOf(BrowserPreference.SYSTEM, BrowserPreference.IN_APP).forEach { preference ->
+            assertFalse(preference, openLink(refusing, url, preference))
         }
     }
 }

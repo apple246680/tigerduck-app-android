@@ -1,7 +1,6 @@
 package org.ntust.app.tigerduck.ui
 
 import android.app.Activity
-import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import androidx.browser.customtabs.CustomTabsIntent
@@ -15,27 +14,38 @@ object BrowserPreference {
 
 /**
  * Opens [url] the way "Open links with" says: a Custom Tab for
- * [BrowserPreference.IN_APP], the default browser otherwise. The one opener
- * every web link in the app goes through.
+ * [BrowserPreference.IN_APP], the default browser otherwise. A `mailto:` link
+ * becomes a new message in the mail app, as a mail link does in the message
+ * screen. The one opener every link in the app goes through.
  *
- * Returns false rather than crashing when nothing on the phone can open the
- * link: some work profiles, kiosk and de-Googled ROMs have no browser at all.
+ * Any other scheme is refused, whoever wrote the link: `file:`, `content:`,
+ * `intent:` or `javascript:` from a bulletin or a web page would hand another
+ * app something no web link should.
+ *
+ * Returns false rather than crashing when the link cannot be opened: some work
+ * profiles, kiosk and de-Googled ROMs have no browser at all, and the platform
+ * can refuse a launch outright.
  */
 fun openLink(context: Context, url: String, browserPreference: String): Boolean {
-    val uri = url.toUri()
+    // Android matches intent schemes case-sensitively, so "HTTPS:" would find no browser.
+    val uri = url.toUri().normalizeScheme()
     // Outside an Activity there is no task to put the browser in.
     fun Intent.inATask() = apply { if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
     return try {
-        if (browserPreference == BrowserPreference.IN_APP) {
-            CustomTabsIntent.Builder().build().apply { intent.inATask() }.launchUrl(context, uri)
-        } else {
-            context.startActivity(Intent(Intent.ACTION_VIEW, uri).inATask())
+        when (uri.scheme) {
+            "http", "https" -> if (browserPreference == BrowserPreference.IN_APP) {
+                CustomTabsIntent.Builder().build().apply { intent.inATask() }.launchUrl(context, uri)
+            } else {
+                context.startActivity(Intent(Intent.ACTION_VIEW, uri).inATask())
+            }
+            "mailto" -> context.startActivity(Intent(Intent.ACTION_SENDTO, uri).inATask())
+            else -> return false
         }
         true
-    } catch (_: ActivityNotFoundException) {
-        false
-    } catch (_: SecurityException) {
-        // A handler that is not exported to us: as unopenable as no handler at all.
+    } catch (_: RuntimeException) {
+        // No app for it (ActivityNotFoundException), one not exported to us
+        // (SecurityException), or a launch the platform refuses: each as
+        // unopenable as the others, and none worth a crash.
         false
     }
 }

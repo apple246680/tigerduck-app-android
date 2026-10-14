@@ -720,14 +720,10 @@ private fun LinkDialog(target: SchoolMailMessageViewModel.LinkTarget, onOpen: ()
  * this already handled.
  */
 private fun openBodyLink(context: Context, href: String, browserPreference: String) {
-    val uri = Uri.parse(href)
-    val scheme = uri.scheme?.lowercase()
+    val scheme = Uri.parse(href).scheme?.lowercase()
     if (scheme !in SchoolMailMessageViewModel.OPENABLE_SCHEMES) return
-    if (scheme == "mailto") {
-        runCatching { context.startActivity(Intent(Intent.ACTION_SENDTO, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-    } else {
-        openLink(context, href, browserPreference)
-    }
+    // openLink sends mailto: to a new message and refuses every other non-web scheme too.
+    openLink(context, href, browserPreference)
 }
 
 private fun openAttachment(context: Context, request: SchoolMailMessageViewModel.OpenRequest) {
