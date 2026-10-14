@@ -14,10 +14,12 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import org.ntust.app.tigerduck.AppConstants
+import org.ntust.app.tigerduck.AppLink
 import org.ntust.app.tigerduck.academic.AcademicCalendarStore
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
+import org.ntust.app.tigerduck.pendingIntent
 import java.time.Instant
 import java.time.ZoneId
 
@@ -100,6 +102,8 @@ class ClassPreparingNotificationReceiver : BroadcastReceiver() {
          * Post the reminder, past every check onReceive makes first; the
          * developer menu's preview posts through here too. [context] must
          * already carry the app's language, and the channels must exist.
+         *
+         * A tap opens the class table, through `tigerduck://classtable`.
          */
         fun post(
             context: Context,
@@ -143,6 +147,7 @@ class ClassPreparingNotificationReceiver : BroadcastReceiver() {
                 .setCategory(NotificationCompat.CATEGORY_REMINDER)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setAutoCancel(true)
+                .setContentIntent(AppLink.ClassTable.pendingIntent(context))
                 .setGroup(NotificationGroup.CLASS.key)
                 .apply { if (timeout > 0L) setTimeoutAfter(timeout) }
                 .build()
