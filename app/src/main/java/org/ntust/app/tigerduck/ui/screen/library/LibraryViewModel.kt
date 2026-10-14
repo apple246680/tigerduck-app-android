@@ -48,7 +48,7 @@ class LibraryViewModel @Inject constructor(
         // QR rendering scans 512*512 pixels — keep it off the main thread so
         // the countdown animation and any ongoing gestures don't stutter.
         render = { payload -> withContext(Dispatchers.Default) { generateQRBitmap(payload) } },
-        account = { credentials.libraryAccountGeneration },
+        account = { qrAccount(credentials.libraryAccountGeneration, fixtureSignedIn) },
         sessionValid = { fixtureSignedIn || credentials.isLibraryTokenValid },
         // The session is gone: back to the sign-in form instead of looping
         // on a dead token.
@@ -184,5 +184,13 @@ class LibraryViewModel @Inject constructor(
             tokenValid: Boolean,
             canSignInWithStoredCredentials: Boolean,
         ): Boolean = fixtureSignedIn || tokenValid || canSignInWithStoredCredentials
+
+        /**
+         * The account a QR code belongs to, for [LibraryQRCycle]: the library
+         * account generation, and apart from it the demo library, whose code
+         * stands in for a real account's without moving the generation.
+         */
+        internal fun qrAccount(generation: Int, demoLibrary: Boolean): Int =
+            generation * 2 + if (demoLibrary) 1 else 0
     }
 }
