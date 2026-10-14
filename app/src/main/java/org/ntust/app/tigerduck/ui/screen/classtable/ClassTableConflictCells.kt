@@ -143,33 +143,9 @@ internal fun ConflictCourseCell(
                 .coerceAtLeast(0.1f)
             val bBarFraction = (soloBelowB + 0.5f * (1f - soloAboveB - soloBelowB))
                 .coerceAtLeast(0.1f)
-            val conflictPrefix = stringResource(R.string.a11y_class_table_conflict_prefix)
-            val assignmentLabel =
-                stringResource(R.string.a11y_class_table_cell_assignment_indicator)
-            val ignoredLabel = stringResource(R.string.a11y_class_table_cell_assignments_ignored)
-
-            fun cellLabel(
-                course: Course,
-                hasAssignment: Boolean,
-                assignmentsIgnored: Boolean,
-            ): String = buildString {
-                append(conflictPrefix)
-                append(": ")
-                append(course.displayName)
-                val room = course.classroom(weekday)
-                if (room.isNotBlank()) {
-                    append(", ")
-                    append(room)
-                }
-                if (hasAssignment) {
-                    append(". ")
-                    append(assignmentLabel)
-                }
-                if (assignmentsIgnored) {
-                    append(". ")
-                    append(ignoredLabel)
-                }
-            }
+            val labels = classTableCellLabels()
+            fun cellLabel(course: Course, hasAssignment: Boolean, assignmentsIgnored: Boolean) =
+                labels.label(course, weekday, periodId, hasAssignment, assignmentsIgnored, conflict = true)
 
             val labelA = cellLabel(cellRole.courseA, hasAssignmentA, assignmentsIgnoredA)
             val labelB = cellLabel(cellRole.courseB, hasAssignmentB, assignmentsIgnoredB)
@@ -344,31 +320,7 @@ internal fun MultiConflictCourseCell(
         TigerDuckTheme.courseColorVibrant(course.courseNo).copy(alpha = 0.50f)
     }
 
-    val conflictPrefix = stringResource(R.string.a11y_class_table_conflict_prefix)
-    val assignmentLabel = stringResource(R.string.a11y_class_table_cell_assignment_indicator)
-    val ignoredLabel = stringResource(R.string.a11y_class_table_cell_assignments_ignored)
-    fun cellLabel(
-        course: Course,
-        hasAssignmentForCourse: Boolean,
-        ignoredForCourse: Boolean,
-    ): String = buildString {
-        append(conflictPrefix)
-        append(": ")
-        append(course.displayName)
-        val room = course.classroom(weekday)
-        if (room.isNotBlank()) {
-            append(", ")
-            append(room)
-        }
-        if (hasAssignmentForCourse) {
-            append(". ")
-            append(assignmentLabel)
-        }
-        if (ignoredForCourse) {
-            append(". ")
-            append(ignoredLabel)
-        }
-    }
+    val labels = classTableCellLabels()
 
     var menuForCourse by remember { mutableStateOf<Course?>(null) }
 
@@ -399,8 +351,14 @@ internal fun MultiConflictCourseCell(
                         .clip(RoundedCornerShape(4.dp))
                         .background(bgFor(member.course))
                         .semantics(mergeDescendants = true) {
-                            contentDescription =
-                                cellLabel(member.course, hasAssignmentForMember, ignoredForMember)
+                            contentDescription = labels.label(
+                                member.course,
+                                weekday,
+                                member.firstPeriodId,
+                                hasAssignmentForMember,
+                                ignoredForMember,
+                                conflict = true,
+                            )
                             role = Role.Button
                         }
                         .combinedClickable(

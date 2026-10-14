@@ -58,6 +58,8 @@ internal fun SoloCourseCell(
     x: androidx.compose.ui.unit.Dp,
     y: androidx.compose.ui.unit.Dp,
     weekday: Int,
+    /** The period the tile starts at, for its TalkBack label. */
+    periodId: String,
     hasAssignment: Boolean,
     assignmentsIgnored: Boolean,
     onTap: () -> Unit,
@@ -75,24 +77,8 @@ internal fun SoloCourseCell(
     }
     val cellTextColor = if (TigerDuckTheme.isDarkMode) Color.White else Color(0xFF1C1C1E)
     var showMenu by remember { mutableStateOf(false) }
-    val assignmentLabel = stringResource(R.string.a11y_class_table_cell_assignment_indicator)
-    val ignoredLabel = stringResource(R.string.a11y_class_table_cell_assignments_ignored)
-    val cellRoom = course.classroom(weekday)
-    val cellLabel = buildString {
-        append(course.displayName)
-        if (cellRoom.isNotBlank()) {
-            append(", ")
-            append(cellRoom)
-        }
-        if (hasAssignment) {
-            append(". ")
-            append(assignmentLabel)
-        }
-        if (assignmentsIgnored) {
-            append(". ")
-            append(ignoredLabel)
-        }
-    }
+    val cellLabel = classTableCellLabels()
+        .label(course, weekday, periodId, hasAssignment, assignmentsIgnored)
     // A notch under the course name, so the name keeps the visual weight:
     // the room is a reminder, not a second title.
     val hintFontSize = 10.sp * TigerDuckTheme.courseNameScale * 0.85f

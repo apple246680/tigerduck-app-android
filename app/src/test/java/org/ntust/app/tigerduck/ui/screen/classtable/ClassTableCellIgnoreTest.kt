@@ -48,6 +48,7 @@ class ClassTableCellIgnoreTest {
                     x = 0.dp,
                     y = 0.dp,
                     weekday = 1,
+                    periodId = "3",
                     hasAssignment = false,
                     assignmentsIgnored = ignored,
                     onTap = {},
@@ -72,7 +73,7 @@ class ClassTableCellIgnoreTest {
 
         composeRule
             .onNodeWithContentDescription(
-                "Calculus. " + text(R.string.a11y_class_table_cell_assignments_ignored)
+                "Mon period 3: Calculus. " + text(R.string.a11y_class_table_cell_assignments_ignored)
             )
             .assertExists()
     }
@@ -82,7 +83,7 @@ class ClassTableCellIgnoreTest {
         var toggled: Course? = null
         showCell(ignored = true, onToggle = { toggled = it })
 
-        longPressCell("Calculus. " + text(R.string.a11y_class_table_cell_assignments_ignored))
+        longPressCell("Mon period 3: Calculus. " + text(R.string.a11y_class_table_cell_assignments_ignored))
         composeRule.onNodeWithText(text(R.string.class_table_ignore_assignments_undo)).performClick()
 
         assertEquals(course, toggled)
@@ -93,7 +94,7 @@ class ClassTableCellIgnoreTest {
         var toggled: Course? = null
         showCell(ignored = false, onToggle = { toggled = it })
 
-        longPressCell("Calculus")
+        longPressCell("Mon period 3: Calculus")
         composeRule.onNodeWithText(text(R.string.class_table_ignore_assignments)).performClick()
 
         assertEquals(course, toggled)
@@ -103,7 +104,7 @@ class ClassTableCellIgnoreTest {
     fun `off the term in session the menu leaves the action out`() {
         showCell(ignored = false, onToggle = null)
 
-        longPressCell("Calculus")
+        longPressCell("Mon period 3: Calculus")
 
         composeRule.onNodeWithText(text(R.string.class_table_rename_title)).assertExists()
         composeRule.onNodeWithText(text(R.string.class_table_ignore_assignments)).assertDoesNotExist()

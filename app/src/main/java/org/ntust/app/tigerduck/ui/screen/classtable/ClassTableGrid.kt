@@ -207,6 +207,7 @@ internal fun TimetableGrid(
                                     x = x,
                                     y = y,
                                     weekday = weekday,
+                                    periodId = period.id,
                                     hasAssignment = role.course.courseNo in courseNosWithAssignments,
                                     assignmentsIgnored =
                                         role.course.courseNo in courseNosIgnoringAssignments,
