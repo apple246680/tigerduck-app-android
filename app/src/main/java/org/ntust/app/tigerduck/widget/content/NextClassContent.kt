@@ -29,8 +29,7 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import org.ntust.app.tigerduck.AppConstants
 import org.ntust.app.tigerduck.R
-import org.ntust.app.tigerduck.shared.Course
-import org.ntust.app.tigerduck.shared.parseHm
+import org.ntust.app.tigerduck.widget.CourseBlock
 import org.ntust.app.tigerduck.widget.WidgetColors
 import org.ntust.app.tigerduck.widget.WidgetState
 
@@ -46,7 +45,6 @@ fun NextClassContent(state: WidgetState, colors: WidgetColors, tapAction: Action
 @Composable
 private fun CompactLayout(state: WidgetState, colors: WidgetColors, tapAction: Action) {
     val context = LocalContext.current
-    val order = AppConstants.Periods.chronologicalOrder
     Row(
         modifier = GlanceModifier
             .fillMaxSize()
@@ -55,8 +53,7 @@ private fun CompactLayout(state: WidgetState, colors: WidgetColors, tapAction: A
             .clickable(tapAction),
         verticalAlignment = Alignment.Vertical.CenterVertically,
     ) {
-        val ongoing =
-            state.ongoingCourseNos.mapNotNull { no -> state.courses.find { it.courseNo == no } }
+        val ongoing = state.ongoingBlocks
         when {
             !state.isLoggedIn -> {
                 Text(
@@ -70,10 +67,7 @@ private fun CompactLayout(state: WidgetState, colors: WidgetColors, tapAction: A
 
             ongoing.isNotEmpty() -> {
                 val first = ongoing.first()
-                val periods = first.schedule[state.currentWeekday]?.sortedBy { order.indexOf(it) }
-                    ?: emptyList()
-                val endTime =
-                    periods.lastOrNull()?.let { AppConstants.PeriodTimes.mapping[it]?.second } ?: ""
+                val endTime = first.endTime
                 Box(
                     modifier = GlanceModifier
                         .background(ColorProvider(colors.highlight))
@@ -96,7 +90,7 @@ private fun CompactLayout(state: WidgetState, colors: WidgetColors, tapAction: A
                 Spacer(GlanceModifier.width(8.dp))
                 Column(modifier = GlanceModifier.defaultWeight()) {
                     Text(
-                        text = first.displayName,
+                        text = first.course.displayName,
                         style = TextStyle(
                             color = ColorProvider(colors.onSurface),
                             fontSize = 15.sp * state.courseNameScale,
@@ -104,8 +98,8 @@ private fun CompactLayout(state: WidgetState, colors: WidgetColors, tapAction: A
                         ),
                         maxLines = 1,
                     )
-                    val second = ongoing.getOrNull(1)
-                    val firstRoom = first.classroom(state.currentWeekday)
+                    val second = ongoing.getOrNull(1)?.course
+                    val firstRoom = first.classroom
                     Text(
                         text = if (second != null) second.displayName else buildString {
                             if (endTime.isNotEmpty()) {
@@ -129,13 +123,10 @@ private fun CompactLayout(state: WidgetState, colors: WidgetColors, tapAction: A
                 }
             }
 
-            state.nextCourseTodayNo != null -> {
-                val course =
-                    state.courses.find { it.courseNo == state.nextCourseTodayNo } ?: return@Row
-                val periods = course.schedule[state.currentWeekday]?.sortedBy { order.indexOf(it) }
-                    ?: emptyList()
-                val startTime =
-                    periods.firstOrNull()?.let { AppConstants.PeriodTimes.mapping[it]?.first } ?: ""
+            state.nextTodayBlock != null -> {
+                val block = state.nextTodayBlock
+                val course = block.course
+                val startTime = block.startTime
                 Text(
                     text = context.getString(R.string.widget_next_class_short),
                     style = TextStyle(
@@ -155,7 +146,7 @@ private fun CompactLayout(state: WidgetState, colors: WidgetColors, tapAction: A
                         ),
                         maxLines = 1,
                     )
-                    val room = course.classroom(state.currentWeekday)
+                    val room = block.classroom
                     Text(
                         text = buildString {
                             if (startTime.isNotEmpty()) append(startTime)
@@ -226,8 +217,7 @@ private fun CompactLayout(state: WidgetState, colors: WidgetColors, tapAction: A
 @Composable
 private fun FullLayout(state: WidgetState, colors: WidgetColors, tapAction: Action) {
     val context = LocalContext.current
-    val ongoing =
-        state.ongoingCourseNos.mapNotNull { no -> state.courses.find { it.courseNo == no } }
+    val ongoing = state.ongoingBlocks
     val heightDp = LocalSize.current.height.value
     // Widget is resizable between 2-cell (~110dp) and 4-cell (~250dp) heights.
     // A midpoint threshold picks the right variant regardless of whether the
@@ -277,18 +267,12 @@ private fun FullLayout(state: WidgetState, colors: WidgetColors, tapAction: Acti
 
             ongoing.size == 1 -> OngoingCard(ongoing[0], state, colors)
 
-            state.nextCourseTodayNo != null -> {
-                val course = state.courses.find { it.courseNo == state.nextCourseTodayNo }
-                if (course != null) {
-                    NextCard(
-                        course = course,
-                        weekday = state.currentWeekday,
-                        label = context.getString(R.string.widget_next_class),
-                        colors = colors,
-                        courseNameScale = state.courseNameScale,
-                    )
-                }
-            }
+            state.nextTodayBlock != null -> NextCard(
+                block = state.nextTodayBlock,
+                label = context.getString(R.string.widget_next_class),
+                colors = colors,
+                courseNameScale = state.courseNameScale,
+            )
 
             state.tomorrowFirstCourseNo != null -> {
                 // Mirrors iOS `WidgetTimelineDerivation` `.tomorrowFirst` —
@@ -296,15 +280,12 @@ private fun FullLayout(state: WidgetState, colors: WidgetColors, tapAction: Acti
                 // up to 7 weekdays ahead, so the label switches to the
                 // weekday caption (e.g., "Mon") when the picked day isn't
                 // literally tomorrow (Fri → Mon after a weekend with no
-                // classes). Classroom resolves against that picked day so the
-                // per-period room reflects it.
-                val course = state.courses.find { it.courseNo == state.tomorrowFirstCourseNo }
-                val weekday = state.tomorrowFirstCourseWeekday
-                if (course != null && weekday != null) {
+                // classes). The room is that day's first block's.
+                val block = tomorrowFirstBlock(state)
+                if (block != null) {
                     NextCard(
-                        course = course,
-                        weekday = weekday,
-                        label = futureDayLabel(context, state.currentWeekday, weekday),
+                        block = block,
+                        label = futureDayLabel(context, state.currentWeekday, block.weekday),
                         colors = colors,
                         courseNameScale = state.courseNameScale,
                     )
@@ -317,22 +298,9 @@ private fun FullLayout(state: WidgetState, colors: WidgetColors, tapAction: Acti
 }
 
 @Composable
-private fun OngoingCard(course: Course, state: WidgetState, colors: WidgetColors) {
+private fun OngoingCard(block: CourseBlock, state: WidgetState, colors: WidgetColors) {
     val context = LocalContext.current
-    val order = AppConstants.Periods.chronologicalOrder
-    val weekday = state.currentWeekday
-    val periods = course.schedule[weekday]?.sortedBy { order.indexOf(it) } ?: emptyList()
-    val startTime = periods.firstOrNull()?.let { AppConstants.PeriodTimes.mapping[it]?.first } ?: ""
-    val endTime = periods.lastOrNull()?.let { AppConstants.PeriodTimes.mapping[it]?.second } ?: ""
-    val startMin = parseHm(startTime) ?: 0
-    val endMin = parseHm(endTime) ?: 0
-    val progress = if (endMin > startMin) {
-        ((state.currentMinuteOfDay - startMin).toFloat() / (endMin - startMin))
-            .coerceIn(0f, 1f)
-    } else 0f
-    val periodRange =
-        if (periods.size > 1) "${periods.first()}–${periods.last()}" else periods.firstOrNull()
-            ?: ""
+    val progress = block.progress(state.currentMinuteOfDay)
 
     Column(modifier = GlanceModifier.fillMaxSize()) {
         Box(
@@ -352,7 +320,7 @@ private fun OngoingCard(course: Course, state: WidgetState, colors: WidgetColors
         }
         Spacer(GlanceModifier.height(6.dp))
         Text(
-            text = course.displayName,
+            text = block.course.displayName,
             style = TextStyle(
                 color = ColorProvider(colors.onSurface),
                 fontSize = 19.sp * state.courseNameScale,
@@ -362,10 +330,10 @@ private fun OngoingCard(course: Course, state: WidgetState, colors: WidgetColors
         )
         Spacer(GlanceModifier.height(3.dp))
         Text(
-            text = "$startTime–$endTime  $periodRange",
+            text = "${block.startTime}–${block.endTime}  ${block.periodRange}",
             style = TextStyle(color = ColorProvider(colors.onSurfaceVariant), fontSize = 13.sp),
         )
-        val room = course.classroom(weekday)
+        val room = block.classroom
         if (room.isNotEmpty()) {
             Text(
                 text = room,
@@ -393,19 +361,11 @@ private fun OngoingCard(course: Course, state: WidgetState, colors: WidgetColors
 }
 
 @Composable
-private fun OngoingMiniCard(course: Course, state: WidgetState, colors: WidgetColors) {
+private fun OngoingMiniCard(block: CourseBlock, state: WidgetState, colors: WidgetColors) {
     val context = LocalContext.current
-    val order = AppConstants.Periods.chronologicalOrder
-    val weekday = state.currentWeekday
-    val periods = course.schedule[weekday]?.sortedBy { order.indexOf(it) } ?: emptyList()
-    val startTime = periods.firstOrNull()?.let { AppConstants.PeriodTimes.mapping[it]?.first } ?: ""
-    val endTime = periods.lastOrNull()?.let { AppConstants.PeriodTimes.mapping[it]?.second } ?: ""
-    val startMin = parseHm(startTime) ?: 0
-    val endMin = parseHm(endTime) ?: 0
-    val progress = if (endMin > startMin) {
-        ((state.currentMinuteOfDay - startMin).toFloat() / (endMin - startMin))
-            .coerceIn(0f, 1f)
-    } else 0f
+    val startTime = block.startTime
+    val endTime = block.endTime
+    val progress = block.progress(state.currentMinuteOfDay)
 
     Row(verticalAlignment = Alignment.Vertical.CenterVertically) {
         Box(
@@ -425,7 +385,7 @@ private fun OngoingMiniCard(course: Course, state: WidgetState, colors: WidgetCo
         }
         Spacer(GlanceModifier.width(5.dp))
         Text(
-            text = course.displayName,
+            text = block.course.displayName,
             style = TextStyle(
                 color = ColorProvider(colors.onSurface),
                 fontSize = 13.sp * state.courseNameScale,
@@ -434,7 +394,7 @@ private fun OngoingMiniCard(course: Course, state: WidgetState, colors: WidgetCo
             maxLines = 1,
         )
     }
-    val room = course.classroom(weekday)
+    val room = block.classroom
     Text(
         text = buildString {
             if (startTime.isNotEmpty() && endTime.isNotEmpty()) append("$startTime–$endTime")
@@ -465,20 +425,18 @@ private fun OngoingMiniCard(course: Course, state: WidgetState, colors: WidgetCo
 /**
  * Renders the next-class card for both "next today" and "tomorrow" cases —
  * iOS pulls these through the same `nextBody`, so the layout is identical and
- * only the label string + weekday differ. [weekday] selects which day's per-
- * period schedule and classroom apply (today's vs the picked future day).
+ * only the label string differs. [block] is the block the card is about, so
+ * the start time and room are that block's, not the day's first period's or
+ * every room of the day.
  */
 @Composable
 private fun NextCard(
-    course: Course,
-    weekday: Int,
+    block: CourseBlock,
     label: String,
     colors: WidgetColors,
     courseNameScale: Float,
 ) {
-    val order = AppConstants.Periods.chronologicalOrder
-    val periods = course.schedule[weekday]?.sortedBy { order.indexOf(it) } ?: emptyList()
-    val startTime = periods.firstOrNull()?.let { AppConstants.PeriodTimes.mapping[it]?.first } ?: ""
+    val startTime = block.startTime
 
     Text(
         text = label,
@@ -490,7 +448,7 @@ private fun NextCard(
     )
     Spacer(GlanceModifier.height(5.dp))
     Text(
-        text = course.displayName,
+        text = block.course.displayName,
         style = TextStyle(
             color = ColorProvider(colors.onSurface),
             fontSize = 19.sp * courseNameScale,
@@ -504,13 +462,24 @@ private fun NextCard(
             style = TextStyle(color = ColorProvider(colors.onSurfaceVariant), fontSize = 14.sp),
         )
     }
-    val room = course.classroom(weekday)
+    val room = block.classroom
     if (room.isNotEmpty()) {
         Text(
             text = room,
             style = TextStyle(color = ColorProvider(colors.onSurfaceVariant), fontSize = 13.sp),
         )
     }
+}
+
+/**
+ * The first block of the next day with a class ([WidgetState.tomorrowFirstCourseNo]
+ * on [WidgetState.tomorrowFirstCourseWeekday]), or null when there is none.
+ */
+internal fun tomorrowFirstBlock(state: WidgetState): CourseBlock? {
+    val course = state.courses.find { it.courseNo == state.tomorrowFirstCourseNo } ?: return null
+    val weekday = state.tomorrowFirstCourseWeekday ?: return null
+    val periodId = state.tomorrowFirstCoursePeriodId ?: return null
+    return CourseBlock.containing(course, weekday, periodId)
 }
 
 /**

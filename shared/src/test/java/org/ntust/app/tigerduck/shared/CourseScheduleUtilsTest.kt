@@ -79,4 +79,40 @@ class CourseScheduleUtilsTest {
         val result = computeOngoingCourses(courses, weekday = 1, minuteOfDay = 601)
         assertTrue(result.isEmpty())
     }
+
+    // ---- a course meeting twice a day ----
+
+    private val twice = Course.fromSchedule(
+        courseNo = "CS2001301",
+        courseName = "Data Structures",
+        classroom = "TR-313, TR-412",
+        schedule = mapOf(1 to listOf("8", "3", "7", "4")),
+        classroomMap = mapOf(
+            "1-3" to "TR-313", "1-4" to "TR-313",
+            "1-7" to "TR-412", "1-8" to "TR-412",
+        ),
+    )
+
+    @Test
+    fun `computeOngoingCourses reports every period of the block it is in`() {
+        // 11:30 is in period 4, the second period of the 3–4 block.
+        val result = computeOngoingCourses(listOf(twice), weekday = 1, minuteOfDay = 11 * 60 + 30)
+        assertEquals(listOf("3", "4"), result.single().periods)
+    }
+
+    @Test
+    fun `contiguousPeriodRuns splits a day into its blocks`() {
+        assertEquals(listOf(listOf("3", "4"), listOf("7", "8")), contiguousPeriodRuns(listOf("8", "3", "7", "4")))
+    }
+
+    @Test
+    fun `blockClassroom gives one block's room, not the day's`() {
+        assertEquals("TR-313", twice.blockClassroom(1, listOf("3", "4")))
+        assertEquals("TR-412", twice.blockClassroom(1, listOf("7", "8")))
+    }
+
+    @Test
+    fun `blockClassroom falls back to the flat room for a block the map lacks`() {
+        assertEquals("TR-313, TR-412", twice.blockClassroom(2, listOf("1")))
+    }
 }

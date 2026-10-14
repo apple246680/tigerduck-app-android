@@ -39,6 +39,7 @@ import org.ntust.app.tigerduck.widget.ScheduleCell
 import org.ntust.app.tigerduck.widget.WidgetColors
 import org.ntust.app.tigerduck.widget.WidgetState
 import org.ntust.app.tigerduck.widget.buildScheduleCells
+import org.ntust.app.tigerduck.widget.isOngoingTile
 import org.ntust.app.tigerduck.widget.renderConflictLayer
 import org.ntust.app.tigerduck.widget.widgetCourseColor
 
@@ -134,22 +135,43 @@ fun WeekGridContent(state: WidgetState, colors: WidgetColors, tapAction: Action)
             state.activeWeekdays.forEach { weekday ->
                 val cells = buildScheduleCells(state.activePeriodIds, state.courses, weekday)
                 Column(modifier = GlanceModifier.defaultWeight().padding(horizontal = 1.dp)) {
+                    var cellStart = 0
                     cells.forEach { cell ->
+                        val start = cellStart
                         ScheduleCellBox(
                             cell = cell,
                             colors = colors,
                             courseColors = state.courseColors,
-                            ongoingCourseNos = state.ongoingCourseNos,
+                            // Per tile, not per course: only the block going
+                            // on now lights up, not the course's other blocks.
+                            isOngoing = { course, offset, span ->
+                                state.isOngoingTile(
+                                    course,
+                                    weekday,
+                                    state.activePeriodIds.rows(start + offset, span),
+                                )
+                            },
                             blockHeight = cellHeight * cell.length,
                             blockWidth = dayColWidth,
                             courseNameScale = state.courseNameScale,
                         )
+                        cellStart += cell.length
                     }
                 }
             }
         }
     }
 }
+
+/**
+ * Whether a tile of a course is a block going on now, from the course, the
+ * row the tile starts at within its cell and the rows it spans.
+ */
+private typealias TileOngoing = (course: Course, offset: Int, span: Int) -> Boolean
+
+/** The period ids of [span] rows from row [start]. */
+private fun List<String>.rows(start: Int, span: Int): List<String> =
+    subList(start.coerceIn(0, size), (start + span).coerceIn(0, size))
 
 @Composable
 private fun PeriodLabelCell(periodId: String, colors: WidgetColors, cellHeight: Dp) {
@@ -184,7 +206,7 @@ private fun ScheduleCellBox(
     cell: ScheduleCell,
     colors: WidgetColors,
     courseColors: Map<String, Color>,
-    ongoingCourseNos: List<String>,
+    isOngoing: TileOngoing,
     blockHeight: Dp,
     blockWidth: Dp,
     courseNameScale: Float,
@@ -194,7 +216,7 @@ private fun ScheduleCellBox(
         is ScheduleCell.Solo -> SoloCell(
             course = cell.course,
             length = cell.length,
-            ongoing = cell.course.courseNo in ongoingCourseNos,
+            ongoing = isOngoing(cell.course, 0, cell.length),
             colors = colors,
             courseColors = courseColors,
             blockHeight = blockHeight,
@@ -205,7 +227,7 @@ private fun ScheduleCellBox(
             cell = cell,
             colors = colors,
             courseColors = courseColors,
-            ongoingCourseNos = ongoingCourseNos,
+            isOngoing = isOngoing,
             blockHeight = blockHeight,
             blockWidth = blockWidth,
             courseNameScale = courseNameScale,
@@ -215,7 +237,7 @@ private fun ScheduleCellBox(
             cell = cell,
             colors = colors,
             courseColors = courseColors,
-            ongoingCourseNos = ongoingCourseNos,
+            isOngoing = isOngoing,
             blockHeight = blockHeight,
             courseNameScale = courseNameScale,
         )
@@ -293,7 +315,7 @@ private fun ConflictCell(
     cell: ScheduleCell.Conflict,
     colors: WidgetColors,
     courseColors: Map<String, Color>,
-    ongoingCourseNos: List<String>,
+    isOngoing: TileOngoing,
     blockHeight: Dp,
     blockWidth: Dp,
     courseNameScale: Float,
@@ -303,8 +325,8 @@ private fun ConflictCell(
     val widthPx = ((blockWidth - 2.dp).value * density).toInt().coerceAtLeast(1)
     val heightPx = (blockHeight.value * density).toInt().coerceAtLeast(1)
 
-    val ongoingA = cell.courseA.courseNo in ongoingCourseNos
-    val ongoingB = cell.courseB.courseNo in ongoingCourseNos
+    val ongoingA = isOngoing(cell.courseA, cell.offsetA, cell.spanA)
+    val ongoingB = isOngoing(cell.courseB, cell.offsetB, cell.spanB)
     // If both conflicting courses are currently ongoing, painting both halves
     // with the single highlight color merges them into a solid rectangle and
     // hides the L-shape. Keep them in their own course colors in that case —
@@ -405,17 +427,17 @@ private fun MultiConflictCell(
     cell: ScheduleCell.MultiConflict,
     colors: WidgetColors,
     courseColors: Map<String, Color>,
-    ongoingCourseNos: List<String>,
+    isOngoing: TileOngoing,
     blockHeight: Dp,
     courseNameScale: Float,
 ) {
     val rowHeight = blockHeight / cell.combinedSpan.coerceAtLeast(1)
     val textColor: Color = if (colors.isDark) Color.White else Color(0xFF1C1C1E)
 
-    fun tileBg(course: Course): Color {
+    fun tileBg(course: Course, ongoing: Boolean): Color {
         val base = widgetCourseColor(course, courseColors, colors.isDark)
         return when {
-            course.courseNo in ongoingCourseNos -> colors.highlight
+            ongoing -> colors.highlight
             colors.isDark -> base
             else -> base.copy(alpha = 0.55f)
         }
@@ -443,7 +465,7 @@ private fun MultiConflictCell(
                         if (member.offset > cursor) {
                             Box(modifier = GlanceModifier.height(rowHeight * (member.offset - cursor))) {}
                         }
-                        val ongoing = member.course.courseNo in ongoingCourseNos
+                        val ongoing = isOngoing(member.course, member.offset, member.span)
                         val tileTextColor = if (ongoing) Color.White else textColor
                         Box(
                             modifier = GlanceModifier
@@ -454,7 +476,7 @@ private fun MultiConflictCell(
                             Box(
                                 modifier = GlanceModifier
                                     .fillMaxSize()
-                                    .background(ColorProvider(tileBg(member.course)))
+                                    .background(ColorProvider(tileBg(member.course, ongoing)))
                                     .cornerRadius(4.dp)
                                     .padding(1.dp),
                                 contentAlignment = Alignment.Center,
