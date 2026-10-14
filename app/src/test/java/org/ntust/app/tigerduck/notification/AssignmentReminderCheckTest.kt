@@ -265,6 +265,21 @@ class AssignmentReminderCheckTest {
     }
 
     @Test
+    fun `an expired token's first answer, an access exception, drops the reminder as rejected`() = runBlocking {
+        val assignment = dueInThreeDays("20977")
+        dataCache.saveAssignments(listOf(assignment))
+        moodle = {
+            """{"exception":"webservice_access_exception","errorcode":"accessexception",""" +
+                """"message":"Access control exception"}"""
+        }
+
+        assertEquals(
+            ReminderVerdict.Drop(ReminderDropReason.TOKEN_REJECTED),
+            check.verdict("20977", assignment.dueDate.time),
+        )
+    }
+
+    @Test
     fun `no stored token drops the reminder without a request`() = runBlocking {
         val assignment = dueInThreeDays("20977")
         dataCache.saveAssignments(listOf(assignment))

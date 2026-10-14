@@ -3,17 +3,17 @@ package org.ntust.app.tigerduck.network
 import android.util.Base64
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import kotlinx.coroutines.CoroutineScope
+import org.ntust.app.tigerduck.auth.SIGN_IN_PAUSE_MS
 import org.ntust.app.tigerduck.auth.StoredPasswordLatch
-import org.ntust.app.tigerduck.auth.guardAutomaticHarvest
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
+import org.ntust.app.tigerduck.di.ApplicationScope
 import java.net.SocketTimeoutException
 import java.security.SecureRandom
 import javax.inject.Inject
@@ -42,9 +42,9 @@ import javax.inject.Singleton
 class MoodleTokenService @Inject constructor(
     private val sessionManager: NtustSessionManager,
     private val credentialManager: CredentialManager,
+    @param:ApplicationScope appScope: CoroutineScope,
     private val passwordLatch: StoredPasswordLatch,
 ) {
-    private val mutex = Mutex()
     private val moodleBaseUrl = "https://moodle2.ntust.edu.tw".toHttpUrl()
 
     private val moodleUa =
@@ -76,41 +76,47 @@ class MoodleTokenService @Inject constructor(
 
     fun currentToken(): String? = credentialManager.moodleToken
 
-    suspend fun clearToken() {
-        credentialManager.moodleToken = null
-    }
-
-    /** Fetch a fresh token using stored NTUST credentials. */
-    suspend fun refreshToken(): String = mutex.withLock {
-        val sid = credentialManager.ntustStudentId
-            ?: throw MoodleWebserviceError.MissingStoredCredentials()
-        val pwd = credentialManager.ntustPassword
-            ?: throw MoodleWebserviceError.MissingStoredCredentials()
-        val triple = passwordLatch.guardAutomaticHarvest(sid, pwd) {
-            performOidcLogin(sid.trim().uppercase(), pwd)
-        }
-        // Signed out while it ran: the token is the departing account's, and
-        // stored it would answer for whoever signs in next.
-        if (credentialManager.ntustStudentId != sid) {
-            throw MoodleWebserviceError.MissingStoredCredentials()
-        }
-        credentialManager.moodleToken = triple.wstoken
-        Log.i("MoodleTokenService", "refreshed wstoken (len=${triple.wstoken.length})")
-        triple.wstoken
-    }
+    private val coordinator = MoodleTokenCoordinator(
+        tokens = object : MoodleTokenCoordinator.Tokens {
+            override var token: String?
+                get() = credentialManager.moodleToken
+                set(value) {
+                    credentialManager.moodleToken = value
+                }
+            override val studentId: String? get() = credentialManager.ntustStudentId
+            override val password: String? get() = credentialManager.ntustPassword
+            override fun storeIfSignedIn(studentId: String, token: String): Boolean =
+                credentialManager.storeMoodleTokenIfSignedIn(studentId, token)
+        },
+        login = { studentId, password ->
+            performOidcLogin(studentId, password).wstoken.also {
+                Log.i("MoodleTokenService", "harvested wstoken (len=${it.length})")
+            }
+        },
+        scope = appScope,
+        now = System::currentTimeMillis,
+        pauseMs = SIGN_IN_PAUSE_MS,
+    )
 
     /**
-     * Fetch a fresh token using the supplied credentials (first-time login), and store it only
-     * while [stillCurrent] says that sign-in is still the account's.
+     * A fresh token with the stored NTUST credentials, for the backend to check with Moodle: the
+     * stored one when a sign-in got it moments ago, else a new one. It shares the renewals'
+     * sign-in, pause and stop at a refused password; see [MoodleTokenRenewal].
      */
-    suspend fun obtainToken(studentId: String, password: String, stillCurrent: () -> Boolean): String = mutex.withLock {
-        val triple = performOidcLogin(studentId.trim().uppercase(), password)
-        if (!storeIfStillCurrent(triple.wstoken, credentialManager::moodleToken, stillCurrent)) {
-            throw MoodleWebserviceError.MissingStoredCredentials()
-        }
-        Log.i("MoodleTokenService", "obtained wstoken (len=${triple.wstoken.length})")
-        triple.wstoken
-    }
+    suspend fun refreshToken(): String = coordinator.refresh()
+
+    /**
+     * A token in place of [rejected], which is null when none was stored, for a Moodle call that
+     * found its token dead. The stored token is replaced only once a new one is in hand, so a
+     * renewal that fails, as during Moodle maintenance, leaves the old one rather than none.
+     * Concurrent callers share one SSO sign-in, a failed one pauses the next, and credentials SSO
+     * refused are not sent again until they change; see [MoodleTokenRenewal].
+     */
+    suspend fun renewToken(rejected: String?): String = coordinator.renew(rejected)
+
+    /** Fetch a fresh token using the supplied credentials (first-time login). */
+    suspend fun obtainToken(studentId: String, password: String, stillCurrent: () -> Boolean): String =
+        coordinator.obtain(studentId, password)
 
     private data class TokenTriple(
         val signature: String,

@@ -121,10 +121,23 @@ class CredentialManager @Inject constructor(@ApplicationContext context: Context
         else
             prefs.edit().remove("moodle_token").apply()
 
+    /**
+     * Stores the Moodle [token] only while [studentId] is still the stored account. Under the
+     * same lock as [clearNtustCredentials] and [clearAll], so a sign-out cannot land between the
+     * check and the store and leave the departing account's token for the next one.
+     */
+    @Synchronized
+    fun storeMoodleTokenIfSignedIn(studentId: String, token: String): Boolean {
+        if (ntustStudentId != studentId) return false
+        moodleToken = token
+        return true
+    }
+
     // ── v3 JWT tokens ────────────────────────────────────────────────────────
 
     val v3Tokens = V3TokenStore(prefs)
 
+    @Synchronized
     fun clearNtustCredentials() {
         prefs.edit()
             .remove("ntust_student_id")
@@ -169,6 +182,7 @@ class CredentialManager @Inject constructor(@ApplicationContext context: Context
     }
 
     /** Wipe every credential key. Used by the full-reset flow. */
+    @Synchronized
     fun clearAll() {
         prefs.edit().clear().apply()
     }

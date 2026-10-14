@@ -481,7 +481,11 @@ class AuthTokenManager(
 
         // The backend limits refreshes per IP over a minute.
         const val REFRESH_PAUSE_MS = 60_000L
-
-        const val SIGN_IN_PAUSE_MS = 5 * 60_000L
     }
 }
+
+/**
+ * How long an automatic sign-in with the stored password waits after one that failed: the
+ * backend's here, and the Moodle token renewal's SSO sign-in (MoodleTokenRenewal).
+ */
+internal const val SIGN_IN_PAUSE_MS = 5 * 60_000L

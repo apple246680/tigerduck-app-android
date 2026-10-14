@@ -42,6 +42,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -70,6 +71,14 @@ import org.ntust.app.tigerduck.ui.screen.calendar.CalendarScreen
 import org.ntust.app.tigerduck.ui.screen.calendar.CalendarViewModel
 import org.ntust.app.tigerduck.ui.screen.classtable.ClassTableScreen
 import org.ntust.app.tigerduck.ui.screen.classtable.ClassTableViewModel
+import org.ntust.app.tigerduck.ui.screen.classtable.CourseDetailScreen
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleAnnouncementScreen
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleAnnouncementsScreen
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleCourseViewModel
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleGradesScreen
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleMemberScreen
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleMembersScreen
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleRoutes
 import org.ntust.app.tigerduck.ui.screen.home.HomeScreen
 import org.ntust.app.tigerduck.ui.screen.home.HomeViewModel
 import org.ntust.app.tigerduck.ui.screen.library.LibraryScreen
@@ -129,7 +138,8 @@ sealed class Screen(val route: String) {
         fun route(folder: String, uid: Long) = MailRoutes.message(folder, uid)
     }
     object SchoolMailCompose : Screen(MailRoutes.COMPOSE) {
-        fun route(mode: ComposeMode, folder: String? = null, uid: Long? = null) = MailRoutes.compose(mode, folder, uid)
+        fun route(mode: ComposeMode, folder: String? = null, uid: Long? = null, to: String? = null) =
+            MailRoutes.compose(mode, folder, uid, to)
     }
     object CourseNameSizeSettings : Screen("courseNameSizeSettings")
     object CloudSync : Screen("cloudSync")
@@ -187,38 +197,6 @@ fun MainNavigation(
 ) {
     val navController = rememberNavController()
     FlipToLibraryEffect(navController = navController, appState = appState)
-    LaunchedEffect(widgetStartRoute) {
-        widgetStartRoute ?: return@LaunchedEffect
-        // The library-shortcut widget emits a sentinel instead of a direct
-        // route so the feature gate is re-evaluated at tap time. If library
-        // has been turned off since the widget was placed, reroute to
-        // Settings and raise the "enable first" prompt.
-        val target = if (widgetStartRoute == LibraryShortcutWidget.ROUTE_SENTINEL) {
-            if (appState.libraryFeatureEnabled) {
-                Screen.Library.route
-            } else {
-                appState.pendingLibraryEnablePrompt = true
-                Screen.Settings.route
-            }
-        } else {
-            widgetStartRoute
-        }
-        // Cold-start path: this effect can fire in the same composition that
-        // first declares the NavHost (further down). navigate() before the
-        // graph is registered silently no-ops, so block on the first back-stack
-        // entry — which only appears once NavHost has installed its graph and
-        // routed to startDestination.
-        snapshotFlow { navController.currentBackStackEntry }
-            .filterNotNull()
-            .first()
-        navController.navigate(target) {
-            launchSingleTop = true
-        }
-        // Consume so that re-tapping the same notification (which delivers the
-        // identical route string) re-fires this LaunchedEffect instead of
-        // being deduped by the same key.
-        onStartRouteConsumed()
-    }
     // Hoist Home / ClassTable / Calendar VMs to the activity scope so they
     // exist from app open and survive tab switches. load() is called once
     // here on first composition; the per-screen LaunchedEffect that also
@@ -274,10 +252,7 @@ fun MainNavigation(
         val screenName = route.replace(Regex("/[{][^}]+[}]"), "")
         analyticsLogger.log("screen_view", mapOf("screen_name" to screenName))
     }
-    val selectedTabRoute = when (currentRoute) {
-        Screen.Settings.route, Screen.TabEditor.route -> Screen.More.route
-        else -> currentRoute
-    }
+    val selectedTabRoute = selectedTabRoute(currentRoute)
 
     val context = LocalContext.current
     val backPressExitHint = stringResource(R.string.app_exit_confirm_toast)
@@ -290,6 +265,39 @@ fun MainNavigation(
     // so reordering via TabEditor doesn't pop to a removed route.
     val startDest = remember { configuredTabs.firstOrNull()?.toRoute() ?: Screen.Home.route }
     val popUpToDest = configuredTabs.firstOrNull()?.toRoute() ?: Screen.Home.route
+
+    LaunchedEffect(widgetStartRoute) {
+        widgetStartRoute ?: return@LaunchedEffect
+        // The library-shortcut widget emits a sentinel instead of a direct
+        // route so the feature gate is re-evaluated at tap time. If library
+        // has been turned off since the widget was placed, reroute to
+        // Settings and raise the "enable first" prompt.
+        val target = if (widgetStartRoute == LibraryShortcutWidget.ROUTE_SENTINEL) {
+            if (appState.libraryFeatureEnabled) {
+                Screen.Library.route
+            } else {
+                appState.pendingLibraryEnablePrompt = true
+                Screen.Settings.route
+            }
+        } else {
+            widgetStartRoute
+        }
+        // Cold-start path: this effect can fire in the same composition that
+        // first declares the NavHost (further down). navigate() before the
+        // graph is registered silently no-ops, so block on the first back-stack
+        // entry — which only appears once NavHost has installed its graph and
+        // routed to startDestination.
+        snapshotFlow { navController.currentBackStackEntry }
+            .filterNotNull()
+            .first()
+        // A tab through the bottom bar's own path: launchSingleTop alone looks only at the page on
+        // top, and pushed a second class table over its course detail.
+        navController.openStartRoute(target, tabRoutes, firstTab = popUpToDest, tabTap)
+        // Consume so that re-tapping the same notification (which delivers the
+        // identical route string) re-fires this LaunchedEffect instead of
+        // being deduped by the same key.
+        onStartRouteConsumed()
+    }
 
     // Two-press-to-exit on the leftmost tab. Deeper BackHandlers (e.g., Home
     // edit mode) register later in composition and still win. startDest is
@@ -418,6 +426,65 @@ fun MainNavigation(
                 ClassTableScreen(
                     viewModel = classTableViewModel,
                     onOpenSignInSettings = openSignInSettings,
+                    onOpenCourseDetail = {
+                        navController.navigate(MoodleRoutes.COURSE_DETAIL) { launchSingleTop = true }
+                    },
+                )
+            }
+            page(MoodleRoutes.COURSE_DETAIL) { entry ->
+                CourseDetailScreen(
+                    viewModel = classTableViewModel,
+                    browserPreference = appState.browserPreference,
+                    onBack = { navController.popIfTop(entry) },
+                    onOpenRoute = { navController.navigate(it) },
+                )
+            }
+            val moodleCourseArg = navArgument(MoodleCourseViewModel.ARG_COURSE_ID) { type = NavType.IntType }
+            page(MoodleRoutes.ANNOUNCEMENTS, arguments = listOf(moodleCourseArg)) { entry ->
+                MoodleAnnouncementsScreen(
+                    onBack = { navController.popIfTop(entry) },
+                    onOpenRoute = { navController.navigate(it) },
+                )
+            }
+            page(
+                MoodleRoutes.ANNOUNCEMENT,
+                arguments = listOf(
+                    moodleCourseArg,
+                    navArgument(MoodleRoutes.ARG_DISCUSSION_ID) { type = NavType.IntType },
+                ),
+            ) { entry ->
+                MoodleAnnouncementScreen(
+                    discussionId = entry.arguments?.getInt(MoodleRoutes.ARG_DISCUSSION_ID) ?: 0,
+                    browserPreference = appState.browserPreference,
+                    onBack = { navController.popIfTop(entry) },
+                    onOpenRoute = { navController.navigate(it) },
+                )
+            }
+            page(MoodleRoutes.GRADES, arguments = listOf(moodleCourseArg)) { entry ->
+                MoodleGradesScreen(
+                    browserPreference = appState.browserPreference,
+                    onBack = { navController.popIfTop(entry) },
+                )
+            }
+            page(MoodleRoutes.MEMBERS, arguments = listOf(moodleCourseArg)) { entry ->
+                MoodleMembersScreen(
+                    onBack = { navController.popIfTop(entry) },
+                    onOpenRoute = { navController.navigate(it) },
+                )
+            }
+            page(
+                MoodleRoutes.MEMBER,
+                arguments = listOf(
+                    moodleCourseArg,
+                    navArgument(MoodleRoutes.ARG_MEMBER_ID) { type = NavType.IntType },
+                ),
+            ) { entry ->
+                MoodleMemberScreen(
+                    memberId = entry.arguments?.getInt(MoodleRoutes.ARG_MEMBER_ID) ?: 0,
+                    onBack = { navController.popIfTop(entry) },
+                    onComposeSchoolMail = { address ->
+                        navController.navigate(Screen.SchoolMailCompose.route(ComposeMode.NEW, to = address))
+                    },
                 )
             }
             page(Screen.Calendar.route) {
@@ -474,6 +541,7 @@ fun MainNavigation(
                     navArgument("mode") { type = NavType.StringType; defaultValue = ComposeMode.NEW.name },
                     navArgument("folder") { type = NavType.StringType; defaultValue = "" },
                     navArgument("uid") { type = NavType.LongType; defaultValue = -1L },
+                    navArgument("to") { type = NavType.StringType; defaultValue = "" },
                 ),
             ) {
                 org.ntust.app.tigerduck.ui.screen.mail.SchoolMailComposeScreen(onDone = { navController.popBackStack() })
@@ -663,6 +731,36 @@ fun MainNavigation(
             }
         }
     }
+}
+
+/** The tab the bottom bar shows selected on [route]: a page's own tab, or the one it was opened from. */
+internal fun selectedTabRoute(route: String?): String? = when {
+    route == Screen.Settings.route || route == Screen.TabEditor.route -> Screen.More.route
+    route == MoodleRoutes.COURSE_DETAIL || route?.startsWith(MoodleRoutes.PREFIX) == true -> Screen.ClassTable.route
+    else -> route
+}
+
+/**
+ * Opens [target] from outside the app, a widget or a notification: a tab as the bottom bar opens
+ * it, so a page pushed over it is cleared rather than covered by a second copy of the tab.
+ */
+internal fun NavController.openStartRoute(target: String, tabRoutes: Set<String>, firstTab: String, tabTap: TabTap) {
+    // As the bottom bar does: navigating to the page on screen pops it before singleTop applies,
+    // which rebuilds the tab, or closes a mail being written without offering to save it.
+    if (currentBackStackEntry?.destination?.route == target) return
+    if (target in tabRoutes) {
+        navigateToTab(target, firstTab, tabTap)
+    } else {
+        navigate(target) { launchSingleTop = true }
+    }
+}
+
+/**
+ * Pops [entry] when it is the page on top, and does nothing otherwise: a back tapped twice, or a
+ * page closing itself while its pop already runs, must not take the page under it too.
+ */
+internal fun NavController.popIfTop(entry: NavBackStackEntry) {
+    if (currentBackStackEntry?.id == entry.id) popBackStack()
 }
 
 /**
