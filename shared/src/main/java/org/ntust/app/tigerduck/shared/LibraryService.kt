@@ -2,7 +2,13 @@ package org.ntust.app.tigerduck.shared
 
 import android.util.Log
 import com.google.gson.Gson
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -180,41 +186,85 @@ class LibraryService(
         return parsed.data ?: throw LibraryServiceError.LoginFailed(message)
     }
 
-    suspend fun ensureToken(): String = tokenMutex.withLock {
-        // Before the account it signs in with, so a sign-out after this keeps
-        // the answer from being stored.
-        val accountGeneration = credentials.libraryAccountGeneration
+    /**
+     * Returns a valid token, signing in again with the stored credentials once
+     * it runs out. Callers that ask while that sign-in is out for the account
+     * wait for it and share its outcome, rather than each sending the password.
+     */
+    suspend fun ensureToken(): String {
         val token = credentials.libraryToken
-        if (token != null && credentials.isLibraryTokenValid) return@withLock token
-
+        if (token != null && credentials.isLibraryTokenValid) return token
         val username = credentials.libraryUsername
             ?: throw LibraryServiceError.CredentialsNotFound()
-        val password = credentials.libraryPassword
-            ?: throw LibraryServiceError.CredentialsNotFound()
+        if (credentials.libraryPassword == null) throw LibraryServiceError.CredentialsNotFound()
         // Each refusal counts toward the account's lockout, so a refused
         // password is not sent again until a sign-in saves credentials that work.
         if (credentials.libraryPasswordRefused) throw LibraryServiceError.CredentialsNotFound()
 
-        val signedIn = try {
-            loginInternal(username, password, accountGeneration, byUser = false)
+        val attempt = synchronized(pendingSignIns) {
+            pendingSignIns[username] ?: signInScope.async(start = CoroutineStart.LAZY) {
+                storedSignIn()
+            }.also { started ->
+                pendingSignIns[username] = started
+                started.invokeOnCompletion {
+                    synchronized(pendingSignIns) {
+                        if (pendingSignIns[username] === started) pendingSignIns.remove(username)
+                    }
+                }
+                started.start()
+            }
+        }
+        return attempt.await()
+    }
+
+    /**
+     * Each account's sign-in with the stored credentials that is under way.
+     * It runs in [signInScope], so a caller that stops waiting leaves it to
+     * finish, and its outcome is kept.
+     */
+    private val pendingSignIns = HashMap<String, Deferred<String>>()
+    private val signInScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private suspend fun storedSignIn(): String = tokenMutex.withLock {
+        // Before the account it signs in with, so a sign-out after this keeps
+        // the answer from being stored.
+        val accountGeneration = credentials.libraryAccountGeneration
+        // A sign-in that landed while this waited for the lock, typed or not.
+        val token = credentials.libraryToken
+        if (token != null && credentials.isLibraryTokenValid) return@withLock token
+        val username = credentials.libraryUsername
+            ?: throw LibraryServiceError.CredentialsNotFound()
+        val password = credentials.libraryPassword
+            ?: throw LibraryServiceError.CredentialsNotFound()
+        if (credentials.libraryPasswordRefused) throw LibraryServiceError.CredentialsNotFound()
+
+        val outcome = try {
+            Result.success(loginInternal(username, password, accountGeneration, byUser = false))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            // A failure says something only about the credentials still stored.
-            if (e is LibraryServiceError.LoginFailed) {
-                if (credentials.refuseLibraryPassword(accountGeneration, password)) {
-                    _storedSignIns.tryEmit(StoredSignIn.REFUSED)
-                }
-            } else if (credentials.libraryAccountGeneration == accountGeneration &&
-                credentials.libraryPassword == password
-            ) {
-                storedSignInFailedAt = clock()
-            }
-            throw e
+            Result.failure(e)
         }
-        storedSignInFailedAt = null
-        _storedSignIns.tryEmit(StoredSignIn.SIGNED_IN)
-        signedIn
+        // Kept whatever happens to the callers: a refusal that went unrecorded
+        // would let the password be sent again.
+        withContext(NonCancellable) {
+            val failure = outcome.exceptionOrNull()
+            when {
+                failure == null -> {
+                    storedSignInFailedAt = null
+                    _storedSignIns.tryEmit(StoredSignIn.SIGNED_IN)
+                }
+                // A failure says something only about the credentials still stored.
+                failure is LibraryServiceError.LoginFailed -> {
+                    if (credentials.refuseLibraryPassword(accountGeneration, password)) {
+                        _storedSignIns.tryEmit(StoredSignIn.REFUSED)
+                    }
+                }
+                credentials.libraryAccountGeneration == accountGeneration &&
+                    credentials.libraryPassword == password -> storedSignInFailedAt = clock()
+            }
+        }
+        outcome.getOrThrow()
     }
 
     suspend fun generateQRCode(): String = withContext(Dispatchers.IO) {

@@ -263,4 +263,65 @@ class LibraryServiceStoredSignInTest {
         val deadline = System.currentTimeMillis() + 5_000
         while (!condition() && System.currentTimeMillis() < deadline) delay(10)
     }
+
+    /** Two callers at once, as the return to the app and the Library page opening together. */
+    private fun twoCallersWhileTheLibraryAnswers(answer: Pair<Int, String>): List<Throwable?> {
+        val asked = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        answers += answer
+        whileSigningIn = {
+            asked.countDown()
+            release.await(5, TimeUnit.SECONDS)
+        }
+        return runBlocking {
+            val first = async(Dispatchers.IO) { runCatching { service.ensureToken() }.exceptionOrNull() }
+            asked.await(5, TimeUnit.SECONDS)
+            val second = async(Dispatchers.IO) { runCatching { service.ensureToken() }.exceptionOrNull() }
+            delay(100)
+            release.countDown()
+            listOf(first.await(), second.await())
+        }
+    }
+
+    @Test
+    fun `callers that ask while a sign-in fails with a server error share its failure`() {
+        val failures = twoCallersWhileTheLibraryAnswers(serverError)
+
+        assertEquals(1, signIns)
+        assertTrue(failures.all { it is LibraryServiceError.LoginUnavailable })
+        assertFalse(store.libraryPasswordRefused)
+        // The pause started once, for both.
+        assertFalse(runBlocking { service.signInIfCredentialed { true } })
+        assertEquals(1, signIns)
+    }
+
+    @Test
+    fun `callers that ask while the library refuses the password share the refusal and its message`() {
+        val failures = twoCallersWhileTheLibraryAnswers(401 to """{"data":null,"error":{"code":401,"message":"wrong password"}}""")
+
+        assertEquals(1, signIns)
+        assertTrue(failures.all { it is LibraryServiceError.LoginFailed })
+        assertEquals(listOf("wrong password", "wrong password"), failures.map { it?.message })
+        assertTrue(store.libraryPasswordRefused)
+    }
+
+    @Test
+    fun `a caller that stops waiting does not lose the refusal`() = runBlocking {
+        val asked = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        answers += wrongPassword
+        whileSigningIn = {
+            asked.countDown()
+            release.await(5, TimeUnit.SECONDS)
+        }
+        val caller = launch(Dispatchers.IO) { runCatching { service.ensureToken() } }
+        asked.await(5, TimeUnit.SECONDS)
+        caller.cancel()
+        release.countDown()
+
+        waitFor { store.libraryPasswordRefused }
+        assertTrue(store.libraryPasswordRefused)
+        assertTrue(runCatching { service.ensureToken() }.exceptionOrNull() is LibraryServiceError.CredentialsNotFound)
+        assertEquals(1, signIns)
+    }
 }
