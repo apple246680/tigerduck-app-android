@@ -11,6 +11,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.ntust.app.tigerduck.library.LibraryQRCache
 import java.io.IOException
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -32,14 +33,21 @@ class LibraryQRCycleTest {
             val answer = answers.removeFirstOrNull() ?: Result.success("code-${++codes}")
             answer.getOrThrow()
         },
-        render = { "image of $it" },
+        render = {
+            renders++
+            "image of $it"
+        },
         account = { account },
         sessionValid = { sessionValid },
         onSessionEnded = { sessionEnded++ },
         describe = { it.message ?: "failed" },
         errors = errors,
+        cache = cache,
         now = { testScheduler.currentTime },
     )
+
+    private val cache = LibraryQRCache<String>()
+    private var renders = 0
 
     private fun fail() = Result.failure<String>(IOException("HTTP 503"))
 
@@ -144,13 +152,14 @@ class LibraryQRCycleTest {
         cycle.start()
         runCurrent()
         cycle.stop()
-        advanceTimeBy(10_000)
+        // Too little left to show again, so the page asks for a new one.
+        advanceTimeBy(20_000)
         answers += fail()
         cycle.start()
         runCurrent()
         assertEquals("image of code-1", cycle.image.value)
 
-        advanceTimeBy(19_000)
+        advanceTimeBy(9_000)
         runCurrent()
         assertEquals("image of code-1", cycle.image.value)
         advanceTimeBy(1_000)
@@ -172,6 +181,7 @@ class LibraryQRCycleTest {
             onSessionEnded = {},
             describe = { "failed" },
             errors = errors,
+            cache = cache,
             now = { testScheduler.currentTime },
         )
         cycle.start()
@@ -202,5 +212,87 @@ class LibraryQRCycleTest {
         assertEquals(300, LibraryQRCycle.retryDelaySeconds(3))
         assertEquals(300, LibraryQRCycle.retryDelaySeconds(9))
         assertTrue(LibraryQRCycle.retryDelaySeconds(0) > 0)
+    }
+
+    @Test
+    fun `coming back within the code's lifetime shows the same code at once and resumes its countdown`() = runTest {
+        val first = cycle()
+        first.start()
+        runCurrent()
+        first.stop()
+        advanceTimeBy(12_000)
+
+        // A new page, as after leaving Library and coming back.
+        val second = cycle()
+        second.start()
+        runCurrent()
+        assertEquals("image of code-1", second.image.value)
+        assertEquals(18, second.countdown.value)
+        assertEquals(listOf(0L), fetchedAt)
+        assertEquals(1, renders)
+
+        advanceTimeBy(18_000)
+        runCurrent()
+        assertEquals("image of code-2", second.image.value)
+        assertEquals(listOf(0L, 30_000L), fetchedAt)
+    }
+
+    @Test
+    fun `with less than 15 seconds left a new code is fetched`() = runTest {
+        val first = cycle()
+        first.start()
+        runCurrent()
+        first.stop()
+        advanceTimeBy(16_000)
+
+        val second = cycle()
+        second.start()
+        runCurrent()
+        assertEquals("image of code-2", second.image.value)
+        assertEquals(listOf(0L, 16_000L), fetchedAt)
+    }
+
+    @Test
+    fun `a kept code is not shown for another account`() = runTest {
+        val first = cycle()
+        first.start()
+        runCurrent()
+        first.stop()
+        account = 2
+
+        val second = cycle()
+        second.start()
+        runCurrent()
+        assertEquals("image of code-2", second.image.value)
+        assertEquals(2, fetchedAt.size)
+    }
+
+    @Test
+    fun `an image dropped under memory pressure is rendered again from the kept code`() = runTest {
+        val first = cycle()
+        first.start()
+        runCurrent()
+        first.stop()
+        cache.dropImage()
+
+        val second = cycle()
+        second.start()
+        runCurrent()
+        assertEquals("image of code-1", second.image.value)
+        assertEquals(1, fetchedAt.size)
+        assertEquals(2, renders)
+    }
+
+    @Test
+    fun `a session that ends leaves no code to show again`() = runTest {
+        answers += listOf(Result.success("first"), fail())
+        val cycle = cycle()
+        cycle.start()
+        runCurrent()
+        sessionValid = false
+        advanceTimeBy(30_000)
+        runCurrent()
+
+        assertNull(cache.reusable(account, testScheduler.currentTime))
     }
 }

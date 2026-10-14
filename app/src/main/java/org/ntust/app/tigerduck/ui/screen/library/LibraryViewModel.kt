@@ -17,6 +17,7 @@ import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.debug.DebugFixtureStore
 import org.ntust.app.tigerduck.demo.DemoAccount
+import org.ntust.app.tigerduck.library.LibraryQRBitmapCache
 import org.ntust.app.tigerduck.library.LibrarySession
 import org.ntust.app.tigerduck.shared.LibraryQRRenderer
 import org.ntust.app.tigerduck.shared.LibraryService
@@ -31,6 +32,7 @@ class LibraryViewModel @Inject constructor(
     private val debugFixtures: DebugFixtureStore,
     private val demoAccount: DemoAccount,
     private val librarySession: LibrarySession,
+    qrCache: LibraryQRBitmapCache,
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -59,6 +61,7 @@ class LibraryViewModel @Inject constructor(
                 ?: context.getString(R.string.library_qr_generate_failed)
         },
         errors = _errorMessage,
+        cache = qrCache,
         now = SystemClock::elapsedRealtime,
     )
 

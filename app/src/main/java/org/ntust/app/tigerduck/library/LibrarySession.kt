@@ -16,18 +16,25 @@ import javax.inject.Singleton
  * The stores behind it say nothing when they change, and a token also runs out
  * with time, so whatever changes them calls [refresh]: a library sign-in or
  * sign-out, the school's, which can take the library with it, and each return
- * to the app.
+ * to the app. Signed out, the QR code kept in [LibraryQRCache] goes too: it
+ * still scans as the account's pass.
  */
 @Singleton
-class LibrarySession internal constructor(private val read: () -> Boolean) {
+class LibrarySession internal constructor(
+    private val read: () -> Boolean,
+    private val onSignedOut: () -> Unit = {},
+) {
 
     @Inject
-    constructor(credentials: CredentialManager, demoAccount: DemoAccount) :
-        this({ credentials.isLibraryTokenValid || demoAccount.isLibrarySignedIn })
+    constructor(credentials: CredentialManager, demoAccount: DemoAccount, qrCache: LibraryQRBitmapCache) :
+        this({ credentials.isLibraryTokenValid || demoAccount.isLibrarySignedIn }, qrCache::clear)
 
     private val _signedIn = MutableStateFlow(read())
     val signedIn: StateFlow<Boolean> = _signedIn.asStateFlow()
 
     /** Reads the stores again; returns whether a library account is signed in. */
-    fun refresh(): Boolean = read().also { _signedIn.value = it }
+    fun refresh(): Boolean = read().also {
+        _signedIn.value = it
+        if (!it) onSignedOut()
+    }
 }

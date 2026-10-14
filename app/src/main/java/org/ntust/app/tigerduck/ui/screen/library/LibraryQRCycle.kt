@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import org.ntust.app.tigerduck.library.LibraryQRCache
 import org.ntust.app.tigerduck.shared.LibraryApi
 
 /**
@@ -21,6 +22,11 @@ import org.ntust.app.tigerduck.shared.LibraryApi
  * seconds and the page recovers on its own. An expired code is never left on
  * screen to be scanned: it goes as soon as a fetch fails. A failure with the
  * session gone hands back to [onSessionEnded].
+ *
+ * Each code goes into [cache]. Coming back to the page while the last code
+ * still has [LibraryQRCache.REUSE_THRESHOLD_SECONDS] left shows that code at
+ * once and resumes its countdown, rendering it again only if the image was
+ * dropped; the next fetch is when it runs out.
  *
  * [Image] is the rendered code, a Bitmap in the app.
  */
@@ -38,6 +44,7 @@ internal class LibraryQRCycle<Image : Any>(
     private val describe: (Exception) -> String,
     /** Where a failure's message goes; cleared when a fetch starts. */
     private val errors: MutableStateFlow<String?>,
+    private val cache: LibraryQRCache<Image>,
     /** A monotonic clock in ms, for how long the code on screen has left. */
     private val now: () -> Long,
 ) {
@@ -62,7 +69,7 @@ internal class LibraryQRCycle<Image : Any>(
     /** Starts the cycle, unless it is already running. */
     fun start() {
         if (job?.isActive == true) return
-        job = scope.launch { run() }
+        job = scope.launch { cycle() }
     }
 
     fun stop() {
@@ -83,11 +90,13 @@ internal class LibraryQRCycle<Image : Any>(
         consecutiveErrors = 0
     }
 
-    private suspend fun run() {
-        // A code from before a pause that has run out, or that is another
-        // account's, would scan as a valid pass until the new one lands.
-        if (shownAccount != account() || codeExpired()) clearCode()
-        _countdown.value = 0
+    private suspend fun cycle() {
+        if (!showCached()) {
+            // A code from before a pause that has run out, or that is another
+            // account's, would scan as a valid pass until the new one lands.
+            if (shownAccount != account() || codeExpired()) clearCode()
+            _countdown.value = 0
+        }
         while (true) {
             when (fetchOnce()) {
                 Outcome.SHOWN -> countDown(LibraryApi.QR_VALID_SECONDS)
@@ -99,6 +108,27 @@ internal class LibraryQRCycle<Image : Any>(
 
     private enum class Outcome { SHOWN, FAILED, ENDED }
 
+    /** Shows the cached code while it has time left, and counts it down; returns whether it did. */
+    private suspend fun showCached(): Boolean {
+        val forAccount = account()
+        val (entry, secondsLeft) = cache.reusable(forAccount, now()) ?: return false
+        val image = entry.image ?: run {
+            _isLoading.value = _image.value == null
+            try {
+                render(entry.payload).also { cache.store(entry.payload, it, forAccount, entry.issuedAt) }
+            } finally {
+                _isLoading.value = false
+            }
+        }
+        if (account() != forAccount) return false
+        _image.value = image
+        shownIssuedAt = entry.issuedAt
+        shownAccount = forAccount
+        errors.value = null
+        countDown(secondsLeft)
+        return true
+    }
+
     private suspend fun fetchOnce(): Outcome {
         val forAccount = account()
         _isLoading.value = _image.value == null
@@ -109,8 +139,10 @@ internal class LibraryQRCycle<Image : Any>(
             // Signed out, or another account signed in, while the request was
             // out: this code is the previous account's.
             if (account() != forAccount) return Outcome.ENDED
+            val issuedAt = now()
+            cache.store(payload, rendered, forAccount, issuedAt)
             _image.value = rendered
-            shownIssuedAt = now()
+            shownIssuedAt = issuedAt
             shownAccount = forAccount
             consecutiveErrors = 0
             return Outcome.SHOWN
@@ -120,6 +152,7 @@ internal class LibraryQRCycle<Image : Any>(
             if (account() != forAccount) return Outcome.ENDED
             errors.value = describe(e)
             if (!sessionValid()) {
+                cache.clear()
                 clearCode()
                 consecutiveErrors = 0
                 onSessionEnded()
