@@ -70,6 +70,8 @@ import org.ntust.app.tigerduck.ui.screen.calendar.CalendarScreen
 import org.ntust.app.tigerduck.ui.screen.calendar.CalendarViewModel
 import org.ntust.app.tigerduck.ui.screen.classtable.ClassTableScreen
 import org.ntust.app.tigerduck.ui.screen.classtable.ClassTableViewModel
+import org.ntust.app.tigerduck.ui.screen.classtable.sharing.ClassTableImportHost
+import org.ntust.app.tigerduck.ui.screen.classtable.sharing.ClassTableImportViewModel
 import org.ntust.app.tigerduck.ui.screen.home.HomeScreen
 import org.ntust.app.tigerduck.ui.screen.home.HomeViewModel
 import org.ntust.app.tigerduck.ui.screen.library.LibraryScreen
@@ -225,6 +227,7 @@ fun MainNavigation(
     val homeViewModel: HomeViewModel = hiltViewModel()
     val classTableViewModel: ClassTableViewModel = hiltViewModel()
     val calendarViewModel: CalendarViewModel = hiltViewModel()
+    val classTableImportViewModel: ClassTableImportViewModel = hiltViewModel()
     LaunchedEffect(Unit) {
         homeViewModel.load()
         classTableViewModel.load()
@@ -417,6 +420,7 @@ fun MainNavigation(
                 ClassTableScreen(
                     viewModel = classTableViewModel,
                     onOpenSignInSettings = openSignInSettings,
+                    onRequestImport = classTableImportViewModel::start,
                 )
             }
             page(Screen.Calendar.route) {
@@ -662,6 +666,17 @@ fun MainNavigation(
             }
         }
     }
+
+    // Over every page: the tab's menu can start an import from any of them.
+    ClassTableImportHost(
+        viewModel = classTableImportViewModel,
+        onImported = {
+            // The class table shows the person just imported.
+            if (navController.currentBackStackEntry?.destination?.route != Screen.ClassTable.route) {
+                navController.navigateToTab(Screen.ClassTable.route, firstTab = popUpToDest, tabTap)
+            }
+        },
+    )
 }
 
 /**

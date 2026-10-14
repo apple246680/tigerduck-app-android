@@ -64,6 +64,12 @@
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/duck_yellow" />
 
+        <!-- Google's code scanner, which reads a shared class table's QR code, downloads its
+             module with the app rather than on the first scan. -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="barcode_ui" />
+
         <!-- Default Firebase Analytics collection off so auto-collected events
              (session_start, first_open, screen_view) don't leave the device
              before the user consents. AnalyticsLogger.setEnabled(true) flips

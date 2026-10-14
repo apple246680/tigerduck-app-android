@@ -136,10 +136,12 @@ class CourseService @Inject constructor(
         }
     }
 
+    /** [fresh] asks QueryCourse even when the cache holds a recent answer. */
     suspend fun lookupCourse(
         semester: String,
         courseNo: String,
         lang: String = preferredCourseApiLanguage(),
+        fresh: Boolean = false,
     ): List<CourseSearchResult> =
         withContext(Dispatchers.IO) {
             ensureLookupCacheLoaded()
@@ -148,14 +150,16 @@ class CourseService @Inject constructor(
             // applyAbbreviations runs at access time, so toggling the abbr
             // setting reuses the same cache entry and never refetches.
             val key = "${semester}_${courseNo}_${language}"
-            lookupCache[key]?.takeIf {
-                System.currentTimeMillis() - it.cachedAt < LOOKUP_TTL_MS
-            }?.let { return@withContext applyAbbreviations(it.results, language) }
+            if (!fresh) {
+                lookupCache[key]?.takeIf {
+                    System.currentTimeMillis() - it.cachedAt < LOOKUP_TTL_MS
+                }?.let { return@withContext applyAbbreviations(it.results, language) }
+            }
 
-            val fresh = lookupsInFlight.get(key) {
+            val answer = lookupsInFlight.get(key) {
                 withContext(Dispatchers.IO) { fetchLookup(key, semester, courseNo, language) }
             }
-            applyAbbreviations(fresh, language)
+            applyAbbreviations(answer, language)
         }
 
     /** The querycourse request behind [lookupCourse], written through to its cache. */
@@ -326,29 +330,7 @@ class CourseService @Inject constructor(
         if (results.isEmpty()) {
             fallbackCourseFromMoodle(courseNo, moodle)
         } else {
-            val first = results.first()
-            val allRooms = LinkedHashSet<String>().apply {
-                for (row in results) {
-                    Course.splitRooms(row.classRoomNo ?: "").forEach { add(it) }
-                }
-            }
-            Course.fromSchedule(
-                courseNo = first.courseNo,
-                courseName = first.courseName,
-                instructor = first.courseTeacher,
-                credits = first.creditPoint.toCreditsOrZero(),
-                classroom = allRooms.joinToString(", "),
-                enrolledCount = first.chooseStudent ?: 0,
-                maxCount = first.maxEnrollment,
-                schedule = mergeSchedules(*results.map { it.node }.toTypedArray()),
-                classroomMap = buildClassroomMap(results),
-                moodleIdNumber = moodle?.idnumber ?: "${first.semester}${first.courseNo}",
-                moodleNumericCourseId = moodle?.id,
-                // First non-empty rather than the first row's: a course split
-                // across rows only names these on some of them.
-                dimension = CourseService.firstNonEmpty(results.map { it.dimension }),
-                allYear = CourseService.firstNonEmpty(results.map { it.allYear }),
-            )
+            courseFrom(results, moodle)
         }
     } catch (e: CancellationException) {
         // ClassTableViewModel cancels its load job on every semester flip, and
@@ -359,6 +341,36 @@ class CourseService @Inject constructor(
     } catch (e: Exception) {
         Log.e(TAG_LOOKUP, "Failed to look up a course: ${e.logSummary()}")
         fallbackCourseFromMoodle(courseNo, moodle)
+    }
+
+    /**
+     * One course from the QueryCourse rows [lookupCourse] returned for it, which must not be
+     * empty: schedules merged, the per-slot rooms mapped across every row, see [lookupOrFallback].
+     */
+    fun courseFrom(results: List<CourseSearchResult>, moodle: MoodleEnrolledCourse?): Course {
+        val first = results.first()
+        val allRooms = LinkedHashSet<String>().apply {
+            for (row in results) {
+                Course.splitRooms(row.classRoomNo ?: "").forEach { add(it) }
+            }
+        }
+        return Course.fromSchedule(
+            courseNo = first.courseNo,
+            courseName = first.courseName,
+            instructor = first.courseTeacher,
+            credits = first.creditPoint.toCreditsOrZero(),
+            classroom = allRooms.joinToString(", "),
+            enrolledCount = first.chooseStudent ?: 0,
+            maxCount = first.maxEnrollment,
+            schedule = mergeSchedules(*results.map { it.node }.toTypedArray()),
+            classroomMap = buildClassroomMap(results),
+            moodleIdNumber = moodle?.idnumber ?: "${first.semester}${first.courseNo}",
+            moodleNumericCourseId = moodle?.id,
+            // First non-empty rather than the first row's: a course split
+            // across rows only names these on some of them.
+            dimension = CourseService.firstNonEmpty(results.map { it.dimension }),
+            allYear = CourseService.firstNonEmpty(results.map { it.allYear }),
+        )
     }
 
     /**

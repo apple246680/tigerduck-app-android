@@ -1265,6 +1265,28 @@
             ]
         },
         {
+            "uniqueId": "androidx.exifinterface:exifinterface",
+            "artifactVersion": "1.0.0",
+            "name": "Support ExifInterface",
+            "description": "Android Support ExifInterface",
+            "website": "http://developer.android.com/tools/extras/support-library.html",
+            "developers": [
+                {
+                    "name": "The Android Open Source Project"
+                }
+            ],
+            "scm": {
+                "connection": "scm:git:https://android.googlesource.com/platform/frameworks/support",
+                "url": "http://source.android.com"
+            },
+            "licenses": [
+                "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
             "uniqueId": "androidx.fragment:fragment",
             "artifactVersion": "1.5.4",
             "name": "Support fragment",
@@ -2793,6 +2815,21 @@
             ]
         },
         {
+            "uniqueId": "com.google.android.gms:play-services-code-scanner",
+            "artifactVersion": "16.1.0",
+            "name": "play-services-code-scanner",
+            "description": "",
+            "developers": [
+                
+            ],
+            "licenses": [
+                "9962f44671a86e167c028415c7e21548"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
             "uniqueId": "com.google.android.gms:play-services-measurement",
             "artifactVersion": "23.2.0",
             "name": "play-services-measurement",
@@ -2916,6 +2953,21 @@
             "uniqueId": "com.google.android.gms:play-services-wearable",
             "artifactVersion": "20.0.1",
             "name": "play-services-wearable",
+            "description": "",
+            "developers": [
+                
+            ],
+            "licenses": [
+                "ASDKL"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "com.google.android.odml:image",
+            "artifactVersion": "1.0.0-beta1",
+            "name": "image",
             "description": "",
             "developers": [
                 
@@ -3485,6 +3537,51 @@
             },
             "licenses": [
                 "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "com.google.mlkit:barcode-scanning-common",
+            "artifactVersion": "17.0.0",
+            "name": "barcode-scanning-common",
+            "description": "",
+            "developers": [
+                
+            ],
+            "licenses": [
+                "9962f44671a86e167c028415c7e21548"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "com.google.mlkit:common",
+            "artifactVersion": "18.9.0",
+            "name": "common",
+            "description": "",
+            "developers": [
+                
+            ],
+            "licenses": [
+                "9962f44671a86e167c028415c7e21548"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "com.google.mlkit:vision-common",
+            "artifactVersion": "17.0.0",
+            "name": "vision-common",
+            "description": "",
+            "developers": [
+                
+            ],
+            "licenses": [
+                "9962f44671a86e167c028415c7e21548"
             ],
             "funding": [
                 
@@ -4148,6 +4245,11 @@
         }
     ],
     "licenses": {
+        "9962f44671a86e167c028415c7e21548": {
+            "name": "ML Kit Terms of Service",
+            "url": "https://developers.google.com/ml-kit/terms",
+            "hash": "9962f44671a86e167c028415c7e21548"
+        },
         "ASDKL": {
             "name": "Android Software Development Kit License",
             "url": "https://developer.android.com/studio/terms.html",

@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Lock
@@ -142,6 +143,8 @@ internal fun carouselScrollTarget(isOngoing: List<Boolean>, firstOngoingIndex: I
 fun ClassTableScreen(
     viewModel: ClassTableViewModel = hiltViewModel(),
     onOpenSignInSettings: () -> Unit = {},
+    /** Opens the class table import, which the navigation host presents over every page. */
+    onRequestImport: () -> Unit = {},
 ) {
     val courses by viewModel.courses.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
@@ -315,6 +318,12 @@ fun ClassTableScreen(
                                 // over nothing. Also off while one is in
                                 // flight.
                                 enabled = hasGrid && !exporting,
+                            )
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.class_table_import)) },
+                                leadingIcon = { Icon(Icons.Filled.QrCodeScanner, contentDescription = null) },
+                                onClick = { showMoreMenu = false; onRequestImport() },
                             )
                         }
                     }

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+    Fdroid-flavor manifest fragment. Merged with src/main/AndroidManifest.xml
+    only when building fdroid* variants. The play flavor scans a class table's
+    share code with Google's code scanner, which runs in Play Services and needs
+    no camera permission; this flavor has no Play Services, so the import page
+    shows its own camera and asks for it when the page opens.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- A phone without a camera, or without a back one or autofocus, can still import a share
+         code, from a picture or with whichever camera it has. -->
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false" />
+</manifest>

@@ -565,6 +565,13 @@ dependencies {
 
     // QR Code
     implementation(libs.zxing.core)
+    // The camera that scans a class table's share code: Google's code scanner on play, which
+    // runs in Play Services and needs no camera permission, and CameraX, decoding with ZXing
+    // above, on fdroid, which has no Play Services.
+    "playImplementation"(libs.play.services.code.scanner)
+    "fdroidImplementation"(libs.androidx.camera.camera2)
+    "fdroidImplementation"(libs.androidx.camera.lifecycle)
+    "fdroidImplementation"(libs.androidx.camera.compose)
 
     // Firebase Cloud Messaging — confined to the `play` flavor so the
     // F-Droid APK contains zero Google Play Services code. FcmService.kt
