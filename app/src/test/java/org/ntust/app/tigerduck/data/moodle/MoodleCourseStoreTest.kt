@@ -3,6 +3,7 @@ package org.ntust.app.tigerduck.data.moodle
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
@@ -84,6 +85,9 @@ class MoodleCourseStoreTest {
         var downloads = 0
         var downloadAnswer: (java.io.File) -> Unit = { it.writeText("pdf bytes") }
         var lastLimit = 0L
+        var downloadGate: CompletableDeferred<Unit>? = null
+        /** One signal per download as it starts, its partial file written. */
+        val downloadStarted = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.UNLIMITED)
         override suspend fun download(
             file: org.ntust.app.tigerduck.network.model.moodle.MoodleFile,
             target: java.io.File,
@@ -92,6 +96,8 @@ class MoodleCourseStoreTest {
             downloads++
             lastLimit = maxBytes
             downloadAnswer(target)
+            downloadStarted.trySend(Unit)
+            downloadGate?.await()
         }
     }
 
@@ -110,7 +116,7 @@ class MoodleCourseStoreTest {
         api = api,
         context = MoodleCacheContext("B1", cache, isCurrent = { signedIn }, now = { now }),
         scope = backgroundScope,
-        openedFilesDir = tmp.root,
+        openedFilesDir = { tmp.root },
     )
 
     private val attachment = org.ntust.app.tigerduck.network.model.moodle.MoodleFile(
@@ -461,5 +467,72 @@ class MoodleCourseStoreTest {
 
         assertTrue(file.canonicalPath.startsWith(tmp.root.canonicalPath))
         assertTrue(!file.name.contains('/') && !file.name.contains('\\') && !file.name.startsWith("."))
+    }
+
+    @Test
+    fun `opening a file twice at once downloads it once`() = runTest(UnconfinedTestDispatcher()) {
+        api.downloadGate = CompletableDeferred()
+        val store = store()
+
+        val first = async { store.openAttachment(attachment) }
+        api.downloadStarted.receive()
+        val second = async { store.openAttachment(attachment) }
+        runCurrent()
+        api.downloadGate!!.complete(Unit)
+
+        assertEquals(first.await(), second.await())
+        assertTrue(first.await() is MoodleAttachment.Local)
+        assertEquals(1, api.downloads)
+    }
+
+    @Test
+    fun `a download stopped by a sign-out leaves no partial file`() = runTest(UnconfinedTestDispatcher()) {
+        api.downloadAnswer = { it.writeText("half") }
+        api.downloadGate = CompletableDeferred()
+        val storeScope = kotlinx.coroutines.CoroutineScope(coroutineContext + kotlinx.coroutines.SupervisorJob(coroutineContext[kotlinx.coroutines.Job]))
+        val store = MoodleCourseStore(
+            courseId = 5, termCourseIds = emptyList(), courseCodes = emptyList(), api = api,
+            context = MoodleCacheContext("B1", cache, isCurrent = { signedIn }, now = { now }),
+            scope = storeScope, openedFilesDir = { tmp.root },
+        )
+        val opening = async { runCatching { store.openAttachment(attachment) } }
+        api.downloadStarted.receive()
+        assertTrue("the partial file is there while it downloads", tmp.root.walkTopDown().any { it.isFile })
+
+        storeScope.cancel()
+        opening.await()
+
+        assertTrue(tmp.root.walkTopDown().none { it.isFile })
+    }
+
+    @Test
+    fun `a file being fetched again is not pruned by another opened meanwhile`() = runTest(UnconfinedTestDispatcher()) {
+        val store = store()
+        val untyped = attachment.copy(mimeType = null)
+        val first = (store.openAttachment(untyped) as MoodleAttachment.Local).file
+        first.parentFile!!.setLastModified(System.currentTimeMillis() - 2 * 24 * 3_600_000L)
+
+        api.downloadStarted.receive()
+        api.downloadGate = CompletableDeferred()
+        val again = async { store.openAttachment(untyped) }
+        api.downloadStarted.receive()
+        // Another file opened while the first is fetched again: its prune runs before its download.
+        val other = async { store.openAttachment(attachment.copy(url = attachment.url.replace("/90/", "/92/"))) }
+        api.downloadStarted.receive()
+        api.downloadGate!!.complete(Unit)
+
+        assertEquals(MoodleAttachment.Local(first), again.await())
+        assertTrue(first.isFile)
+        assertTrue(other.await() is MoodleAttachment.Local)
+    }
+
+    @Test
+    fun `a long name is cut to fit the file system, keeping its extension`() = runTest(UnconfinedTestDispatcher()) {
+        val long = attachment.copy(name = "資料結構期中考試題與詳解".repeat(12) + ".pdf")
+        val file = (store().openAttachment(long) as MoodleAttachment.Local).file
+
+        assertTrue(file.name.toByteArray().size <= 200)
+        assertTrue(file.name.endsWith(".pdf"))
+        assertTrue(file.name.startsWith("資料結構"))
     }
 }

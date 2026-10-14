@@ -119,7 +119,7 @@ class MoodleCourseRepository internal constructor(
             context = context,
             scope = scope,
             picturesDir = picturesDir(account),
-            openedFilesDir = openedFilesDir(account),
+            openedFilesDir = { openedFilesDir(account) },
             decodePicture = decode,
         ).also { stores[account to courseId] = it }
     }

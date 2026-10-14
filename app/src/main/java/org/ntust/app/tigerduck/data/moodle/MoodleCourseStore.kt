@@ -6,6 +6,8 @@ import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,8 +54,11 @@ class MoodleCourseStore(
     private val scope: CoroutineScope,
     /** Where member pictures are kept; null keeps them in memory only. */
     private val picturesDir: File? = null,
-    /** Where opened attachments are kept for the account, which another app reads them from. */
-    private val openedFilesDir: File? = null,
+    /**
+     * Where opened attachments are kept for the account, which another app reads them from. Asked
+     * for off the main thread: finding it reads the install's salt from disk.
+     */
+    private val openedFilesDir: (() -> File?)? = null,
     private val decodePicture: (ByteArray) -> ImageBitmap? = { null },
     /** Where pictures are decoded, off the main thread. */
     private val background: CoroutineDispatcher = Dispatchers.Default,
@@ -273,42 +278,61 @@ class MoodleCourseStore(
         if (file.size > MAX_DOWNLOAD_BYTES) {
             return MoodleAttachment.Link(MoodleFileUrls.webUrl(file.url) ?: file.url)
         }
-        val dir = openedFilesDir ?: return MoodleAttachment.Failed(IllegalStateException("no folder for files"))
-        val slot = File(dir, slotName(file))
+        val key = slotName(file)
+        // Taken before anything suspends, so a second tap while the first downloads joins it
+        // rather than writing the same file beside it. In the store's scope: leaving the screen
+        // does not stop a download, a sign-out does.
+        val opening = synchronized(openings) {
+            openings[key]?.takeIf { it.isActive } ?: scope.async { openNow(file, key) }.also { openings[key] = it }
+        }
+        return opening.await().also {
+            synchronized(openings) { if (openings[key] === opening) openings.remove(key) }
+        }
+    }
+
+    private val openings = HashMap<String, Deferred<MoodleAttachment>>()
+
+    private suspend fun openNow(file: MoodleFile, key: String): MoodleAttachment {
+        val dir = withContext(Dispatchers.IO) { openedFilesDir?.invoke() }
+            ?: return MoodleAttachment.Failed(IllegalStateException("no folder for files"))
+        val slot = File(dir, key)
         val target = File(slot, safeFileName(file.name))
         val trusted = file.checkableMimeType() != null
         val kept = withContext(Dispatchers.IO) {
+            // Dated now, before anything is fetched, so a prune from another opening keeps it.
+            slot.mkdirs()
+            slot.setLastModified(System.currentTimeMillis())
             pruneOpened(dir, keep = slot)
-            (trusted && target.isFile).also { if (it) slot.setLastModified(System.currentTimeMillis()) }
+            trusted && target.isFile
         }
         if (kept) return MoodleAttachment.Local(target)
         _downloading.update { it + file.url }
+        var partial: File? = null
         return try {
-            val partial = File(slot, ".${target.name}.part")
-            try {
-                withContext(Dispatchers.IO) { slot.mkdirs() }
-                api.download(file, partial, maxBytes = if (file.size > 0) file.size else MAX_DOWNLOAD_BYTES)
-                withContext(Dispatchers.IO) {
-                    target.delete()
-                    if (!partial.renameTo(target)) throw java.io.IOException("could not keep the file")
-                }
-                if (context.isCurrent()) {
-                    MoodleAttachment.Local(target)
-                } else {
-                    // Landed after a sign-out: the next account must not find it.
-                    withContext(NonCancellable + Dispatchers.IO) { slot.deleteRecursively() }
-                    MoodleAttachment.Dropped
-                }
-            } finally {
-                withContext(NonCancellable + Dispatchers.IO) { partial.delete() }
+            val part = withContext(Dispatchers.IO) { File.createTempFile(".dl", ".part", slot) }
+            partial = part
+            api.download(file, part, maxBytes = if (file.size > 0) file.size else MAX_DOWNLOAD_BYTES)
+            withContext(Dispatchers.IO) {
+                target.delete()
+                if (!part.renameTo(target)) throw java.io.IOException("could not keep the file")
+            }
+            if (context.isCurrent()) {
+                MoodleAttachment.Local(target)
+            } else {
+                // Landed after a sign-out: the next account must not find it.
+                withContext(NonCancellable + Dispatchers.IO) { slot.deleteRecursively() }
+                MoodleAttachment.Dropped
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "attachment not downloaded: ${e.logSummary()}")
-            withContext(NonCancellable + Dispatchers.IO) { if (slot.list().isNullOrEmpty()) slot.delete() }
             MoodleAttachment.Failed(e)
         } finally {
+            withContext(NonCancellable + Dispatchers.IO) {
+                partial?.delete()
+                if (slot.list().isNullOrEmpty()) slot.delete()
+            }
             _downloading.update { it - file.url }
         }
     }
@@ -326,9 +350,30 @@ class MoodleCourseStore(
             .take(8)
             .joinToString("") { "%02x".format(it) }
 
-    /** [name] as one file name: no slash, backslash or NUL, and no leading dot to hide or climb with. */
-    private fun safeFileName(name: String): String =
-        name.replace(Regex("""[/\\\u0000]"""), "_").trim().trimStart('.').ifEmpty { "file" }
+    /**
+     * [name] as one file name: no slash, backslash or NUL, no leading dot to hide or climb with, and
+     * at most [MAX_NAME_BYTES] bytes, its extension kept, where a file system allows 255.
+     */
+    private fun safeFileName(name: String): String {
+        val cleaned = name.replace(Regex("""[/\\\u0000]"""), "_").trim().trimStart('.').ifEmpty { "file" }
+        if (cleaned.toByteArray(Charsets.UTF_8).size <= MAX_NAME_BYTES) return cleaned
+        val dot = cleaned.lastIndexOf('.')
+        val extension = if (dot > 0 && cleaned.length - dot <= 16) cleaned.substring(dot) else ""
+        val budget = MAX_NAME_BYTES - extension.toByteArray(Charsets.UTF_8).size
+        val stem = StringBuilder()
+        var used = 0
+        var i = 0
+        val body = cleaned.substring(0, cleaned.length - extension.length)
+        while (i < body.length) {
+            val codePoint = body.codePointAt(i)
+            val bytes = String(Character.toChars(codePoint)).toByteArray(Charsets.UTF_8).size
+            if (used + bytes > budget) break
+            stem.appendCodePoint(codePoint)
+            used += bytes
+            i += Character.charCount(codePoint)
+        }
+        return stem.toString().ifEmpty { "file" } + extension
+    }
 
     // --- Pictures ---
 
@@ -399,6 +444,9 @@ class MoodleCourseStore(
         const val MAX_DOWNLOAD_BYTES = 100L * 1024 * 1024
 
         private const val DAY_MS = 24 * 60 * 60 * 1000L
+
+        /** Under the 255 bytes most file systems allow a name, with room for the partial file's. */
+        private const val MAX_NAME_BYTES = 200
 
         /** How many pages an announcement opened cold is looked for in. */
         private const val MAX_LOOKUP_PAGES = 10
