@@ -62,7 +62,7 @@ data class KeptUsage(val usage: CampusUsage, val fetchedAtMs: Long)
  * WebForms site: every postback sends back the form state of the page before it, so requests run
  * one at a time. Each read starts from a new campus page and keeps no page after it ends: the
  * form state encodes the grid, bookers' names included, and a page left over would also post the
- * date it already shows, which the site's calendar answers from that state (tigerduck-app#513).
+ * date it already shows, which the site's calendar may answer from that state (tigerduck-app#513).
  *
  * Days are kept in memory only, today's fresh for 15 minutes and later ones for 3 hours, and shown
  * while they reload for up to 12 hours; a sign-out drops them.
@@ -107,6 +107,7 @@ class ClassroomUsageService internal constructor(
     fun keptUsage(day: LocalDate): KeptUsage? =
         kept[ClassroomUsageParser.dayNumber(day)]?.takeIf { nowMs() - it.fetchedAtMs < STALE_LIMIT_MS }
 
+    /** [isToday] sets only how long the day stays fresh: today's date is posted like any other. */
     suspend fun usage(day: LocalDate, isToday: Boolean, force: Boolean, credentials: Credentials): KeptUsage {
         demo(day)?.let { return KeptUsage(it, nowMs()) }
         val number = ClassroomUsageParser.dayNumber(day)
@@ -117,7 +118,7 @@ class ClassroomUsageService internal constructor(
             // may also find the day the one before it read.
             check(ticket)
             if (!force) fresh(number, isToday)?.let { return@withLock it }
-            val usage = fetch(number, isToday, credentials, ticket)
+            val usage = fetch(number, credentials, ticket)
             check(ticket)
             KeptUsage(usage, nowMs()).also { kept[number] = it }
         }
@@ -145,15 +146,15 @@ class ClassroomUsageService internal constructor(
      * to nothing, but it drops the cour01 cookies too, so a session the site broke on its side
      * does not outlive it: the next read or Retry starts clean.
      */
-    private suspend fun fetch(day: Int, isToday: Boolean, credentials: Credentials, ticket: Int): CampusUsage =
+    private suspend fun fetch(day: Int, credentials: Credentials, ticket: Int): CampusUsage =
         try {
             try {
-                read(day, isToday, credentials, ticket)
+                read(day, credentials, ticket)
             } catch (_: ClassroomUsageError.Unreadable) {
                 check(ticket)
                 dropSessionCookies()
                 try {
-                    read(day, isToday, credentials, ticket)
+                    read(day, credentials, ticket)
                 } catch (e: ClassroomUsageError.Unreadable) {
                     Log.w(TAG, "cour01 gave no room grid after signing in again")
                     throw e
@@ -164,20 +165,19 @@ class ClassroomUsageService internal constructor(
             throw e
         }
 
-    private suspend fun read(day: Int, isToday: Boolean, credentials: Credentials, ticket: Int): CampusUsage {
+    private suspend fun read(day: Int, credentials: Credentials, ticket: Int): CampusUsage {
         var page = campusPage(credentials, ticket)
-        // The campus page already holds today's grid, so it is read as it is instead of posting
-        // today again with its whole form state (tigerduck-app#475).
-        if (!(isToday && page.grid?.rooms?.isNotEmpty() == true)) {
-            var monthSteps = 0
-            while (true) {
-                val step = ClassroomUsageParser.calendarStep(day, page.calendarDays, page.monthSteps)
-                    ?: throw ClassroomUsageError.DateUnavailable()
-                page = post(step, page, ticket = ticket)
-                if (!step.argument.startsWith("V")) break
-                monthSteps++
-                if (monthSteps >= MAX_MONTH_STEPS) throw ClassroomUsageError.DateUnavailable()
-            }
+        // The campus page shows a grid as well, but nothing on it is known to name that grid's
+        // day, which the site may keep from an earlier read, so today's date is posted too
+        // (tigerduck-app#475).
+        var monthSteps = 0
+        while (true) {
+            val step = ClassroomUsageParser.calendarStep(day, page.calendarDays, page.monthSteps)
+                ?: throw ClassroomUsageError.DateUnavailable()
+            page = post(step, page, ticket = ticket)
+            if (!step.argument.startsWith("V")) break
+            monthSteps++
+            if (monthSteps >= MAX_MONTH_STEPS) throw ClassroomUsageError.DateUnavailable()
         }
 
         // A postback can answer with a later page first, so pages are read by number. A page read

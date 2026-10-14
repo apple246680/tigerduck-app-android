@@ -115,31 +115,22 @@ class ClassroomUsageServiceTest {
     }
 
     @Test
-    fun `today is read off the campus page without posting the date again`() = runTest {
+    fun `today is read by posting its date, not off the grid the campus page shows`() = runTest {
+        // Nothing on the campus page is known to name its grid's day, which the site may keep
+        // from an earlier read, so a read of another day and then today could show the other
+        // day's grid as today's (tigerduck-app#475).
         val harness = Harness()
         harness.serve(Pages.page(rows = null, campus = ""))
-        harness.serve(Pages.page(rows = listOf(Pages.row("TR-212", "..............")), pager = Pages.firstOfTwoPages, viewState = "campus"))
-        harness.serve(Pages.page(rows = listOf(Pages.row("TR-617", "cc............")), pager = Pages.secondOfTwoPages))
+        harness.serve(Pages.page(rows = listOf(Pages.row("TR-212", "cc....cc..b...")), viewState = "campus"))
+        harness.serve(Pages.page(rows = listOf(Pages.row("TR-209", "..............")), viewState = "today"))
 
         val usage = harness.usage(wednesday, isToday = true).usage
 
-        assertEquals(listOf("TR-212", "TR-617"), usage.rooms.map { it.room })
+        assertEquals(listOf("TR-209"), usage.rooms.map { it.room })
         assertEquals(listOf("GET", "POST", "POST"), harness.methods)
-        assertEquals("showinfo_grd\$_ctl54\$_ctl1", harness.form(2)["__EVENTTARGET"])
-        assertEquals("campus", harness.form(2)["__VIEWSTATE"])
-    }
-
-    @Test
-    fun `a campus page without rooms for today still posts the date`() = runTest {
-        val harness = Harness()
-        harness.serve(Pages.page(rows = null, campus = ""))
-        harness.serve(Pages.page(viewState = "campus"))
-        harness.serve(Pages.page(rows = listOf(Pages.row("IB-508", "..............")), viewState = "today"))
-
-        val usage = harness.usage(wednesday, isToday = true).usage
-
-        assertEquals(listOf("IB-508"), usage.rooms.map { it.room })
+        assertEquals("date_cal", harness.form(2)["__EVENTTARGET"])
         assertEquals("9783", harness.form(2)["__EVENTARGUMENT"])
+        assertEquals("campus", harness.form(2)["__VIEWSTATE"])
     }
 
     @Test

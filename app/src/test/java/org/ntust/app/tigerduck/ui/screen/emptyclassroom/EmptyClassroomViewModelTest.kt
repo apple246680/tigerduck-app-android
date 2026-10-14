@@ -67,7 +67,7 @@ class EmptyClassroomViewModelTest {
 
         fun serve(html: String?, gate: CompletableDeferred<Unit>? = null) = transport.serve(html, gate)
 
-        /** A cold read of a day that is not today: the query page, the campus postback and the date's one page. */
+        /** A cold read of a day, today included: the query page, the campus postback and the date's one page. */
         fun serveDay(rows: List<String>, gate: CompletableDeferred<Unit>? = null) {
             serve(Pages.page(rows = null, campus = ""))
             serve(Pages.page(viewState = "campus"))
