@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">Показывать полную дату срока сдачи задания</string>
     <string name="settings_show_classroom_on_class_table">Показывать аудитории в расписании</string>
     <string name="settings_sign_out_imported_tables">Импортированные расписания тоже будут удалены.</string>
+    <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync позволяет синхронизировать выбранную информацию на всех устройствах. Информация без синхронизации остаётся только на этом устройстве.</string>
     <string name="settings_sync_disabled_note">Когда синхронизация отключена, все данные остаются только на этом устройстве.</string>
     <string name="settings_sync_status_off">Выкл.</string>

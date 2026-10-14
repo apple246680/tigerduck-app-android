@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">הצג תאריך מלא לתאריך הגשת מטלה</string>
     <string name="settings_show_classroom_on_class_table">הצגת כיתות בלוח השיעורים</string>
     <string name="settings_sign_out_imported_tables">גם מערכות השעות שיובאו יימחקו.</string>
+    <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync מאפשר לך לסנכרן מידע נבחר בין כל המכשירים שלך. מידע שלא הופעל לסנכרון נשאר במכשיר זה בלבד.</string>
     <string name="settings_sync_disabled_note">כאשר הסנכרון כבוי, כל הנתונים נשארים במכשיר זה בלבד.</string>
     <string name="settings_sync_status_off">כבוי</string>

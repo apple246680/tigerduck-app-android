@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">અસાઇનમેન્ટ ડ્યૂ ટાઇમ માટે સંપૂર્ણ તારીખ બતાવો</string>
     <string name="settings_show_classroom_on_class_table">સમયપત્રકમાં વર્ગખંડ બતાવો</string>
     <string name="settings_sign_out_imported_tables">આયાત કરેલા ક્લાસ ટાઇમટેબલ પણ ડિલીટ થઈ જશે.</string>
+    <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync તમને તમારા બધા ઉપકરણો પર માહિતી સિંક કરવા દે છે. સિંક માટે સક્ષમ ન હોય તેવી માહિતી ફક્ત આ ઉપકરણ પર રહે છે.</string>
     <string name="settings_sync_disabled_note">જ્યારે સિંક બંધ હોય, ત્યારે બધો ડેટા ફક્ત આ ડિવાઇસ પર જ રહે છે.</string>
     <string name="settings_sync_status_off">બંધ</string>

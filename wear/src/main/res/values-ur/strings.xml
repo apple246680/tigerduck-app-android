@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">اسائنمنٹ کی آخری تاریخ کے لیے مکمل تاریخ دکھائیں</string>
     <string name="settings_show_classroom_on_class_table">ٹائم ٹیبل میں کلاس روم دکھائیں</string>
     <string name="settings_sign_out_imported_tables">درآمد شدہ کلاس شیڈول بھی حذف ہو جائیں گے۔</string>
+    <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync آپ کو تمام آلات پر معلومات مطابقت پذیر کرنے دیتا ہے۔ فعال نہ کی گئی معلومات صرف اس آلے پر رہتی ہیں۔</string>
     <string name="settings_sync_disabled_note">جب سنک بند ہو تو تمام ڈیٹا صرف اس آلے پر رہتا ہے۔</string>
     <string name="settings_sync_status_off">بند</string>

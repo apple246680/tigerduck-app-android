@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">Prikaži polni datum za rok oddaje naloge</string>
     <string name="settings_show_classroom_on_class_table">Prikaži učilnice v urniku</string>
     <string name="settings_sign_out_imported_tables">Izbrisani bodo tudi uvoženi urniki.</string>
+    <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync omogoča sinhronizacijo izbranih podatkov med vsemi napravami. Neaktivni podatki ostanejo samo na tej napravi.</string>
     <string name="settings_sync_disabled_note">Ko je sinhronizacija izklopljena, vsi podatki ostanejo samo na tej napravi.</string>
     <string name="settings_sync_status_off">Izklopljeno</string>

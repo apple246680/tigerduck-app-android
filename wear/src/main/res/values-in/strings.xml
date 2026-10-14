@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">Tampilkan tanggal lengkap untuk waktu jatuh tempo tugas</string>
     <string name="settings_show_classroom_on_class_table">Tampilkan ruang kelas di jadwal</string>
     <string name="settings_sign_out_imported_tables">Jadwal kuliah yang diimpor juga akan dihapus.</string>
+    <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync memungkinkan Anda menyinkronkan informasi pilihan di semua perangkat. Informasi yang tidak diaktifkan tetap hanya di perangkat ini.</string>
     <string name="settings_sync_disabled_note">Saat sinkronisasi mati, semua data hanya tersimpan di perangkat ini.</string>
     <string name="settings_sync_status_off">Nonaktif</string>

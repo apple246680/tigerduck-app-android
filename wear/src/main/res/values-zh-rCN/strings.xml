@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">作业截止时间显示完整日期</string>
     <string name="settings_show_classroom_on_class_table">在课表首页显示教室</string>
     <string name="settings_sign_out_imported_tables">导入的课表也会一并删除。</string>
+    <string name="settings_sign_out_unsynced_data">未通过 TigerSync 同步的数据将会删除。</string>
     <string name="settings_sync_brief_description">TigerSync 可让你将所选信息同步至所有已开启 TigerSync 的设备。未启用 TigerSync 的信息仅保留在此设备上。</string>
     <string name="settings_sync_disabled_note">关闭同步后，所有数据仅保存在此设备上</string>
     <string name="settings_sync_status_off">关闭</string>

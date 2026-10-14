@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">Εμφάνιση πλήρους ημερομηνίας για προθεσμία εργασίας</string>
     <string name="settings_show_classroom_on_class_table">Εμφάνιση αιθουσών στο πρόγραμμα</string>
     <string name="settings_sign_out_imported_tables">Θα διαγραφούν επίσης τα προγράμματα μαθημάτων που εισαγάγατε.</string>
+    <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">Το TigerSync σας επιτρέπει να συγχρονίζετε τις επιλεγμένες πληροφορίες σε όλες τις συσκευές. Οι πληροφορίες χωρίς συγχρονισμό παραμένουν μόνο σε αυτή τη συσκευή.</string>
     <string name="settings_sync_disabled_note">Όταν ο συγχρονισμός είναι απενεργοποιημένος, όλα τα δεδομένα παραμένουν μόνο σε αυτή τη συσκευή.</string>
     <string name="settings_sync_status_off">Ανενεργό</string>

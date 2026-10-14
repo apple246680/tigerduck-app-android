@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">Vis full dato for oppgavefristens tid</string>
     <string name="settings_show_classroom_on_class_table">Vis rom i timeplanen</string>
     <string name="settings_sign_out_imported_tables">Importerte timeplaner slettes også.</string>
+    <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync lar deg synkronisere valgt informasjon på alle enheter. Informasjon uten synkronisering forblir kun på denne enheten.</string>
     <string name="settings_sync_disabled_note">Når synkronisering er av, forblir alle data kun på denne enheten.</string>
     <string name="settings_sync_status_off">Av</string>

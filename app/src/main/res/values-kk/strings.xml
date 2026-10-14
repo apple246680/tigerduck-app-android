@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">Тапсырма мерзімі үшін толық күнді көрсету</string>
     <string name="settings_show_classroom_on_class_table">Кестеде аудиторияларды көрсету</string>
     <string name="settings_sign_out_imported_tables">Импортталған сабақ кестелері де жойылады.</string>
+    <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync таңдалған ақпаратты барлық құрылғылар арасында синхрондауға мүмкіндік береді. Синхрондалмаған ақпарат тек осы құрылғыда қалады.</string>
     <string name="settings_sync_disabled_note">Синхрондау өшірулі кезде барлық деректер тек осы құрылғыда сақталады.</string>
     <string name="settings_sync_status_off">Өшірулі</string>

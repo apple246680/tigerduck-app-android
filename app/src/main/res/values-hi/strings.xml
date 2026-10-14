@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">असाइनमेंट देय समय के लिए पूरी तारीख दिखाएँ</string>
     <string name="settings_show_classroom_on_class_table">समय-सारणी में कक्षाएँ दिखाएँ</string>
     <string name="settings_sign_out_imported_tables">आयात की गई कक्षा सारणियाँ भी हटा दी जाएँगी।</string>
+    <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync आपको अपने सभी डिवाइस पर जानकारी सिंक करने देता है। सिंक के लिए सक्षम नहीं की गई जानकारी केवल इस डिवाइस पर रहती है।</string>
     <string name="settings_sync_disabled_note">जब सिंक बंद हो, तो सभी डेटा केवल इस डिवाइस पर ही रहता है।</string>
     <string name="settings_sync_status_off">बंद</string>

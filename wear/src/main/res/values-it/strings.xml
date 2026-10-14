@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">Mostra la data completa per la scadenza dei compiti</string>
     <string name="settings_show_classroom_on_class_table">Mostra le aule nell\'orario</string>
     <string name="settings_sign_out_imported_tables">Anche gli orari importati verranno eliminati.</string>
+    <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync ti permette di sincronizzare le informazioni scelte su tutti i dispositivi. Le informazioni non abilitate restano solo su questo dispositivo.</string>
     <string name="settings_sync_disabled_note">Quando la sincronizzazione è disattivata, tutti i dati restano solo su questo dispositivo.</string>
     <string name="settings_sync_status_off">Disattivo</string>

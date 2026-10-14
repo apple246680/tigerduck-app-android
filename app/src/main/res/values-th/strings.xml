@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">แสดงวันที่เต็มสำหรับเวลาครบกำหนดการบ้าน</string>
     <string name="settings_show_classroom_on_class_table">แสดงห้องเรียนในตารางเรียน</string>
     <string name="settings_sign_out_imported_tables">ตารางเรียนที่นำเข้าจะถูกลบด้วย</string>
+    <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync ช่วยให้คุณซิงค์ข้อมูลที่เลือกในอุปกรณ์ทั้งหมด ข้อมูลที่ไม่ได้เปิดใช้จะอยู่ในอุปกรณ์นี้เท่านั้น</string>
     <string name="settings_sync_disabled_note">เมื่อปิดการซิงค์ ข้อมูลทั้งหมดจะอยู่บนอุปกรณ์นี้เท่านั้น</string>
     <string name="settings_sync_status_off">ปิด</string>

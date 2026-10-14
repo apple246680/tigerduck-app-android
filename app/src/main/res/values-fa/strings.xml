@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">نمایش تاریخ کامل برای زمان موعد تکلیف</string>
     <string name="settings_show_classroom_on_class_table">نمایش کلاس‌ها در برنامهٔ درسی</string>
     <string name="settings_sign_out_imported_tables">برنامه کلاس‌های واردشده نیز حذف می‌شوند.</string>
+    <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync به شما امکان می‌دهد اطلاعات انتخابی خود را در تمام دستگاه‌ها همگام کنید. اطلاعات غیرفعال فقط در این دستگاه باقی می‌مانند.</string>
     <string name="settings_sync_disabled_note">وقتی همگام‌سازی خاموش است، همه داده‌ها فقط در این دستگاه باقی می‌مانند.</string>
     <string name="settings_sync_status_off">خاموش</string>

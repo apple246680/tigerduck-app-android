@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">Ipakita ang kumpletong petsa para sa due time ng takdang-aralin</string>
     <string name="settings_show_classroom_on_class_table">Ipakita ang mga silid-aralan sa iskedyul</string>
     <string name="settings_sign_out_imported_tables">Buburahin din ang mga na-import na iskedyul ng klase.</string>
+    <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">Pinapayagan ka ng TigerSync na i-sync ang iyong napiling impormasyon sa lahat ng device. Ang impormasyong hindi naka-enable ay mananatili lamang sa device na ito.</string>
     <string name="settings_sync_disabled_note">Kapag naka-off ang sync, ang lahat ng data ay nananatili sa device na ito lamang.</string>
     <string name="settings_sync_status_off">Naka-off</string>

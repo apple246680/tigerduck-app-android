@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">과제 마감 시간을 전체 날짜로 표시</string>
     <string name="settings_show_classroom_on_class_table">시간표에 강의실 표시</string>
     <string name="settings_sign_out_imported_tables">가져온 시간표도 함께 삭제됩니다.</string>
+    <string name="settings_sign_out_unsynced_data">TigerSync로 동기화되지 않은 데이터는 삭제됩니다.</string>
     <string name="settings_sync_brief_description">TigerSync를 사용하면 모든 기기에서 선택한 정보를 동기화할 수 있습니다. 동기화가 활성화되지 않은 정보는 이 기기에만 남습니다.</string>
     <string name="settings_sync_disabled_note">동기화가 꺼져 있으면 모든 데이터는 이 기기에만 저장됩니다.</string>
     <string name="settings_sync_status_off">꺼짐</string>

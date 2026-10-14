@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">Tunjukkan tarikh penuh untuk masa tamat tempoh tugasan</string>
     <string name="settings_show_classroom_on_class_table">Tunjukkan bilik darjah dalam jadual</string>
     <string name="settings_sign_out_imported_tables">Jadual kelas yang diimport juga akan dipadam.</string>
+    <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync membolehkan anda menyegerakkan maklumat pilihan anda di semua peranti. Maklumat yang tidak didayakan kekal pada peranti ini sahaja.</string>
     <string name="settings_sync_disabled_note">Apabila segerak dimatikan, semua data kekal pada peranti ini sahaja.</string>
     <string name="settings_sync_status_off">Mati</string>

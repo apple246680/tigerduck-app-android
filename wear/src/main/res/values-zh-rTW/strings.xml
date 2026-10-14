@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">作業截止時間顯示完整日期</string>
     <string name="settings_show_classroom_on_class_table">在課表首頁顯示教室</string>
     <string name="settings_sign_out_imported_tables">匯入的課表也會一併刪除。</string>
+    <string name="settings_sign_out_unsynced_data">未透過 TigerSync 同步的資料將會刪除。</string>
     <string name="settings_sync_brief_description">TigerSync 可讓你將所選資料同步至所有已開啟 TigerSync 的裝置。未啟用 TigerSync 的資料僅會保留在此裝置上。</string>
     <string name="settings_sync_disabled_note">關閉同步後，所有資料僅儲存於本機</string>
     <string name="settings_sync_status_off">關閉</string>

@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">Zobrazit úplné datum termínu úkolu</string>
     <string name="settings_show_classroom_on_class_table">Zobrazovat učebny v rozvrhu</string>
     <string name="settings_sign_out_imported_tables">Importované rozvrhy budou také smazány.</string>
+    <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync umožňuje synchronizovat vybrané informace mezi všemi zařízeními se zapnutým TigerSync. Informace bez synchronizace zůstávají pouze na tomto zařízení.</string>
     <string name="settings_sync_disabled_note">Když je synchronizace vypnutá, všechna data zůstávají pouze na tomto zařízení.</string>
     <string name="settings_sync_status_off">Vypnuto</string>

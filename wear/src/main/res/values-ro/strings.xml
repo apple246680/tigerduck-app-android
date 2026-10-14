@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">Afișează data completă pentru termenul temei</string>
     <string name="settings_show_classroom_on_class_table">Afișează sălile în orar</string>
     <string name="settings_sign_out_imported_tables">Orarele importate vor fi șterse și ele.</string>
+    <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync vă permite să sincronizați informațiile alese pe toate dispozitivele. Informațiile neactivate rămân doar pe acest dispozitiv.</string>
     <string name="settings_sync_disabled_note">Când sincronizarea este dezactivată, toate datele rămân doar pe acest dispozitiv.</string>
     <string name="settings_sync_status_off">Oprit</string>

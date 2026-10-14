@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">అసైన్‌మెంట్ గడువు సమయానికి పూర్తి తేదీ చూపించు</string>
     <string name="settings_show_classroom_on_class_table">టైమ్‌టేబుల్‌లో తరగతి గదిని చూపు</string>
     <string name="settings_sign_out_imported_tables">దిగుమతి చేసిన తరగతి షెడ్యూల్‌లు కూడా తొలగించబడతాయి.</string>
+    <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync మీ అన్ని పరికరాలలో సమాచారాన్ని సమకాలీకరించడానికి అనుమతిస్తుంది. సింక్‌కు ప్రారంభించబడని సమాచారం ఈ పరికరంలో మాత్రమే ఉంటుంది.</string>
     <string name="settings_sync_disabled_note">సింక్ ఆఫ్‌లో ఉన్నప్పుడు, మొత్తం డేటా ఈ పరికరంలో మాత్రమే ఉంటుంది.</string>
     <string name="settings_sync_status_off">ఆఫ్</string>

@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">عرض التاريخ الكامل لموعد استحقاق الواجب</string>
     <string name="settings_show_classroom_on_class_table">إظهار القاعات في الجدول الدراسي</string>
     <string name="settings_sign_out_imported_tables">سيتم حذف الجداول الدراسية المستوردة أيضًا.</string>
+    <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">يتيح لك TigerSync مزامنة معلوماتك المختارة عبر جميع أجهزتك التي تم تفعيل TigerSync عليها. المعلومات غير المفعّلة للمزامنة تبقى على هذا الجهاز فقط.</string>
     <string name="settings_sync_disabled_note">عند إيقاف المزامنة، تبقى جميع البيانات على هذا الجهاز فقط.</string>
     <string name="settings_sync_status_off">معطّل</string>

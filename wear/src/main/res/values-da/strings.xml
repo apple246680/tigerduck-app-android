@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">Vis fuld dato for opgavefrist</string>
     <string name="settings_show_classroom_on_class_table">Vis lokaler i skemaet</string>
     <string name="settings_sign_out_imported_tables">Importerede skemaer slettes også.</string>
+    <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync lader dig synkronisere dine valgte oplysninger på tværs af alle enheder med TigerSync aktiveret. Oplysninger uden synkronisering forbliver kun på denne enhed.</string>
     <string name="settings_sync_disabled_note">Når synkronisering er slået fra, forbliver alle data kun på denne enhed.</string>
     <string name="settings_sync_status_off">Fra</string>

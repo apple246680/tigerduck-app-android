@@ -937,6 +937,7 @@
     <string name="settings_show_absolute_assignment_time">Показване на пълна дата за крайния срок на задание</string>
     <string name="settings_show_classroom_on_class_table">Показване на залите в графика</string>
     <string name="settings_sign_out_imported_tables">Импортираните разписания също ще бъдат изтрити.</string>
+    <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync ви позволява да синхронизирате избраната информация между всички устройства с включен TigerSync. Информацията, която не е включена, остава само на това устройство.</string>
     <string name="settings_sync_disabled_note">Когато синхронизацията е изключена, всички данни остават само на това устройство.</string>
     <string name="settings_sync_status_off">Изкл.</string>
