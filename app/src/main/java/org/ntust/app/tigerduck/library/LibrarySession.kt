@@ -34,7 +34,13 @@ class LibrarySession internal constructor(
     private val _signedIn = MutableStateFlow(read())
     val signedIn: StateFlow<Boolean> = _signedIn.asStateFlow()
 
-    /** Reads the stores again; returns whether a library account is signed in. */
+    /**
+     * Reads the stores again; returns whether a library account is signed in.
+     * One at a time, so a read that started earlier cannot write its older
+     * answer over a later one's: it runs from the main thread and from the
+     * sign-ins' own.
+     */
+    @Synchronized
     fun refresh(): Boolean = read().also {
         _signedIn.value = it
         if (!it) onSignedOut()
