@@ -8,7 +8,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.cache.BulletinCache
 import org.ntust.app.tigerduck.data.BulletinReadStateStore
 import org.ntust.app.tigerduck.data.cache.DataCache
@@ -19,7 +18,6 @@ import org.ntust.app.tigerduck.network.CourseService
 import org.ntust.app.tigerduck.network.MoodleService
 import org.ntust.app.tigerduck.network.MoodleTokenService
 import org.ntust.app.tigerduck.network.NtustSessionManager
-import org.ntust.app.tigerduck.network.SsoLoginError
 import org.ntust.app.tigerduck.network.SsoLoginService
 import org.ntust.app.tigerduck.push.NotificationSettingsSync
 import org.ntust.app.tigerduck.push.PushRegistrationService
@@ -238,11 +236,7 @@ class AuthService @Inject constructor(
             _isLoggingIn.value = false
             throw e
         } catch (e: Exception) {
-            _loginError.value = if (e is SsoLoginError.NetworkError) {
-                context.getString(R.string.error_network_unavailable)
-            } else {
-                e.message ?: context.getString(R.string.error_sign_in_failed)
-            }
+            _loginError.value = context.signInErrorMessage(e)
             _isLoggingIn.value = false
             false
         }
