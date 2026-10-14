@@ -206,20 +206,27 @@ class LibraryService(
         // password is not sent again until a sign-in saves credentials that work.
         if (credentials.libraryPasswordRefused) throw LibraryServiceError.CredentialsNotFound()
 
+        val key = SignInKey(username, credentials.libraryAccountGeneration)
         val attempt = synchronized(pendingSignIns) {
-            pendingSignIns[username] ?: signInScope.async(start = CoroutineStart.LAZY) {
-                storedSignIn()
-            }.also { started ->
-                pendingSignIns[username] = started
-                started.invokeOnCompletion {
-                    synchronized(pendingSignIns) {
-                        if (pendingSignIns[username] === started) pendingSignIns.remove(username)
-                    }
-                }
-                started.start()
+            dropAbandonedSignIns()
+            (pendingSignIns[key] ?: startSignIn(key)).also { it.waiting++ }
+        }
+        try {
+            return attempt.job.await()
+        } finally {
+            synchronized(pendingSignIns) {
+                attempt.waiting--
+                dropAbandonedSignIns()
             }
         }
-        return attempt.await()
+    }
+
+    /** The account a sign-in with the stored credentials is for, as it stood when asked. */
+    private data class SignInKey(val username: String, val generation: Int)
+
+    private class SignInAttempt(val key: SignInKey, val job: Deferred<String>) {
+        /** The callers waiting for it; guarded by [pendingSignIns]. */
+        var waiting = 0
     }
 
     /**
@@ -227,8 +234,35 @@ class LibraryService(
      * It runs in [signInScope], so a caller that stops waiting leaves it to
      * finish, and its outcome is kept.
      */
-    private val pendingSignIns = HashMap<String, Deferred<String>>()
+    private val pendingSignIns = HashMap<SignInKey, SignInAttempt>()
     private val signInScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** Under the [pendingSignIns] lock. */
+    private fun startSignIn(key: SignInKey): SignInAttempt {
+        val attempt = SignInAttempt(key, signInScope.async(start = CoroutineStart.LAZY) { storedSignIn() })
+        pendingSignIns[key] = attempt
+        attempt.job.invokeOnCompletion {
+            synchronized(pendingSignIns) {
+                if (pendingSignIns[key] === attempt) pendingSignIns.remove(key)
+            }
+        }
+        attempt.job.start()
+        return attempt
+    }
+
+    /**
+     * Cancels each sign-in no caller waits for whose account has signed out or
+     * been replaced since it was asked for: its answer would store nothing, and
+     * it would hold the next account's sign-in behind it until the library
+     * answered or timed out, as on the watch when the phone hands over another
+     * account. One still waited for runs on. Under the [pendingSignIns] lock.
+     */
+    private fun dropAbandonedSignIns() {
+        val generation = credentials.libraryAccountGeneration
+        pendingSignIns.values
+            .filter { it.waiting == 0 && it.key.generation != generation }
+            .forEach { it.job.cancel() }
+    }
 
     private suspend fun storedSignIn(): String = tokenMutex.withLock {
         // Before the account it signs in with, so a sign-out after this keeps

@@ -1,8 +1,10 @@
 package org.ntust.app.tigerduck.shared
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import okhttp3.Call
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
@@ -70,6 +72,9 @@ class LibraryServiceAccountTest {
             libraryToken = "expired"
             libraryTokenExpiry = 1L
         }
+
+        /** Another account handed over, as the phone hands one to the watch, its token run out. */
+        fun handOver(username: String, password: String) = account.replaceAccount { storeExpired(username, password) }
     }
 
     private val store = MemoryStore()
@@ -226,5 +231,86 @@ class LibraryServiceAccountTest {
         assertTrue(call!!.isCanceled())
         answer.countDown()
         request.join()
+    }
+
+    /**
+     * The phone hands the watch another account while the watch's page signs in with the one
+     * before: the page stops waiting, and the next account's sign-in is not held behind a request
+     * nothing will use, which went on until the library answered or timed out.
+     */
+    @Test
+    fun `a sign-in for an account handed over, that no one waits for, gives way to the next account`() = runBlocking {
+        store.storeExpired("B10000001", "pw")
+        val release = CountDownLatch(1)
+        val asked = CountDownLatch(1)
+        whileSigningIn = {
+            if (signIns == 1) {
+                asked.countDown()
+                release.await(15, TimeUnit.SECONDS)
+            }
+        }
+        try {
+            val page = launch(Dispatchers.Default) { runCatching { service.ensureToken() } }
+            assertTrue(asked.await(5, TimeUnit.SECONDS))
+
+            store.handOver("B10000002", "theirs")
+            page.cancel()
+
+            assertEquals("token-2", withTimeout(5_000) { service.ensureToken() })
+            assertEquals("B10000002", store.libraryUsername)
+        } finally {
+            release.countDown()
+        }
+    }
+
+    /** As above, with the page gone before the account was handed over. */
+    @Test
+    fun `a sign-in no one waits for gives way once its account is handed over`() = runBlocking {
+        store.storeExpired("B10000001", "pw")
+        val release = CountDownLatch(1)
+        val asked = CountDownLatch(1)
+        whileSigningIn = {
+            if (signIns == 1) {
+                asked.countDown()
+                release.await(15, TimeUnit.SECONDS)
+            }
+        }
+        try {
+            val page = launch(Dispatchers.Default) { runCatching { service.ensureToken() } }
+            assertTrue(asked.await(5, TimeUnit.SECONDS))
+            page.cancel()
+            page.join()
+
+            store.handOver("B10000002", "theirs")
+
+            assertEquals("token-2", withTimeout(5_000) { service.ensureToken() })
+        } finally {
+            release.countDown()
+        }
+    }
+
+    /** A caller still waiting on the sign-in keeps it going, even for an account handed over. */
+    @Test
+    fun `a sign-in someone still waits for is not cut short`() = runBlocking {
+        store.storeExpired("B10000001", "pw")
+        val release = CountDownLatch(1)
+        val asked = CountDownLatch(1)
+        whileSigningIn = {
+            if (signIns == 1) {
+                asked.countDown()
+                release.await(15, TimeUnit.SECONDS)
+            }
+        }
+        val first = async(Dispatchers.Default) { runCatching { service.ensureToken() }.exceptionOrNull() }
+        assertTrue(asked.await(5, TimeUnit.SECONDS))
+        store.handOver("B10000002", "theirs")
+        val next = async(Dispatchers.Default) { service.ensureToken() }
+
+        release.countDown()
+
+        // Its answer is the departing account's, so it stores nothing.
+        assertTrue(first.await() is LibraryServiceError.CredentialsNotFound)
+        assertEquals("token-2", next.await())
+        assertEquals(2, signIns)
     }
 }
