@@ -14,6 +14,7 @@ object MoodleRoutes {
 
     const val ANNOUNCEMENTS = "courseMoodle/{courseId}/announcements"
     const val ANNOUNCEMENT = "courseMoodle/{courseId}/announcements/{discussionId}"
+    const val MATERIALS = "courseMoodle/{courseId}/materials"
     const val FORUMS = "courseMoodle/{courseId}/forums"
     const val FORUM = "courseMoodle/{courseId}/forums/{forumId}"
     const val DISCUSSION = "courseMoodle/{courseId}/forums/{forumId}/discussions/{discussionId}"
@@ -27,6 +28,7 @@ object MoodleRoutes {
 
     fun announcements(courseId: Int) = "courseMoodle/$courseId/announcements"
     fun announcement(courseId: Int, discussionId: Int) = "courseMoodle/$courseId/announcements/$discussionId"
+    fun materials(courseId: Int) = "courseMoodle/$courseId/materials"
     fun forums(courseId: Int) = "courseMoodle/$courseId/forums"
     fun forum(courseId: Int, forumId: Int) = "courseMoodle/$courseId/forums/$forumId"
     fun discussion(courseId: Int, forumId: Int, discussionId: Int) =

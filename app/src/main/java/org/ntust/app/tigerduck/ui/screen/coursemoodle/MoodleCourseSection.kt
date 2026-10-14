@@ -101,7 +101,7 @@ internal fun MoodleCourseSection(
                                     color = cardDividerColor(),
                                 )
                             }
-                            MoodleSectionRowItem(row) { route(row.kind, store)?.let(onOpenRoute) }
+                            MoodleSectionRowItem(row) { onOpenRoute(route(row.kind, store)) }
                         }
                     }
                 }
@@ -112,10 +112,9 @@ internal fun MoodleCourseSection(
 }
 
 /** The Forums row opens the course's one forum itself, and the list of them otherwise. */
-internal fun route(kind: MoodleSectionRow.Kind, store: MoodleCourseStore): String? = when (kind) {
+internal fun route(kind: MoodleSectionRow.Kind, store: MoodleCourseStore): String = when (kind) {
     MoodleSectionRow.Kind.ANNOUNCEMENTS -> MoodleRoutes.announcements(store.courseId)
-    // With its screen.
-    MoodleSectionRow.Kind.MATERIALS -> null
+    MoodleSectionRow.Kind.MATERIALS -> MoodleRoutes.materials(store.courseId)
     MoodleSectionRow.Kind.GRADES -> MoodleRoutes.grades(store.courseId)
     MoodleSectionRow.Kind.MEMBERS -> MoodleRoutes.members(store.courseId)
     MoodleSectionRow.Kind.FORUMS -> store.generalForums.value.singleOrNull()

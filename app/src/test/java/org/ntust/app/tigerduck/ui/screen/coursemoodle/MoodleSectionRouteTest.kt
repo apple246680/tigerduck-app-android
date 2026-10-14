@@ -69,4 +69,9 @@ class MoodleSectionRouteTest {
         store.refreshForums()
         assertEquals("courseMoodle/5/forums", route(MoodleSectionRow.Kind.FORUMS, store))
     }
+
+    @Test
+    fun `the materials row opens the course's materials`() {
+        assertEquals("courseMoodle/5/materials", route(MoodleSectionRow.Kind.MATERIALS, store))
+    }
 }

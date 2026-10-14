@@ -79,6 +79,7 @@ import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleDiscussionScreen
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleForumScreen
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleForumsScreen
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleGradesScreen
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleMaterialsScreen
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleMemberScreen
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleMembersScreen
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleRoutes
@@ -460,6 +461,12 @@ fun MainNavigation(
                     browserPreference = appState.browserPreference,
                     onBack = { navController.popIfTop(entry) },
                     onOpenRoute = { navController.navigate(it) },
+                )
+            }
+            page(MoodleRoutes.MATERIALS, arguments = listOf(moodleCourseArg)) { entry ->
+                MoodleMaterialsScreen(
+                    browserPreference = appState.browserPreference,
+                    onBack = { navController.popIfTop(entry) },
                 )
             }
             page(MoodleRoutes.FORUMS, arguments = listOf(moodleCourseArg)) { entry ->
