@@ -120,6 +120,7 @@ fun SchoolMailMessageScreen(
     viewModel: SchoolMailMessageViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val sentCopyNotice by viewModel.sentCopyNotice.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var menuOpen by remember { mutableStateOf(false) }
     var showMove by remember { mutableStateOf(false) }
@@ -288,6 +289,9 @@ fun SchoolMailMessageScreen(
                     modifier = Modifier.fillMaxSize().padding(padding).scrollbar(listState),
                     contentPadding = PaddingValues(bottom = 32.dp),
                 ) {
+                    sentCopyNotice?.let { notice ->
+                        item(key = "sent-copy") { SentCopyNoticeBanner(notice, onDismiss = viewModel::dismissSentCopyNotice) }
+                    }
                     item(key = "header") { MessageHeader(content.summary, viewModel.mailDomain, state.selfAddress) }
                     if (state.parseFailed) {
                         item(key = "parse-failed") { WarningCard(stringResource(R.string.school_mail_parse_failed), null) }

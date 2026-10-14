@@ -18,6 +18,7 @@ import org.ntust.app.tigerduck.mail.InMemoryMailStateStore
 import org.ntust.app.tigerduck.mail.MailAccount
 import org.ntust.app.tigerduck.mail.MailError
 import org.ntust.app.tigerduck.mail.MailLimits
+import org.ntust.app.tigerduck.mail.SentCopyNotices
 import org.ntust.app.tigerduck.mail.MainDispatcherRule
 import org.ntust.app.tigerduck.mail.RecordingNotifier
 import org.ntust.app.tigerduck.mail.RecordingScheduler
@@ -82,7 +83,8 @@ class SchoolMailMessageViewModelTest {
     // Pass a [HeldDispatcher] as [io] instead to make a hop off Main observable.
     private fun vm(folder: String = "INBOX", uid: Long = 5, io: CoroutineDispatcher = main.dispatcher) =
         SchoolMailMessageViewModel(
-            SavedStateHandle(mapOf("folder" to folder, "uid" to uid)), repo, account, notifier, cache, schoolMailSite(), io,
+            SavedStateHandle(mapOf("folder" to folder, "uid" to uid)), repo, account, notifier, cache, schoolMailSite(),
+            SentCopyNotices(account, testApplicationScope()), io,
         )
 
     private fun ready(vm: SchoolMailMessageViewModel) = vm.state.value.content as Content.Ready

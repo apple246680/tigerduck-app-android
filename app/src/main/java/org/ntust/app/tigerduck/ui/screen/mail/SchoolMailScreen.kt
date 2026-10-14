@@ -143,6 +143,7 @@ fun SchoolMailScreen(
     val signedIn by viewModel.signedIn.collectAsStateWithLifecycle()
     val authFailed by viewModel.authFailed.collectAsStateWithLifecycle()
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val sentCopyNotice by viewModel.sentCopyNotice.collectAsStateWithLifecycle()
     val signingIn by accountViewModel.signingIn.collectAsStateWithLifecycle()
     val signInError by accountViewModel.error.collectAsStateWithLifecycle()
     var showReauthSheet by remember { mutableStateOf(false) }
@@ -372,6 +373,7 @@ fun SchoolMailScreen(
                         showReauthSheet = true
                     })
                 }
+                sentCopyNotice?.let { SentCopyNoticeBanner(it, onDismiss = viewModel::dismissSentCopyNotice) }
                 SearchDrawer(searchReveal) {
                     OutlinedTextField(
                         value = state.searchText,

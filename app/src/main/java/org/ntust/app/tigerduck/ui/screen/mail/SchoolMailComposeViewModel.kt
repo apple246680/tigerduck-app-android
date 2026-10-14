@@ -20,6 +20,8 @@ import org.ntust.app.tigerduck.mail.MailAccount
 import org.ntust.app.tigerduck.mail.MailError
 import org.ntust.app.tigerduck.mail.MailErrors
 import org.ntust.app.tigerduck.mail.SchoolMailRepository
+import org.ntust.app.tigerduck.mail.SentCopyNotice
+import org.ntust.app.tigerduck.mail.SentCopyNotices
 import org.ntust.app.tigerduck.mail.compose.ComposeRules
 import org.ntust.app.tigerduck.mail.compose.OutgoingAttachment
 import org.ntust.app.tigerduck.mail.compose.OutgoingMail
@@ -65,6 +67,7 @@ class SchoolMailComposeViewModel @Inject constructor(
     private val account: MailAccount,
     private val cache: MailCache,
     private val pickedAttachmentReader: PickedAttachmentReader,
+    private val sentCopyNotices: SentCopyNotices,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) : ViewModel() {
     val mode: ComposeMode = runCatching { ComposeMode.valueOf(savedStateHandle.get<String>("mode").orEmpty()) }
@@ -122,13 +125,6 @@ class SchoolMailComposeViewModel @Inject constructor(
         val errorAcknowledged: Boolean = false,
         val done: Boolean = false,
         val savedDraft: Boolean = false,
-        /**
-         * The mail went out but no copy of it reached the sent folder. A notice, never an
-         * [error]: the send succeeded, so failing the screen over it would tell the user the
-         * opposite of what happened -- and they would have no way to tell whether to send again.
-         * The screen shows it as a toast on its way out, beside the saved-draft one.
-         */
-        val sentCopyMissing: Boolean = false,
         internal val baseline: Fields = Fields(),
     ) {
         internal val fields get() = Fields(to.entries, cc.entries, bcc.entries, subject, body, attachments.map { it.id })
@@ -364,7 +360,12 @@ class SchoolMailComposeViewModel @Inject constructor(
             // though the send itself succeeded and nothing was thrown for [withStaged] to classify.
             if (copy is SentCopy.Failed && copy.error is MailError.AuthFailed) account.onAuthFailure()
             if (sourceLoaded && mode == ComposeMode.DRAFT) discardSentDraft()
-            _state.update { it.copy(done = true, sentCopyMissing = !copy.filed) }
+            // The mail went out, but its copy did not reach the sent folder. A notice, never an
+            // [UiState.error]: the send succeeded, so failing the screen over it would tell the
+            // user the opposite of what happened. It is reported before the screen closes, to
+            // stay on the screens it goes back to until the user dismisses it.
+            SentCopyNotice.of(copy)?.let(sentCopyNotices::report)
+            _state.update { it.copy(done = true) }
         }
     }
 

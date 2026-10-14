@@ -21,6 +21,8 @@ import org.ntust.app.tigerduck.mail.MailError
 import org.ntust.app.tigerduck.mail.MailErrors
 import org.ntust.app.tigerduck.mail.MailSite
 import org.ntust.app.tigerduck.mail.SchoolMailRepository
+import org.ntust.app.tigerduck.mail.SentCopyNotice
+import org.ntust.app.tigerduck.mail.SentCopyNotices
 import org.ntust.app.tigerduck.mail.imap.ResolvedFolders
 import org.ntust.app.tigerduck.mail.imap.SpecialFolder
 import org.ntust.app.tigerduck.mail.mime.TextCleaning
@@ -53,6 +55,7 @@ class SchoolMailMessageViewModel @Inject constructor(
     private val notifier: MailNotifier,
     private val cache: MailCache,
     private val site: MailSite,
+    private val sentCopyNotices: SentCopyNotices,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) : ViewModel() {
     val folder: String = savedStateHandle.get<String>("folder").orEmpty()
@@ -133,6 +136,11 @@ class SchoolMailMessageViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(UiState(folder = folder))
     val state: StateFlow<UiState> = _state.asStateFlow()
+
+    /** A reply or forward sent from this mail went out without its copy reaching the sent folder. */
+    val sentCopyNotice: StateFlow<SentCopyNotice?> = sentCopyNotices.notice
+
+    fun dismissSentCopyNotice() = sentCopyNotices.dismiss()
 
     init {
         // Beside the load rather than ahead of it: the header never waits for it, and only gains

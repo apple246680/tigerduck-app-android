@@ -18,6 +18,8 @@ import org.ntust.app.tigerduck.mail.MailRepository
 import org.ntust.app.tigerduck.mail.MailSite
 import org.ntust.app.tigerduck.mail.SchoolMailRepository
 import org.ntust.app.tigerduck.mail.SearchOutcome
+import org.ntust.app.tigerduck.mail.SentCopyNotice
+import org.ntust.app.tigerduck.mail.SentCopyNotices
 import org.ntust.app.tigerduck.mail.matchesLoadedMail
 import org.ntust.app.tigerduck.mail.imap.FolderSelection
 import org.ntust.app.tigerduck.mail.imap.SpecialFolder
@@ -37,6 +39,7 @@ class SchoolMailListViewModel @Inject constructor(
     private val checker: MailChecker,
     private val site: MailSite,
     private val clock: MailClock,
+    private val sentCopyNotices: SentCopyNotices,
 ) : ViewModel() {
 
     /** The account's own domain: what the list's External badge measures a sender against. */
@@ -130,6 +133,15 @@ class SchoolMailListViewModel @Inject constructor(
 
     val signedIn: StateFlow<Boolean> = account.signedIn
     val authFailed: StateFlow<Boolean> = account.authFailed
+
+    /**
+     * A mail sent from compose went out without its copy reaching the sent folder. Kept out of
+     * [UiState] on purpose: no load clears it, only [dismissSentCopyNotice] (or signing out), so
+     * the reload that follows the compose screen closing cannot wipe it before it is seen.
+     */
+    val sentCopyNotice: StateFlow<SentCopyNotice?> = sentCopyNotices.notice
+
+    fun dismissSentCopyNotice() = sentCopyNotices.dismiss()
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()

@@ -2,6 +2,7 @@
 
 package org.ntust.app.tigerduck.ui.screen.mail
 
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -22,6 +23,8 @@ import org.ntust.app.tigerduck.mail.InMemoryCredentialStore
 import org.ntust.app.tigerduck.mail.InMemoryMailStateStore
 import org.ntust.app.tigerduck.mail.MailAccount
 import org.ntust.app.tigerduck.mail.MailError
+import org.ntust.app.tigerduck.mail.SentCopyNotice
+import org.ntust.app.tigerduck.mail.SentCopyNotices
 import org.ntust.app.tigerduck.mail.MainDispatcherRule
 import org.ntust.app.tigerduck.mail.RecordingNotifier
 import org.ntust.app.tigerduck.mail.RecordingScheduler
@@ -47,15 +50,18 @@ class SchoolMailListViewModelTest {
     private val repo = FakeSchoolMailRepository()
     private lateinit var account: MailAccount
     private lateinit var vm: SchoolMailListViewModel
+    private lateinit var notices: SentCopyNotices
 
     @Before
     fun setUp() {
         account = MailAccount(InMemoryCredentialStore(), state, server.factory(), MailCache(tmp.root),
             FakeDemoGate(), schoolMailSite(), RecordingScheduler(), RecordingNotifier(), testApplicationScope())
         runBlocking { account.signIn("b10000001", "pw") }
+        notices = SentCopyNotices(account, CoroutineScope(main.dispatcher))
         vm = SchoolMailListViewModel(
             repo, account, MailChecker(account, state, server.factory(), RecordingNotifier(), MailCache(tmp.root)) { 0 }, schoolMailSite(),
-        ) { main.dispatcher.scheduler.currentTime }
+            { main.dispatcher.scheduler.currentTime }, notices,
+        )
     }
 
     @Test
@@ -476,6 +482,26 @@ class SchoolMailListViewModelTest {
 
         assertTrue(account.authFailed.value)
         assertTrue(vm.state.value.actionError is MailError.AuthFailed)
+    }
+
+    @Test
+    fun `a sent-copy notice outlives the reload after compose and goes only when dismissed`() {
+        repo.add("INBOX", mailSummary(1))
+        vm.load()
+        notices.report(SentCopyNotice.NoFolder)
+        vm.refresh()
+        vm.load()
+        assertEquals(SentCopyNotice.NoFolder, vm.sentCopyNotice.value)
+        vm.dismissSentCopyNotice()
+        assertNull(vm.sentCopyNotice.value)
+    }
+
+    @Test
+    fun `signing out takes the sent-copy notice with it`() {
+        notices.report(SentCopyNotice.Unknown)
+        account.signOut()
+        main.dispatcher.scheduler.runCurrent()
+        assertNull(notices.notice.value)
     }
 
     @Test
