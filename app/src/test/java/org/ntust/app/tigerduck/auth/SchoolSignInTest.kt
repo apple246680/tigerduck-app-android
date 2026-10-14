@@ -191,6 +191,22 @@ class SchoolSignInTest {
         assertEquals(1, schoolSignIns)
     }
 
+    /**
+     * As on the iPhone (`AuthService.loginToLibraryIfNeeded`), only a live library token skips
+     * the step: an account whose day-long token has run out, another student's included, gives
+     * way to the school account's when the library takes its password.
+     */
+    @Test
+    fun `a library account whose token has run out gives way to the school account's`() = runTest {
+        library.saveLibrarySignIn(library.libraryAccountGeneration, "B10000009", "theirs", "expired", 1L, byUser = true)
+
+        assertTrue(signIn.typed("B10000001", "pw"))
+
+        assertEquals(1, librarySignIns)
+        assertEquals("B10000001", library.libraryUsername)
+        assertEquals("token", library.libraryToken)
+    }
+
     @Test
     fun `no stored account signs nothing in`() = runTest {
         storedId = null
