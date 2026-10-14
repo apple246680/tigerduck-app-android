@@ -16,6 +16,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.di.ApplicationScope
@@ -26,6 +27,7 @@ import org.ntust.app.tigerduck.network.model.CourseSearchRequest
 import org.ntust.app.tigerduck.network.model.CourseSearchResult
 import org.ntust.app.tigerduck.network.model.MoodleEnrolledCourse
 import org.ntust.app.tigerduck.util.SharedFetch
+import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -179,11 +181,7 @@ class CourseService @Inject constructor(
             .post(requestBody)
             .build()
 
-        val fresh = client.newCall(request).execute().use { response ->
-            val body = response.body.string()
-            val type = object : TypeToken<List<CourseSearchResult>>() {}.type
-            gson.fromJson<List<CourseSearchResult>?>(body, type) ?: emptyList()
-        }
+        val fresh = client.newCall(request).execute().use(::lookupAnswer)
 
         if (fresh.isNotEmpty()) {
             lookupCache[key] = DataCache.CourseLookupEntry(fresh, System.currentTimeMillis())
@@ -420,6 +418,20 @@ class CourseService @Inject constructor(
          * GE dimension or term span on some of them, so the first row is not
          * enough.
          */
+        private val lookupGson = Gson()
+
+        /**
+         * QueryCourse's rows for one course code, an empty list for a code it does not know, or
+         * an [IOException] for a request that failed: a failed answer must not pass for an
+         * unknown course, which an import of someone's class table would leave out.
+         */
+        internal fun lookupAnswer(response: Response): List<CourseSearchResult> {
+            if (!response.isSuccessful) throw IOException("QueryCourse answered ${response.code}")
+            val body = response.body.string()
+            val type = object : TypeToken<List<CourseSearchResult>>() {}.type
+            return lookupGson.fromJson<List<CourseSearchResult>?>(body, type) ?: emptyList()
+        }
+
         fun firstNonEmpty(values: List<String?>): String? =
             values.firstOrNull { !it.isNullOrBlank() }?.trim()
 
