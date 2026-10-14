@@ -89,6 +89,15 @@ class LibraryService(
             !credentials.libraryPasswordRefused
 
     /**
+     * Whether a library account is signed in, as the Library page, Settings and
+     * the flip count it: its token is live, or its stored credentials sign in
+     * again behind the code. Only a refused stored password, or no account,
+     * signs it out.
+     */
+    val hasAccount: Boolean
+        get() = credentials.isLibraryTokenValid || canSignInWithStoredCredentials
+
+    /**
      * Signs in with the stored credentials when there is no live token, so the
      * Library page shows its code at once: at launch and on each return to the
      * app. Not after a refusal, not within [SIGN_IN_PAUSE_MS] of another

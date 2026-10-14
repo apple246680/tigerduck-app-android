@@ -39,8 +39,11 @@ import org.ntust.app.tigerduck.ui.haptics.Haptics
  *     the switch in Settings shows it, AND
  *   - the host activity is at least STARTED.
  *
- * A flip checks the sign-in again as it fires: the token can run out between
- * the last [org.ntust.app.tigerduck.library.LibrarySession.refresh] and the flip.
+ * A flip checks the sign-in again as it fires: the account can be refused or
+ * signed out between the last
+ * [org.ntust.app.tigerduck.library.LibrarySession.refresh] and the flip. An
+ * expired token with stored credentials still counts, since the Library page
+ * signs in again behind the code (tigerduck-app/tigerduck-app#528).
  *
  * Net effect: when the user flips the phone face-down with a valid library
  * session, the nav controller jumps to [Screen.Library]; a flip while already

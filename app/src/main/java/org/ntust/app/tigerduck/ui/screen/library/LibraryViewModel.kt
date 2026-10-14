@@ -42,16 +42,23 @@ class LibraryViewModel @Inject constructor(
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage
 
+    private val page = LibraryPageAccount(
+        credentials = credentials,
+        libraryService = libraryService,
+        demoCode = { fixtureQr },
+        demoSignedIn = { fixtureSignedIn },
+    )
+
     private val qrCycle = LibraryQRCycle(
         scope = viewModelScope,
-        fetch = { fixtureQr ?: libraryService.generateQRCode() },
+        fetch = page::fetchCode,
         // QR rendering scans 512*512 pixels — keep it off the main thread so
         // the countdown animation and any ongoing gestures don't stutter.
         render = { payload -> withContext(Dispatchers.Default) { generateQRBitmap(payload) } },
-        account = { qrAccount(credentials.libraryAccountGeneration, fixtureSignedIn) },
-        sessionValid = { fixtureSignedIn || credentials.isLibraryTokenValid },
-        // The session is gone: back to the sign-in form instead of looping
-        // on a dead token.
+        account = { page.codeAccount },
+        sessionValid = { page.hasAccount },
+        // The account is gone (refused, or signed out): back to the sign-in
+        // form instead of looping on it.
         onSessionEnded = {
             librarySession.refresh()
             _isLoggedIn.value = false
@@ -88,11 +95,7 @@ class LibraryViewModel @Inject constructor(
     private val fixtureSignedIn: Boolean
         get() = fixtureQr != null && debugFixtures.libraryFakeSignedIn
 
-    private fun resolveSignedIn(): Boolean = showsPass(
-        fixtureSignedIn = fixtureSignedIn,
-        tokenValid = credentials.isLibraryTokenValid,
-        canSignInWithStoredCredentials = libraryService.canSignInWithStoredCredentials,
-    )
+    private fun resolveSignedIn(): Boolean = page.hasAccount
 
     private fun resolveUsername(): String? =
         demoAccount.libraryUsername ?: credentials.libraryUsername
@@ -173,24 +176,5 @@ class LibraryViewModel @Inject constructor(
 
     companion object {
         const val QR_VALID_SECONDS = 30
-
-        /**
-         * Whether the page shows the pass rather than the sign-in form. Stored
-         * credentials count: the code's fetch signs in again with them, so an
-         * expired token shows a code, not the form. A refused password does not.
-         */
-        internal fun showsPass(
-            fixtureSignedIn: Boolean,
-            tokenValid: Boolean,
-            canSignInWithStoredCredentials: Boolean,
-        ): Boolean = fixtureSignedIn || tokenValid || canSignInWithStoredCredentials
-
-        /**
-         * The account a QR code belongs to, for [LibraryQRCycle]: the library
-         * account generation, and apart from it the demo library, whose code
-         * stands in for a real account's without moving the generation.
-         */
-        internal fun qrAccount(generation: Int, demoLibrary: Boolean): Int =
-            generation * 2 + if (demoLibrary) 1 else 0
     }
 }

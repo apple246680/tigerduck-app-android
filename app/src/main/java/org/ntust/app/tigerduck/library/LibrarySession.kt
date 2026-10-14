@@ -3,15 +3,17 @@ package org.ntust.app.tigerduck.library
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.demo.DemoAccount
+import org.ntust.app.tigerduck.shared.LibraryService
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Whether a library account is signed in, as the library row in Settings shows
- * it: a library token that is still valid, or the demo library. Flip-to-library
- * listens only while one is, and its switch reads off until then.
+ * Whether a library account is signed in, as the library row in Settings, the
+ * Library page and flip-to-library all count it: [LibraryService.hasAccount] (a
+ * live token, or stored credentials the library has not refused), or the demo
+ * library. Flip-to-library listens only while one is, and its switch reads off
+ * until then.
  *
  * The stores behind it say nothing when they change, and a token also runs out
  * with time, so whatever changes them calls [refresh]: a library sign-in or
@@ -26,8 +28,8 @@ class LibrarySession internal constructor(
 ) {
 
     @Inject
-    constructor(credentials: CredentialManager, demoAccount: DemoAccount, qrCache: LibraryQRBitmapCache) :
-        this({ credentials.isLibraryTokenValid || demoAccount.isLibrarySignedIn }, qrCache::clear)
+    constructor(libraryService: LibraryService, demoAccount: DemoAccount, qrCache: LibraryQRBitmapCache) :
+        this({ libraryService.hasAccount || demoAccount.isLibrarySignedIn }, qrCache::clear)
 
     private val _signedIn = MutableStateFlow(read())
     val signedIn: StateFlow<Boolean> = _signedIn.asStateFlow()

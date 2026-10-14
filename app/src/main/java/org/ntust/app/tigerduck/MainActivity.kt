@@ -259,7 +259,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // The library token runs out with time, and the flip listens only while it is valid.
+        // Read the library sign-in again: the flip and Settings follow it.
         appState.librarySession.refresh()
         // It lasts a day, so a launch or a return after one signs in again with
         // the stored library credentials, and the Library page opens on a code.
