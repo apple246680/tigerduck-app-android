@@ -16,7 +16,6 @@ import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberRole
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeParseException
-import java.util.Collections
 
 /**
  * The demo student's courses on Moodle, from `assets/demo.json`'s `moodle` section: a few
@@ -167,14 +166,18 @@ object DemoMoodleFixture {
 
 /**
  * The demo account's Moodle: answers from [moodle] and nothing from the network. What was opened
- * stays read for as long as the app runs, as Moodle would keep it.
+ * stays read, across restarts too, as Moodle would keep it: [readIds] and [markRead] keep the
+ * discussions read with the rest of the demo account's state, which sign-out clears.
  */
-class DemoMoodleCourseApi(private val moodle: DemoMoodle) : MoodleCourseApi {
-    private val read: MutableSet<Int> = Collections.synchronizedSet(mutableSetOf())
+class DemoMoodleCourseApi(
+    private val moodle: DemoMoodle,
+    private val readIds: () -> Set<Int>,
+    private val markRead: (Int) -> Unit,
+) : MoodleCourseApi {
 
     private fun course(moodleId: Int) = moodle.courses.firstOrNull { it.moodleId == moodleId }
 
-    private fun unread(discussion: MoodleDiscussion) = if (discussion.id in read) 0 else discussion.unreadCount
+    private fun unread(discussion: MoodleDiscussion) = if (discussion.id in readIds()) 0 else discussion.unreadCount
 
     override suspend fun functions(): Set<String> = setOf(
         MoodleCourseApi.FORUMS_FUNCTION,
@@ -209,7 +212,7 @@ class DemoMoodleCourseApi(private val moodle: DemoMoodle) : MoodleCourseApi {
     }
 
     override suspend fun markViewed(discussionId: Int, isCurrent: () -> Boolean) {
-        if (isCurrent()) read += discussionId
+        if (isCurrent()) markRead(discussionId)
     }
 
     override suspend fun members(courseId: Int): MoodleMemberList =

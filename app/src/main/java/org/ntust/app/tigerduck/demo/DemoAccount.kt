@@ -130,7 +130,11 @@ class DemoAccount @Inject constructor(
     fun moodleApi(): MoodleCourseApi? {
         if (!isActive) return null
         val moodle = load(currentLang())?.moodle ?: return null
-        return DemoMoodleCourseApi(moodle)
+        return DemoMoodleCourseApi(
+            moodle,
+            readIds = { store.demoMoodleReadIds },
+            markRead = { store.demoMoodleReadIds = store.demoMoodleReadIds + it },
+        )
     }
 
     private suspend fun write(fixture: DemoFixture) {
