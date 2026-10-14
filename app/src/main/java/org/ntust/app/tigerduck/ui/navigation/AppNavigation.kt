@@ -255,7 +255,8 @@ fun MainNavigation(
         val screenName = route.replace(Regex("/[{][^}]+[}]"), "")
         analyticsLogger.log("screen_view", mapOf("screen_name" to screenName))
     }
-    val selectedTabRoute = selectedTabRoute(currentRoute)
+    val backStack by navController.currentBackStack.collectAsStateWithLifecycle()
+    val selectedTabRoute = selectedTabRoute(currentRoute, backStack.dropLast(1).map { it.destination.route })
 
     val context = LocalContext.current
     val backPressExitHint = stringResource(R.string.app_exit_confirm_toast)
@@ -423,6 +424,11 @@ fun MainNavigation(
                     appState = appState,
                     viewModel = homeViewModel,
                     onOpenSignInSettings = openSignInSettings,
+                    onOpenCourseDetail = { picked ->
+                        // The slider shows the live term, as the class table's today strip does.
+                        classTableViewModel.selectCourse(picked.course, picked.weekday, picked.periodId, fromLiveTerm = true)
+                        navController.navigate(MoodleRoutes.COURSE_DETAIL) { launchSingleTop = true }
+                    },
                 )
             }
             page(Screen.ClassTable.route) {
@@ -771,10 +777,15 @@ fun MainNavigation(
     }
 }
 
-/** The tab the bottom bar shows selected on [route]: a page's own tab, or the one it was opened from. */
-internal fun selectedTabRoute(route: String?): String? = when {
+/**
+ * The tab the bottom bar shows selected on [route]: a page's own tab, or the one it was opened
+ * from. A course detail and its Moodle pages belong to Home when Home, the nearest of the two in
+ * the back stack [below] the page, opened them, and to the class table otherwise.
+ */
+internal fun selectedTabRoute(route: String?, below: List<String?> = emptyList()): String? = when {
     route == Screen.Settings.route || route == Screen.TabEditor.route -> Screen.More.route
-    route == MoodleRoutes.COURSE_DETAIL || route?.startsWith(MoodleRoutes.PREFIX) == true -> Screen.ClassTable.route
+    route == MoodleRoutes.COURSE_DETAIL || route?.startsWith(MoodleRoutes.PREFIX) == true ->
+        below.lastOrNull { it == Screen.Home.route || it == Screen.ClassTable.route } ?: Screen.ClassTable.route
     else -> route
 }
 

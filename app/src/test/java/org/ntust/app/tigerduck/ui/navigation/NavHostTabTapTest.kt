@@ -191,6 +191,13 @@ class StartRouteTest {
     }
 
     @Test
+    fun `a course page opened from Home, and its Moodle pages, keep Home selected`() {
+        assertEquals("home", selectedTabRoute("classTable/course", below = listOf("home")))
+        assertEquals("home", selectedTabRoute("courseMoodle/{courseId}/materials", below = listOf("home", "classTable/course")))
+        assertEquals("classTable", selectedTabRoute("classTable/course", below = listOf("home", "classTable")))
+    }
+
+    @Test
     fun `a course page and its Moodle pages keep the class table tab selected`() {
         assertEquals("classTable", selectedTabRoute("classTable/course"))
         assertEquals("classTable", selectedTabRoute("courseMoodle/{courseId}/members/{memberId}"))
