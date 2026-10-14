@@ -21,12 +21,13 @@ class KeptMarksTest {
             send = { id, status ->
                 sent += id to status
                 // Taps on Home while the first request is out: "2" marked
-                // done, "3" unmarked, and each tap has sent its own PATCH.
+                // done, "3" unmarked.
                 if (id == 1) {
                     marks = mapOf("1" to STATUS_IGNORED, "2" to STATUS_COMPLETED)
                     version++
                 }
             },
+            keep = { _, _ -> },
         )
 
         assertEquals(listOf(1 to STATUS_IGNORED, 2 to STATUS_COMPLETED), sent)
@@ -45,6 +46,7 @@ class KeptMarksTest {
                 requests++
                 if (id == 100) version++
             },
+            keep = { _, _ -> },
         )
 
         assertEquals(200, requests)
@@ -62,8 +64,25 @@ class KeptMarksTest {
                 sent += id
                 if (id == 1) error("HTTP 500")
             },
+            keep = { _, _ -> },
         )
 
         assertEquals(listOf(1, 2), sent)
+    }
+
+    @Test
+    fun `a mark that fails to go up is kept to go up later`() = runTest {
+        val kept = mutableListOf<Pair<String, String>>()
+
+        sendKeptMarks(
+            marksVersion = { 0 },
+            marksNow = { mapOf("1" to STATUS_IGNORED, "2" to STATUS_NONE, "3" to STATUS_COMPLETED) },
+            send = { id, _ -> if (id != 3) throw java.io.IOException("offline") },
+            keep = { id, status -> kept += id to status },
+        )
+
+        // Lost otherwise: once the hold goes, the next sync takes the server,
+        // which never got them, as the truth.
+        assertEquals(listOf("1" to STATUS_IGNORED, "2" to STATUS_NONE), kept)
     }
 }

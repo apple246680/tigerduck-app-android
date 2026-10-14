@@ -69,6 +69,18 @@ class UnsentMarks internal constructor(
         if (kept) trySend(assignmentId, status, generation)
     }
 
+    /**
+     * Keeps a mark Use Local could not send, whatever [sends] says: while the
+     * answer is applied the re-enable check still holds marks, and dropped,
+     * the mark would be lost to the next sync. Written only while the data is
+     * still [generation]'s.
+     */
+    suspend fun keep(assignmentId: String, status: String, generation: Int) {
+        mutex.withLock {
+            dataCache.saveUnsentMarks(dataCache.loadUnsentMarks() + (assignmentId to status), generation)
+        }
+    }
+
     /** Sends every mark still waiting; each full sync starts with this. */
     suspend fun retry() {
         if (!sends()) return

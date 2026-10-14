@@ -136,4 +136,26 @@ class UnsentMarksTest {
 
         assertEquals(emptySet<String>(), marks.ids())
     }
+
+    @Test
+    fun `a mark Use Local could not send is kept while the re-enable check still holds marks`() = runTest {
+        // While the answer is applied, "assignments" is still pending and no
+        // mark goes out; what Use Local failed to send must wait regardless.
+        sends = false
+
+        marks.keep("7", "locally_completed", cache.userDataGeneration)
+
+        assertEquals(mapOf("7" to "locally_completed"), cache.loadUnsentMarks())
+        assertEquals(emptyList<Pair<Int, String>>(), sent)
+    }
+
+    @Test
+    fun `a mark kept for an account that has signed out since is not written`() = runTest {
+        val generation = cache.userDataGeneration
+        cache.clearAllUserData()
+
+        marks.keep("7", "ignored", generation)
+
+        assertEquals(emptySet<String>(), marks.ids())
+    }
 }

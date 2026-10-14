@@ -421,6 +421,7 @@ class SettingsViewModel @Inject constructor(
                         )
                     },
                     send = pushApiClient::patchAssignmentOverride,
+                    keep = { id, status -> unsentMarks.keep(id, status, generation) },
                 )
                 if (prefs.syncCourses) courseIgnoreSync.pushLocal(server, generation)
             }
