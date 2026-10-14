@@ -13,7 +13,7 @@
     <!--
         Pinned hosts receive NTUST SSO credentials and a long-lived Moodle wstoken.
         Pins are SHA-256 of SubjectPublicKeyInfo. Each set includes the leaf SPKI
-        plus the issuing intermediate CA SPKI as a rotation-safe backup.
+        plus the CA SPKIs a renewal may come from as rotation-safe backups.
 
         Rotation before expiration is MANDATORY — after the expiration date the
         pins stop enforcing and fall back to system CA trust. Each pin-set has
@@ -40,13 +40,19 @@
         </pin-set>
     </domain-config>
 
-    <!-- api.lib.ntust.edu.tw leaf + Sectigo DV E36 intermediate.
+    <!-- api.lib.ntust.edu.tw leaf + Sectigo DV E36 intermediate, plus Sectigo
+         Public Server Authentication Root E46 (ECC) and Root R46 (RSA). Every
+         renewal since 2022 changed the key and the issuer, once from ECC to RSA,
+         and Sectigo issues new public TLS certificates only under these two
+         roots, so a renewal through any of their intermediates keeps working.
          Leaf cert expires 2026-11-04; pins expire six months later. -->
     <domain-config cleartextTrafficPermitted="false">
         <domain includeSubdomains="true">api.lib.ntust.edu.tw</domain>
         <pin-set expiration="2027-05-04">
             <pin digest="SHA-256">m8Epf0KqJFv9abCXfipePZ79hfOMjddCKxz+RSZIDKY=</pin>
             <pin digest="SHA-256">ZSagvDzjltLkewXEBuDxIzpW/dpVw1Juvvmd0hhkzdY=</pin>
+            <pin digest="SHA-256">sLVjNUaFYfW7n6EtgBeEpjOlcnBdNPMrZDRF36iwBdE=</pin>
+            <pin digest="SHA-256">Douxi77vs4G+Ib/BogbTFymEYq0QSFXwSgVCaZcI09Q=</pin>
         </pin-set>
     </domain-config>
 

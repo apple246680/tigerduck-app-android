@@ -51,6 +51,7 @@ class AuthService @Inject constructor(
     @param:ApplicationScope private val appScope: CoroutineScope,
     private val demoAccount: org.ntust.app.tigerduck.demo.DemoAccount,
     private val prefs: org.ntust.app.tigerduck.data.preferences.AppPreferences,
+    private val mailAccount: org.ntust.app.tigerduck.mail.MailAccount,
 ) {
     /**
      * A demo session presents as signed in, with or without an account.
@@ -289,6 +290,10 @@ class AuthService @Inject constructor(
         // own scope — so without a captured header the device-unregister call
         // would find no session to go out with, and leak the device row.
         val authHeader = authTokenManager.currentAuthHeader()
+        // A school mail account signed in as the same student goes with it, and its background
+        // checks and notifications stop; another student's stays. Before the sign-out below,
+        // which takes the student ID it is matched by.
+        credentials.ntustStudentId?.let { mailAccount.signOutIfSchoolAccount(it) }
         credentials.signOutSchoolAccount()
         authTokenManager.logout()
         // A queued live_activity push, and an edit still waiting to be
