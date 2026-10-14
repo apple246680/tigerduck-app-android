@@ -42,9 +42,6 @@ class LibraryViewModel @Inject constructor(
     private val _isLoggingIn = MutableStateFlow(false)
     val isLoggingIn: StateFlow<Boolean> = _isLoggingIn
 
-    private val _errorMessage = MutableStateFlow<String?>(null)
-    val errorMessage: StateFlow<String?> = _errorMessage
-
     private val page = LibraryPageAccount(
         credentials = credentials,
         libraryService = libraryService,
@@ -52,33 +49,28 @@ class LibraryViewModel @Inject constructor(
         demoSignedIn = { fixtureSignedIn },
     )
 
-    private val qrCycle = LibraryQRCycle(
+    private val pass = LibraryPassState(
         scope = viewModelScope,
+        hasAccount = { page.hasAccount },
+        codeAccount = { page.codeAccount },
         fetch = page::fetchCode,
         // QR rendering scans 512*512 pixels — keep it off the main thread so
         // the countdown animation and any ongoing gestures don't stutter.
         render = { payload -> withContext(Dispatchers.Default) { generateQRBitmap(payload) } },
-        account = { page.codeAccount },
-        sessionValid = { page.hasAccount },
-        // The account is gone (refused, or signed out): back to the sign-in
-        // form instead of looping on it. Before the session is read again,
-        // so the drop that follows it keeps this failure's message.
-        onSessionEnded = {
-            _isLoggedIn.value = false
-            librarySession.refresh()
-        },
+        signedIn = librarySession.signedIn,
+        refreshSession = { librarySession.refresh() },
         describe = { e -> libraryErrorMessage(e, R.string.library_qr_generate_failed, context::getString) },
-        errors = _errorMessage,
         cache = qrCache,
         now = SystemClock::elapsedRealtime,
     )
 
-    val qrBitmap: StateFlow<Bitmap?> = qrCycle.image
-    val countdown: StateFlow<Int> = qrCycle.countdown
-    val isLoadingQR: StateFlow<Boolean> = qrCycle.isLoading
+    private val _errorMessage = pass.errors
+    val errorMessage: StateFlow<String?> = pass.errors
 
-    private val _isLoggedIn = MutableStateFlow(resolveSignedIn())
-    val isLoggedIn: StateFlow<Boolean> = _isLoggedIn
+    val qrBitmap: StateFlow<Bitmap?> = pass.image
+    val countdown: StateFlow<Int> = pass.countdown
+    val isLoadingQR: StateFlow<Boolean> = pass.isLoading
+    val isLoggedIn: StateFlow<Boolean> = pass.isLoggedIn
 
     /**
      * The demo account's QR payload, or null to ask the backend for a real
@@ -96,36 +88,19 @@ class LibraryViewModel @Inject constructor(
     private val fixtureSignedIn: Boolean
         get() = fixtureQr != null && debugFixtures.libraryFakeSignedIn
 
-    private fun resolveSignedIn(): Boolean = page.hasAccount
-
     private fun resolveUsername(): String? =
         demoAccount.libraryUsername ?: credentials.libraryUsername
 
     private val _storedUsername = MutableStateFlow(credentials.libraryUsername)
     val storedUsername: StateFlow<String?> = _storedUsername
 
-    init {
-        // Signed out elsewhere, such as a refusal the sign-in at a return to
-        // the app found: back to the sign-in form at once, also while a code
-        // request backs off, rather than at its next try. That failure's
-        // message is no longer what happened.
-        viewModelScope.followSignOuts(librarySession.signedIn, ::resolveSignedIn) {
-            if (_isLoggedIn.value) {
-                qrCycle.clear()
-                _errorMessage.value = null
-                _isLoggedIn.value = false
-            }
-        }
-    }
-
     /** Suggested pre-fill for the login form — stored library user, or NTUST student ID. */
     val suggestedUsername: String
         get() = resolveUsername() ?: credentials.ntustStudentId.orEmpty()
 
     fun load() {
-        _isLoggedIn.value = resolveSignedIn()
         _storedUsername.value = resolveUsername()
-        if (_isLoggedIn.value) qrCycle.start()
+        pass.load()
     }
 
     fun loginAndRefresh(username: String, password: String) {
@@ -137,9 +112,8 @@ class LibraryViewModel @Inject constructor(
                 // without the demo account; see [DemoAccount.signInLibrary].
                 if (demoAccount.signInLibrary(username, password)) {
                     librarySession.refresh()
-                    _isLoggedIn.value = true
                     _storedUsername.value = resolveUsername()
-                    qrCycle.restart()
+                    pass.signedIn()
                     return@launch
                 }
                 // The demo account itself never reaches the library, so
@@ -151,13 +125,12 @@ class LibraryViewModel @Inject constructor(
                 libraryService.login(username, password, credentials.libraryAccountGeneration, byUser = true)
                 demoAccount.signOutLibrary()
                 librarySession.refresh()
-                _isLoggedIn.value = true
                 _storedUsername.value = username
+                pass.signedIn()
                 // Push the fresh credentials to the paired watch so its
                 // library page can start showing the QR straight away
                 // instead of waiting for the next launch-time mirror.
                 wearBridge.publishLibraryCredentials()
-                qrCycle.restart()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -169,21 +142,11 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun onResume() {
-        _isLoggedIn.value = resolveSignedIn()
         _storedUsername.value = resolveUsername()
-        if (_isLoggedIn.value) {
-            // onPause stopped the cycle. This also covers a sign-in made on
-            // another screen.
-            qrCycle.start()
-        } else {
-            // Signed out elsewhere: the code on screen was that account's.
-            qrCycle.clear()
-        }
+        pass.resume()
     }
 
-    fun onPause() {
-        qrCycle.stop()
-    }
+    fun onPause() = pass.pause()
 
     /** The page is on screen; the flip-to-library offer waits until it is left. */
     fun onPageShown() = pagePresence.appear(this)
