@@ -160,6 +160,15 @@ internal fun MembersList(
                 }
                 return@LazyColumn
             }
+            state.failureBesideCopy?.let { failure ->
+                item(key = "failure") {
+                    MoodleRefreshFailure(
+                        failure,
+                        onRetry = { scope.launch { store.refreshMembers() } },
+                        modifier = Modifier.padding(bottom = 12.dp),
+                    )
+                }
+            }
             if (searching || query.isNotEmpty()) {
                 item(key = "search") { SearchField(query, onQueryChange) }
             }

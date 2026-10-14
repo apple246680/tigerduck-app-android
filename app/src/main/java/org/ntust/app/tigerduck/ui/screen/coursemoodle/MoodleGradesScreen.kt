@@ -100,7 +100,7 @@ fun MoodleGradesScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GradesList(store: MoodleCourseStore, browserPreference: String) {
+internal fun GradesList(store: MoodleCourseStore, browserPreference: String) {
     val state by store.grades.state.collectAsStateWithLifecycle()
     MoodleAutoRefresh(store, store.grades.ttlMs, store::awaitCache, { store.grades.state.value.fetchedAtMs }) {
         store.refreshGrades()
@@ -129,6 +129,9 @@ private fun GradesList(store: MoodleCourseStore, browserPreference: String) {
                     )
                 }
             } else {
+                state.failureBesideCopy?.let { failure ->
+                    item(key = "failure") { MoodleRefreshFailure(failure, onRetry = { scope.launch { store.refreshGrades() } }) }
+                }
                 val total = MoodleGrades.total(grades)
                 val items = MoodleGrades.graded(grades)
                 total?.let { item(key = "total") { GradeTotalCard(it) } }

@@ -103,6 +103,20 @@ class MoodleCourseStore(
             MoodleSections.rows(f.value, courseId, g.value, m.value)
         }.stateIn(scope, SharingStarted.Eagerly, emptyList())
 
+    /** Why the section's last fetch failed, shown with Retry beside what it has, or in its place. */
+    val sectionFailure: StateFlow<Throwable?> =
+        combine(forums.state, grades.state, members.state, summary.state) { f, g, m, s ->
+            MoodleSections.failure(listOf(f, g, m, s))
+        }.stateIn(scope, SharingStarted.Eagerly, null)
+
+    /** Fetches every kind the section shows, side by side, as its Retry does. */
+    fun retrySection() {
+        scope.launch { refreshForums() }
+        scope.launch { refreshGrades() }
+        scope.launch { refreshMembers() }
+        scope.launch { refreshSummary() }
+    }
+
     /** What the foot of the section shows; null while the course has no summary worth showing. */
     val shownSummary: StateFlow<MoodleCourseSummary?> = summary.state
         .map { state -> state.value?.takeIf { MoodleSections.isWorthShowing(it, courseCodes) } }

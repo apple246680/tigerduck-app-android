@@ -177,6 +177,9 @@ internal fun DiscussionList(
                     )
                 }
             } else {
+                feed.failureBesideCopy?.let { failure ->
+                    item(key = "failure") { MoodleRefreshFailure(failure, onRetry = { scope.launch { pages.refresh() } }) }
+                }
                 items(discussions, key = { it.id }) { discussion ->
                     MoodleDiscussionCard(
                         discussion = discussion,

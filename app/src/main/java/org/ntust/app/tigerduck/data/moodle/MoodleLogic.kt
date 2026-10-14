@@ -25,6 +25,13 @@ data class MoodleSectionRow(val kind: Kind, val count: Int, val hasUnread: Boole
 
 object MoodleSections {
 
+    /**
+     * Why the section's last fetch of [states] failed, the first that did and is not being
+     * fetched again; null with none.
+     */
+    fun failure(states: List<MoodleFeed.State<*>>): Throwable? =
+        states.firstOrNull { !it.isRefreshing && it.failure != null }?.failure
+
     /** [term]'s forums of course [courseId]; none while the copy does not cover the course. */
     fun courseForums(term: MoodleTermForums?, courseId: Int): List<MoodleForum> {
         if (term == null || courseId !in term.courseIds) return emptyList()

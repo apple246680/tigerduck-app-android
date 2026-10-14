@@ -59,8 +59,8 @@ import java.text.NumberFormat
 /**
  * The course detail's Moodle section, under its incomplete assignments: a header, one card with
  * a row for each kind of data the course has on Moodle, then the course's summary. A row shows
- * only once its data has something in it, and the section only once it has a row or a summary.
- * Its data stays fresh while the course detail shows.
+ * only once its data has something in it, and the section only once it has a row, a summary or
+ * a failed fetch to say why, with Retry. Its data stays fresh while the course detail shows.
  */
 @Composable
 internal fun MoodleCourseSection(
@@ -71,7 +71,12 @@ internal fun MoodleCourseSection(
     MoodleSectionRefresh(store)
     val rows by store.sectionRows.collectAsStateWithLifecycle()
     val summary by store.shownSummary.collectAsStateWithLifecycle()
-    AnimatedVisibility(visible = rows.isNotEmpty() || summary != null, enter = fadeIn(), exit = fadeOut()) {
+    val failure by store.sectionFailure.collectAsStateWithLifecycle()
+    AnimatedVisibility(
+        visible = rows.isNotEmpty() || summary != null || failure != null,
+        enter = fadeIn(),
+        exit = fadeOut(),
+    ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Text(
@@ -80,6 +85,7 @@ internal fun MoodleCourseSection(
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.semantics { heading() },
             )
+            failure?.let { MoodleRefreshFailure(it, onRetry = store::retrySection) }
             if (rows.isNotEmpty()) {
                 Surface(
                     shape = RoundedCornerShape(16.dp),
