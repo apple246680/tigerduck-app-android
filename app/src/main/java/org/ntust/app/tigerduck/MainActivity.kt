@@ -173,7 +173,11 @@ class MainActivity : AppCompatActivity() {
             }
             TigerDuckTheme.setDarkMode(dark)
 
-            TigerDuckAppTheme(darkTheme = dark, accentColor = appState.accentColor(dark)) {
+            TigerDuckAppTheme(
+                darkTheme = dark,
+                accentColor = appState.accentColor(dark),
+                visualPreset = appState.visualPreset,
+            ) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         AppNavigation(
