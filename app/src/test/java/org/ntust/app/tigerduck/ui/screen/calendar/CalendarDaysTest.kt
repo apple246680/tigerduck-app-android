@@ -85,4 +85,16 @@ class CalendarDaysTest {
         // Japanese brackets are full-width and take no space before them, as on the iPhone.
         assertEquals("10月14日（今日）", dayTitle(today, today, Locale.JAPAN, "（今日）"))
     }
+
+    @Test
+    fun `exactly one space before the suffix, before and after the generator keeps edge spaces`() {
+        val today = LocalDate.of(2026, 10, 14)
+        // Today's resource has lost its leading space; once app-translation#21 ships it keeps it.
+        listOf("(Today)", " (Today)").forEach { suffix ->
+            assertEquals("'$suffix'", "Oct 14 (Today)", dayTitle(today, today, Locale.US, suffix))
+        }
+        listOf("(今日)", " (今日)").forEach { suffix ->
+            assertEquals("'$suffix'", "10月14日 (今日)", dayTitle(today, today, Locale.TAIWAN, suffix))
+        }
+    }
 }

@@ -43,6 +43,9 @@ internal fun dayTitle(date: LocalDate, today: LocalDate, locale: Locale, todaySu
     // The suffix is " (Today)" in every locale but Japanese, whose "（今日）"
     // carries its own spacing in the full-width brackets. aapt drops the
     // leading space of an unquoted string resource, so put it back before
-    // an ASCII bracket.
+    // an ASCII bracket. tigerduck-app/app-translation#21 (PR #22) makes the
+    // generator keep edge spaces; once the submodule includes it the
+    // resource arrives as " (Today)", this branch no longer runs, and the
+    // check can go. Both forms give exactly one space meanwhile.
     return if (todaySuffix.startsWith("(")) "$title $todaySuffix" else title + todaySuffix
 }
