@@ -98,6 +98,7 @@ class DataMigration @Inject constructor(
                 1 -> migrate1to2()
                 2 -> migrate2to3()
                 3 -> migrate3to4()
+                4 -> migrate4to5()
             }
             current++
             prefs.dataSchemaVersion = current
@@ -174,6 +175,11 @@ class DataMigration @Inject constructor(
         settleReenableCheck(prefs, signedIn = credentials.ntustStudentId != null)
     }
 
+    /** See [dropStaleCoursesCheck]. */
+    private fun migrate4to5() {
+        dropStaleCoursesCheck(prefs)
+    }
+
     companion object {
         private const val TAG = "DataMigration"
 
@@ -224,6 +230,20 @@ class DataMigration @Inject constructor(
          * [migrate3to4]'s work, here so a test can run it: this class needs a
          * [CredentialManager], which needs the Android Keystore.
          */
+        /**
+         * Drops a courses re-enable check an older build left pending. Those
+         * builds went on reconciling the course list while it waited, so the
+         * server's courses were applied here long ago and there is no copy
+         * of this phone's left for Use Local to keep. This build holds the
+         * course list while the check waits
+         * (`CourseSyncReconciler.syncsCourseList`), which would freeze it
+         * until the user next opened TigerSync.
+         */
+        internal fun dropStaleCoursesCheck(prefs: AppPreferences) {
+            val pending = prefs.pendingConflictCategories
+            if ("courses" in pending) prefs.pendingConflictCategories = pending - "courses"
+        }
+
         internal fun settleReenableCheck(prefs: AppPreferences, signedIn: Boolean) {
             if (signedIn) {
                 prefs.syncedCategories = REENABLE_CATEGORIES
@@ -250,7 +270,7 @@ class DataMigration @Inject constructor(
         private const val COURSE_NO_TOKEN = "\"courseNo\":"
 
         /** Highest schema this build writes. Bump when adding a new step. */
-        const val CURRENT_SCHEMA = 4
+        const val CURRENT_SCHEMA = 5
 
         /**
          * Lowest schema this build can migrate forward from. Anything below
