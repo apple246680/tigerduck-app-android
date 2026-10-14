@@ -48,6 +48,7 @@ class AuthService @Inject constructor(
     private val bulletinCache: BulletinCache,
     private val bulletinReadStateStore: BulletinReadStateStore,
     private val importedClassTables: ImportedClassTableStore,
+    private val widgetUpdater: org.ntust.app.tigerduck.widget.WidgetUpdater,
     @param:ApplicationScope private val appScope: CoroutineScope,
     private val demoAccount: org.ntust.app.tigerduck.demo.DemoAccount,
     private val prefs: org.ntust.app.tigerduck.data.preferences.AppPreferences,
@@ -358,6 +359,10 @@ class AuthService @Inject constructor(
             // so the next session starts coherent instead of half-stale.
             runCatching { bulletinCache.clear() }
                 .onFailure { android.util.Log.w("AuthService", "bulletinCache.clear failed on logout: ${it.logSummary()}") }
+            // Now that the timetable is gone: a widget left alone shows the departing student's
+            // until its next scheduled update, up to half an hour away.
+            runCatching { widgetUpdater.updateAll() }
+                .onFailure { android.util.Log.w("AuthService", "widget update failed on logout: ${it.logSummary()}") }
         }
     }
 

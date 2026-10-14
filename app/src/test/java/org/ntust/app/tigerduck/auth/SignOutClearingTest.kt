@@ -50,4 +50,14 @@ class SignOutClearingTest {
         // Left behind, the next student's class table would open on the previous student's term.
         assertEquals(1, Regex("""\bprefs\.classTableSelectedSemester = null\b""").findAll(body("fun logout()")).count())
     }
+
+    @Test
+    fun `the widgets are drawn again once the departing student's timetable is wiped`() {
+        // Not before: a widget drawn from the cache still on disk would keep the timetable.
+        val logout = body("fun logout()")
+        val wiped = logout.indexOf("dataCache.clearAllUserData()")
+        val redrawn = logout.indexOf("widgetUpdater.updateAll()")
+        assertTrue("logout() wipes the cache", wiped >= 0)
+        assertTrue("logout() redraws the widgets after the wipe", redrawn > wiped)
+    }
 }
