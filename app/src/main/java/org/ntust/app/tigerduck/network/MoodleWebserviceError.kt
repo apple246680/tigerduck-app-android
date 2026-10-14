@@ -19,6 +19,13 @@ sealed class MoodleWebserviceError(message: String) : Exception(message) {
     data class SsoLoginRejected(val reason: String?) :
         MoodleWebserviceError("NTUST SSO rejected Moodle authorization: ${reason ?: "unknown"}")
 
+    /**
+     * NTUST's SSO showed its sign-in page with no form to post to, such as a lockout notice, so
+     * no password went out. Apart from [SsoLoginRejected], which latches the stored password.
+     */
+    data class SsoLoginFormUnavailable(val reason: String?) :
+        MoodleWebserviceError("NTUST SSO sign-in form unavailable: ${reason ?: "unknown"}")
+
     class WebserviceDisabled : MoodleWebserviceError("Moodle webservice disabled")
 
     /**

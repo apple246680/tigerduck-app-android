@@ -230,7 +230,8 @@ class MoodleTokenService internal constructor(
             val fields = parseSSOLoginFields(html)
             if (fields.antiforgery.isEmpty()) {
                 if (responseUrl.encodedPath.contains("/account/login")) {
-                    throw MoodleWebserviceError.SsoLoginRejected(extractLoginError(html))
+                    // Nothing was posted, so this is no refusal of the password.
+                    throw MoodleWebserviceError.SsoLoginFormUnavailable(extractLoginError(html))
                 }
                 throw MoodleWebserviceError.MalformedResponse("SSO login form missing anti-forgery token")
             }
