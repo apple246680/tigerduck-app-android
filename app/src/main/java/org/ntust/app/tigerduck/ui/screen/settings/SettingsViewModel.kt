@@ -508,17 +508,23 @@ class SettingsViewModel @Inject constructor(
     }
 
     /** Use Local for courses, every term this phone knows — see [useLocalCourses]. */
-    private suspend fun sendLocalCourses(generation: Int, latch: UseLocalLatch) = useLocalCourses(
-        terms = semesterCatalog.availableSemesters().map { it to dataCache.loadCourses(it) },
-        hiding = dataCache.loadDeletedCourseNos(),
-        backend = PushCourseSyncBackend(pushApiClient, prefs),
-        // A term's reset takes its courses' names off the server with them.
-        customNames = if (prefs.syncCourseNames) dataCache.loadCourseCustomNames() else emptyMap(),
-        latch = latch,
-        host = useLocalHost,
-        now = System::currentTimeMillis,
-        isCurrent = { dataCache.userDataGeneration == generation },
-    )
+    private suspend fun sendLocalCourses(generation: Int, latch: UseLocalLatch) {
+        // The terms latched on the tap; the catalogue may have moved since.
+        val semesters = latch.semesters
+        val portalCached = semesters.filterTo(mutableSetOf()) { dataCache.hasPortalCourses(it) }
+        useLocalCourses(
+            terms = semesters.map { it to dataCache.loadCourses(it) },
+            hiding = dataCache.loadDeletedCourseNos(),
+            backend = PushCourseSyncBackend(pushApiClient, prefs),
+            // A term's reset takes its courses' names off the server with them.
+            customNames = if (prefs.syncCourseNames) dataCache.loadCourseCustomNames() else emptyMap(),
+            portalCached = { it in portalCached },
+            latch = latch,
+            host = useLocalHost,
+            now = System::currentTimeMillis,
+            isCurrent = { dataCache.userDataGeneration == generation },
+        )
+    }
 
     val isNtustLoggingIn = authService.isLoggingIn
     val ntustLoginError = authService.loginError

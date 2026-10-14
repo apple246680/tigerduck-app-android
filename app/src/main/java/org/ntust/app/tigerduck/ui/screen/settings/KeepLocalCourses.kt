@@ -79,7 +79,9 @@ internal class PushCourseSyncBackend(
  * deleted-course store, where a legacy bare entry hides its course in every
  * term. [customNames] (by course number, then locale; empty with name sync
  * off) go up again for every course of a term that was reset, which deletes
- * them on the server along with the course rows. Not a full reset: that erases every term's tombstones and stamps
+ * them on the server along with the course rows. A term whose portal rows
+ * the cache has lost ([portalCached] false, see `DataCache.hasPortalCourses`)
+ * is not reset: its hand-typed courses go up and its hidden ones are deleted. Not a full reset: that erases every term's tombstones and stamps
  * `courses_reset_at`, which this phone's next sync then took for a reset made
  * elsewhere, dropping its hidden and hand-typed courses.
  *
@@ -92,6 +94,7 @@ internal suspend fun keepLocalCourses(
     hiding: Set<String>,
     backend: CourseSyncBackend,
     customNames: Map<String, Map<String, String>> = emptyMap(),
+    portalCached: (semester: String) -> Boolean = { true },
     isCurrent: () -> Boolean = { true },
 ) {
     fun ensureCurrent() {
@@ -102,13 +105,17 @@ internal suspend fun keepLocalCourses(
         val cachedNos = courses.mapTo(mutableSetOf()) { it.courseNo }
         val stubs = (hiddenNos - cachedNos).sorted().map { Course(courseNo = it, courseName = it) }
         if (courses.isEmpty() && stubs.isEmpty()) continue
-        if (courses.isNotEmpty()) {
+        // Without the term's portal rows here, a reset would leave the server
+        // with the hand-typed ones alone, and every other device without the
+        // term's enrolled courses.
+        val reset = courses.isNotEmpty() && portalCached(semester)
+        if (reset) {
             ensureCurrent()
             backend.deleteAllCourses(semester)
         }
         ensureCurrent()
         backend.uploadCourses(courses + stubs, semester)
-        if (courses.isNotEmpty()) {
+        if (reset) {
             // The reset took the term's override rows, names included, with
             // its course rows; colours ride the upload, names do not.
             for (course in courses.filter { it.courseNo !in hiddenNos }.sortedBy { it.courseNo }) {
@@ -151,7 +158,7 @@ internal interface UseLocalHost {
  * already holds is left to that reset. Released once: a second [release]
  * would let go of a reset that latched the term since.
  */
-internal class UseLocalLatch(semesters: List<String>, private val host: UseLocalHost) {
+internal class UseLocalLatch(val semesters: List<String>, private val host: UseLocalHost) {
     val held: List<String> = semesters.filter(host::beginReset)
     private val released = AtomicBoolean(false)
 
@@ -194,6 +201,7 @@ internal suspend fun useLocalCourses(
     hiding: Set<String>,
     backend: CourseSyncBackend,
     customNames: Map<String, Map<String, String>>,
+    portalCached: (semester: String) -> Boolean,
     latch: UseLocalLatch,
     host: UseLocalHost,
     now: () -> Long,
@@ -201,7 +209,7 @@ internal suspend fun useLocalCourses(
 ) {
     try {
         try {
-            keepLocalCourses(terms, hiding, backend, customNames, isCurrent)
+            keepLocalCourses(terms, hiding, backend, customNames, portalCached, isCurrent)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

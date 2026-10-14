@@ -138,6 +138,23 @@ class KeepLocalCoursesTest {
     }
 
     @Test
+    fun `a term whose portal courses are not cached here is not reset`() = runTest {
+        // The cache evicted the term's portal rows; only a hand-typed course is left.
+        val server = FakeCourseServer(rows = setOf("client:1151:CS1", "client:1151:CS2"))
+        val manual = Course(courseNo = "MY1", courseName = "Mine", isManual = true)
+
+        keepLocalCourses(
+            listOf("1151" to listOf(manual)),
+            hiding = setOf("1151:CS2"),
+            backend = server,
+            portalCached = { false },
+        )
+
+        assertEquals(emptyList<String>(), server.resets)
+        assertEquals(setOf("client:1151:CS1", "client:1151:MY1"), server.rows)
+    }
+
+    @Test
     fun `custom names a term reset wiped go back up`() = runTest {
         val server = FakeCourseServer(rows = setOf("client:1151:CS1", "client:1151:CS2"))
         server.names["client:1151:CS1"] = mutableMapOf("zh" to "微積分")
@@ -224,6 +241,7 @@ class UseLocalCoursesTest {
         hiding = emptySet(),
         backend = server,
         customNames = emptyMap(),
+        portalCached = { true },
         latch = UseLocalLatch(terms.map { it.first }, host),
         host = host,
         now = { 42L },

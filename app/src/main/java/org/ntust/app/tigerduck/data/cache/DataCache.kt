@@ -160,6 +160,19 @@ class DataCache @Inject constructor(
         return remote.filter { it.courseNo !in manualNos } + manual
     }
 
+    /**
+     * Whether [semester]'s portal rows are cached: `courses_<semester>.json`
+     * lives in the evictable cacheDir, and once the system evicts it,
+     * [loadCourses] returns the hand-typed courses alone.
+     */
+    suspend fun hasPortalCourses(semester: String): Boolean {
+        absorbLegacyCourseCache()
+        val type = object : TypeToken<List<Course>>() {}.type
+        return load<List<Course>>(type, coursesFilename(semester), requireContent = COURSE_NO_TOKEN)
+            ?.let(::usableRows)
+            ?.any { !it.isManual } == true
+    }
+
     private fun manualCoursesFilename(semester: String): String = "manual_courses_$semester.json"
 
     /**
