@@ -885,6 +885,13 @@ internal suspend fun pullAssignmentSettingsCatching(
 // here is what arms them. Same push/pull shape as `assignments`, gated on
 // cloud sync and the session only: iOS has no 同步內容 switch for it either,
 // and syncs it whenever cloud sync is on.
+//
+// As for the other sections, a pull adopts a `courses` section the document
+// holds, and a push goes out only for an edit made on this device; nothing
+// here seeds a missing section. So the first pull after the update that
+// brought class reminders may adopt an iPhone's settings over the ones
+// `ClassReminders.migrateIfNeeded` carried over from the Live Update, and
+// those carried-over values never overwrite the iPhone's.
 
 private const val COURSES_SECTION_KEY = "courses"
 private const val COURSES_ENABLED_KEY = "enabled"

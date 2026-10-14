@@ -60,6 +60,14 @@ object ClassReminders {
      * exactly that: the switch on only if both were, and the same lead time,
      * even one the choices do not offer. A new install, which has not
      * finished onboarding, starts where an iPhone does.
+     *
+     * This sets the local values only. The settings sync then works as it
+     * does for every section: if the account's `notification` document
+     * already holds a `courses` section — an iPhone writes one on its first
+     * sync, even before its user opens the screen — the first pull after the
+     * update adopts it over what was migrated here. Android never writes the
+     * section without an edit of its own (`NotificationSettingsSync`), so a
+     * migrated value never overwrites an iPhone's choice.
      */
     fun migrated(
         hasCompletedOnboarding: Boolean,
