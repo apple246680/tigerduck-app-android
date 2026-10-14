@@ -104,94 +104,30 @@ class MoodleTokenCoordinatorTest {
     }
 
     @Test
-    fun `a refresh with a password SSO refused sends nothing, and its own refusal counts`() = runTest(UnconfinedTestDispatcher()) {
+    fun `a renewal with a password SSO refused sends nothing`() = runTest(UnconfinedTestDispatcher()) {
         tokens.token = "dead"
         val coordinator = coordinator()
         login = { _, _ -> throw MoodleWebserviceError.SsoLoginRejected("wrong password") }
         runCatching { coordinator.renew("dead") }
 
-        assertTrue(runCatching { coordinator.refresh() }.exceptionOrNull() is MoodleWebserviceError.SsoLoginRejected)
+        assertTrue(runCatching { coordinator.renew("dead") }.exceptionOrNull() is MoodleWebserviceError.SsoLoginRejected)
         assertEquals("the refused password is not sent again", 1, logins.size)
-
-        // And the other way round: a refresh SSO refuses stops the renewals after it.
-        val other = MoodleTokenCoordinator(tokens, { id, _, posting -> logins += id; posting.post { throw MoodleWebserviceError.SsoLoginRejected(null) } }, backgroundScope, { now }, 300_000L, InMemoryStoredPasswordLatch())
-        runCatching { other.refresh() }
-        runCatching { other.refresh() }
-        runCatching { other.renew("dead") }
-        assertEquals(2, logins.size)
     }
 
     @Test
-    fun `a refresh is paused after a failed sign-in, as a renewal is`() = runTest(UnconfinedTestDispatcher()) {
+    fun `a renewal is paused after a failed sign-in`() = runTest(UnconfinedTestDispatcher()) {
         tokens.token = "dead"
         val coordinator = coordinator()
         login = { _, _ -> throw MoodleWebserviceError.SiteMaintenance() }
-        runCatching { coordinator.refresh() }
+        runCatching { coordinator.renew("dead") }
 
-        assertTrue(runCatching { coordinator.refresh() }.exceptionOrNull() is MoodleWebserviceError.SiteMaintenance)
+        assertTrue(runCatching { coordinator.renew("dead") }.exceptionOrNull() is MoodleWebserviceError.SiteMaintenance)
         assertEquals(1, logins.size)
 
         now += 300_000L
         login = { _, _ -> "fresh" }
-        assertEquals("fresh", coordinator.refresh())
+        assertEquals("fresh", coordinator.renew("dead"))
         assertEquals("the pause over, it signs in", 2, logins.size)
-    }
-
-    @Test
-    fun `a refresh right after a token was harvested takes that token`() = runTest(UnconfinedTestDispatcher()) {
-        tokens.token = "dead"
-        val coordinator = coordinator()
-        val renewed = coordinator.renew("dead")
-
-        assertEquals(renewed, coordinator.refresh())
-        assertEquals("no second sign-in", 1, logins.size)
-
-        val obtained = coordinator.obtain("B11300001", "pw")
-        assertEquals(obtained, coordinator.refresh())
-        assertEquals(2, logins.size)
-
-        now += 300_000L
-        val later = coordinator.refresh()
-        assertEquals("an older token is harvested afresh", 3, logins.size)
-        assertEquals(later, tokens.token)
-    }
-
-    @Test
-    fun `a refresh waiting behind the sign-in takes the token it got`() = runTest(UnconfinedTestDispatcher()) {
-        tokens.token = "old"
-        loginGate = CompletableDeferred()
-        val coordinator = coordinator()
-        val signIn = async { coordinator.obtain("b11300001", "pw") }
-        runCurrent()
-        val refresh = async { coordinator.refresh() }
-        runCurrent()
-        loginGate!!.complete(Unit)
-
-        assertEquals(signIn.await(), refresh.await())
-        assertEquals(listOf("B11300001"), logins)
-    }
-
-    @Test
-    fun `a refresh that reads the token a sign-in is storing takes it`() = runTest(UnconfinedTestDispatcher()) {
-        lateinit var coordinator: MoodleTokenCoordinator
-        var refresh: kotlinx.coroutines.Deferred<String>? = null
-        val storing = object : MoodleTokenCoordinator.Tokens {
-            override var token: String? = "old"
-                set(value) {
-                    field = value
-                    // The backend sign-in starts the moment the token lands, before obtain returns.
-                    if (refresh == null) refresh = backgroundScope.async { coordinator.refresh() }
-                }
-            override val studentId: String? = "B11300001"
-            override val password: String? = "pw"
-            override fun storeIfSignedIn(studentId: String, token: String) = true.also { this.token = token }
-        }
-        coordinator = MoodleTokenCoordinator(storing, { id, _, _ -> logins += id; "token-${logins.size}" }, backgroundScope, { now }, 300_000L, latch)
-
-        val obtained = coordinator.obtain("B11300001", "pw")
-
-        assertEquals(obtained, refresh!!.await())
-        assertEquals(listOf("B11300001"), logins)
     }
 
     @Test
@@ -203,7 +139,7 @@ class MoodleTokenCoordinatorTest {
 
         // Another coordinator over the same latch, as after the app restarts with the persisted one.
         val second = MoodleTokenCoordinator(tokens, { id, _, _ -> logins += id; "fresh" }, backgroundScope, { now }, 300_000L, latch)
-        assertTrue(runCatching { second.refresh() }.exceptionOrNull() is MoodleWebserviceError.SsoLoginRejected)
+        assertTrue(runCatching { second.renew("dead") }.exceptionOrNull() is MoodleWebserviceError.SsoLoginRejected)
         assertEquals(1, logins.size)
 
         second.obtain("B11300001", "pw")
@@ -257,52 +193,7 @@ class MoodleTokenCoordinatorTest {
     }
 
     @Test
-    fun `a refresh does not take a token a renewal is already replacing`() = runTest(UnconfinedTestDispatcher()) {
-        val coordinator = coordinator()
-        val obtained = coordinator.obtain("B11300001", "pw")
-        // Moodle answers that token is dead, and a renewal starts.
-        loginGate = CompletableDeferred()
-        val renewal = async { coordinator.renew(rejected = obtained) }
-        runCurrent()
-
-        val refresh = async { coordinator.refresh() }
-        runCurrent()
-        loginGate!!.complete(Unit)
-
-        assertEquals(renewal.await(), refresh.await())
-        assertTrue("not the dead one", refresh.await() != obtained)
-        assertEquals(2, logins.size)
-    }
-
-    @Test
-    fun `a token Moodle rejected is not handed out as just got, even when its renewal failed`() = runTest(UnconfinedTestDispatcher()) {
-        val coordinator = coordinator()
-        val obtained = coordinator.obtain("B11300001", "pw")
-        login = { _, _ -> throw MoodleWebserviceError.SiteMaintenance() }
-        runCatching { coordinator.renew(rejected = obtained) }
-
-        val error = runCatching { coordinator.refresh() }.exceptionOrNull()
-
-        assertTrue("the renewal's failure, not the dead token: $error", error is MoodleWebserviceError.SiteMaintenance)
-        assertEquals(2, logins.size)
-    }
-
-    @Test
-    fun `a token just got for one account is not handed out for another`() = runTest(UnconfinedTestDispatcher()) {
-        val coordinator = coordinator()
-        val first = coordinator.obtain("B11300001", "pw")
-        // Another account's credentials, with the first account's token still stored.
-        tokens.studentId = "B11300002"
-        tokens.password = "pw2"
-
-        val refreshed = coordinator.refresh()
-
-        assertTrue(refreshed != first)
-        assertEquals(listOf("B11300001", "B11300002"), logins)
-    }
-
-    @Test
-    fun `a sign-out right after a refresh checked the account leaves no token behind`() = runTest(UnconfinedTestDispatcher()) {
+    fun `a sign-out right after a renewal checked the account leaves no token behind`() = runTest(UnconfinedTestDispatcher()) {
         var loggedIn = false
         var signedOut = false
         val racing = object : MoodleTokenCoordinator.Tokens {
@@ -326,7 +217,7 @@ class MoodleTokenCoordinatorTest {
         }
         val coordinator = MoodleTokenCoordinator(racing, { id, _, _ -> logins += id; loggedIn = true; "departing" }, backgroundScope, { now }, 300_000L, latch)
 
-        runCatching { coordinator.refresh() }
+        runCatching { coordinator.renew(null) }
         if (!signedOut) racing.signOut()
 
         assertNull("the departing account's token stays out of the store", racing.token)

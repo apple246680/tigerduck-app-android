@@ -13,15 +13,15 @@ import org.ntust.app.tigerduck.auth.guardAutomaticHarvest
  * wstoken out. It posts the password, and reads SSO's answer to it, through the
  * [PasswordPosting] it is handed.
  *
- * A refresh and a renewal sign in with the stored password the user did not just type, so they
- * run under [passwordLatch]: none at all once SSO has refused that password, a check again right
- * before the password goes out under the lock every automatic post takes, and a refusal latched
- * for the whole app. The sign-in the user makes ([obtain]) posts what they typed.
+ * A renewal signs in with the stored password the user did not just type, so it runs under
+ * [passwordLatch]: none at all once SSO has refused that password, a check again right before the
+ * password goes out under the lock every automatic post takes, and a refusal latched for the
+ * whole app. The sign-in the user makes ([obtain]) posts what they typed.
  *
- * One sign-in at a time: the sign-in a user makes, a refresh and a renewal all take [mutex]. A
- * refresh and a renewal both go through [MoodleTokenRenewal], so both keep its pause and its stop
- * at a refused password, and check the stored token again once they hold the lock: one that
- * waited behind a sign-in takes the token that sign-in got rather than signing in a second time.
+ * One sign-in at a time: the sign-in a user makes and a renewal both take [mutex]. A renewal goes
+ * through [MoodleTokenRenewal], so it keeps its pause and its stop at a refused password, and
+ * checks the stored token again once it holds the lock: one that waited behind a sign-in takes the
+ * token that sign-in got rather than signing in a second time.
  */
 internal class MoodleTokenCoordinator(
     private val tokens: Tokens,
@@ -60,7 +60,7 @@ internal class MoodleTokenCoordinator(
         harvest = { rejected ->
             mutex.withLock {
                 val stored = tokens.token
-                if (!stored.isNullOrEmpty() && stored != rejected) stored else refreshUnlocked()
+                if (!stored.isNullOrEmpty() && stored != rejected) stored else harvestUnlocked()
             }
         },
         now = now,
@@ -68,12 +68,6 @@ internal class MoodleTokenCoordinator(
         pauseMs = pauseMs,
         refusal = LatchedRefusal(passwordLatch),
     )
-
-    /**
-     * A fresh token with the stored account: the stored one when a sign-in got it moments ago,
-     * else a new one; see [MoodleTokenRenewal.refresh].
-     */
-    suspend fun refresh(): String = renewal.refresh()
 
     /** A token in place of [rejected]; see [MoodleTokenRenewal]. */
     suspend fun renew(rejected: String?): String = renewal.renew(rejected)
@@ -86,16 +80,12 @@ internal class MoodleTokenCoordinator(
     suspend fun obtain(studentId: String, password: String): String = mutex.withLock {
         val normalized = studentId.trim().uppercase()
         login(normalized, password, PasswordPosting.Typed).also {
-            // Known as just got before it is stored, so a refresh that reads it takes it.
-            renewal.reset(harvested = it, credentials = studentId to password)
-            if (!tokens.storeIfSignedIn(normalized, it)) {
-                renewal.reset()
-                throw MoodleWebserviceError.MissingStoredCredentials()
-            }
+            renewal.reset()
+            if (!tokens.storeIfSignedIn(normalized, it)) throw MoodleWebserviceError.MissingStoredCredentials()
         }
     }
 
-    private suspend fun refreshUnlocked(): String {
+    private suspend fun harvestUnlocked(): String {
         val sid = tokens.studentId ?: throw MoodleWebserviceError.MissingStoredCredentials()
         val pwd = tokens.password ?: throw MoodleWebserviceError.MissingStoredCredentials()
         val token = passwordLatch.guardAutomaticHarvest(sid, pwd) { posting ->
