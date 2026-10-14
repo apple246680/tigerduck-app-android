@@ -58,4 +58,10 @@ class MoodleHtmlTextTest {
         assertEquals("1\\. not a list", MoodleHtmlText.markdown("<p>1. not a list</p>"))
         assertEquals("\\- not a bullet", MoodleHtmlText.markdown("<p>- not a bullet</p>"))
     }
+
+    @Test
+    fun `a code block holding a fence of its own gets a longer fence`() {
+        assertEquals("````\nshell\n```\ndone\n````", MoodleHtmlText.markdown("<pre>shell\n```\ndone</pre>"))
+        assertEquals("```\nplain\n```", MoodleHtmlText.markdown("<pre>plain</pre>"))
+    }
 }

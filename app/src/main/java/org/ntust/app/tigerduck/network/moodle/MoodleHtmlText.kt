@@ -142,7 +142,12 @@ private class MarkdownWriter(private val baseUrl: String) {
                 tag == "pre" -> {
                     endParagraph()
                     val code = child.wholeText()
-                    if (code.isNotBlank()) result += "```\n" + code.trim('\n', '\r') + "\n```"
+                    if (code.isNotBlank()) {
+                        // Longer than any run of backticks inside, so a fence in the code cannot end it.
+                        val longestRun = Regex("`+").findAll(code).maxOfOrNull { it.value.length } ?: 0
+                        val fence = "`".repeat(maxOf(3, longestRun + 1))
+                        result += fence + "\n" + code.trim('\n', '\r') + "\n" + fence
+                    }
                 }
                 tag == "hr" -> {
                     endParagraph()
