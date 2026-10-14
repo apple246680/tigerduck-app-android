@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import org.ntust.app.tigerduck.library.LibraryQRCache
 
 /**
@@ -65,10 +66,11 @@ internal class LibraryPassState<Image : Any>(
         // the app found: back to the sign-in form at once, also while a code
         // request backs off, rather than at its next try. That failure's
         // message is no longer what happened. A code request still out is
-        // waited for first: one whose sign-in the library refused ends the
-        // session itself and says so, and stopping it would lose that.
+        // waited for first, for a while: one whose sign-in the library
+        // refused ends the session itself and says so, and stopping it would
+        // lose that; one that hangs is stopped.
         scope.followSignOuts(signedIn, hasAccount) {
-            cycle.fetching.first { !it }
+            withTimeoutOrNull(SIGN_OUT_WAIT_MS) { cycle.fetching.first { !it } }
             if (_isLoggedIn.value && !hasAccount()) {
                 cycle.clear()
                 errors.value = null
@@ -103,5 +105,14 @@ internal class LibraryPassState<Image : Any>(
     fun signedIn() {
         _isLoggedIn.value = true
         cycle.restart()
+    }
+
+    companion object {
+        /**
+         * How long a sign-out elsewhere waits for a code request still out.
+         * The library client has no overall timeout, so a hanging request
+         * could hold the pass up for its connect and read timeouts.
+         */
+        const val SIGN_OUT_WAIT_MS = 15_000L
     }
 }

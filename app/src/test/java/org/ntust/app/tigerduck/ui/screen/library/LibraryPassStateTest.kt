@@ -1,6 +1,7 @@
 package org.ntust.app.tigerduck.ui.screen.library
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -144,5 +145,28 @@ class LibraryPassStateTest {
 
         assertTrue(pass.isLoggedIn.value)
         assertEquals("image of code-1", pass.image.value)
+    }
+
+    /**
+     * A sign-out elsewhere while a code request hangs, which the library client lets run until
+     * its timeouts, drops the page after a bounded wait rather than when the request ends.
+     */
+    @Test
+    fun `a sign-out elsewhere while a code request hangs drops the page after a bounded wait`() = runTest {
+        fetches += { awaitCancellation() }
+        val pass = pass()
+        pass.load()
+        runCurrent()
+
+        hasAccount = false
+        signedIn.value = false
+        advanceTimeBy(LibraryPassState.SIGN_OUT_WAIT_MS - 1)
+        runCurrent()
+        assertTrue(pass.isLoggedIn.value)
+
+        advanceTimeBy(1)
+        runCurrent()
+        assertFalse(pass.isLoggedIn.value)
+        assertNull(pass.errors.value)
     }
 }
