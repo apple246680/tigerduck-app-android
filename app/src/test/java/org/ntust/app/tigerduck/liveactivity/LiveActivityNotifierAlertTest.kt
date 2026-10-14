@@ -43,7 +43,10 @@ class LiveActivityNotifierAlertTest {
         )
     }
 
-    private fun snapshot(scenario: LiveActivityScenario) = LiveActivitySnapshot(
+    private fun snapshot(
+        scenario: LiveActivityScenario,
+        duringClass: Boolean = scenario == LiveActivityScenario.IN_CLASS,
+    ) = LiveActivitySnapshot(
         scenario = scenario,
         title = "Operating Systems",
         subtitle = "10:20–12:10",
@@ -53,6 +56,7 @@ class LiveActivityNotifierAlertTest {
         progress = null,
         accentHex = 0,
         sourceId = scenario.name,
+        duringClass = duringClass,
     )
 
     private fun posted(): Notification = shadowOf(manager).getNotification(LiveActivityNotifier.NOTIFICATION_ID)
@@ -95,7 +99,7 @@ class LiveActivityNotifierAlertTest {
         notifier.apply(snapshot(LiveActivityScenario.IN_CLASS))
         assertFalse(posted().isSilent)
 
-        notifier.apply(snapshot(LiveActivityScenario.ASSIGNMENT_URGENT))
+        notifier.apply(snapshot(LiveActivityScenario.ASSIGNMENT_URGENT, duringClass = true))
 
         assertTrue(posted().isSilent)
     }
@@ -103,12 +107,31 @@ class LiveActivityNotifierAlertTest {
     @Test
     fun `the class taking the Live Update back from a deadline switches quietly`() {
         notifier.apply(snapshot(LiveActivityScenario.IN_CLASS))
-        notifier.apply(snapshot(LiveActivityScenario.ASSIGNMENT_URGENT))
+        notifier.apply(snapshot(LiveActivityScenario.ASSIGNMENT_URGENT, duringClass = true))
 
         // The deadline passed, or was marked done, while the class goes on.
         notifier.apply(snapshot(LiveActivityScenario.IN_CLASS))
 
         assertTrue(posted().isSilent)
+    }
+
+    @Test
+    fun `a deadline that shows as the class ends sounds`() {
+        notifier.apply(snapshot(LiveActivityScenario.IN_CLASS))
+
+        // 12:10: the class is over, and a deadline comes within its lead time.
+        notifier.apply(snapshot(LiveActivityScenario.ASSIGNMENT_URGENT, duringClass = false))
+
+        assertFalse(posted().isSilent)
+    }
+
+    @Test
+    fun `a class that starts as a deadline passes sounds for the class`() {
+        notifier.apply(snapshot(LiveActivityScenario.ASSIGNMENT_URGENT, duringClass = false))
+
+        notifier.apply(snapshot(LiveActivityScenario.IN_CLASS))
+
+        assertFalse(posted().isSilent)
     }
 
     @Test

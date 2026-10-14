@@ -35,23 +35,23 @@ class LiveActivityResolver {
     ): LiveActivitySnapshot? {
         if (!preferences.isEnabled) return null
 
+        val todaySlots = buildTodaySlots(courses, now)
+            .filter { !it.isSkipped(skippedDates) }
+        // Whether or not the in-class scenario is on: a deadline shown now
+        // says whether a class is going on under it.
+        val current = todaySlots.firstOrNull { now in it.start..it.end }
+
         if (preferences.showAssignment) {
             val urgent = assignments
                 .asSequence()
                 .filter { !it.isCompleted && it.dueDate.after(now) }
                 .filter { (it.dueDate.time - now.time) / 1000 <= preferences.assignmentLeadTimeSec }
                 .minByOrNull { it.dueDate }
-            if (urgent != null) return assignmentSnapshot(urgent, accentHex)
+            if (urgent != null) return assignmentSnapshot(urgent, accentHex, duringClass = current != null)
         }
 
-        val todaySlots = buildTodaySlots(courses, now)
-            .filter { !it.isSkipped(skippedDates) }
-
-        if (preferences.showInClass) {
-            val current = todaySlots.firstOrNull { now in it.start..it.end }
-            if (current != null) {
-                return inClassSnapshot(current, now, accentHex)
-            }
+        if (preferences.showInClass && current != null) {
+            return inClassSnapshot(current, now, accentHex)
         }
 
         if (preferences.showClassPreparing) {
@@ -155,6 +155,7 @@ class LiveActivityResolver {
             accentHex = accentHex,
             sourceId = "class-${slot.course.courseNo}-${slot.periods.firstOrNull()}",
             link = AppLink.ClassTable,
+            duringClass = true,
         )
     }
 
@@ -172,7 +173,7 @@ class LiveActivityResolver {
             link = AppLink.ClassTable,
         )
 
-    private fun assignmentSnapshot(a: Assignment, accentHex: Int): LiveActivitySnapshot =
+    private fun assignmentSnapshot(a: Assignment, accentHex: Int, duringClass: Boolean): LiveActivitySnapshot =
         LiveActivitySnapshot(
             scenario = LiveActivityScenario.ASSIGNMENT_URGENT,
             title = a.title,
@@ -184,6 +185,7 @@ class LiveActivityResolver {
             accentHex = accentHex,
             sourceId = "assignment-${a.assignmentId}",
             link = AppLink.assignment(a.assignmentId),
+            duringClass = duringClass,
         )
 
     private fun formatTimeRange(start: Date, end: Date): String {

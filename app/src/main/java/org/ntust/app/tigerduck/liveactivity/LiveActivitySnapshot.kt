@@ -27,4 +27,10 @@ data class LiveActivitySnapshot(
      * Null opens the app where it was left.
      */
     val link: AppLink? = null,
+    /**
+     * A class is going on at the moment this was resolved: always for the
+     * class itself, and for a deadline shown over one. LiveActivityNotifier
+     * keeps a swap between the two quiet only while it holds.
+     */
+    val duringClass: Boolean = false,
 )

@@ -78,6 +78,10 @@ class LiveActivityNotifier @Inject constructor(
     // transition into a new scenario (may alert, subject to per-scenario pref).
     private var lastScenario: LiveActivityScenario? = null
 
+    // Whether a class was going on under what [lastScenario] last showed; see
+    // LiveActivitySnapshot.duringClass.
+    private var lastDuringClass = false
+
     /** Fixed for the life of the process; see [samsungNowBarExtras]. */
     private val deviceSkin = DeviceSkin.current()
 
@@ -107,6 +111,7 @@ class LiveActivityNotifier @Inject constructor(
         if (snapshot == null) {
             manager.cancel(NOTIFICATION_ID)
             lastScenario = null
+            lastDuringClass = false
             return false
         }
         if (!hasPostPermission()) {
@@ -120,6 +125,7 @@ class LiveActivityNotifier @Inject constructor(
                 Log.w(TAG, "dropping ${snapshot.scenario}: POST_NOTIFICATIONS is denied")
             }
             lastScenario = null
+            lastDuringClass = false
             return false
         }
 
@@ -137,9 +143,11 @@ class LiveActivityNotifier @Inject constructor(
         // A deadline coming within its lead time during a class takes the
         // Live Update over quietly, and gives it back to the class just as
         // quietly once it passes or is marked done: the class goes on, and a
-        // chime in it is the one alert nobody wants. The deadline sounds when
-        // it shows outside class.
-        val swappedInClass = setOf(lastScenario, snapshot.scenario) ==
+        // chime in it is the one alert nobody wants. Only while a class runs
+        // under both: a deadline that shows as the class ends, or a class
+        // that starts as a deadline passes, sounds as usual.
+        val swappedInClass = lastDuringClass && snapshot.duringClass &&
+            setOf(lastScenario, snapshot.scenario) ==
             setOf(LiveActivityScenario.IN_CLASS, LiveActivityScenario.ASSIGNMENT_URGENT)
         val alerting = scenarioChanged && !(quiet && lastScenario == null) && !swappedInClass
         val soundWanted = alerting && wantsSoundFor(snapshot.scenario)
@@ -250,6 +258,7 @@ class LiveActivityNotifier @Inject constructor(
         }
 
         lastScenario = snapshot.scenario
+        lastDuringClass = snapshot.duringClass
 
         return spelledOut &&
             manager.getNotificationChannel(CHANNEL_ID)?.importance != NotificationManager.IMPORTANCE_NONE
@@ -375,6 +384,7 @@ class LiveActivityNotifier @Inject constructor(
     fun cancel() {
         manager.cancel(NOTIFICATION_ID)
         lastScenario = null
+        lastDuringClass = false
     }
 
     private fun wantsSoundFor(scenario: LiveActivityScenario): Boolean = when (scenario) {

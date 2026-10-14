@@ -222,6 +222,7 @@ private fun previewInClassSnapshot(): LiveActivitySnapshot {
         progress = 0.32,
         accentHex = 0xF5A623,
         sourceId = "debug-preview",
+        duringClass = true,
     )
 }
 

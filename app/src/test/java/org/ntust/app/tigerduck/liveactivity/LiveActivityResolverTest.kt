@@ -118,6 +118,28 @@ class LiveActivityResolverTest {
     }
 
     @Test
+    fun `a deadline knows whether a class is going on under it`() {
+        val due = listOf(dueAt("900002", taipei(14, 0)))
+
+        val during = resolveAt(taipei(11, 0), due)
+        val justAfter = resolveAt(Date(taipei(12, 10).time + 1_000), due)
+        val before = resolveAt(taipei(10, 10), due)
+
+        assertEquals(LiveActivityScenario.ASSIGNMENT_URGENT, justAfter?.scenario)
+        assertEquals(true, during?.duringClass)
+        assertEquals(false, justAfter?.duringClass)
+        assertEquals(false, before?.duringClass)
+    }
+
+    @Test
+    fun `the class itself is going on, and a class about to start is not`() {
+        preferences.showAssignment = false
+
+        assertEquals(true, resolveAt(taipei(11, 0), emptyList())?.duringClass)
+        assertEquals(false, resolveAt(taipei(10, 10), emptyList())?.duringClass)
+    }
+
+    @Test
     fun `with the assignment scenario off, the class shows`() {
         preferences.showAssignment = false
 
