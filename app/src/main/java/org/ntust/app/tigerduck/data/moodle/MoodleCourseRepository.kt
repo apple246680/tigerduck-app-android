@@ -77,6 +77,14 @@ class MoodleCourseRepository internal constructor(
     private var scope = newScope()
     private var demo: MoodleCourseApi? = null
 
+    /**
+     * Bumped at every sign-out. A store holds the one it was built in, so one left on a page
+     * further down the back stack is not current after signing back in, even as the same account:
+     * its scope was cancelled with the sign-out.
+     */
+    @Volatile
+    private var generation = 0
+
     init {
         appScope.launch {
             authState.collect { signedIn -> if (!signedIn) clear() }
@@ -97,10 +105,11 @@ class MoodleCourseRepository internal constructor(
             liveApi
         }
         val ids = idMap()
+        val built = generation
         val context = MoodleCacheContext(
             account = account,
             cache = cachePort(account),
-            isCurrent = { signedIn() && account() == account },
+            isCurrent = { generation == built && signedIn() && account() == account },
         )
         MoodleCourseStore(
             courseId = courseId,
@@ -117,6 +126,7 @@ class MoodleCourseRepository internal constructor(
 
     /** Drops every store and stops what they were fetching. Their files go with the cache wipe. */
     private suspend fun clear() = lock.withLock {
+        generation++
         scope.cancel()
         scope = newScope()
         stores = mutableMapOf()

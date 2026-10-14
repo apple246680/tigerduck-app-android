@@ -109,4 +109,16 @@ class MoodleCourseRepositoryTest {
 
         assertEquals("live", store.grades.value!!.items.single().grade)
     }
+
+    @Test
+    fun `a store from before a sign-out is not current after signing back in as the same account`() = runTest(UnconfinedTestDispatcher()) {
+        val repository = repository()
+        val before = repository.store(5)!!
+
+        authState.value = false
+        authState.value = true
+
+        assertFalse("its fetches were stopped with the sign-out", before.isCurrent())
+        assertTrue(repository.store(5)!!.isCurrent())
+    }
 }
