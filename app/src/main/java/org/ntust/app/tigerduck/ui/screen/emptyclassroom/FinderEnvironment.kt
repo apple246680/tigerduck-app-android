@@ -33,6 +33,12 @@ interface FinderEnvironment {
     /** The class table's courses for the term in session, without the ones the user deleted. */
     suspend fun courses(): List<Course>
 
+    /**
+     * Moves when a sync has written the timetable again, as the class table and Home hear it;
+     * its current value is no change.
+     */
+    val coursesChanged: StateFlow<Int>
+
     /** The account signed in now, which a course read is checked against before it is shown. */
     fun account(): String?
 
@@ -69,6 +75,8 @@ class AppFinderEnvironment @Inject constructor(
     override fun now(): LocalDateTime = AppClock.localDateTime(AppConstants.TAIPEI_ZONE)
 
     override fun calendar(): AcademicCalendar = finderCalendar(demoAccount.isActive, academicCalendar::current)
+
+    override val coursesChanged: StateFlow<Int> get() = dataCache.backgroundSyncVersion
 
     override fun account(): String? = authService.storedStudentId
 

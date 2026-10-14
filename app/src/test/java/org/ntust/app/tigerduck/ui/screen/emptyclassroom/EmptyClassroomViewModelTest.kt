@@ -39,6 +39,7 @@ class EmptyClassroomViewModelTest {
         var offline = false
         override var pickedBuilding: String? = null
         override val signedIn = MutableStateFlow(true)
+        override val coursesChanged = MutableStateFlow(0)
         var account: String? = "B00000000"
 
         /** Holds the next course read, which then returns the class table as it was asked for. */
@@ -270,6 +271,35 @@ class EmptyClassroomViewModelTest {
         harness.serveDay(listOf(Pages.row("IB-508", "..............")))
         harness.model.appear()
         assertEquals(listOf("IB-305"), harness.state.classes.map { it.room })
+    }
+
+    @Test
+    fun `a sync that rewrites the timetable while the screen is open updates the classes`() {
+        val harness = Harness(time(14, 10, 5))
+        harness.serveDay(listOf(Pages.row("IB-508", "..............")))
+        harness.model.appear()
+        assertTrue(harness.state.classes.isEmpty())
+
+        harness.env.classTable = listOf(networking("TR-214"))
+        harness.env.coursesChanged.value++
+
+        assertEquals(listOf("TR-214"), harness.state.classes.map { it.room })
+    }
+
+    @Test
+    fun `a pull reads the user's classes again`() {
+        val harness = Harness(time(14, 22, 30))
+        harness.serveDay(listOf(Pages.row("IB-508", "..............")))
+        harness.model.appear()
+        harness.serveDay(listOf(Pages.row("IB-508", "..............")))
+        harness.model.select(day(21))
+        assertTrue(harness.state.classes.isEmpty())
+
+        harness.env.classTable = listOf(networking("TR-214"))
+        harness.serveDay(listOf(Pages.row("IB-508", "..............")))
+        harness.model.refresh()
+
+        assertEquals(listOf("TR-214"), harness.state.classes.map { it.room })
     }
 
     @Test

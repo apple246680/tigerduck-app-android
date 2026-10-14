@@ -111,6 +111,9 @@ class EmptyClassroomViewModel internal constructor(
         // A sign-out, or a sign-in on another account, while the screen exists: what it holds
         // belonged to the account before.
         viewModelScope.launch { env.signedIn.drop(1).collect { accountChanged() } }
+        // A sync that rewrote the timetable while the screen is open; off screen, the next
+        // appear() reads the courses anyway.
+        viewModelScope.launch { env.coursesChanged.drop(1).collect { if (isStarted) reloadCourses() } }
     }
 
     /**
@@ -198,9 +201,10 @@ class EmptyClassroomViewModel internal constructor(
         _state.update { it.copy(pickedBuilding = building) }
     }
 
-    /** A pull: reads the day again even when it was read moments ago. */
+    /** A pull: reads the day again even when it was read moments ago, and the user's classes. */
     fun refresh() {
         _state.update { it.copy(isRefreshing = true) }
+        reloadCourses()
         load(force = true)
     }
 
