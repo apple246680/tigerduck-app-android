@@ -2,6 +2,7 @@ package org.ntust.app.tigerduck.ui.screen.classtable.sharing
 
 import android.app.Application
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -24,6 +25,7 @@ import org.robolectric.annotation.Config
 import java.io.File
 import java.io.IOException
 import java.time.Instant
+import kotlin.coroutines.CoroutineContext
 
 /** The import's steps over a real store: which prompt a code raises, the lookup, and what is saved. */
 @RunWith(RobolectricTestRunner::class)
@@ -245,6 +247,41 @@ class ClassTableImportModelTest {
 
         assertEquals(Prompt.NoCode, model.state.value.prompt)
         assertFalse(model.state.value.isReadingImage)
+    }
+
+    @Test
+    fun `cancel while the person is being saved changes nothing, and the import ends saved and shown`() = runTest {
+        // The store writes on a dispatcher of its own, held until the test lets it run.
+        val storeThread = HeldDispatcher()
+        val slowStore = ImportedClassTableStore({ storeFile }, { account }, storeThread)
+        val model = ClassTableImportModel(slowStore, { account }, { current }, { _, _ -> listOf(calculus) }, this)
+        model.imageRead(listOf(mingCode))
+        model.importPending()
+        advanceUntilIdle()
+        assertTrue(model.state.value.isLookingUp)
+
+        // The lookup is done and the write has begun: too late to call it off.
+        model.cancel()
+        storeThread.release()
+        advanceUntilIdle()
+
+        assertTrue(model.state.value.isFinished)
+        val saved = slowStore.tables.value
+        assertEquals(listOf("B11300001"), saved.people.map { it.nickname })
+        assertEquals(saved.people.single().id, saved.shownPersonId)
+    }
+}
+
+/** Holds what is dispatched to it until [release] runs it, as a busy I/O thread would. */
+private class HeldDispatcher : CoroutineDispatcher() {
+    private val held = ArrayDeque<Runnable>()
+
+    override fun dispatch(context: CoroutineContext, block: Runnable) {
+        held.addLast(block)
+    }
+
+    fun release() {
+        while (held.isNotEmpty()) held.removeFirst().run()
     }
 }
 

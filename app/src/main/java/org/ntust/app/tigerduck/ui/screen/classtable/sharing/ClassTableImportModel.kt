@@ -4,11 +4,13 @@ import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.ntust.app.tigerduck.data.sharing.ClassTableShareCode
 import org.ntust.app.tigerduck.data.sharing.ClassTableShareCodeError
 import org.ntust.app.tigerduck.data.sharing.ImportedClassTableStore
@@ -73,6 +75,9 @@ class ClassTableImportModel(
 
     private var lookupJob: Job? = null
     private var imageJob: Job? = null
+
+    /** While the store writes the person; read and written on the import's own thread. */
+    private var committing = false
 
     // --- Reading a code ---
 
@@ -181,7 +186,13 @@ class ClassTableImportModel(
                 _state.update { it.copy(isLookingUp = false, prompt = Prompt.LookupFailed(job)) }
                 return@launch
             }
-            val person = store.add(job.code, job.nickname, courses)
+            // Past this point the write goes through whatever happens: cancel waits for it.
+            committing = true
+            val person = try {
+                withContext(NonCancellable) { store.add(job.code, job.nickname, courses) }
+            } finally {
+                committing = false
+            }
             if (person == null) {
                 _state.update { it.copy(isLookingUp = false, prompt = Prompt.SaveFailed(job)) }
                 return@launch
@@ -205,8 +216,13 @@ class ClassTableImportModel(
         _state.update { it.copy(prompt = null) }
     }
 
-    /** A lookup still running saves nothing once this returns, even if its answer comes later. */
+    /**
+     * A lookup still running saves nothing once this returns, even if its answer comes later. Once
+     * the person is being written it is too late: the import goes on, ends saved and closes, so
+     * nothing is kept on the device that the screen said was called off.
+     */
     fun cancel() {
+        if (committing) return
         imageJob?.cancel()
         imageJob = null
         lookupJob?.cancel()
