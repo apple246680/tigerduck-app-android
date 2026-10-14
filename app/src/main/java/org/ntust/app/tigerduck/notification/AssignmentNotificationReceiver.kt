@@ -17,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.ntust.app.tigerduck.R
+import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.AssignmentReminderPrefs
 import org.ntust.app.tigerduck.di.ApplicationScope
@@ -68,7 +69,7 @@ class AssignmentNotificationReceiver : BroadcastReceiver() {
                     verdict = { reminderCheck.verdict(assignmentId, armedDueAtMs) },
                 ) {
                     notificationChannels.ensureRegistered()
-                    post(context, title, courseName, assignmentId, offset)
+                    postInAppLanguage(context, appPreferences.appLanguage, title, courseName, assignmentId, offset)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -139,9 +140,30 @@ class AssignmentNotificationReceiver : BroadcastReceiver() {
                     PackageManager.PERMISSION_GRANTED)
 
         /**
+         * [post], in the language chosen in the app. A receiver's context
+         * carries the phone's language, not the app's: below API 33 the
+         * in-app choice never reaches it, so the reminder came out in the
+         * phone's language under an otherwise translated app.
+         */
+        internal fun postInAppLanguage(
+            context: Context,
+            appLanguage: String,
+            title: String,
+            courseName: String,
+            assignmentId: String,
+            offset: AssignmentReminderOffset?,
+        ) = post(
+            AppLanguageManager.localizedContext(context, appLanguage),
+            title,
+            courseName,
+            assignmentId,
+            offset,
+        )
+
+        /**
          * Post the reminder, past every check onReceive makes first; the
-         * developer menu's preview posts through here too. The channels must
-         * already exist.
+         * developer menu's preview posts through here too. [context] must
+         * already carry the app's language, and the channels must exist.
          */
         fun post(
             context: Context,
