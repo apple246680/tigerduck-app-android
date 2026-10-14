@@ -34,16 +34,16 @@ import androidx.glance.text.TextAlign
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import dagger.hilt.android.EntryPointAccessors
-import org.ntust.app.tigerduck.MainActivity
-import org.ntust.app.tigerduck.StartRoute
+import org.ntust.app.tigerduck.AppLink
 import org.ntust.app.tigerduck.R
+import org.ntust.app.tigerduck.activityIntent
 
 /**
  * 1x1 home-screen widget that deep-links straight to the library QR page.
- * The tap target encodes the sentinel `start_route = "libraryShortcut"`;
- * MainNavigation resolves it at launch time so an intervening feature-disable
- * toggle always routes the user to Settings with the enable-prompt instead
- * of a dead Library screen.
+ * The tap opens `tigerduck://library`, which MainActivity turns into the
+ * [ROUTE_SENTINEL] route; MainNavigation resolves that at launch time so an
+ * intervening feature-disable toggle always routes the user to Settings with
+ * the enable-prompt instead of a dead Library screen.
  */
 class LibraryShortcutWidget : GlanceAppWidget() {
 
@@ -53,10 +53,7 @@ class LibraryShortcutWidget : GlanceAppWidget() {
         val prefs = EntryPointAccessors
             .fromApplication(context.applicationContext, WidgetThemeEntryPoint::class.java)
             .appPreferences()
-        val tapIntent = Intent(context, MainActivity::class.java)
-            .putExtra(StartRoute.EXTRA, ROUTE_SENTINEL)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        val tapAction = actionStartActivity(tapIntent)
+        val tapAction = actionStartActivity(tapIntent(context))
         provideContent {
             // Same pattern as BaseClassTableWidget: provideGlance runs once
             // per Glance session, so theme/accent must be derived inside
@@ -72,7 +69,16 @@ class LibraryShortcutWidget : GlanceAppWidget() {
     }
 
     companion object {
+        /** The route `tigerduck://library` opens, which MainNavigation resolves on arrival. */
         const val ROUTE_SENTINEL = "libraryShortcut"
+
+        /**
+         * A tap opens `tigerduck://library`. The link goes as the intent's
+         * data, which Glance leaves alone: an intent with none is given a
+         * `glance-action:` URI of Glance's own.
+         */
+        internal fun tapIntent(context: Context): Intent =
+            AppLink.Library.activityIntent(context).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 }
 
