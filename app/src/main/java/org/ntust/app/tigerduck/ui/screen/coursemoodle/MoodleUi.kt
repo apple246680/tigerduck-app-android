@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.res.stringResource
@@ -52,9 +53,10 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -318,7 +320,7 @@ internal fun MoodleAvatar(name: String, picture: ImageBitmap?, size: Dp, modifie
         ) {
             Text(
                 text = name.firstOrNull()?.toString().orEmpty(),
-                fontSize = (size.value * 0.45f).sp,
+                fontSize = avatarLetterSize(size, LocalDensity.current),
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -326,6 +328,12 @@ internal fun MoodleAvatar(name: String, picture: ImageBitmap?, size: Dp, modifie
         }
     }
 }
+
+/**
+ * The initial's size in an avatar of [size]: held to the circle, which does not grow with the
+ * font size, so a large font does not push the letter out of it.
+ */
+internal fun avatarLetterSize(size: Dp, density: Density): TextUnit = with(density) { (size * 0.45f).toSp() }
 
 /**
  * Markdown from Moodle, whose links open as [openMoodleContentLink] opens them. Headings are
