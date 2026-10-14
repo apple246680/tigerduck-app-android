@@ -338,6 +338,29 @@ object CourseSyncReconciler {
         switchOn && "course_names" !in pendingConflictCategories
 
     /**
+     * What a full sync does with the server's `courses_reset_at`: whether to
+     * [apply][CourseReset.apply] it, and what to [remember][CourseReset.remember]
+     * for the next sync to compare. Both times are the server's, so a phone
+     * whose clock runs ahead or behind can neither miss a reset nor apply one
+     * twice.
+     *
+     * [lastSeen] is the value the last full sync remembered: null before the
+     * account's first sync here, which has nothing from before a reset to drop
+     * and so only remembers the server's, and empty once a sync found none, so
+     * that the first reset after it counts as new. As iOS's
+     * `AppState.coursesReset` (tigerduck-app/tigerduck-app#236).
+     */
+    fun coursesReset(server: String?, lastSeen: String?): CourseReset {
+        val serverAt = backendInstant(server)
+        if (lastSeen == null) return CourseReset(apply = false, remember = server.takeIf { serverAt != null } ?: "")
+        if (serverAt == null) return CourseReset(apply = false, remember = lastSeen)
+        val seenAt = backendInstant(lastSeen)
+        return CourseReset(apply = seenAt == null || serverAt > seenAt, remember = server!!)
+    }
+
+    data class CourseReset(val apply: Boolean, val remember: String)
+
+    /**
      * The terms to reconcile: everything the server knows plus the picker's,
      * less [excluding] — see [termsResetAfter].
      */

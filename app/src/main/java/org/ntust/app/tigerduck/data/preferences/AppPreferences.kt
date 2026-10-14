@@ -207,6 +207,17 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
         get() = prefs.getBoolean("assignmentMarksSyncedOnce", false)
         set(value) = prefs.edit().putBoolean("assignmentMarksSyncedOnce", value).apply()
 
+    /**
+     * The server's `courses_reset_at` as the last full sync read it, for the
+     * next one to tell a new reset from one already applied; empty once a
+     * sync found none, and null before the signed-in account's first sync
+     * here — see `CourseSyncReconciler.coursesReset`. Cleared at sign-out by
+     * [clearSyncStamps].
+     */
+    var lastSeenCoursesResetAt: String?
+        get() = prefs.getString("lastSeenCoursesResetAt", null)
+        set(value) = prefs.edit().putString("lastSeenCoursesResetAt", value).apply()
+
     var hasCompletedOnboarding: Boolean
         get() = prefs.getBoolean("hasCompletedOnboarding", false)
         set(value) = prefs.edit().putBoolean("hasCompletedOnboarding", value).apply()
@@ -618,7 +629,8 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
 
     /**
      * On sign-out, this stamp, the background worker's two below,
-     * [syncedCategories] and [assignmentMarksSyncedOnce]: what they record
+     * [syncedCategories], [assignmentMarksSyncedOnce] and
+     * [lastSeenCoursesResetAt]: what they record
      * belonged to the account that left, and the next account's worker must
      * not wait out the old one's hour before its first sync.
      */
@@ -629,6 +641,7 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
             .remove("backgroundCoursesSyncedAtMs")
             .remove("syncedCategories")
             .remove("assignmentMarksSyncedOnce")
+            .remove("lastSeenCoursesResetAt")
             .apply()
         _schoolDataSyncedAtMs.value = 0L
     }

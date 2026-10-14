@@ -653,4 +653,55 @@ class CourseSyncReconcilerTest {
         )
         assertFalse(CourseSyncReconciler.syncsCourseNames(switchOn = false, pendingConflictCategories = emptySet()))
     }
+
+    // ---- a course reset made on another device ----
+
+    @Test
+    fun `the account's first sync here remembers the server's reset without applying it`() {
+        assertEquals(
+            CourseSyncReconciler.CourseReset(apply = false, remember = "2026-10-10T16:42:49.666640+00:00"),
+            CourseSyncReconciler.coursesReset(server = "2026-10-10T16:42:49.666640+00:00", lastSeen = null),
+        )
+        assertEquals(
+            CourseSyncReconciler.CourseReset(apply = false, remember = ""),
+            CourseSyncReconciler.coursesReset(server = null, lastSeen = null),
+        )
+    }
+
+    @Test
+    fun `a reset newer than the one remembered is applied, whatever this phone's clock says`() {
+        val reset = CourseSyncReconciler.coursesReset(
+            server = "2026-10-10T16:42:49.666641+00:00",
+            lastSeen = "2026-10-10T16:42:49.666640+00:00",
+        )
+        assertEquals(CourseSyncReconciler.CourseReset(apply = true, remember = "2026-10-10T16:42:49.666641+00:00"), reset)
+    }
+
+    @Test
+    fun `the reset already remembered is not applied again`() {
+        val at = "2026-10-10T16:42:49.666640+00:00"
+        assertEquals(
+            CourseSyncReconciler.CourseReset(apply = false, remember = at),
+            CourseSyncReconciler.coursesReset(server = at, lastSeen = at),
+        )
+        // isoformat() drops a zero fraction; the same instant written either way is one reset.
+        assertFalse(
+            CourseSyncReconciler.coursesReset(
+                server = "2026-10-10T16:42:49+00:00",
+                lastSeen = "2026-10-10T16:42:49.000000+00:00",
+            ).apply
+        )
+    }
+
+    @Test
+    fun `the first reset after a sync that found none counts as new`() {
+        assertTrue(CourseSyncReconciler.coursesReset(server = "2026-10-10T16:42:49+00:00", lastSeen = "").apply)
+    }
+
+    @Test
+    fun `no reset, or one that does not parse, keeps what was remembered`() {
+        val at = "2026-10-10T16:42:49+00:00"
+        assertEquals(CourseSyncReconciler.CourseReset(false, at), CourseSyncReconciler.coursesReset(null, at))
+        assertEquals(CourseSyncReconciler.CourseReset(false, at), CourseSyncReconciler.coursesReset("garbage", at))
+    }
 }

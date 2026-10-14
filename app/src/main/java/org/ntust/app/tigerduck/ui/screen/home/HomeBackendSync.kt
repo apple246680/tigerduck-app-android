@@ -22,16 +22,12 @@
 
 package org.ntust.app.tigerduck.ui.screen.home
 
-import android.content.Context
 import android.util.Log
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import java.time.LocalDateTime
-import java.time.ZoneOffset
 import org.ntust.app.tigerduck.BuildConfig
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.auth.AuthTokenManager
@@ -99,7 +95,6 @@ class HomeSyncState(
 }
 
 class HomeBackendSync @Inject constructor(
-    @param:ApplicationContext private val context: Context,
     private val prefs: AppPreferences,
     private val dataCache: DataCache,
     private val authService: AuthService,
@@ -172,7 +167,7 @@ class HomeBackendSync @Inject constructor(
             if (result.courseOverrides.isNotEmpty() && (syncColors || syncNames)) {
                 applyCourseOverrides(state, result.courseOverrides, syncColors, syncNames)
             }
-            applyCourseReset(result)
+            applyCourseReset(result, account)
             // Not gated on any of the per-category sync toggles: a holiday
             // exception is a notification setting, not course or assignment
             // data, and the categories the user can turn off do not cover
@@ -186,7 +181,6 @@ class HomeBackendSync @Inject constructor(
                     pendingConflictCategories = prefs.pendingConflictCategories,
                 ),
             )
-            markCourseSyncAt()
             // Only for the account this sync was for: recorded after a sign-out,
             // it would mark the next account's categories before their first sync.
             if (authService.isStillSignedInAs(account)) prefs.syncedCategories += categoriesSynced(switchedOn, prefs)
@@ -345,21 +339,25 @@ class HomeBackendSync @Inject constructor(
     }
 
     /**
-     * A backend-side course reset wipes this device's manually-added courses.
-     *
-     * Gated on `lastCourseSyncAt > 0` so a fresh install never reads its own
+     * A course reset made on another device wipes this device's
+     * manually-added courses, once: the server's `courses_reset_at` is
+     * compared with the one the last full sync read, never with this phone's
+     * clock — see [CourseSyncReconciler.coursesReset]. The account's first
+     * sync here only remembers it, so a fresh install never reads its own
      * absence of history as a reset and deletes courses the user just added.
+     * Remembered for [account] only: after a sign-out it would be the next
+     * account's first sync that skipped a reset.
      */
-    private suspend fun applyCourseReset(result: BackendSyncResult) {
-        val lastCourseSyncAt = syncPrefs().getLong(KEY_LAST_COURSE_SYNC_AT, 0L)
-        val resetAt = result.coursesResetAt?.let { parseIsoTimestamp(it) } ?: 0L
-        if (resetAt > lastCourseSyncAt && lastCourseSyncAt > 0L) {
+    private suspend fun applyCourseReset(result: BackendSyncResult, account: String?) {
+        val reset = CourseSyncReconciler.coursesReset(result.coursesResetAt, prefs.lastSeenCoursesResetAt)
+        if (reset.apply) {
             val allCourses = dataCache.loadCourses().toMutableList()
             allCourses.removeAll { it.isManual }
             dataCache.saveCourses(allCourses)
             dataCache.saveDeletedCourseNos(emptySet())
             Log.i(TAG, "[sync] courses reset detected, wiped manual courses")
         }
+        if (authService.isStillSignedInAs(account)) prefs.lastSeenCoursesResetAt = reset.remember
     }
 
     /**
@@ -482,18 +480,8 @@ class HomeBackendSync @Inject constructor(
         return migrated
     }
 
-    private fun markCourseSyncAt() {
-        syncPrefs().edit()
-            .putLong(KEY_LAST_COURSE_SYNC_AT, System.currentTimeMillis())
-            .apply()
-    }
-
-    private fun syncPrefs() = context.getSharedPreferences(SYNC_PREFS, 0)
-
     private companion object {
         const val TAG = "HomeViewModel"
-        const val SYNC_PREFS = "tigerduck_sync"
-        const val KEY_LAST_COURSE_SYNC_AT = "last_course_sync_at"
     }
 }
 
@@ -535,28 +523,4 @@ internal suspend fun fetchPinned(
 ): PinnedSnapshot {
     val signIn = signInGeneration()
     return PinnedSnapshot(fetch(), signIn)
-}
-
-/**
- * Epoch millis from the backend's ISO-8601 course-reset timestamp, which is
- * UTC and may carry a fractional part the 19-character prefix drops.
- *
- * Returns 0 for anything unparseable. [HomeBackendSync.applyCourseReset]
- * compares the result against a stored watermark where 0 reads as "no
- * information" and skips the reset, so a malformed timestamp can never wipe
- * local courses -- which is why the catch is deliberately total.
- *
- * Lived in HomeAssignmentFilters until it was noticed that nothing about it
- * is an assignment or a filter. Top-level rather than a private member so it
- * stays beside its only caller without becoming untestable. `LocalDateTime`
- * rather than the previous `SimpleDateFormat`: same accepted input, but
- * immutable and shared instead of a fresh formatter per call.
- */
-internal fun parseIsoTimestamp(s: String): Long {
-    if (s.isBlank()) return 0L
-    return try {
-        LocalDateTime.parse(s.take(19)).toInstant(ZoneOffset.UTC).toEpochMilli()
-    } catch (_: Exception) {
-        0L
-    }
 }
