@@ -25,7 +25,8 @@ internal class MoodleTokenRenewal(
     private val storedToken: () -> String?,
     /** The stored student ID and password, or null with none stored. */
     private val credentials: () -> Pair<String, String>?,
-    private val harvest: suspend () -> String,
+    /** Signs in for a token in place of the rejected one it is handed. */
+    private val harvest: suspend (rejected: String?) -> String,
     private val now: () -> Long,
     private val scope: CoroutineScope,
     private val pauseMs: Long,
@@ -61,7 +62,7 @@ internal class MoodleTokenRenewal(
                 }
                 scope.async {
                     try {
-                        Result.success(signIn(key))
+                        Result.success(signIn(key, rejected))
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
@@ -79,8 +80,8 @@ internal class MoodleTokenRenewal(
         refusedCredentials = null
     }
 
-    private suspend fun signIn(key: String): String = try {
-        harvest().also { lock.withLock { lastFailure = null } }
+    private suspend fun signIn(key: String, rejected: String?): String = try {
+        harvest(rejected).also { lock.withLock { lastFailure = null } }
     } catch (e: CancellationException) {
         throw e
     } catch (e: MoodleWebserviceError.SsoLoginRejected) {

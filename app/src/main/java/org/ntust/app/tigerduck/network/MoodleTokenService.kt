@@ -3,8 +3,6 @@ package org.ntust.app.tigerduck.network
 import android.util.Base64
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
 import okhttp3.HttpUrl
@@ -12,7 +10,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import kotlinx.coroutines.CoroutineScope
-import org.ntust.app.tigerduck.auth.AuthTokenManager
+import org.ntust.app.tigerduck.auth.SIGN_IN_PAUSE_MS
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.di.ApplicationScope
 import java.net.SocketTimeoutException
@@ -45,7 +43,6 @@ class MoodleTokenService @Inject constructor(
     private val credentialManager: CredentialManager,
     @param:ApplicationScope appScope: CoroutineScope,
 ) {
-    private val mutex = Mutex()
     private val moodleBaseUrl = "https://moodle2.ntust.edu.tw".toHttpUrl()
 
     private val moodleUa =
@@ -77,21 +74,28 @@ class MoodleTokenService @Inject constructor(
 
     fun currentToken(): String? = credentialManager.moodleToken
 
-    /** Fetch a fresh token using stored NTUST credentials. */
-    suspend fun refreshToken(): String = mutex.withLock { refreshUnlocked() }
-
-    private val renewal = MoodleTokenRenewal(
-        storedToken = { credentialManager.moodleToken },
-        credentials = {
-            val id = credentialManager.ntustStudentId
-            val password = credentialManager.ntustPassword
-            if (id == null || password == null) null else id to password
+    private val coordinator = MoodleTokenCoordinator(
+        tokens = object : MoodleTokenCoordinator.Tokens {
+            override var token: String?
+                get() = credentialManager.moodleToken
+                set(value) {
+                    credentialManager.moodleToken = value
+                }
+            override val studentId: String? get() = credentialManager.ntustStudentId
+            override val password: String? get() = credentialManager.ntustPassword
         },
-        harvest = { mutex.withLock { refreshUnlocked() } },
-        now = System::currentTimeMillis,
+        login = { studentId, password ->
+            performOidcLogin(studentId, password).wstoken.also {
+                Log.i("MoodleTokenService", "harvested wstoken (len=${it.length})")
+            }
+        },
         scope = appScope,
-        pauseMs = AuthTokenManager.SIGN_IN_PAUSE_MS,
+        now = System::currentTimeMillis,
+        pauseMs = SIGN_IN_PAUSE_MS,
     )
+
+    /** Fetch a fresh token using stored NTUST credentials. */
+    suspend fun refreshToken(): String = coordinator.refresh()
 
     /**
      * A token in place of [rejected], which is null when none was stored, for a Moodle call that
@@ -100,36 +104,10 @@ class MoodleTokenService @Inject constructor(
      * Concurrent callers share one SSO sign-in, a failed one pauses the next, and credentials SSO
      * refused are not sent again until they change; see [MoodleTokenRenewal].
      */
-    suspend fun renewToken(rejected: String?): String = renewal.renew(rejected)
-
-    private suspend fun refreshUnlocked(): String {
-        val sid = credentialManager.ntustStudentId
-            ?: throw MoodleWebserviceError.MissingStoredCredentials()
-        val pwd = credentialManager.ntustPassword
-            ?: throw MoodleWebserviceError.MissingStoredCredentials()
-        val triple = performOidcLogin(sid.trim().uppercase(), pwd)
-        // Signed out while it ran: the token is the departing account's, and
-        // stored it would answer for whoever signs in next.
-        if (credentialManager.ntustStudentId != sid) {
-            throw MoodleWebserviceError.MissingStoredCredentials()
-        }
-        credentialManager.moodleToken = triple.wstoken
-        Log.i("MoodleTokenService", "refreshed wstoken (len=${triple.wstoken.length})")
-        return triple.wstoken
-    }
+    suspend fun renewToken(rejected: String?): String = coordinator.renew(rejected)
 
     /** Fetch a fresh token using the supplied credentials (first-time login). */
-    suspend fun obtainToken(studentId: String, password: String): String {
-        val token = mutex.withLock {
-            val triple = performOidcLogin(studentId.trim().uppercase(), password)
-            credentialManager.moodleToken = triple.wstoken
-            Log.i("MoodleTokenService", "obtained wstoken (len=${triple.wstoken.length})")
-            triple.wstoken
-        }
-        // A sign-in by hand went through: what failed before no longer holds renewals back.
-        renewal.reset()
-        return token
-    }
+    suspend fun obtainToken(studentId: String, password: String): String = coordinator.obtain(studentId, password)
 
     private data class TokenTriple(
         val signature: String,

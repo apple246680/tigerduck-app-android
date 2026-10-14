@@ -28,7 +28,7 @@ class MoodleTokenRenewalTest {
     private fun kotlinx.coroutines.test.TestScope.renewal() = MoodleTokenRenewal(
         storedToken = { stored },
         credentials = { credentials },
-        harvest = {
+        harvest = { _ ->
             harvests++
             gate?.await()
             harvest().also { stored = it }
@@ -121,5 +121,33 @@ class MoodleTokenRenewalTest {
         credentials = null
         assertTrue(renewal().failure("old") is MoodleWebserviceError.MissingStoredCredentials)
         assertEquals(0, harvests)
+    }
+
+    @Test
+    fun `a pause holds only for the credentials that failed`() = runTest(UnconfinedTestDispatcher()) {
+        harvest = { throw MoodleWebserviceError.MalformedResponse("sso page changed") }
+        val renewal = renewal()
+        renewal.failure("old")
+
+        credentials = "B11300002" to "pw"
+        harvest = { "fresh" }
+        assertEquals("another account signs in at once", "fresh", renewal.renew("old"))
+        assertEquals(2, harvests)
+    }
+
+    @Test
+    fun `a caller that gives up does not stop the sign-in the others wait on`() = runTest(UnconfinedTestDispatcher()) {
+        gate = CompletableDeferred()
+        val renewal = renewal()
+        val leaving = async { renewal.renew("old") }
+        val staying = async { renewal.renew("old") }
+        runCurrent()
+
+        leaving.cancel()
+        gate!!.complete(Unit)
+
+        assertEquals("fresh", staying.await())
+        assertEquals(1, harvests)
+        assertEquals("the token is stored all the same", "fresh", stored)
     }
 }
