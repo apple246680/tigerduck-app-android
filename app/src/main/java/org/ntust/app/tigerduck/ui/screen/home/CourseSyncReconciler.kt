@@ -349,10 +349,18 @@ object CourseSyncReconciler {
      * and so only remembers the server's, and empty once a sync found none, so
      * that the first reset after it counts as new. As iOS's
      * `AppState.coursesReset` (tigerduck-app/tigerduck-app#236).
+     * [legacyLastSyncMs] is an older build's stamp; see the first branch.
      */
-    fun coursesReset(server: String?, lastSeen: String?): CourseReset {
+    fun coursesReset(server: String?, lastSeen: String?, legacyLastSyncMs: Long = 0L): CourseReset {
         val serverAt = backendInstant(server)
-        if (lastSeen == null) return CourseReset(apply = false, remember = server.takeIf { serverAt != null } ?: "")
+        if (lastSeen == null) {
+            // The first sync since the update, on an install an older build
+            // synced: it kept this phone's clock at its last sync, the old
+            // rule, read this once so a reset made elsewhere just before the
+            // update is not remembered unapplied.
+            val applyLegacy = legacyLastSyncMs > 0 && serverAt != null && serverAt.toEpochMilli() > legacyLastSyncMs
+            return CourseReset(apply = applyLegacy, remember = server.takeIf { serverAt != null } ?: "")
+        }
         if (serverAt == null) return CourseReset(apply = false, remember = lastSeen)
         val seenAt = backendInstant(lastSeen)
         return CourseReset(apply = seenAt == null || serverAt > seenAt, remember = server!!)

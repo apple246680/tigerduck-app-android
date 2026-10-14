@@ -54,6 +54,11 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences("tigerduck_prefs", Context.MODE_PRIVATE)
+
+    // Where builds before the server-time course-reset check kept this
+    // phone's clock at its last full sync; see legacyLastCourseSyncAtMs.
+    private val legacySyncPrefs: SharedPreferences =
+        context.getSharedPreferences("tigerduck_sync", Context.MODE_PRIVATE)
     private val gson = Gson()
 
     // Language change forces a full network re-fetch so course names come
@@ -217,6 +222,18 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
     var lastSeenCoursesResetAt: String?
         get() = prefs.getString("lastSeenCoursesResetAt", null)
         set(value) = prefs.edit().putString("lastSeenCoursesResetAt", value).apply()
+
+    /**
+     * This phone's clock at an older build's last full sync, epoch ms, or 0:
+     * read by the first sync since the update, which then forgets it
+     * ([forgetLegacyLastCourseSyncAt]); see `CourseSyncReconciler.coursesReset`.
+     */
+    val legacyLastCourseSyncAtMs: Long
+        get() = legacySyncPrefs.getLong("last_course_sync_at", 0L)
+
+    fun forgetLegacyLastCourseSyncAt() {
+        legacySyncPrefs.edit().remove("last_course_sync_at").apply()
+    }
 
     var hasCompletedOnboarding: Boolean
         get() = prefs.getBoolean("hasCompletedOnboarding", false)
@@ -645,6 +662,7 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
             .remove("assignmentsUploadFingerprint")
             .remove("assignmentsUploadedAtMs")
             .apply()
+        forgetLegacyLastCourseSyncAt()
         _schoolDataSyncedAtMs.value = 0L
     }
 
@@ -744,6 +762,7 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
     /** Wipe every pref key. Used by the full-reset flow only. */
     fun clearAllPrefs() {
         prefs.edit().clear().apply()
+        forgetLegacyLastCourseSyncAt()
         // `alwaysShowAllPeriods` and `showClassroomInClassTable` are read from
         // in-memory mirrors rather than the file, so clearing the file alone
         // leaves the class table pinned — and the Settings rows reading "on" —

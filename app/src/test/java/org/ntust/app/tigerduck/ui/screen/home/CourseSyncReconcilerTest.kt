@@ -704,4 +704,24 @@ class CourseSyncReconcilerTest {
         assertEquals(CourseSyncReconciler.CourseReset(false, at), CourseSyncReconciler.coursesReset(null, at))
         assertEquals(CourseSyncReconciler.CourseReset(false, at), CourseSyncReconciler.coursesReset("garbage", at))
     }
+
+    @Test
+    fun `the first sync after the update applies a reset newer than the old build's last sync, once`() {
+        // The old build kept this phone's clock at its last sync; a reset
+        // made elsewhere since then would otherwise be remembered unapplied.
+        val legacy = backendInstant("2026-10-10T16:00:00+00:00")!!.toEpochMilli()
+
+        assertEquals(
+            CourseSyncReconciler.CourseReset(apply = true, remember = "2026-10-10T16:42:49+00:00"),
+            CourseSyncReconciler.coursesReset("2026-10-10T16:42:49+00:00", lastSeen = null, legacyLastSyncMs = legacy),
+        )
+        assertFalse(
+            "a reset the old build had already seen",
+            CourseSyncReconciler.coursesReset("2026-10-10T15:00:00+00:00", lastSeen = null, legacyLastSyncMs = legacy).apply,
+        )
+        assertFalse(
+            "with what this build remembered, the old stamp is not read",
+            CourseSyncReconciler.coursesReset("2026-10-10T16:42:49+00:00", lastSeen = "2026-10-10T16:42:49+00:00", legacyLastSyncMs = legacy).apply,
+        )
+    }
 }

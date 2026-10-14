@@ -47,4 +47,18 @@ class SyncStampsTest {
         assertEquals(0L, prefs.assignmentsUploadedAtMs)
         assertEquals("2026-10-10T16:42:49+00:00", prefs.lastSeenCoursesResetAt)
     }
+
+    @Test
+    fun `the older build's sync stamp is read once, and sign-out forgets it too`() {
+        val legacy = RuntimeEnvironment.getApplication().getSharedPreferences("tigerduck_sync", 0)
+        legacy.edit().putLong("last_course_sync_at", 42L).commit()
+
+        assertEquals(42L, prefs.legacyLastCourseSyncAtMs)
+        prefs.forgetLegacyLastCourseSyncAt()
+        assertEquals(0L, prefs.legacyLastCourseSyncAtMs)
+
+        legacy.edit().putLong("last_course_sync_at", 42L).commit()
+        prefs.clearSyncStamps()
+        assertEquals(0L, prefs.legacyLastCourseSyncAtMs)
+    }
 }

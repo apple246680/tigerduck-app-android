@@ -365,7 +365,9 @@ class HomeBackendSync @Inject constructor(
      * account's first sync that skipped a reset.
      */
     private suspend fun applyCourseReset(result: BackendSyncResult, account: String?) {
-        val reset = CourseSyncReconciler.coursesReset(result.coursesResetAt, prefs.lastSeenCoursesResetAt)
+        val reset = CourseSyncReconciler.coursesReset(
+            result.coursesResetAt, prefs.lastSeenCoursesResetAt, prefs.legacyLastCourseSyncAtMs,
+        )
         if (reset.apply) {
             val allCourses = dataCache.loadCourses().toMutableList()
             allCourses.removeAll { it.isManual }
@@ -373,7 +375,10 @@ class HomeBackendSync @Inject constructor(
             dataCache.saveDeletedCourseNos(emptySet())
             Log.i(TAG, "[sync] courses reset detected, wiped manual courses")
         }
-        if (authService.isStillSignedInAs(account)) prefs.lastSeenCoursesResetAt = reset.remember
+        if (authService.isStillSignedInAs(account)) {
+            prefs.lastSeenCoursesResetAt = reset.remember
+            prefs.forgetLegacyLastCourseSyncAt()
+        }
     }
 
     /**
