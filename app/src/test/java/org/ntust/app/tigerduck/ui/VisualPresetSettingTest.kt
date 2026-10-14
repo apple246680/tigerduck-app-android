@@ -61,6 +61,27 @@ class VisualPresetSettingTest {
     }
 
     @Test
+    fun `only a pick that changes the style is announced, so the widgets redraw once`() {
+        var changes = 0
+        val setting = VisualPresetSetting(prefs, onChange = { changes++ })
+
+        setting.value = VisualPreset.TigerDuck
+        assertEquals(0, changes)
+
+        setting.value = VisualPreset.Tat
+        assertEquals(1, changes)
+
+        setting.value = VisualPreset.Tat
+        assertEquals(1, changes)
+
+        // Stored before it is announced: the widgets read the preference when they redraw.
+        var storedAtChange: VisualPreset? = null
+        val reading = VisualPresetSetting(prefs, onChange = { storedAtChange = prefs.visualPreset })
+        reading.value = VisualPreset.TigerDuck
+        assertEquals(VisualPreset.TigerDuck, storedAtChange)
+    }
+
+    @Test
     fun `after a full reset the copy reads TigerDuck again`() {
         val setting = VisualPresetSetting(prefs)
         setting.value = VisualPreset.Tat

@@ -24,6 +24,7 @@ import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import org.ntust.app.tigerduck.MainActivity
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
+import org.ntust.app.tigerduck.ui.theme.VisualStylePolicy
 import org.ntust.app.tigerduck.widget.content.NextClassContent
 import org.ntust.app.tigerduck.widget.content.TodayListContent
 import org.ntust.app.tigerduck.widget.content.WeekGridContent
@@ -63,6 +64,8 @@ abstract class BaseClassTableWidget(
             val accent = resolveWidgetAccentColor(prefs, isDark)
             val colors = (if (isDark) WidgetTheme.Dark else WidgetTheme.Light)
                 .copy(highlight = accent)
+            // The interface style, for the Week grid: it draws as the class table does.
+            val style = VisualStylePolicy(prefs.visualPreset)
 
             var state by remember { mutableStateOf<WidgetState?>(null) }
             LaunchedEffect(tick) {
@@ -77,7 +80,7 @@ abstract class BaseClassTableWidget(
                 ) {}
             } else {
                 when (layout) {
-                    WidgetLayout.Week -> WeekGridContent(s, colors, tapAction)
+                    WidgetLayout.Week -> WeekGridContent(s, colors, style, tapAction)
                     WidgetLayout.Today -> TodayListContent(s, colors, tapAction)
                     WidgetLayout.NextClass -> NextClassContent(s, colors, tapAction)
                 }

@@ -20,6 +20,7 @@ import androidx.glance.layout.Box
 import androidx.glance.layout.Column
 import androidx.glance.layout.ContentScale
 import androidx.glance.layout.Row
+import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxHeight
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
@@ -34,6 +35,8 @@ import androidx.glance.unit.ColorProvider
 import org.ntust.app.tigerduck.AppConstants
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.shared.Course
+import org.ntust.app.tigerduck.ui.theme.VisualStylePolicy
+import org.ntust.app.tigerduck.ui.theme.VisualStylePolicy.ClassTableGridStyle
 import org.ntust.app.tigerduck.widget.LayerCourse
 import org.ntust.app.tigerduck.widget.ScheduleCell
 import org.ntust.app.tigerduck.widget.WidgetColors
@@ -42,8 +45,18 @@ import org.ntust.app.tigerduck.widget.buildScheduleCells
 import org.ntust.app.tigerduck.widget.renderConflictLayer
 import org.ntust.app.tigerduck.widget.widgetCourseColor
 
+/**
+ * The Week widget: the class table's grid, drawn in the interface style as the
+ * class table is — blocks, or under TAT a pastel tile per period, the period
+ * without its time, bare empty slots and banded rows.
+ */
 @Composable
-fun WeekGridContent(state: WidgetState, colors: WidgetColors, tapAction: Action) {
+fun WeekGridContent(
+    state: WidgetState,
+    colors: WidgetColors,
+    style: VisualStylePolicy,
+    tapAction: Action,
+) {
     val context = LocalContext.current
     val dayNames = listOf(
         context.getString(R.string.weekday_mon_short),
@@ -54,7 +67,9 @@ fun WeekGridContent(state: WidgetState, colors: WidgetColors, tapAction: Action)
         context.getString(R.string.weekday_sat_short),
         context.getString(R.string.weekday_sun_short),
     )
-    val periodColWidth = 32.dp
+    val showsPeriodTimes = style.classTableShowsPeriodTimes
+    // Narrower where the column holds only the period.
+    val periodColWidth = if (showsPeriodTimes) 32.dp else 20.dp
     val outerPadding = 6.dp
     val headerHeight = 22.dp
     val headerBottomPad = 4.dp
@@ -72,78 +87,93 @@ fun WeekGridContent(state: WidgetState, colors: WidgetColors, tapAction: Action)
             .coerceAtLeast(20.dp)
     }
 
-    Column(
+    val showsGrid = state.isLoggedIn && state.courses.isNotEmpty()
+
+    Box(
         modifier = GlanceModifier
             .fillMaxSize()
             .background(ColorProvider(colors.background))
-            .padding(outerPadding)
             .clickable(tapAction),
     ) {
-        if (!state.isLoggedIn || state.courses.isEmpty()) {
-            Box(
-                modifier = GlanceModifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = if (!state.isLoggedIn) {
-                        context.getString(R.string.widget_sign_in)
-                    } else {
-                        context.getString(R.string.widget_no_courses)
-                    },
-                    style = TextStyle(
-                        color = ColorProvider(colors.onSurfaceVariant),
-                        fontSize = 14.sp,
-                        textAlign = TextAlign.Center,
-                    ),
-                )
-            }
-            return@Column
+        // Behind the grid and outside its padding, so the bands run from edge
+        // to edge, as on the class table.
+        if (showsGrid) {
+            WeekRowBands(
+                style = style,
+                onSurface = colors.onSurface,
+                rowCount = state.activePeriodIds.size,
+                top = outerPadding + headerHeight,
+                cellHeight = cellHeight,
+            )
         }
-
-        Row(
-            modifier = GlanceModifier
-                .fillMaxWidth()
-                .height(headerHeight)
-                .padding(bottom = headerBottomPad),
-        ) {
-            Box(modifier = GlanceModifier.width(periodColWidth)) {}
-            state.activeWeekdays.forEach { day ->
+        Column(modifier = GlanceModifier.fillMaxSize().padding(outerPadding)) {
+            if (!showsGrid) {
                 Box(
-                    modifier = GlanceModifier.defaultWeight().fillMaxHeight(),
+                    modifier = GlanceModifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = dayNames[day - 1],
+                        text = if (!state.isLoggedIn) {
+                            context.getString(R.string.widget_sign_in)
+                        } else {
+                            context.getString(R.string.widget_no_courses)
+                        },
                         style = TextStyle(
-                            color = ColorProvider(colors.highlight),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
+                            color = ColorProvider(colors.onSurfaceVariant),
+                            fontSize = 14.sp,
                             textAlign = TextAlign.Center,
                         ),
                     )
                 }
+                return@Column
             }
-        }
 
-        Row(modifier = GlanceModifier.fillMaxWidth()) {
-            Column(modifier = GlanceModifier.width(periodColWidth)) {
-                state.activePeriodIds.forEach { periodId ->
-                    PeriodLabelCell(periodId, colors, cellHeight)
+            Row(
+                modifier = GlanceModifier
+                    .fillMaxWidth()
+                    .height(headerHeight)
+                    .padding(bottom = headerBottomPad),
+            ) {
+                Box(modifier = GlanceModifier.width(periodColWidth)) {}
+                state.activeWeekdays.forEach { day ->
+                    Box(
+                        modifier = GlanceModifier.defaultWeight().fillMaxHeight(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = dayNames[day - 1],
+                            style = TextStyle(
+                                color = ColorProvider(colors.highlight),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                            ),
+                        )
+                    }
                 }
             }
-            state.activeWeekdays.forEach { weekday ->
-                val cells = buildScheduleCells(state.activePeriodIds, state.courses, weekday)
-                Column(modifier = GlanceModifier.defaultWeight().padding(horizontal = 1.dp)) {
-                    cells.forEach { cell ->
-                        ScheduleCellBox(
-                            cell = cell,
-                            colors = colors,
-                            courseColors = state.courseColors,
-                            ongoingCourseNos = state.ongoingCourseNos,
-                            blockHeight = cellHeight * cell.length,
-                            blockWidth = dayColWidth,
-                            courseNameScale = state.courseNameScale,
-                        )
+
+            Row(modifier = GlanceModifier.fillMaxWidth()) {
+                Column(modifier = GlanceModifier.width(periodColWidth)) {
+                    state.activePeriodIds.forEach { periodId ->
+                        PeriodLabelCell(periodId, colors, cellHeight, showsPeriodTimes)
+                    }
+                }
+                state.activeWeekdays.forEach { weekday ->
+                    val cells = buildScheduleCells(state.activePeriodIds, state.courses, weekday)
+                    Column(modifier = GlanceModifier.defaultWeight().padding(horizontal = 1.dp)) {
+                        cells.forEach { cell ->
+                            ScheduleCellBox(
+                                cell = cell,
+                                colors = colors,
+                                style = style,
+                                courseColors = state.courseColors,
+                                ongoingCourseNos = state.ongoingCourseNos,
+                                blockHeight = cellHeight * cell.length,
+                                blockWidth = dayColWidth,
+                                courseNameScale = state.courseNameScale,
+                            )
+                        }
                     }
                 }
             }
@@ -151,8 +181,40 @@ fun WeekGridContent(state: WidgetState, colors: WidgetColors, tapAction: Action)
     }
 }
 
+/**
+ * The bands behind the grid's [rowCount] period rows, where the style has
+ * them: each one row high and the widget's whole width, from [top] down.
+ */
 @Composable
-private fun PeriodLabelCell(periodId: String, colors: WidgetColors, cellHeight: Dp) {
+private fun WeekRowBands(
+    style: VisualStylePolicy,
+    onSurface: Color,
+    rowCount: Int,
+    top: Dp,
+    cellHeight: Dp,
+) {
+    val bands = List(rowCount) { style.classTableRowBand(it, onSurface) }
+    if (bands.all { it == null }) return
+    Column(modifier = GlanceModifier.fillMaxWidth()) {
+        Spacer(modifier = GlanceModifier.height(top))
+        bands.forEach { band ->
+            Box(
+                modifier = GlanceModifier
+                    .fillMaxWidth()
+                    .height(cellHeight)
+                    .background(ColorProvider(band ?: Color.Transparent)),
+            ) {}
+        }
+    }
+}
+
+@Composable
+private fun PeriodLabelCell(
+    periodId: String,
+    colors: WidgetColors,
+    cellHeight: Dp,
+    showsTime: Boolean,
+) {
     val startTime = AppConstants.PeriodTimes.mapping[periodId]?.first ?: ""
     Column(
         modifier = GlanceModifier.fillMaxWidth().height(cellHeight),
@@ -168,14 +230,16 @@ private fun PeriodLabelCell(periodId: String, colors: WidgetColors, cellHeight: 
                 textAlign = TextAlign.Center,
             ),
         )
-        Text(
-            text = startTime,
-            style = TextStyle(
-                color = ColorProvider(colors.onSurfaceVariant),
-                fontSize = 9.sp,
-                textAlign = TextAlign.Center,
-            ),
-        )
+        if (showsTime) {
+            Text(
+                text = startTime,
+                style = TextStyle(
+                    color = ColorProvider(colors.onSurfaceVariant),
+                    fontSize = 9.sp,
+                    textAlign = TextAlign.Center,
+                ),
+            )
+        }
     }
 }
 
@@ -183,6 +247,7 @@ private fun PeriodLabelCell(periodId: String, colors: WidgetColors, cellHeight: 
 private fun ScheduleCellBox(
     cell: ScheduleCell,
     colors: WidgetColors,
+    style: VisualStylePolicy,
     courseColors: Map<String, Color>,
     ongoingCourseNos: List<String>,
     blockHeight: Dp,
@@ -190,12 +255,13 @@ private fun ScheduleCellBox(
     courseNameScale: Float,
 ) {
     when (cell) {
-        is ScheduleCell.Empty -> EmptyCell(blockHeight, colors)
+        is ScheduleCell.Empty -> EmptyCell(blockHeight, colors, style)
         is ScheduleCell.Solo -> SoloCell(
             course = cell.course,
             length = cell.length,
             ongoing = cell.course.courseNo in ongoingCourseNos,
             colors = colors,
+            style = style,
             courseColors = courseColors,
             blockHeight = blockHeight,
             courseNameScale = courseNameScale,
@@ -204,6 +270,7 @@ private fun ScheduleCellBox(
         is ScheduleCell.Conflict -> ConflictCell(
             cell = cell,
             colors = colors,
+            style = style,
             courseColors = courseColors,
             ongoingCourseNos = ongoingCourseNos,
             blockHeight = blockHeight,
@@ -214,6 +281,7 @@ private fun ScheduleCellBox(
         is ScheduleCell.MultiConflict -> MultiConflictCell(
             cell = cell,
             colors = colors,
+            style = style,
             courseColors = courseColors,
             ongoingCourseNos = ongoingCourseNos,
             blockHeight = blockHeight,
@@ -223,19 +291,22 @@ private fun ScheduleCellBox(
 }
 
 @Composable
-private fun EmptyCell(blockHeight: Dp, colors: WidgetColors) {
+private fun EmptyCell(blockHeight: Dp, colors: WidgetColors, style: VisualStylePolicy) {
     Box(
         modifier = GlanceModifier
             .fillMaxWidth()
             .height(blockHeight)
             .padding(vertical = 1.dp),
     ) {
-        Box(
-            modifier = GlanceModifier
-                .fillMaxSize()
-                .background(ColorProvider(colors.emptyCell))
-                .cornerRadius(4.dp),
-        ) {}
+        // Left bare under a style that leaves empty slots bare, as on the class table.
+        if (style.classTableGridStyle == ClassTableGridStyle.Blocks) {
+            Box(
+                modifier = GlanceModifier
+                    .fillMaxSize()
+                    .background(ColorProvider(colors.emptyCell))
+                    .cornerRadius(4.dp),
+            ) {}
+        }
     }
 }
 
@@ -245,44 +316,78 @@ private fun SoloCell(
     length: Int,
     ongoing: Boolean,
     colors: WidgetColors,
+    style: VisualStylePolicy,
     courseColors: Map<String, Color>,
     blockHeight: Dp,
     courseNameScale: Float,
 ) {
-    val baseColor = widgetCourseColor(course, courseColors, colors.isDark)
-    val cellBg: Color = when {
-        ongoing -> colors.highlight
-        colors.isDark -> baseColor
-        else -> baseColor.copy(alpha = 0.55f)
+    val cellBg = weekCourseFill(course, ongoing, colors, style, courseColors)
+    val textColor = weekCourseTextColor(ongoing, colors, style)
+    when (style.classTableGridStyle) {
+        ClassTableGridStyle.Blocks -> CourseTile(
+            name = course.displayName,
+            fill = cellBg,
+            textColor = textColor,
+            height = blockHeight,
+            cornerRadius = 6.dp,
+            maxLines = if (length >= 2) 3 else 2,
+            courseNameScale = courseNameScale,
+        )
+
+        // One tile per period, each naming the course, as on the class table.
+        ClassTableGridStyle.PeriodTiles -> Column(
+            modifier = GlanceModifier.fillMaxWidth().height(blockHeight),
+        ) {
+            repeat(length) {
+                CourseTile(
+                    name = course.displayName,
+                    fill = cellBg,
+                    textColor = textColor,
+                    height = blockHeight / length,
+                    // A period tile's corners, tighter than a block's.
+                    cornerRadius = 4.dp,
+                    maxLines = 2,
+                    courseNameScale = courseNameScale,
+                )
+            }
+        }
     }
-    val textColor: Color = when {
-        ongoing -> Color.White
-        colors.isDark -> Color.White
-        else -> Color(0xFF1C1C1E)
-    }
+}
+
+/** A course's name on its own fill, [height] high, with the 1dp above and below that every cell keeps. */
+@Composable
+private fun CourseTile(
+    name: String,
+    fill: Color,
+    textColor: Color,
+    height: Dp,
+    cornerRadius: Dp,
+    maxLines: Int,
+    courseNameScale: Float,
+) {
     Box(
         modifier = GlanceModifier
             .fillMaxWidth()
-            .height(blockHeight)
+            .height(height)
             .padding(vertical = 1.dp),
     ) {
         Box(
             modifier = GlanceModifier
                 .fillMaxSize()
-                .background(ColorProvider(cellBg))
-                .cornerRadius(6.dp)
+                .background(ColorProvider(fill))
+                .cornerRadius(cornerRadius)
                 .padding(2.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = course.displayName,
+                text = name,
                 style = TextStyle(
                     color = ColorProvider(textColor),
                     fontSize = 10.sp * courseNameScale,
                     fontWeight = FontWeight.Medium,
                     textAlign = TextAlign.Center,
                 ),
-                maxLines = if (length >= 2) 3 else 2,
+                maxLines = maxLines,
             )
         }
     }
@@ -292,6 +397,7 @@ private fun SoloCell(
 private fun ConflictCell(
     cell: ScheduleCell.Conflict,
     colors: WidgetColors,
+    style: VisualStylePolicy,
     courseColors: Map<String, Color>,
     ongoingCourseNos: List<String>,
     blockHeight: Dp,
@@ -310,24 +416,15 @@ private fun ConflictCell(
     // hides the L-shape. Keep them in their own course colors in that case —
     // the "進行中" status is surfaced by the NextClass widget anyway.
     val bothOngoing = ongoingA && ongoingB
-
-    fun tileBg(course: Course, ongoing: Boolean): Color {
-        val base = widgetCourseColor(course, courseColors, colors.isDark)
-        return when {
-            ongoing && !bothOngoing -> colors.highlight
-            colors.isDark -> base
-            else -> base.copy(alpha = 0.55f)
-        }
-    }
-
-    val textColor: Color = if (colors.isDark) Color.White else Color(0xFF1C1C1E)
+    val highlightA = ongoingA && !bothOngoing
+    val highlightB = ongoingB && !bothOngoing
 
     // renderConflictLayer allocates ARGB_8888 bitmaps and runs Canvas paths —
     // without `remember` every Glance recomposition (class-boundary ticks,
     // sync completes, theme flips) would re-allocate and re-draw both layers
     // and inflate the RemoteViews payload toward the Binder 1 MB limit.
-    val fillA = tileBg(cell.courseA, ongoingA)
-    val fillB = tileBg(cell.courseB, ongoingB)
+    val fillA = weekCourseFill(cell.courseA, highlightA, colors, style, courseColors)
+    val fillB = weekCourseFill(cell.courseB, highlightB, colors, style, courseColors)
     val bitmapA = remember(cell, widthPx, heightPx, density, fillA) {
         renderConflictLayer(
             clusterWidthPx = widthPx,
@@ -373,7 +470,7 @@ private fun ConflictCell(
             // Course A label — pinned inside A's own Box at top-right (Γ's top bar).
             ConflictLabel(
                 courseName = cell.courseA.courseName,
-                textColor = if (ongoingA && !bothOngoing) Color.White else textColor,
+                textColor = weekCourseTextColor(highlightA, colors, style),
                 alignment = Alignment.TopEnd,
                 boxTopPadding = rowHeight * cell.offsetA,
                 boxBottomPadding = rowHeight * (cell.combinedSpan - cell.offsetA - cell.spanA),
@@ -383,7 +480,7 @@ private fun ConflictCell(
             // Course B label — pinned inside B's own Box at bottom-left (mirror-L's bottom bar).
             ConflictLabel(
                 courseName = cell.courseB.courseName,
-                textColor = if (ongoingB && !bothOngoing) Color.White else textColor,
+                textColor = weekCourseTextColor(highlightB, colors, style),
                 alignment = Alignment.BottomStart,
                 boxTopPadding = rowHeight * cell.offsetB,
                 boxBottomPadding = rowHeight * (cell.combinedSpan - cell.offsetB - cell.spanB),
@@ -404,22 +501,13 @@ private fun ConflictCell(
 private fun MultiConflictCell(
     cell: ScheduleCell.MultiConflict,
     colors: WidgetColors,
+    style: VisualStylePolicy,
     courseColors: Map<String, Color>,
     ongoingCourseNos: List<String>,
     blockHeight: Dp,
     courseNameScale: Float,
 ) {
     val rowHeight = blockHeight / cell.combinedSpan.coerceAtLeast(1)
-    val textColor: Color = if (colors.isDark) Color.White else Color(0xFF1C1C1E)
-
-    fun tileBg(course: Course): Color {
-        val base = widgetCourseColor(course, courseColors, colors.isDark)
-        return when {
-            course.courseNo in ongoingCourseNos -> colors.highlight
-            colors.isDark -> base
-            else -> base.copy(alpha = 0.55f)
-        }
-    }
 
     Box(
         modifier = GlanceModifier
@@ -444,7 +532,8 @@ private fun MultiConflictCell(
                             Box(modifier = GlanceModifier.height(rowHeight * (member.offset - cursor))) {}
                         }
                         val ongoing = member.course.courseNo in ongoingCourseNos
-                        val tileTextColor = if (ongoing) Color.White else textColor
+                        val tileFill = weekCourseFill(member.course, ongoing, colors, style, courseColors)
+                        val tileTextColor = weekCourseTextColor(ongoing, colors, style)
                         Box(
                             modifier = GlanceModifier
                                 .fillMaxWidth()
@@ -454,7 +543,7 @@ private fun MultiConflictCell(
                             Box(
                                 modifier = GlanceModifier
                                     .fillMaxSize()
-                                    .background(ColorProvider(tileBg(member.course)))
+                                    .background(ColorProvider(tileFill))
                                     .cornerRadius(4.dp)
                                     .padding(1.dp),
                                 contentAlignment = Alignment.Center,
@@ -517,3 +606,34 @@ private fun ConflictLabel(
         }
     }
 }
+
+/**
+ * A course's fill on the Week widget: the highlight while the class is on,
+ * else the class table's pastel under TAT, else the widget's own tint, a
+ * little stronger in light mode than the class table's.
+ */
+internal fun weekCourseFill(
+    course: Course,
+    highlighted: Boolean,
+    colors: WidgetColors,
+    style: VisualStylePolicy,
+    courseColors: Map<String, Color>,
+): Color {
+    if (highlighted) return colors.highlight
+    val themed = widgetCourseColor(course, courseColors, colors.isDark)
+    return when (style.classTableGridStyle) {
+        ClassTableGridStyle.Blocks -> if (colors.isDark) themed else themed.copy(alpha = 0.55f)
+        ClassTableGridStyle.PeriodTiles -> style.classTableCourseFill(
+            courseColor = widgetCourseColor(course, courseColors, isDark = false),
+            themeColor = themed,
+            isDark = colors.isDark,
+        )
+    }
+}
+
+/** A course's name on [weekCourseFill]. */
+internal fun weekCourseTextColor(
+    highlighted: Boolean,
+    colors: WidgetColors,
+    style: VisualStylePolicy,
+): Color = if (highlighted) Color.White else style.classTableCourseTextColor(colors.isDark)

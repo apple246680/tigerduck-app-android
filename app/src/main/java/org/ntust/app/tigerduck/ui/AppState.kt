@@ -212,7 +212,8 @@ class AppState @Inject constructor(
         return Color(0xFF000000L or (hex.toLong() and 0xFFFFFFL))
     }
 
-    private val visualPresetSetting = VisualPresetSetting(prefs)
+    private val visualPresetSetting =
+        VisualPresetSetting(prefs, onChange = { widgetUpdater.requestUpdate() })
 
     /**
      * The interface style picked in Settings > Display. The app root provides
