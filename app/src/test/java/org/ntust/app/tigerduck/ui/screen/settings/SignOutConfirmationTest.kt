@@ -5,10 +5,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.ntust.app.tigerduck.academic.AcademicCalendarStore
 import org.ntust.app.tigerduck.data.cache.DataCache
+import org.ntust.app.tigerduck.data.model.PendingCourseIgnore
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.sharing.ClassTableShareCode
 import org.ntust.app.tigerduck.data.sharing.ImportedClassTableStore
@@ -113,5 +115,55 @@ class SignOutConfirmationTest {
         imported.add(code, "Ming", emptyMap())
 
         assertEquals(setOf(IMPORTED_CLASS_TABLES), check.losses())
+    }
+
+    // With TigerSync on: what the server has not confirmed yet
+
+    @Test
+    fun `an edit the server has not confirmed is asked about with its kind synced`() {
+        assertEquals(
+            setOf(UNSYNCED_DATA),
+            signOutLosses(LocalEdits(), allSynced, hasImportedClassTables = false, unconfirmed = Unconfirmed(assignments = true)),
+        )
+    }
+
+    private fun syncOn() {
+        prefs.cloudSyncEnabled = true
+        // F-Droid has no TigerSync, where every edit is asked about anyway.
+        assumeTrue(prefs.cloudSyncEnabled)
+    }
+
+    @Test
+    fun `a course added by hand that the server has not had yet is asked about`() = runTest {
+        syncOn()
+        dataCache.saveCourses(listOf(course("XX0000001").copy(isManual = true)), "1141")
+        assertEquals(setOf(UNSYNCED_DATA), check.losses())
+
+        dataCache.saveServerKnownNos(mapOf("1141" to listOf("XX0000001")))
+        assertEquals(emptySet<SignOutLoss>(), check.losses())
+    }
+
+    @Test
+    fun `an ignore the server has not confirmed is asked about`() = runTest {
+        syncOn()
+        assertEquals(emptySet<SignOutLoss>(), check.losses())
+
+        dataCache.savePendingCourseIgnores(
+            listOf(PendingCourseIgnore("1141", "CS1001301", "1141CS1001301", null, ignore = true, changedAtMs = 1L)),
+        )
+
+        assertEquals(setOf(UNSYNCED_DATA), check.losses())
+    }
+
+    @Test
+    fun `edits held for the re-enable check are asked about`() = runTest {
+        syncOn()
+        dataCache.saveCourses(listOf(course("CS1001301").copy(customColorHex = "#FF0000")), "1141")
+        assertEquals(emptySet<SignOutLoss>(), check.losses())
+
+        // The sign-out clears the hold, and the colours it held back never reach the server.
+        prefs.pendingConflictCategories = setOf("course_colors")
+
+        assertEquals(setOf(UNSYNCED_DATA), check.losses())
     }
 }

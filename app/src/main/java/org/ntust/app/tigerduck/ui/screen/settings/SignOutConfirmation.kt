@@ -29,6 +29,18 @@ data class LocalEdits(
     val assignmentMarks: Boolean = false,
 )
 
+/**
+ * Edits the server has not confirmed, which a sign-out deletes even with their kind synced: a
+ * course added by hand that has not been uploaded, an ignore not yet confirmed, and edits whose
+ * upload the re-enable check holds back (the sign-out drops the hold).
+ */
+data class Unconfirmed(
+    val courses: Boolean = false,
+    val courseNames: Boolean = false,
+    val courseColours: Boolean = false,
+    val assignments: Boolean = false,
+)
+
 /** What TigerSync keeps for the account; on fdroid, nothing. */
 data class SyncedKinds(
     val enabled: Boolean,
@@ -38,12 +50,18 @@ data class SyncedKinds(
     val assignments: Boolean,
 )
 
-fun signOutLosses(edits: LocalEdits, synced: SyncedKinds, hasImportedClassTables: Boolean): Set<SignOutLoss> {
+fun signOutLosses(
+    edits: LocalEdits,
+    synced: SyncedKinds,
+    hasImportedClassTables: Boolean,
+    unconfirmed: Unconfirmed = Unconfirmed(),
+): Set<SignOutLoss> {
     fun kept(kind: Boolean) = synced.enabled && kind
     val unsynced = (edits.courses && !kept(synced.courses)) ||
         (edits.courseNames && !kept(synced.courseNames)) ||
         (edits.courseColours && !kept(synced.courseColours)) ||
-        (edits.assignmentMarks && !kept(synced.assignments))
+        (edits.assignmentMarks && !kept(synced.assignments)) ||
+        unconfirmed.courses || unconfirmed.courseNames || unconfirmed.courseColours || unconfirmed.assignments
     return buildSet {
         if (unsynced) add(SignOutLoss.UNSYNCED_DATA)
         if (hasImportedClassTables) add(SignOutLoss.IMPORTED_CLASS_TABLES)
@@ -60,7 +78,8 @@ class SignOutLossCheck @Inject constructor(
     private val importedClassTables: ImportedClassTableStore,
 ) {
     suspend fun losses(): Set<SignOutLoss> {
-        val courses = dataCache.loadEveryTermCourses()
+        val terms = dataCache.loadEveryTermCourses()
+        val courses = terms.values.flatten()
         val edits = LocalEdits(
             courses = courses.any { it.isManual } || dataCache.loadDeletedCourseNos().isNotEmpty(),
             courseNames = courses.any { it.customCourseName != null } ||
@@ -77,6 +96,18 @@ class SignOutLossCheck @Inject constructor(
             courseColours = prefs.syncCourseColors,
             assignments = prefs.syncAssignments,
         )
-        return signOutLosses(edits, synced, importedClassTables.load().hasImportedClassTables)
+        // Held back for the re-enable check, by its category names (REENABLE_CATEGORIES).
+        val held = prefs.pendingConflictCategories
+        val serverKnown = dataCache.loadServerKnownNos()
+        val unconfirmed = Unconfirmed(
+            courses = (edits.courses && "courses" in held) || terms.any { (semester, termCourses) ->
+                termCourses.any { it.isManual && it.courseNo !in serverKnown[semester].orEmpty() }
+            },
+            courseNames = edits.courseNames && "course_names" in held,
+            courseColours = edits.courseColours && "course_colors" in held,
+            assignments = (edits.assignmentMarks && "assignments" in held) ||
+                dataCache.loadPendingCourseIgnores().isNotEmpty(),
+        )
+        return signOutLosses(edits, synced, importedClassTables.load().hasImportedClassTables, unconfirmed)
     }
 }

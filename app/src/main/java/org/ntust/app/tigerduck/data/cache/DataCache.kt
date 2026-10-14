@@ -455,10 +455,11 @@ class DataCache @Inject constructor(
     }
 
     /**
-     * Every term's courses on this phone, fetched and added by hand, for the
-     * sign-out's check of what it would delete that exists nowhere else.
+     * Every term's courses on this phone, fetched and added by hand, keyed by
+     * term, for the sign-out's check of what it would delete that exists
+     * nowhere else.
      */
-    suspend fun loadEveryTermCourses(): List<Course> {
+    suspend fun loadEveryTermCourses(): Map<String, List<Course>> {
         fun termOf(name: String, prefix: String): String? =
             name.takeIf { it.startsWith(prefix) && it.endsWith(".json") }
                 ?.removePrefix(prefix)?.removeSuffix(".json")
@@ -466,7 +467,7 @@ class DataCache @Inject constructor(
             cacheDir.list().orEmpty().mapNotNull { termOf(it, "courses_") } +
                 userDataDir.list().orEmpty().mapNotNull { termOf(it, "manual_courses_") }
         }
-        return semesters.toSortedSet().flatMap { loadCourses(it) }
+        return semesters.toSortedSet().associateWith { loadCourses(it) }
     }
 
     // --- Ignored Assignments (set of assignmentIds) ---
