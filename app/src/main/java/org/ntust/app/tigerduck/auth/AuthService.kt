@@ -143,6 +143,11 @@ class AuthService @Inject constructor(
             credentials.ntustPassword = password
         },
         latch = storedPasswordLatch,
+        // The store-review account signs in without a server — see DemoAccount.
+        demoSignIn = { studentId, password ->
+            demoAccount.matches(studentId, password).also { matches -> if (matches) demoAccount.enter() }
+        },
+        signInToLibrary = { studentId, password -> signInToLibrary(studentId, password) },
     )
 
     /**
@@ -172,31 +177,23 @@ class AuthService @Inject constructor(
         try {
             val normalizedId = studentId.trim().uppercase()
 
-            // The store-review account signs in without a server — see
-            // DemoAccount. Checked before anything goes out, so these
-            // credentials never reach NTUST.
-            if (demoAccount.matches(normalizedId, password)) {
-                demoAccount.enter()
-                typedSignIn.storeAccount(normalizedId, password)
-                importedClassTables.accountDidSignIn(normalizedId)
-                _authState.value = true
-                _isLoggingIn.value = false
-                return@withLock true
-            }
-
             // Registered before authState flips: an automatic sign-in it sets off, such as Home's
             // pull, waits for this one instead of logging in too. The generation is read before
             // the credentials are stored, so a sign-out from here on keeps the v3 login below from
             // storing a pair. The credentials are stored, and the stored-password latch lifted,
-            // the moment the school takes them; see TypedAccountSignIn.
-            val success = typedSignIn.signIn(normalizedId, password) { signIn, sameStudent ->
-                // Before the class table can show: another account must not inherit what the last
-                // one imported, whether imported while signed out or left by a wipe that never ran.
-                importedClassTables.accountDidSignIn(normalizedId)
-                _authState.value = true
-                // After the store: cancelled here, the sign-in still leaves the password the
-                // school took, with no refusal of the old one held against it.
-                signInToLibrary(normalizedId, password)
+            // the moment the school takes them, and the library signs in before authState flips;
+            // see TypedAccountSignIn.
+            val outcome = typedSignIn.signIn(
+                normalizedId,
+                password,
+                showSignedIn = {
+                    // Before the class table can show: another account must not inherit what the
+                    // last one imported, whether imported while signed out or left by a wipe that
+                    // never ran.
+                    importedClassTables.accountDidSignIn(normalizedId)
+                    _authState.value = true
+                },
+            ) { signIn, sameStudent ->
                 // Best-effort: v3 JWT login failures must not block the SSO
                 // session. The automatic sign-in tries again later; this one
                 // never waits for its pause.
@@ -242,7 +239,7 @@ class AuthService @Inject constructor(
                 }
             }
 
-            if (success) {
+            if (outcome == TypedAccountSignIn.Outcome.SIGNED_IN) {
                 runCatching { pushRegistration.onSignedIn() }
                     .onFailure { e -> if (e is CancellationException) throw e }
                 // Same catch-up as the automatic sign-in, for a fresh SSO login.
@@ -250,7 +247,7 @@ class AuthService @Inject constructor(
             }
 
             _isLoggingIn.value = false
-            success
+            outcome != TypedAccountSignIn.Outcome.NOT_SIGNED_IN
         } catch (e: CancellationException) {
             _isLoggingIn.value = false
             throw e

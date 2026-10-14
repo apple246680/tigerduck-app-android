@@ -35,7 +35,8 @@ import org.robolectric.annotation.Config
 /**
  * The sign-in with a password the user typed, against hand-made school pages, while the school's
  * refusal of the stored password is latched: the latch lifts only together with the store of the
- * new password, whenever the sign-in is cancelled.
+ * new password, whenever the sign-in is cancelled, and the library signs in before the account
+ * shows as signed in.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
@@ -53,6 +54,15 @@ class TypedAccountSignInTest {
 
     /** Whether the refusal still held when the new password was stored, once one was. */
     private var latchedAtStore: Boolean? = null
+
+    /** Every school request, as its method. */
+    private val requests = mutableListOf<String>()
+
+    /** The steps of the sign-in, in order. */
+    private val steps = mutableListOf<String>()
+
+    /** The library's sign-in. */
+    private var library: suspend () -> Unit = {}
 
     @Before
     fun setUp() {
@@ -73,15 +83,30 @@ class TypedAccountSignInTest {
         writeAccount = { studentId, password ->
             latchedAtStore = latch.rejection.value != null
             stored = studentId to password
+            steps += "store"
         },
         latch = latch,
+        demoSignIn = { _, password -> password == DEMO_PASSWORD },
+        signInToLibrary = { _, _ ->
+            steps += "library"
+            library()
+        },
     )
+
+    private suspend fun signIn(password: String = NEW_PASSWORD) = typedSignIn().signIn(
+        STUDENT,
+        password,
+        showSignedIn = { steps += "shown" },
+    ) { _, _ ->
+        steps += "rest"
+        SignInAttempt.SIGNED_IN
+    }
 
     @Test
     fun `the refusal holds until the new password is stored, and lifts with it`() = runTest {
-        val signedIn = typedSignIn().signIn(STUDENT, NEW_PASSWORD) { _, _ -> SignInAttempt.SIGNED_IN }
+        val outcome = signIn()
 
-        assertTrue(signedIn)
+        assertEquals(TypedAccountSignIn.Outcome.SIGNED_IN, outcome)
         assertEquals("nothing lifted it before the new password was stored", true, latchedAtStore)
         assertEquals(STUDENT to NEW_PASSWORD, stored)
         assertFalse(latch.isRejected)
@@ -90,16 +115,15 @@ class TypedAccountSignInTest {
     @Test
     fun `a sign-in cancelled after the school took the password keeps it, with no refusal held`() = runTest {
         val libraryStarted = CompletableDeferred<Unit>()
-        val signIn = launch {
-            typedSignIn().signIn(STUDENT, NEW_PASSWORD) { _, _ ->
-                // The library's sign-in, which the user leaves before it answers.
-                libraryStarted.complete(Unit)
-                awaitCancellation()
-            }
+        // The library's sign-in, which the user leaves before it answers.
+        library = {
+            libraryStarted.complete(Unit)
+            awaitCancellation()
         }
+        val job = launch { signIn() }
         libraryStarted.await()
 
-        signIn.cancelAndJoin()
+        job.cancelAndJoin()
 
         assertEquals(STUDENT to NEW_PASSWORD, stored)
         assertFalse(latch.isRejected)
@@ -107,12 +131,12 @@ class TypedAccountSignInTest {
 
     @Test
     fun `a sign-in cancelled while the school answers keeps the old password and its refusal`() = runTest {
-        lateinit var signIn: Job
+        lateinit var job: Job
         // The user leaves while the school is still answering.
-        onPost = { signIn.cancel() }
-        signIn = launch { typedSignIn().signIn(STUDENT, NEW_PASSWORD) { _, _ -> SignInAttempt.SIGNED_IN } }
+        onPost = { job.cancel() }
+        job = launch { signIn() }
 
-        signIn.join()
+        job.join()
 
         assertEquals(STUDENT to OLD_PASSWORD, stored)
         assertNotNull(latch.rejection.value)
@@ -123,16 +147,34 @@ class TypedAccountSignInTest {
     fun `a sign-in the school refuses stores nothing and keeps the refusal`() = runTest {
         accepts = false
 
-        val failure = runCatching {
-            typedSignIn().signIn(STUDENT, NEW_PASSWORD) { _, _ -> SignInAttempt.SIGNED_IN }
-        }.exceptionOrNull()
+        val failure = runCatching { signIn() }.exceptionOrNull()
 
         assertTrue("got $failure", failure is SsoLoginError.LoginFailed)
         assertEquals(STUDENT to OLD_PASSWORD, stored)
         assertTrue(latch.isRejected)
     }
 
+    @Test
+    fun `the library signs in after the store, before the account shows as signed in`() = runTest {
+        signIn()
+
+        // The watch is sent the library credentials the moment the account shows as signed in.
+        assertEquals(listOf("store", "library", "shown", "rest"), steps)
+    }
+
+    @Test
+    fun `the demo account signs in on the device, and its store lifts the refusal too`() = runTest {
+        val outcome = signIn(password = DEMO_PASSWORD)
+
+        assertEquals(TypedAccountSignIn.Outcome.DEMO, outcome)
+        assertEquals(emptyList<String>(), requests)
+        assertEquals(STUDENT to DEMO_PASSWORD, stored)
+        assertFalse(latch.isRejected)
+        assertEquals(listOf("store", "shown"), steps)
+    }
+
     private fun answer(request: Request): Response {
+        requests += request.method
         val (url, html) = if (request.method == "POST") {
             onPost()
             if (accepts) SERVICE to SERVICE_PAGE else LOGIN_URL to LOGIN_PAGE_REFUSED
@@ -154,6 +196,7 @@ class TypedAccountSignInTest {
         const val STUDENT = "B00000000"
         const val OLD_PASSWORD = "old-password"
         const val NEW_PASSWORD = "new-password"
+        const val DEMO_PASSWORD = "made-up-demo-password"
         const val GENERATION = 7
         const val SERVICE = "https://courseselection.ntust.edu.tw/"
         const val LOGIN_URL = "https://ssoam2.ntust.edu.tw/account/login?ReturnUrl=%2Fconnect"
