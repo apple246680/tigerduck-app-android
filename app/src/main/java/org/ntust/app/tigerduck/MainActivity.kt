@@ -547,7 +547,7 @@ private fun UpdateRequiredHost() {
         text = { Text(stringResource(R.string.update_required_message)) },
         confirmButton = {
             TextButton(onClick = {
-                uriHandler.openUri(TIGERDUCK_WEBSITE_URL)
+                uriHandler.openUri(AppUrls.WEBSITE)
                 acknowledged = true
             }) {
                 Text(stringResource(R.string.update_required_action))
@@ -560,8 +560,6 @@ private fun UpdateRequiredHost() {
         },
     )
 }
-
-private const val TIGERDUCK_WEBSITE_URL = "https://tigerduck.app"
 
 /** Page ids of a pending What's New sheet, kept across a config-change recreation. */
 private const val KEY_WHATS_NEW_PAGE_IDS = "whatsNewPageIds"

@@ -25,6 +25,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import org.ntust.app.tigerduck.AppUrls
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.ui.component.ContentCard
 import org.ntust.app.tigerduck.ui.component.NoTopBarInsets
@@ -43,8 +44,24 @@ fun AboutOthersScreen(
     onNavigateToLicenses: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
+    AboutOthersContent(
+        browserPreference = viewModel.appState.browserPreference,
+        onBack = onBack,
+        onNavigateToSourceCode = onNavigateToSourceCode,
+        onNavigateToLicenses = onNavigateToLicenses,
+    )
+}
+
+/** [AboutOthersScreen] without its view model, so a test can tap the links. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun AboutOthersContent(
+    browserPreference: String,
+    onBack: () -> Unit,
+    onNavigateToSourceCode: () -> Unit,
+    onNavigateToLicenses: () -> Unit,
+) {
     val context = LocalContext.current
-    val browserPreference = viewModel.appState.browserPreference
 
     Scaffold(
         topBar = {
@@ -76,7 +93,7 @@ fun AboutOthersScreen(
                         SettingsLinkRow(stringResource(R.string.settings_feedback_bug_report)) {
                             openUrl(
                                 context,
-                                "https://github.com/tigerduck-app/tigerduck-app-android/issues",
+                                AppUrls.ISSUES,
                                 browserPreference,
                             )
                         }
@@ -84,7 +101,7 @@ fun AboutOthersScreen(
                         SettingsLinkRow(stringResource(R.string.settings_privacy_policy)) {
                             openUrl(
                                 context,
-                                "https://app.ntust.org/tigerduck/privacy",
+                                AppUrls.PRIVACY_POLICY,
                                 browserPreference,
                             )
                         }
@@ -92,7 +109,7 @@ fun AboutOthersScreen(
                         SettingsLinkRow(stringResource(R.string.settings_delete_account)) {
                             openUrl(
                                 context,
-                                "https://tigerduck.app/delete-account",
+                                AppUrls.DELETE_ACCOUNT,
                                 browserPreference,
                             )
                         }

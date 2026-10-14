@@ -52,6 +52,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import org.ntust.app.tigerduck.BuildConfig
+import org.ntust.app.tigerduck.AppUrls
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
@@ -573,7 +574,7 @@ fun SettingsScreen(
                         // into their browser mid-hop.
                         HorizontalDivider()
                         SettingsLinkRow(stringResource(R.string.settings_check_server_status)) {
-                            openUrl(context, "https://status.tigerduck.app/", browserPreference)
+                            openUrl(context, AppUrls.SERVER_STATUS, browserPreference)
                         }
                         // What's New — only when pages or a summary are
                         // registered for the resolved locale. During early
@@ -588,7 +589,7 @@ fun SettingsScreen(
                         }
                         HorizontalDivider()
                         SettingsLinkRow(stringResource(R.string.settings_official_website)) {
-                            openUrl(context, "https://tigerduck.app/", browserPreference)
+                            openUrl(context, AppUrls.WEBSITE, browserPreference)
                         }
                         HorizontalDivider()
                         SettingsLinkRow(stringResource(R.string.settings_about_others)) {

@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import org.ntust.app.tigerduck.BuildConfig
+import org.ntust.app.tigerduck.AppUrls
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.push.PushDiagnostic
 import org.ntust.app.tigerduck.ui.component.ContentCard
@@ -356,21 +357,21 @@ fun CloudSyncSettingsScreen(
                         LinkRow(
                             label = stringResource(R.string.settings_learn_more_backend),
                             onClick = {
-                                val intent = Intent(Intent.ACTION_VIEW, "https://tigerduck.app/tigersync".toUri())
+                                val intent = Intent(Intent.ACTION_VIEW, AppUrls.LEARN_MORE_TIGERSYNC.toUri())
                                 context.startActivity(intent)
                             },
                         )
                         LinkRow(
                             label = stringResource(R.string.onboarding_privacy_policy_label),
                             onClick = {
-                                val intent = Intent(Intent.ACTION_VIEW, "https://tigerduck.app/privacy-policy".toUri())
+                                val intent = Intent(Intent.ACTION_VIEW, AppUrls.PRIVACY_POLICY.toUri())
                                 context.startActivity(intent)
                             },
                         )
                         LinkRow(
                             label = stringResource(R.string.onboarding_privacy_delete_account_label),
                             onClick = {
-                                val intent = Intent(Intent.ACTION_VIEW, "https://tigerduck.app/delete-account".toUri())
+                                val intent = Intent(Intent.ACTION_VIEW, AppUrls.DELETE_ACCOUNT.toUri())
                                 context.startActivity(intent)
                             },
                         )
