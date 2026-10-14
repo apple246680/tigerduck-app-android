@@ -210,6 +210,9 @@ fun SyncStatusDot(
  * vocabulary changed.
  *
  * Deliberately not account-gated: this dot reports something the page owns.
+ *
+ * @param syncedAtMs as on the overload above: when the page's data was
+ *   fetched, or null to leave the "Last synced" row out.
  */
 @Composable
 fun SyncStatusDot(
@@ -219,11 +222,13 @@ fun SyncStatusDot(
     text: String,
     isLoading: Boolean,
     modifier: Modifier = Modifier,
+    syncedAtMs: Long? = null,
 ) {
     SyncStatusDotBody(
         sources = listOf(DotSource(status = status, icon = icon, name = label, text = text)),
         isLoading = isLoading,
         modifier = modifier,
+        syncedAtMs = syncedAtMs,
     )
 }
 

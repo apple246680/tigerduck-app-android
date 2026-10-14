@@ -195,7 +195,12 @@ fun buildCourseColorAssignments(courses: List<Course>): Map<String, Color> {
     return map
 }
 
-private fun pickFreeCourseColor(courseNo: String, taken: Set<Color>): Color {
+/**
+ * The colour [courseNo] is given when it has no pick of its own: its hash's
+ * palette slot, probing on past every colour in [taken], then a colour derived
+ * from the course number once the palette is used up.
+ */
+internal fun pickFreeCourseColor(courseNo: String, taken: Set<Color>): Color {
     val base = courseHashIndex(courseNo)
     var idx = base
     var probes = 0

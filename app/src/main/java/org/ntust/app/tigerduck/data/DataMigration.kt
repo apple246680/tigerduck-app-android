@@ -98,6 +98,7 @@ class DataMigration @Inject constructor(
                 1 -> migrate1to2()
                 2 -> migrate2to3()
                 3 -> migrate3to4()
+                4 -> migrate4to5()
             }
             current++
             prefs.dataSchemaVersion = current
@@ -168,10 +169,16 @@ class DataMigration @Inject constructor(
      * as synced in every category, so switching one back on still asks the
      * question rather than let the first sync take the server's data over
      * changes made here while it was off. Signed out, a check an older build
-     * left pending would wait for whoever signs in next, so it is dropped.
+     * left pending would wait for whoever signs in next, so it is dropped;
+     * signed in, its assignments check is (see [settleReenableCheck]).
      */
     private fun migrate3to4() {
         settleReenableCheck(prefs, signedIn = credentials.ntustStudentId != null)
+    }
+
+    /** See [dropStaleCoursesCheck]. */
+    private fun migrate4to5() {
+        dropStaleCoursesCheck(prefs)
     }
 
     companion object {
@@ -221,12 +228,36 @@ class DataMigration @Inject constructor(
         }
 
         /**
+         * Drops a courses re-enable check an older build left pending. Those
+         * builds went on reconciling the course list while it waited, so the
+         * server's courses were applied here long ago and there is no copy
+         * of this phone's left for Use Local to keep. This build holds the
+         * course list while the check waits
+         * (`CourseSyncReconciler.syncsCourseList`), which would freeze it
+         * until the user next opened TigerSync.
+         */
+        internal fun dropStaleCoursesCheck(prefs: AppPreferences) {
+            val pending = prefs.pendingConflictCategories
+            if ("courses" in pending) prefs.pendingConflictCategories = pending - "courses"
+        }
+
+        /**
          * [migrate3to4]'s work, here so a test can run it: this class needs a
-         * [CredentialManager], which needs the Android Keystore.
+         * [CredentialManager], which needs the Android Keystore. An
+         * assignments check left pending by a build before it (v2.3.1) is
+         * dropped too: those builds went on applying the server's marks while
+         * it waited, so nothing of this phone's is left to ask about, and kept
+         * it would hold the marks, and the marks still waiting to go up, until
+         * TigerSync was next opened. The trade-off: on the rare install where
+         * no v2.3.1 sync succeeded between marks changed with sync off and
+         * this update, the first sync after it takes the server's value for
+         * an assignment only one side has marked, where the check would have
+         * asked.
          */
         internal fun settleReenableCheck(prefs: AppPreferences, signedIn: Boolean) {
             if (signedIn) {
                 prefs.syncedCategories = REENABLE_CATEGORIES
+                prefs.pendingConflictCategories = prefs.pendingConflictCategories - "assignments"
             } else {
                 prefs.pendingConflictCategories = emptySet()
             }
@@ -250,7 +281,7 @@ class DataMigration @Inject constructor(
         private const val COURSE_NO_TOKEN = "\"courseNo\":"
 
         /** Highest schema this build writes. Bump when adding a new step. */
-        const val CURRENT_SCHEMA = 4
+        const val CURRENT_SCHEMA = 5
 
         /**
          * Lowest schema this build can migrate forward from. Anything below

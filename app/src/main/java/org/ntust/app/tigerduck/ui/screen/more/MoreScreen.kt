@@ -49,7 +49,7 @@ import org.ntust.app.tigerduck.ui.navigation.toRoute
 private val implementedFeatures = setOf(
     AppFeature.HOME, AppFeature.CLASS_TABLE, AppFeature.CALENDAR,
     AppFeature.ANNOUNCEMENTS, AppFeature.SCHOOL_MAIL,
-    AppFeature.LIBRARY, AppFeature.SCORE,
+    AppFeature.LIBRARY, AppFeature.SCORE, AppFeature.EMPTY_CLASSROOM,
     AppFeature.MORE, AppFeature.SETTINGS
 )
 

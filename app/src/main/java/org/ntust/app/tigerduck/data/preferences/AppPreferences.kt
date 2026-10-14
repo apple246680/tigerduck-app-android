@@ -194,6 +194,20 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
         get() = prefs.getStringSet("syncedCategories", emptySet()) ?: emptySet()
         set(value) = prefs.edit().putStringSet("syncedCategories", value).apply()
 
+    /**
+     * Whether a full sync has taken the signed-in account's assignment marks
+     * on this phone, or sent them up as its first sync, so that from now on a
+     * server holding no marks is the truth — see
+     * `AssignmentOverrideReconciler.isFirstUpload`. False on an install that
+     * predates it, which therefore runs that first sync once more. Cleared at
+     * sign-out by [clearSyncStamps]. Turning sync off keeps it: turning it
+     * back on marks the category for the re-enable check, and syncs leave the
+     * marks alone until that is settled.
+     */
+    var assignmentMarksSyncedOnce: Boolean
+        get() = prefs.getBoolean("assignmentMarksSyncedOnce", false)
+        set(value) = prefs.edit().putBoolean("assignmentMarksSyncedOnce", value).apply()
+
     var hasCompletedOnboarding: Boolean
         get() = prefs.getBoolean("hasCompletedOnboarding", false)
         set(value) = prefs.edit().putBoolean("hasCompletedOnboarding", value).apply()
@@ -614,10 +628,10 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
     }
 
     /**
-     * On sign-out, this stamp, the background worker's two below and
-     * [syncedCategories]: what they record belonged to the account that
-     * left, and the next account's worker must not wait out the old one's
-     * hour before its first sync.
+     * On sign-out, this stamp, the background worker's two below,
+     * [syncedCategories] and [assignmentMarksSyncedOnce]: what they record
+     * belonged to the account that left, and the next account's worker must
+     * not wait out the old one's hour before its first sync.
      */
     fun clearSyncStamps() {
         prefs.edit()
@@ -625,6 +639,7 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
             .remove("backgroundOverridesSyncedAtMs")
             .remove("backgroundCoursesSyncedAtMs")
             .remove("syncedCategories")
+            .remove("assignmentMarksSyncedOnce")
             .apply()
         _schoolDataSyncedAtMs.value = 0L
     }
@@ -738,6 +753,20 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
             val editor = prefs.edit()
             if (value == null) editor.remove("classTableSelectedSemester")
             else editor.putString("classTableSelectedSemester", value)
+            editor.apply()
+        }
+
+    /**
+     * The building the empty-classroom finder last showed at the user's pick, by the booking
+     * site's code (e.g. "TR"). Null until the first pick; cleared at sign-out, so the next
+     * account opens on its own building.
+     */
+    var emptyClassroomBuilding: String?
+        get() = prefs.getString("emptyClassroomBuilding", null)
+        set(value) {
+            val editor = prefs.edit()
+            if (value == null) editor.remove("emptyClassroomBuilding")
+            else editor.putString("emptyClassroomBuilding", value)
             editor.apply()
         }
 
