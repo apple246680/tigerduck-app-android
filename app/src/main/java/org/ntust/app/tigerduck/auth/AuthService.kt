@@ -163,6 +163,7 @@ class AuthService @Inject constructor(
                 demoAccount.enter()
                 credentials.ntustStudentId = normalizedId
                 credentials.ntustPassword = password
+                storedPasswordLatch.clear()
                 importedClassTables.accountDidSignIn(normalizedId)
                 _authState.value = true
                 _isLoggingIn.value = false
@@ -183,6 +184,9 @@ class AuthService @Inject constructor(
                     val sameStudent = credentials.ntustStudentId == normalizedId
                     credentials.ntustStudentId = normalizedId
                     credentials.ntustPassword = password
+                    // The school took this password a moment ago. A refusal an
+                    // automatic sign-in latched meanwhile was of the one before.
+                    storedPasswordLatch.clear()
                     // Before the class table can show: another account must not inherit what the last
                     // one imported, whether imported while signed out or left by a wipe that never ran.
                     importedClassTables.accountDidSignIn(normalizedId)
