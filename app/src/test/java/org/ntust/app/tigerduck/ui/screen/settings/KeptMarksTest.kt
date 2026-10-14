@@ -3,6 +3,8 @@ package org.ntust.app.tigerduck.ui.screen.settings
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.ntust.app.tigerduck.push.BackendSyncResult
+import org.ntust.app.tigerduck.ui.screen.home.AssignmentOverrideReconciler
 import org.ntust.app.tigerduck.ui.screen.home.AssignmentOverrideReconciler.STATUS_COMPLETED
 import org.ntust.app.tigerduck.ui.screen.home.AssignmentOverrideReconciler.STATUS_IGNORED
 import org.ntust.app.tigerduck.ui.screen.home.AssignmentOverrideReconciler.STATUS_NONE
@@ -84,5 +86,37 @@ class KeptMarksTest {
         // Lost otherwise: once the hold goes, the next sync takes the server,
         // which never got them, as the truth.
         assertEquals(listOf("1" to STATUS_IGNORED, "2" to STATUS_NONE), kept)
+    }
+
+    private fun snapshot(ignored: Set<String>) = BackendSyncResult(
+        assignments = emptyList(),
+        ignoredIds = ignored,
+        completedIds = emptySet(),
+        courseOverrides = emptyList(),
+        serverCourseNos = emptySet(),
+        currentRevision = 1,
+    )
+
+    @Test
+    fun `with no network Use Local still clears what this phone unmarked, from the check's reading`() = runTest {
+        // Unignored here while sync was off; the server still has it ignored.
+        val checked = snapshot(ignored = setOf("9"))
+
+        val server = serverForUseLocal(fetch = { throw java.io.IOException("offline") }, checked = checked)
+        val marks = AssignmentOverrideReconciler.keepLocal(
+            localIgnored = emptySet(),
+            localCompleted = emptySet(),
+            serverIgnored = server?.ignoredIds.orEmpty(),
+            serverCompleted = server?.completedIds.orEmpty(),
+        )
+
+        assertEquals(mapOf("9" to STATUS_NONE), marks)
+    }
+
+    @Test
+    fun `a fresh reading is preferred to the check's`() = runTest {
+        val fresh = snapshot(ignored = setOf("1"))
+
+        assertEquals(fresh, serverForUseLocal(fetch = { fresh }, checked = snapshot(ignored = setOf("9"))))
     }
 }

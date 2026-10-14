@@ -2,6 +2,7 @@ package org.ntust.app.tigerduck.ui.screen.settings
 
 import android.util.Log
 import kotlinx.coroutines.CancellationException
+import org.ntust.app.tigerduck.push.BackendSyncResult
 import org.ntust.app.tigerduck.util.logSummary
 
 /**
@@ -39,4 +40,23 @@ internal suspend fun sendKeptMarks(
             keep(id, status)
         }
     }
+}
+
+/**
+ * The server's view Use Local decides this phone's marks and course ignores
+ * against: read again now, or, when that read fails, the one the re-enable
+ * check compared a moment ago ([checked]). With neither, an assignment
+ * unmarked here but still marked on the server would get no clear, and once
+ * the hold ended the next sync would bring the server's mark back.
+ */
+internal suspend fun serverForUseLocal(
+    fetch: suspend () -> BackendSyncResult,
+    checked: BackendSyncResult?,
+): BackendSyncResult? = try {
+    fetch()
+} catch (e: CancellationException) {
+    throw e
+} catch (e: Exception) {
+    Log.w("SyncReenable", "[reenable] keep-local read failed, using the check's: ${e.logSummary()}")
+    checked
 }

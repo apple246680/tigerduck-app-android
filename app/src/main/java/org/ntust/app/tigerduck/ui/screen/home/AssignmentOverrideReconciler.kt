@@ -195,8 +195,10 @@ object AssignmentOverrideReconciler {
      * The status to send for each id when, with sync back on, the user keeps
      * this device's overrides: this device's own, then [STATUS_NONE] for an
      * id only the server marks, which the next full sync would otherwise take
-     * as another device's mark and bring back. With empty server sets, as
-     * when they could not be fetched, only this device's overrides go.
+     * as another device's mark and bring back. With empty server sets only
+     * this device's overrides go, so Use Local falls back to the re-enable
+     * check's snapshot when it cannot read the server again (see
+     * `serverForUseLocal`).
      */
     fun keepLocal(
         localIgnored: Set<String>,

@@ -39,6 +39,7 @@ import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.demo.DemoAccount
 import org.ntust.app.tigerduck.network.CourseService
 import org.ntust.app.tigerduck.network.SemesterCatalog
+import org.ntust.app.tigerduck.push.BackendSyncResult
 import org.ntust.app.tigerduck.push.PushApiClient
 import org.ntust.app.tigerduck.push.PushDiagnostic
 import org.ntust.app.tigerduck.push.PushIdentity
@@ -189,6 +190,8 @@ class SettingsViewModel @Inject constructor(
     data class ReenableConflict(
         val categories: List<String>,
         val description: String,
+        /** The snapshot the check compared, for Use Local when it cannot read the server again. */
+        val checked: BackendSyncResult? = null,
     )
 
     private val _reenableConflict = MutableStateFlow<ReenableConflict?>(null)
@@ -317,6 +320,7 @@ class SettingsViewModel @Inject constructor(
                     _reenableConflict.value = ReenableConflict(
                         categories = pending.toList(),
                         description = diffs.joinToString("\n"),
+                        checked = result,
                     )
                 } else {
                     // Only what this check compared: one started later may
@@ -405,7 +409,7 @@ class SettingsViewModel @Inject constructor(
                 }
             }
             if ("assignments" in conflict.categories) {
-                val server = runCatching { syncApiClient.fetchFullSync() }.getOrNull()
+                val server = serverForUseLocal(syncApiClient::fetchFullSync, conflict.checked)
                 val serverIgnored = server?.ignoredIds.orEmpty()
                 val serverCompleted = server?.completedIds.orEmpty()
                 // Syncs leave the marks alone while "assignments" is pending,
