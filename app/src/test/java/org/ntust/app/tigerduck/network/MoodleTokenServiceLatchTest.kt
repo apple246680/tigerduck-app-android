@@ -51,6 +51,9 @@ class MoodleTokenServiceLatchTest {
     /** What the launch lands on: the sign-in form, unless a test swaps it. */
     private var landing = LOGIN_PAGE
 
+    /** Runs as the launch arrives, before its answer. */
+    private var onLaunch: () -> Unit = {}
+
     private val school = OkHttpClient.Builder().addInterceptor { chain -> answer(chain.request()) }.build()
 
     private class Tokens : MoodleTokenCoordinator.Tokens {
@@ -145,6 +148,19 @@ class MoodleTokenServiceLatchTest {
     }
 
     @Test
+    fun `a refusal latched while a renewal is on its way to the form stops it before the post`() = runTest(UnconfinedTestDispatcher()) {
+        val (service, latch) = service()
+        // Another sign-in's refusal lands after the renewal's first look at the latch.
+        onLaunch = { latch.markRejected(latch.generation, STUDENT, PASSWORD, REASON) }
+
+        val failure = runCatching { service.renewToken(null) }.exceptionOrNull()
+
+        assertTrue("got $failure", failure is MoodleWebserviceError.SsoLoginRejected)
+        assertEquals(REASON, (failure as MoodleWebserviceError.SsoLoginRejected).reason)
+        assertEquals(emptyList<String>(), posts)
+    }
+
+    @Test
     fun `a sign-in page with no form to post to latches nothing, as no password went out`() = runTest(UnconfinedTestDispatcher()) {
         landing = """<html><body><div class="alert-danger">Too many attempts</div></body></html>"""
         val (service, latch) = service()
@@ -190,7 +206,10 @@ class MoodleTokenServiceLatchTest {
                 if (accepts) TOKEN_URL to tokenPage() else LOGIN_URL to LOGIN_PAGE_REFUSED
             }
             // The launch lands on the school's sign-in form, as for a device with no SSO session.
-            else -> LOGIN_URL to landing
+            else -> {
+                onLaunch()
+                LOGIN_URL to landing
+            }
         }
         return Response.Builder()
             // As if OkHttp had followed the redirects to it.

@@ -32,6 +32,18 @@ internal fun signsInAsStoredAccount(typed: String, stored: String?): Boolean =
     stored == null || typed.trim().uppercase() == stored.trim().uppercase()
 
 /**
+ * The "Sign in again" sheet's sign-in: [login] with what was typed, only as the [stored] account
+ * ([signsInAsStoredAccount]), whatever reaches here. Says whether it signed in; another student
+ * is never sent.
+ */
+internal suspend fun signInAsStoredAccount(
+    studentId: String,
+    password: String,
+    stored: String?,
+    login: suspend (studentId: String, password: String) -> Boolean,
+): Boolean = signsInAsStoredAccount(studentId, stored) && login(studentId, password)
+
+/**
  * Whether the TigerSync status asks the user to sign in again, in place of the latest error: sync
  * is on, the school account is signed in with credentials to read, the device has no TigerSync
  * session, and the last sign-in that had something to send failed, so none came. Not while
@@ -102,9 +114,9 @@ class NtustSignInViewModel @Inject constructor(
 
     fun signIn(studentId: String, password: String) {
         // The sheet fixes the student ID; this keeps it so whatever reaches here.
-        if (!signsInAsStoredAccount(studentId, authService.storedStudentId)) return
+        val stored = authService.storedStudentId
         viewModelScope.launch {
-            if (authService.login(studentId, password)) {
+            if (signInAsStoredAccount(studentId, password, stored, authService::login)) {
                 // As Settings does after a sign-in, in case it had stopped.
                 BackgroundSyncWorker.schedule(context)
                 appState.ntustSignInSheetRequested = false

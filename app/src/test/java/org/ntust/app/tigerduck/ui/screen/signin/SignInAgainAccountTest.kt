@@ -1,5 +1,7 @@
 package org.ntust.app.tigerduck.ui.screen.signin
 
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -23,5 +25,28 @@ class SignInAgainAccountTest {
     @Test
     fun `with no account stored, anyone may`() {
         assertTrue(signsInAsStoredAccount(typed = "B11300002", stored = null))
+    }
+
+    // The sheet's sign-in, as NtustSignInViewModel.signIn runs it
+
+    private val logins = mutableListOf<String>()
+    private val login: suspend (String, String) -> Boolean = { studentId, _ -> logins += studentId; true }
+
+    @Test
+    fun `the sheet signs in the stored account`() = runTest {
+        assertTrue(signInAsStoredAccount("b11300001", "password", stored = "B11300001", login = login))
+        assertEquals(listOf("b11300001"), logins)
+    }
+
+    @Test
+    fun `the sheet sends another student nowhere`() = runTest {
+        assertFalse(signInAsStoredAccount("B11300002", "password", stored = "B11300001", login = login))
+        assertEquals(emptyList<String>(), logins)
+    }
+
+    @Test
+    fun `the sheet signs in anyone with no account stored`() = runTest {
+        assertTrue(signInAsStoredAccount("B11300002", "password", stored = null, login = login))
+        assertEquals(listOf("B11300002"), logins)
     }
 }
