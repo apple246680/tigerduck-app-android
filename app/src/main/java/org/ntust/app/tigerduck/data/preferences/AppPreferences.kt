@@ -20,6 +20,7 @@ import org.ntust.app.tigerduck.data.model.HomeSection
 import org.ntust.app.tigerduck.data.preferences.AppPreferences.Companion.themeColorsDark
 import org.ntust.app.tigerduck.notification.AssignmentReminderOffset
 import org.ntust.app.tigerduck.ui.haptics.HapticScenario
+import org.ntust.app.tigerduck.ui.theme.VisualPreset
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -341,6 +342,16 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
             prefs.edit().putBoolean("showClassroomInClassTable", value).apply()
             _showClassroomInClassTable.value = value
         }
+
+    /**
+     * The interface style picked in Settings > Display. TigerDuck until the
+     * user picks another; a stored style this build does not know reads as
+     * TigerDuck too. Device-local, as on the iPhone: the settings the backend
+     * syncs do not carry it.
+     */
+    var visualPreset: VisualPreset
+        get() = VisualPreset.fromRawValue(prefs.getString(VISUAL_PRESET_KEY, null))
+        set(value) = prefs.edit().putString(VISUAL_PRESET_KEY, value.rawValue).apply()
 
     var rememberAnnouncementFilter: Boolean
         get() = prefs.getBoolean("rememberAnnouncementFilter", false)
@@ -810,6 +821,9 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
     }
 
     companion object {
+        /** The same key the iPhone app stores its interface style under. */
+        private const val VISUAL_PRESET_KEY = "visualPreset"
+
         const val WHATS_NEW_UNSET = -1
         const val WHATS_NEW_REPLAY = 0
 
