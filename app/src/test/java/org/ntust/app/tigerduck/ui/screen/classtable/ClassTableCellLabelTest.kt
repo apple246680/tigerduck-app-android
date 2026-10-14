@@ -81,4 +81,34 @@ class ClassTableCellLabelTest {
             .onNodeWithContentDescription("Wed period 3: Data Structures, TR-313. Has assignment")
             .assertExists()
     }
+
+    @Test
+    fun `a tile given no period reads as before, with the day's rooms`() {
+        // As the callers that predate periodId call it.
+        composeRule.setContent {
+            Box(Modifier.size(200.dp)) {
+                SoloCourseCell(
+                    course = course,
+                    roomHint = null,
+                    spanCount = 2,
+                    dayColWidth = 80.dp,
+                    cellHeight = 52.dp,
+                    x = 0.dp,
+                    y = 0.dp,
+                    weekday = 1,
+                    hasAssignment = false,
+                    assignmentsIgnored = false,
+                    onTap = {},
+                    onLongPress = {},
+                    onRename = {},
+                    onPickColor = {},
+                    onToggleIgnoreAssignments = null,
+                    onDelete = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Data Structures, TR-313, TR-412").assertExists()
+    }
 }
+

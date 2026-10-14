@@ -23,10 +23,15 @@ internal class ClassTableCellLabels(
     private val assignment: String,
     private val ignored: String,
 ) {
+    /**
+     * The label of [course]'s tile on [weekday] starting at [periodId]. Without a period, the
+     * label is the course, the day's rooms and the marks alone, as it read before tiles named
+     * their period.
+     */
     fun label(
         course: Course,
         weekday: Int,
-        periodId: String,
+        periodId: String?,
         hasAssignment: Boolean,
         assignmentsIgnored: Boolean,
         conflict: Boolean = false,
@@ -35,15 +40,19 @@ internal class ClassTableCellLabels(
             append(course.displayName)
             // The room of this slot, as tapping it shows, not every room the
             // course meets in that day.
-            val room = course.classroom(weekday, periodId)
+            val room = if (periodId != null) course.classroom(weekday, periodId) else course.classroom(weekday)
             if (room.isNotBlank()) append(", ").append(room)
             if (hasAssignment) append(". ").append(assignment)
             if (assignmentsIgnored) append(". ").append(ignored)
         }
-        val cell = template
-            .replaceIosArg(1, weekdays.getOrElse(weekday - 1) { weekday.toString() })
-            .replaceIosArg(2, periodId)
-            .replaceIosArg(3, spoken)
+        val cell = if (periodId == null) {
+            spoken
+        } else {
+            template
+                .replaceIosArg(1, weekdays.getOrElse(weekday - 1) { weekday.toString() })
+                .replaceIosArg(2, periodId)
+                .replaceIosArg(3, spoken)
+        }
         return if (conflict) "$conflictPrefix: $cell" else cell
     }
 }

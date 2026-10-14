@@ -57,8 +57,11 @@ internal fun SoloCourseCell(
     x: androidx.compose.ui.unit.Dp,
     y: androidx.compose.ui.unit.Dp,
     weekday: Int,
-    /** The period the tile starts at, for its TalkBack label. */
-    periodId: String,
+    /**
+     * The period the tile starts at, which its TalkBack label names. Null reads the label
+     * without it, as before tiles named their period.
+     */
+    periodId: String? = null,
     hasAssignment: Boolean,
     assignmentsIgnored: Boolean,
     onTap: () -> Unit,
