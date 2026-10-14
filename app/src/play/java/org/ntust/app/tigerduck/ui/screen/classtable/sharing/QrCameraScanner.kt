@@ -12,7 +12,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -30,16 +29,16 @@ import org.ntust.app.tigerduck.util.logSummary
 /**
  * Google's code scanner: Play Services draws the camera full screen and hands back one code, so
  * the app asks for no camera permission. It opens with the page, as the iOS page's camera does;
- * the scanner icon opens it again after a code was refused or the scanner was closed. Its module
- * comes with the app's install, as the manifest asks.
+ * the scanner icon opens it again after a code was refused, the scanner was closed, or it failed
+ * to open, which can pass, as while Play Services fetches its module. That module comes with the
+ * app's install, as the manifest asks.
  */
 object FlavorQrScannerCamera : QrScannerCamera {
     @Composable
     override fun Area(onScanned: (String) -> Boolean, onRead: (String) -> Unit, modifier: Modifier) {
         val context = LocalContext.current
         val latestOnRead by rememberUpdatedState(onRead)
-        var available by remember { mutableStateOf(true) }
-        val scan: () -> Unit = { startScan(context, onCode = { latestOnRead(it) }, onUnavailable = { available = false }) }
+        val scan: () -> Unit = { startScan(context) { latestOnRead(it) } }
         // Once a page: not again when a dark mode or font change rebuilds it.
         var opened by rememberSaveable { mutableStateOf(false) }
         LaunchedEffect(Unit) {
@@ -48,7 +47,6 @@ object FlavorQrScannerCamera : QrScannerCamera {
                 scan()
             }
         }
-        if (!available) return
         Box(modifier, contentAlignment = Alignment.Center) {
             FilledTonalIconButton(onClick = scan, modifier = Modifier.size(96.dp)) {
                 Icon(
@@ -60,17 +58,23 @@ object FlavorQrScannerCamera : QrScannerCamera {
         }
     }
 
-    private fun startScan(context: Context, onCode: (String) -> Unit, onUnavailable: () -> Unit) {
+    private fun startScan(context: Context, onCode: (String) -> Unit) {
         val options = GmsBarcodeScannerOptions.Builder()
             .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
             // A code of several terms is dense, and often on another phone's screen.
             .enableAutoZoom()
             .build()
-        GmsBarcodeScanning.getClient(context, options).startScan()
-            .addOnSuccessListener { barcode -> barcode.rawValue?.let(onCode) }
-            .addOnFailureListener { e ->
-                Log.w("QrScannerCamera", "Google's code scanner did not open: ${e.logSummary()}")
-                onUnavailable()
-            }
+        try {
+            GmsBarcodeScanning.getClient(context, options).startScan()
+                .addOnSuccessListener { barcode -> barcode.rawValue?.let(onCode) }
+                .addOnFailureListener { e -> logFailure(e) }
+        } catch (e: RuntimeException) {
+            // Without Play Services, or before ML Kit has started, the client throws at once.
+            logFailure(e)
+        }
+    }
+
+    private fun logFailure(e: Exception) {
+        Log.w("QrScannerCamera", "Google's code scanner did not open: ${e.logSummary()}")
     }
 }

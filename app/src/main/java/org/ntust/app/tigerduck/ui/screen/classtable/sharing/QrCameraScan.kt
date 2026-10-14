@@ -13,8 +13,8 @@ interface QrScannerCamera {
     /**
      * Fills the page's camera area. A scanner that goes on scanning hands each code it sees to
      * [onScanned], which says whether the import took it; one that stops after one code hands it
-     * to [onRead]. Leaves the area empty where no scanner can open, as the iOS page does without
-     * a camera; the photo button below it still works.
+     * to [onRead]. Without a camera the area stays empty, as the iOS page does; a scanner that
+     * failed to open keeps a way to try again. The photo button below it works either way.
      */
     @Composable
     fun Area(onScanned: (String) -> Boolean, onRead: (String) -> Unit, modifier: Modifier)
