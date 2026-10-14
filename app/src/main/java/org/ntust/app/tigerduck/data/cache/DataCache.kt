@@ -256,6 +256,32 @@ class DataCache @Inject constructor(
     }
 
     /**
+     * Stores what [transform] makes of the cached assignments, read and
+     * written under one hold of the cache's lock: a save landing between a
+     * separate load and save would be undone by that save. False, and
+     * nothing written, when the data was wiped since [generation].
+     *
+     * [transform] runs only after that check and under the same lock, so a
+     * sign-out cannot wipe the data while it runs.
+     */
+    suspend fun updateAssignments(
+        generation: Int? = null,
+        transform: (List<Assignment>) -> List<Assignment>,
+    ): Boolean {
+        val expected = generation ?: writeGeneration()
+        val type = object : TypeToken<List<Assignment>>() {}.type
+        return cacheMutex.withLock {
+            if (expected != userDataGeneration) return@withLock false
+            withContext(Dispatchers.IO) {
+                val file = File(cacheDir, "assignments.json")
+                val current = readJson<List<Assignment>>(file, type) ?: emptyList()
+                atomicWrite(file, gson.toJson(transform(current)))
+            }
+            true
+        }
+    }
+
+    /**
      * The cached assignments [OutstandingAssignments] keeps, counting those of
      * an ignored course as ignored: what reminders and the Live Update act on.
      */
@@ -676,16 +702,7 @@ class DataCache @Inject constructor(
         requireContent: String? = null,
     ): T? =
         cacheMutex.withLock {
-            withContext(Dispatchers.IO) {
-                try {
-                    val file = File(cacheDir, filename)
-                    if (!file.exists()) return@withContext null
-                    val text = file.readText()
-                    parseJsonIfContains(text, requireContent, gson, type)
-                } catch (_: Exception) {
-                    null
-                }
-            }
+            withContext(Dispatchers.IO) { readJson<T>(File(cacheDir, filename), type, requireContent) }
         }
 
     private suspend fun <T> saveToUserData(value: T, filename: String) {
@@ -745,17 +762,19 @@ class DataCache @Inject constructor(
         requireContent: String? = null,
     ): T? =
         userDataMutex.withLock {
-            withContext(Dispatchers.IO) {
-                try {
-                    val file = File(userDataDir, filename)
-                    if (!file.exists()) return@withContext null
-                    val text = file.readText()
-                    parseJsonIfContains(text, requireContent, gson, type)
-                } catch (_: Exception) {
-                    null
-                }
-            }
+            withContext(Dispatchers.IO) { readJson<T>(File(userDataDir, filename), type, requireContent) }
         }
+
+    // Takes no lock: the caller holds the one for the folder [file] is in.
+    private fun <T> readJson(
+        file: File,
+        type: java.lang.reflect.Type,
+        requireContent: String? = null,
+    ): T? = try {
+        if (file.exists()) parseJsonIfContains(file.readText(), requireContent, gson, type) else null
+    } catch (_: Exception) {
+        null
+    }
 
     internal companion object {
         private const val TAG = "DataCache"

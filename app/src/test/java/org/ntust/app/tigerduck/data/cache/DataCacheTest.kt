@@ -3,11 +3,20 @@ package org.ntust.app.tigerduck.data.cache
 import android.app.Application
 import java.io.File
 import java.util.Date
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -137,6 +146,64 @@ class DataCacheTest {
     }
 
     @Test
+    fun `updating the assignments stores what the change makes of them`() = runTest {
+        cache.saveAssignments(listOf(assignment("a"), assignment("b")))
+
+        val written = cache.updateAssignments { all ->
+            all.map { if (it.assignmentId == "a") it.copy(isCompleted = true) else it }
+        }
+
+        assertTrue(written)
+        assertEquals(listOf(true, false), cache.loadAssignments().map { it.isCompleted })
+    }
+
+    @Test
+    fun `a save made while the assignments update lands after it, not undone by it`() = runBlocking {
+        cache.saveAssignments(listOf(assignment("read")))
+        val changing = CountDownLatch(1)
+        val finish = CountDownLatch(1)
+        val update = async(Dispatchers.IO) {
+            cache.updateAssignments { all ->
+                changing.countDown()
+                assertTrue("never told to finish", finish.await(WAIT_SECONDS, TimeUnit.SECONDS))
+                all.map { it.copy(isCompleted = true) }
+            }
+        }
+        assertTrue("the update never reached its change", changing.await(WAIT_SECONDS, TimeUnit.SECONDS))
+
+        // Another writer, such as the worker, saving while the update holds what it read.
+        // Undispatched, it runs here until it first suspends: on the lock the update
+        // holds, or, were the read and the write locked apart, inside its own write.
+        val save = launch(start = CoroutineStart.UNDISPATCHED) {
+            cache.saveAssignments(listOf(assignment("saved")))
+        }
+        finish.countDown()
+        withTimeout(WAIT_SECONDS * 1000) {
+            update.await()
+            save.join()
+        }
+
+        assertEquals(listOf("saved"), cache.loadAssignments().map { it.assignmentId })
+    }
+
+    @Test
+    fun `an update begun before a sign-out writes nothing after it`() = runTest {
+        val generation = cache.userDataGeneration
+        cache.clearAllUserData()
+        cache.saveAssignments(listOf(assignment("next account")))
+
+        var changed = false
+        val written = cache.updateAssignments(generation) { all ->
+            changed = true
+            all.map { it.copy(isCompleted = true) }
+        }
+
+        assertFalse(written)
+        assertFalse("the change does not even run", changed)
+        assertEquals(listOf(false), cache.loadAssignments().map { it.isCompleted })
+    }
+
+    @Test
     fun `writing the ignored or marked-done set tells readers to look again`() = runTest {
         val before = cache.assignmentMarksVersion.value
 
@@ -144,5 +211,10 @@ class DataCacheTest {
         cache.replaceMarkedCompletedAssignments(setOf("b"))
 
         assertEquals(before + 2, cache.assignmentMarksVersion.value)
+    }
+
+    private companion object {
+        // Only a broken lock waits this long; it fails the test instead of hanging the suite.
+        const val WAIT_SECONDS = 5L
     }
 }

@@ -54,6 +54,7 @@ class AssignmentNotificationScheduler @Inject constructor(
             val assignmentId: String,
             val offset: AssignmentReminderOffset,
             val triggerTime: Long,
+            val dueAt: Long,
             val title: String,
             val courseName: String,
         )
@@ -70,6 +71,7 @@ class AssignmentNotificationScheduler @Inject constructor(
                         assignmentId = assignment.assignmentId,
                         offset = offset,
                         triggerTime = triggerTime,
+                        dueAt = assignment.dueDate.time,
                         title = assignment.title,
                         courseName = assignment.courseName,
                     )
@@ -117,6 +119,7 @@ class AssignmentNotificationScheduler @Inject constructor(
                 putExtra(AssignmentNotificationReceiver.EXTRA_COURSE_NAME, item.courseName)
                 putExtra(AssignmentNotificationReceiver.EXTRA_ASSIGNMENT_ID, item.assignmentId)
                 putExtra(AssignmentNotificationReceiver.EXTRA_OFFSET, item.offset.rawValue)
+                putExtra(AssignmentNotificationReceiver.EXTRA_DUE_AT, item.dueAt)
             }
 
             val pendingIntent = PendingIntent.getBroadcast(
@@ -170,26 +173,41 @@ class AssignmentNotificationScheduler @Inject constructor(
     }
 
     fun cancelAllTracked(): Unit = synchronized(schedulerLock) {
-        // Copy the returned set: SharedPreferences docs forbid mutating it,
-        // and concurrent BackgroundSyncWorker / BootReceiver callers iterating
-        // the same backing instance risk ConcurrentModificationException.
-        //
         // Legacy entries written before per-offset scheduling are bare
         // assignment IDs (no `::`). Hashing them recovers the original
         // request code, so a single cancel pass clears both new composite
         // keys and pre-upgrade single-token entries.
-        val keys = (trackerPrefs.getStringSet("scheduled_ids", emptySet()) ?: emptySet()).toHashSet()
-        for (key in keys) {
-            val intent = Intent(context, AssignmentNotificationReceiver::class.java)
-            val pendingIntent = PendingIntent.getBroadcast(
-                context,
-                key.hashCode() and 0x7FFFFFFF,
-                intent,
-                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
-            )
-            pendingIntent?.let { alarmManager.cancel(it) }
-        }
+        for (key in trackedKeys()) cancelAlarm(key)
         trackerPrefs.edit().remove("scheduled_ids").apply()
+    }
+
+    /**
+     * Cancels the reminders still armed for [assignmentId], legacy ones
+     * included, and leaves every other assignment's.
+     */
+    fun cancel(assignmentId: String): Unit = synchronized(schedulerLock) {
+        val keys = trackedKeys()
+        val ours = keys.filter { it == assignmentId || it.startsWith("$assignmentId::") }.toSet()
+        if (ours.isEmpty()) return
+        for (key in ours) cancelAlarm(key)
+        trackerPrefs.edit().putStringSet("scheduled_ids", keys - ours).apply()
+    }
+
+    // A copy: SharedPreferences docs forbid mutating the set it returns, and
+    // concurrent BackgroundSyncWorker / BootReceiver callers iterating the
+    // same backing instance risk ConcurrentModificationException.
+    private fun trackedKeys(): Set<String> =
+        (trackerPrefs.getStringSet("scheduled_ids", emptySet()) ?: emptySet()).toHashSet()
+
+    private fun cancelAlarm(key: String) {
+        val intent = Intent(context, AssignmentNotificationReceiver::class.java)
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            key.hashCode() and 0x7FFFFFFF,
+            intent,
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+        )
+        pendingIntent?.let { alarmManager.cancel(it) }
     }
 
     private fun trackerKey(assignmentId: String, offset: AssignmentReminderOffset): String =

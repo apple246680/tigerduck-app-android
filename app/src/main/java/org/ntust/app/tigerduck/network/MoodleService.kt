@@ -20,7 +20,7 @@ import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.network.model.MoodleAssignmentsCourse
 import org.ntust.app.tigerduck.network.model.MoodleAssignmentsEnvelope
 import org.ntust.app.tigerduck.network.model.MoodleEnrolledCourse
-import org.ntust.app.tigerduck.network.model.MoodleSubmission
+import org.ntust.app.tigerduck.network.model.MoodleSubmissionLastAttempt
 import org.ntust.app.tigerduck.network.model.MoodleSubmissionStatusEnvelope
 import org.ntust.app.tigerduck.util.SharedFetch
 import java.util.Date
@@ -39,7 +39,7 @@ class MoodleService @Inject constructor(
 ) {
     private val client: OkHttpClient get() = sessionManager.client
     private val gson = Gson()
-    private val webserviceUrl = "https://moodle2.ntust.edu.tw/webservice/rest/server.php"
+    private val webserviceUrl = WEBSERVICE_URL
 
     // The site-info user id, with the wstoken it was asked with. A token is
     // one account's, so a different token is asked again: kept on its own,
@@ -150,7 +150,7 @@ class MoodleService @Inject constructor(
      * Moodle. Mirrors the iOS pipeline (AppServiceBridge.swift):
      * `mod_assign_get_assignments` for the roster, then one
      * `mod_assign_get_submission_status` per assignment (fanned out in
-     * parallel) to derive `isCompleted = (submission.status == "submitted")`.
+     * parallel) to derive `isCompleted` — see [submissionState].
      *
      * The caller passes in the already-fetched Moodle enrolment list so we
      * don't duplicate `core_enrol_get_users_courses` when the ViewModel has
@@ -219,7 +219,7 @@ class MoodleService @Inject constructor(
                 if (a.nosubmissions != 0) return@mapNotNull null
                 val course = coursesById[courseId]
                 val (submitted, submittedAt) = submissionState(
-                    a.id, round.confirmed, round.statuses[a.id]?.lastattempt?.submission,
+                    a.id, round.confirmed, round.statuses[a.id]?.lastattempt,
                 )
                 Assignment(
                     assignmentId = a.id.toString(),
@@ -367,29 +367,9 @@ class MoodleService @Inject constructor(
     private fun callGetSubmissionStatus(
         token: String,
         assignId: Int,
-        userId: Int
-    ): MoodleSubmissionStatusEnvelope {
-        val url =
-            "$webserviceUrl?moodlewsrestformat=json&wsfunction=mod_assign_get_submission_status&wstoken=$token"
-        val form = FormBody.Builder()
-            .add("assignid", assignId.toString())
-            .add("userid", userId.toString())
-            .build()
-        val req = Request.Builder().url(url).post(form).build()
-        val body = client.newCall(req).execute().use { response ->
-            if (!response.isSuccessful) throw MoodleWebserviceError.HttpStatus(response.code)
-            response.body.string()
-        }
-        MoodleWebserviceError.fromJsonBody(body)?.let { throw it }
-        return try {
-            gson.fromJson(body, MoodleSubmissionStatusEnvelope::class.java)
-                ?: throw MoodleWebserviceError.MalformedResponse("submission status envelope null")
-        } catch (e: MoodleWebserviceError) {
-            throw e
-        } catch (e: Exception) {
-            throw MoodleWebserviceError.MalformedResponse("submission status decode failed: ${e.message}")
-        }
-    }
+        userId: Int,
+    ): MoodleSubmissionStatusEnvelope =
+        requestSubmissionStatus(client, submissionStatusUrl(token), assignId, userId)
 
     /**
      * Moodle course fullname is typically "1142 PE139B022 課程名稱 / English".
@@ -406,6 +386,12 @@ class MoodleService @Inject constructor(
 
     companion object {
         private val decodeGson = Gson()
+
+        private const val WEBSERVICE_URL = "https://moodle2.ntust.edu.tw/webservice/rest/server.php"
+
+        /** The `mod_assign_get_submission_status` endpoint under [token]. */
+        internal fun submissionStatusUrl(token: String): String =
+            "$WEBSERVICE_URL?moodlewsrestformat=json&wsfunction=mod_assign_get_submission_status&wstoken=$token"
 
         /**
          * The `mod_assign_get_assignments` form for [courseIds]. It asks only
@@ -484,16 +470,57 @@ class MoodleService @Inject constructor(
         /**
          * Whether assignment [id] is submitted, and when: as [confirmed]
          * recorded it when the cache already knew, else as Moodle's
-         * [submission] says — null when its status call failed.
+         * [lastAttempt] says — null when its status call failed. Submitted
+         * when the student's own submission or their team's is (issue #222).
          */
         internal fun submissionState(
             id: Int,
             confirmed: Map<Int, Date>,
-            submission: MoodleSubmission?,
+            lastAttempt: MoodleSubmissionLastAttempt?,
         ): Pair<Boolean, Date?> {
             if (id in confirmed) return true to confirmed[id]
-            val submittedAt = submission?.timemodified?.takeIf { it > 0 }?.let { Date(it * 1000) }
-            return (submission?.status == "submitted") to submittedAt
+            val handedIn = lastAttempt?.handedIn
+            val submittedAt = (handedIn ?: lastAttempt?.submission)?.timemodified
+                ?.takeIf { it > 0 }?.let { Date(it * 1000) }
+            return (handedIn != null) to submittedAt
+        }
+
+        /**
+         * `mod_assign_get_submission_status` for [assignId] at [url], through
+         * [client]: for [userId], or without one for the token's own account.
+         */
+        internal fun requestSubmissionStatus(
+            client: OkHttpClient,
+            url: String,
+            assignId: Int,
+            userId: Int?,
+        ): MoodleSubmissionStatusEnvelope {
+            val form = FormBody.Builder()
+                .add("assignid", assignId.toString())
+                .apply { if (userId != null) add("userid", userId.toString()) }
+                .build()
+            val req = Request.Builder().url(url).post(form).build()
+            val body = client.newCall(req).execute().use { response ->
+                if (!response.isSuccessful) throw MoodleWebserviceError.HttpStatus(response.code)
+                response.body.string()
+            }
+            return decodeSubmissionStatus(body)
+        }
+
+        /**
+         * The `mod_assign_get_submission_status` answer in [body], or a throw
+         * for a body that is not one: an error, a page from the NTUST edge.
+         */
+        internal fun decodeSubmissionStatus(body: String): MoodleSubmissionStatusEnvelope {
+            MoodleWebserviceError.fromJsonBody(body)?.let { throw it }
+            return try {
+                decodeGson.fromJson(body, MoodleSubmissionStatusEnvelope::class.java)
+                    ?: throw MoodleWebserviceError.MalformedResponse("submission status envelope null")
+            } catch (e: MoodleWebserviceError) {
+                throw e
+            } catch (e: Exception) {
+                throw MoodleWebserviceError.MalformedResponse("submission status decode failed: ${e.message}")
+            }
         }
 
         /**
