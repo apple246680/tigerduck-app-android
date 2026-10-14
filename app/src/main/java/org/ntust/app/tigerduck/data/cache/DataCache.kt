@@ -637,6 +637,22 @@ class DataCache @Inject constructor(
         return load<Map<String, Int>>(type, "moodle_course_ids.json") ?: emptyMap()
     }
 
+    // --- Assignments closed unsubmitted (assignment id -> when Moodle said so, epoch ms) ---
+    // Past their cutoff with nothing handed in, which cannot change, so a
+    // round does not ask Moodle about them again; see
+    // MoodleService.assignmentsToAsk. Moodle's own data, so in the cache.
+
+    suspend fun saveClosedAssignments(closed: Map<Int, Long>) =
+        save(closed.mapKeys { it.key.toString() }, "closed_assignments.json")
+
+    suspend fun loadClosedAssignments(): Map<Int, Long> {
+        val type = object : TypeToken<Map<String, Long?>>() {}.type
+        return load<Map<String, Long?>>(type, "closed_assignments.json")
+            .orEmpty()
+            .mapNotNull { (id, at) -> id.toIntOrNull()?.let { key -> at?.let { key to it } } }
+            .toMap()
+    }
+
     // --- Calendar Events ---
 
     suspend fun saveCalendarEvents(events: List<CalendarEvent>) =
@@ -691,6 +707,7 @@ class DataCache @Inject constructor(
                     "calendar_events.json",
                     "course_lookups.json",
                     "moodle_course_ids.json",
+                    "closed_assignments.json",
                 ).forEach { name ->
                     runCatching { File(cacheDir, name).delete() }
                 }

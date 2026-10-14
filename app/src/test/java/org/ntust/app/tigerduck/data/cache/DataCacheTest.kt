@@ -232,6 +232,15 @@ class DataCacheTest {
         assertEquals(setOf("b"), cache.loadMarkedCompletedAssignments())
     }
 
+    @Test
+    fun `the closed assignments round-trip and go with the account`() = runTest {
+        cache.saveClosedAssignments(mapOf(7 to 1_800_000_000_000L))
+
+        assertEquals(mapOf(7 to 1_800_000_000_000L), cache.loadClosedAssignments())
+        cache.clearAllUserData()
+        assertEquals(emptyMap<Int, Long>(), cache.loadClosedAssignments())
+    }
+
     private companion object {
         // Only a broken lock waits this long; it fails the test instead of hanging the suite.
         const val WAIT_SECONDS = 5L
