@@ -662,6 +662,7 @@
     <string name="refreshing_message">Oppdaterer… vent litt</string>
     <string name="school_mail_account_title">Skolepost</string>
     <string name="school_mail_add_attachment">Legg ved fil</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Vedlegg</string>
     <string name="school_mail_auth_failed_banner">Pålogging til Skolepost mislyktes. Logg på igjen.</string>
     <string name="school_mail_auth_failed_notification_text">Åpne TigerDuck for å logge på igjen.</string>

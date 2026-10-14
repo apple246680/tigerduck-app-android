@@ -662,6 +662,7 @@
     <string name="refreshing_message">రిఫ్రెష్ అవుతున్నది… ఒక్క క్షణం</string>
     <string name="school_mail_account_title">స్కూల్ ఇమెయిల్</string>
     <string name="school_mail_add_attachment">ఫైల్ జోడించు</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">జోడింపులు</string>
     <string name="school_mail_auth_failed_banner">స్కూల్ ఇమెయిల్ సైన్ ఇన్ విఫలమైంది. మళ్లీ సైన్ ఇన్ చేయండి.</string>
     <string name="school_mail_auth_failed_notification_text">మళ్లీ సైన్ ఇన్ చేయడానికి TigerDuckని తెరవండి.</string>

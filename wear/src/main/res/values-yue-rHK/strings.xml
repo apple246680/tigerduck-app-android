@@ -662,6 +662,7 @@
     <string name="refreshing_message">頁面正在刷新，別急～</string>
     <string name="school_mail_account_title">校園信箱</string>
     <string name="school_mail_add_attachment">加入附件</string>
+    <string name="school_mail_attachment_share">分享</string>
     <string name="school_mail_attachments">附件</string>
     <string name="school_mail_auth_failed_banner">校園信箱登入失敗，請重新登入。</string>
     <string name="school_mail_auth_failed_notification_text">請開啟 TigerDuck 重新登入。</string>

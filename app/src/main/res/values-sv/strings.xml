@@ -662,6 +662,7 @@
     <string name="refreshing_message">Uppdaterar… vänta lite</string>
     <string name="school_mail_account_title">Skolmejl</string>
     <string name="school_mail_add_attachment">Bifoga fil</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Bilagor</string>
     <string name="school_mail_auth_failed_banner">Inloggningen till Skolmejl misslyckades. Logga in igen.</string>
     <string name="school_mail_auth_failed_notification_text">Öppna TigerDuck för att logga in igen.</string>

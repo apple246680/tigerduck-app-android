@@ -662,6 +662,7 @@
     <string name="refreshing_message">Atualizando… aguarde</string>
     <string name="school_mail_account_title">E-mail universitário</string>
     <string name="school_mail_add_attachment">Anexar arquivo</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Anexos</string>
     <string name="school_mail_auth_failed_banner">Não foi possível entrar no e-mail universitário. Entre novamente.</string>
     <string name="school_mail_auth_failed_notification_text">Abra o TigerDuck para entrar novamente.</string>

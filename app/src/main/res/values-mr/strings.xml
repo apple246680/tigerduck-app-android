@@ -662,6 +662,7 @@
     <string name="refreshing_message">रिफ्रेश होत आहे… थांबा</string>
     <string name="school_mail_account_title">शाळा मेल</string>
     <string name="school_mail_add_attachment">फाइल अटॅच करा</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">अटॅचमेंट</string>
     <string name="school_mail_auth_failed_banner">शाळा मेल साइन-इन अयशस्वी झाले. पुन्हा साइन इन करा.</string>
     <string name="school_mail_auth_failed_notification_text">पुन्हा साइन इन करण्यासाठी TigerDuck उघडा.</string>

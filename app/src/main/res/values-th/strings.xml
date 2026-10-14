@@ -662,6 +662,7 @@
     <string name="refreshing_message">กำลังรีเฟรช… โปรดรอสักครู่</string>
     <string name="school_mail_account_title">อีเมลมหาวิทยาลัย</string>
     <string name="school_mail_add_attachment">แนบไฟล์</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">ไฟล์แนบ</string>
     <string name="school_mail_auth_failed_banner">เข้าสู่ระบบอีเมลมหาวิทยาลัยไม่สำเร็จ เข้าสู่ระบบอีกครั้ง</string>
     <string name="school_mail_auth_failed_notification_text">เปิด TigerDuck เพื่อเข้าสู่ระบบอีกครั้ง</string>

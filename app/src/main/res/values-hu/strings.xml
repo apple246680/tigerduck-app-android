@@ -662,6 +662,7 @@
     <string name="refreshing_message">Frissítés folyamatban… kérem várjon</string>
     <string name="school_mail_account_title">Iskolai posta</string>
     <string name="school_mail_add_attachment">Fájl csatolása</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Mellékletek</string>
     <string name="school_mail_auth_failed_banner">Nem sikerült bejelentkezni az iskolai postába. Jelentkezzen be újra.</string>
     <string name="school_mail_auth_failed_notification_text">Nyissa meg a TigerDuck alkalmazást az újbóli bejelentkezéshez.</string>

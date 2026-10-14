@@ -662,6 +662,7 @@
     <string name="refreshing_message">Bezig met vernieuwen… momentje</string>
     <string name="school_mail_account_title">Schoolmail</string>
     <string name="school_mail_add_attachment">Bestand bijvoegen</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Bijlagen</string>
     <string name="school_mail_auth_failed_banner">Aanmelden bij Schoolmail is mislukt. Meld je opnieuw aan.</string>
     <string name="school_mail_auth_failed_notification_text">Open TigerDuck om je opnieuw aan te melden.</string>

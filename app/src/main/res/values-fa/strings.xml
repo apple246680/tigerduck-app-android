@@ -662,6 +662,7 @@
     <string name="refreshing_message">در حال به‌روزرسانی… کمی صبر کنید</string>
     <string name="school_mail_account_title">ایمیل مدرسه</string>
     <string name="school_mail_add_attachment">پیوست کردن فایل</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">پیوست‌ها</string>
     <string name="school_mail_auth_failed_banner">ورود به ایمیل مدرسه ناموفق بود. دوباره وارد شوید.</string>
     <string name="school_mail_auth_failed_notification_text">برای ورود دوباره، TigerDuck را باز کنید.</string>

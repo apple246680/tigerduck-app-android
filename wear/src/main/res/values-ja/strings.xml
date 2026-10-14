@@ -662,6 +662,7 @@
     <string name="refreshing_message">更新中です。少々お待ちください…</string>
     <string name="school_mail_account_title">学内メール</string>
     <string name="school_mail_add_attachment">ファイルを添付</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">添付ファイル</string>
     <string name="school_mail_auth_failed_banner">学内メールへのサインインに失敗しました。もう一度サインインしてください。</string>
     <string name="school_mail_auth_failed_notification_text">TigerDuckを開いて、もう一度サインインしてください。</string>

@@ -662,6 +662,7 @@
     <string name="refreshing_message">Nire-refresh… sandali lang po</string>
     <string name="school_mail_account_title">Mail ng paaralan</string>
     <string name="school_mail_add_attachment">Mag-attach ng file</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Mga Attachment</string>
     <string name="school_mail_auth_failed_banner">Nabigo ang sign-in sa mail ng paaralan. Mag-sign in muli.</string>
     <string name="school_mail_auth_failed_notification_text">Buksan ang TigerDuck para mag-sign in muli.</string>

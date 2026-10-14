@@ -662,6 +662,7 @@
     <string name="refreshing_message">Жаңартылуда… күтіңіз</string>
     <string name="school_mail_account_title">Мектеп поштасы</string>
     <string name="school_mail_add_attachment">Файл тіркеу</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Тіркемелер</string>
     <string name="school_mail_auth_failed_banner">Мектеп поштасына кіру сәтсіз аяқталды. Қайта кіріңіз.</string>
     <string name="school_mail_auth_failed_notification_text">Қайта кіру үшін TigerDuck қолданбасын ашыңыз.</string>

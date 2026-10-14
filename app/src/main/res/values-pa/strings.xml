@@ -662,6 +662,7 @@
     <string name="refreshing_message">ਤਾਜ਼ਾ ਕੀਤਾ ਜਾ ਰਿਹਾ ਹੈ… ਰੁਕੋ</string>
     <string name="school_mail_account_title">ਸਕੂਲ ਮੇਲ</string>
     <string name="school_mail_add_attachment">ਫ਼ਾਈਲ ਜੋੜੋ</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">ਅਟੈਚਮੈਂਟ</string>
     <string name="school_mail_auth_failed_banner">ਸਕੂਲ ਮੇਲ ਸਾਈਨ-ਇਨ ਅਸਫਲ ਰਿਹਾ। ਦੁਬਾਰਾ ਸਾਈਨ ਇਨ ਕਰੋ।</string>
     <string name="school_mail_auth_failed_notification_text">ਦੁਬਾਰਾ ਸਾਈਨ ਇਨ ਕਰਨ ਲਈ TigerDuck ਖੋਲ੍ਹੋ।</string>

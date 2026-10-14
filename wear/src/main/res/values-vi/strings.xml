@@ -662,6 +662,7 @@
     <string name="refreshing_message">Đang làm mới… vui lòng chờ</string>
     <string name="school_mail_account_title">Email trường</string>
     <string name="school_mail_add_attachment">Đính kèm tệp</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Tệp đính kèm</string>
     <string name="school_mail_auth_failed_banner">Đăng nhập Email trường không thành công. Vui lòng đăng nhập lại.</string>
     <string name="school_mail_auth_failed_notification_text">Mở TigerDuck để đăng nhập lại.</string>

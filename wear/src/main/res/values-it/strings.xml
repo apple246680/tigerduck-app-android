@@ -662,6 +662,7 @@
     <string name="refreshing_message">Aggiornamento in corso… attendere</string>
     <string name="school_mail_account_title">Posta universitaria</string>
     <string name="school_mail_add_attachment">Allega file</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Allegati</string>
     <string name="school_mail_auth_failed_banner">Accesso alla posta universitaria non riuscito. Accedi di nuovo.</string>
     <string name="school_mail_auth_failed_notification_text">Apri TigerDuck per accedere di nuovo.</string>

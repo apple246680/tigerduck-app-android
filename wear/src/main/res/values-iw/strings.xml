@@ -662,6 +662,7 @@
     <string name="refreshing_message">מרענן… רגע</string>
     <string name="school_mail_account_title">דואר בית הספר</string>
     <string name="school_mail_add_attachment">צרף קובץ</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">קבצים מצורפים</string>
     <string name="school_mail_auth_failed_banner">ההתחברות לדואר בית הספר נכשלה. יש להתחבר שוב.</string>
     <string name="school_mail_auth_failed_notification_text">פתח את TigerDuck כדי להתחבר שוב.</string>

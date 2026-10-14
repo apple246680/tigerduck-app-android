@@ -662,6 +662,7 @@
     <string name="refreshing_message">Освежавање… причекајте</string>
     <string name="school_mail_account_title">Школска пошта</string>
     <string name="school_mail_add_attachment">Приложи фајл</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Прилози</string>
     <string name="school_mail_auth_failed_banner">Пријава у школску пошту није успела. Пријавите се поново.</string>
     <string name="school_mail_auth_failed_notification_text">Отворите TigerDuck да бисте се поново пријавили.</string>

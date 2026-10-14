@@ -662,6 +662,7 @@
     <string name="refreshing_message">പുതുക്കുന്നു… കാത്തിരിക്കൂ</string>
     <string name="school_mail_account_title">സ്കൂൾ ഇമെയിൽ</string>
     <string name="school_mail_add_attachment">ഫയൽ അറ്റാച്ച് ചെയ്യുക</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">അറ്റാച്ച്‌മെന്റുകൾ</string>
     <string name="school_mail_auth_failed_banner">സ്കൂൾ ഇമെയിൽ സൈൻ ഇൻ പരാജയപ്പെട്ടു. വീണ്ടും സൈൻ ഇൻ ചെയ്യുക.</string>
     <string name="school_mail_auth_failed_notification_text">വീണ്ടും സൈൻ ഇൻ ചെയ്യാൻ TigerDuck തുറക്കുക.</string>

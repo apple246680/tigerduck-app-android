@@ -662,6 +662,7 @@
     <string name="refreshing_message">Päivitetään… odota hetki</string>
     <string name="school_mail_account_title">Koulusähköposti</string>
     <string name="school_mail_add_attachment">Liitä tiedosto</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Liitteet</string>
     <string name="school_mail_auth_failed_banner">Koulusähköpostiin kirjautuminen epäonnistui. Kirjaudu uudelleen.</string>
     <string name="school_mail_auth_failed_notification_text">Avaa TigerDuck kirjautuaksesi uudelleen.</string>

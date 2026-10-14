@@ -662,6 +662,7 @@
     <string name="refreshing_message">Obnovuje sa… chvíľku počkajte</string>
     <string name="school_mail_account_title">Školská pošta</string>
     <string name="school_mail_add_attachment">Priložiť súbor</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Prílohy</string>
     <string name="school_mail_auth_failed_banner">Prihlásenie do školskej pošty zlyhalo. Prihláste sa znova.</string>
     <string name="school_mail_auth_failed_notification_text">Otvorte TigerDuck a prihláste sa znova.</string>

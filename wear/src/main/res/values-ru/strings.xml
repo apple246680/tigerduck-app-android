@@ -662,6 +662,7 @@
     <string name="refreshing_message">Обновляется… подождите</string>
     <string name="school_mail_account_title">Университетская почта</string>
     <string name="school_mail_add_attachment">Прикрепить файл</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Вложения</string>
     <string name="school_mail_auth_failed_banner">Не удалось войти в университетскую почту. Войдите снова.</string>
     <string name="school_mail_auth_failed_notification_text">Откройте TigerDuck, чтобы войти снова.</string>

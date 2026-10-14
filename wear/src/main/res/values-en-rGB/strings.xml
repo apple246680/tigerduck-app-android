@@ -662,6 +662,7 @@
     <string name="refreshing_message">Refreshing… hold on</string>
     <string name="school_mail_account_title">School mail</string>
     <string name="school_mail_add_attachment">Attach file</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Attachments</string>
     <string name="school_mail_auth_failed_banner">School mail sign-in failed. Sign in again.</string>
     <string name="school_mail_auth_failed_notification_text">Open TigerDuck to sign in again.</string>

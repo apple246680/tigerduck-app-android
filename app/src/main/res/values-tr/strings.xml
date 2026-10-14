@@ -662,6 +662,7 @@
     <string name="refreshing_message">Yenileniyor… lütfen bekleyin</string>
     <string name="school_mail_account_title">Okul postası</string>
     <string name="school_mail_add_attachment">Dosya ekle</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Ekler</string>
     <string name="school_mail_auth_failed_banner">Okul postasına giriş başarısız oldu. Yeniden giriş yapın.</string>
     <string name="school_mail_auth_failed_notification_text">Yeniden giriş yapmak için TigerDuck uygulamasını açın.</string>

@@ -662,6 +662,7 @@
     <string name="refreshing_message">Actualitzant… un moment</string>
     <string name="school_mail_account_title">Correu universitari</string>
     <string name="school_mail_add_attachment">Adjunta un fitxer</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Fitxers adjunts</string>
     <string name="school_mail_auth_failed_banner">No s\'ha pogut iniciar la sessió al correu universitari. Torna-hi a iniciar la sessió.</string>
     <string name="school_mail_auth_failed_notification_text">Obre TigerDuck per tornar a iniciar la sessió.</string>

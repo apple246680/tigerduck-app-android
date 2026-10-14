@@ -662,6 +662,7 @@
     <string name="refreshing_message">Se actualizează… așteaptă puțin</string>
     <string name="school_mail_account_title">E-mail universitar</string>
     <string name="school_mail_add_attachment">Atașează un fișier</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Atașamente</string>
     <string name="school_mail_auth_failed_banner">Conectarea la e-mailul universitar a eșuat. Conectează-te din nou.</string>
     <string name="school_mail_auth_failed_notification_text">Deschide TigerDuck pentru a te conecta din nou.</string>

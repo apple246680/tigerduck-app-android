@@ -662,6 +662,7 @@
     <string name="refreshing_message">Wird aktualisiert … einen Moment</string>
     <string name="school_mail_account_title">Uni-Mail</string>
     <string name="school_mail_add_attachment">Datei anhängen</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Anhänge</string>
     <string name="school_mail_auth_failed_banner">Anmeldung bei Uni-Mail fehlgeschlagen. Bitte erneut anmelden.</string>
     <string name="school_mail_auth_failed_notification_text">Öffne TigerDuck, um dich erneut anzumelden.</string>

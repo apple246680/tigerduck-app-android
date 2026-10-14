@@ -662,6 +662,7 @@
     <string name="refreshing_message">Odświeżanie… proszę czekać</string>
     <string name="school_mail_account_title">Poczta uczelniana</string>
     <string name="school_mail_add_attachment">Dodaj załącznik</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Załączniki</string>
     <string name="school_mail_auth_failed_banner">Nie udało się zalogować do poczty uczelnianej. Zaloguj się ponownie.</string>
     <string name="school_mail_auth_failed_notification_text">Otwórz TigerDuck, aby zalogować się ponownie.</string>

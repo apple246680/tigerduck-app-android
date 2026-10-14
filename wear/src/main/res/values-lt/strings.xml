@@ -662,6 +662,7 @@
     <string name="refreshing_message">Atnaujinama… palaukite</string>
     <string name="school_mail_account_title">Mokyklos paštas</string>
     <string name="school_mail_add_attachment">Pridėti failą</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Priedai</string>
     <string name="school_mail_auth_failed_banner">Prisijungimas prie mokyklos pašto nepavyko. Prisijunkite iš naujo.</string>
     <string name="school_mail_auth_failed_notification_text">Atidarykite TigerDuck ir prisijunkite iš naujo.</string>

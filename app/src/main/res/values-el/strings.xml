@@ -662,6 +662,7 @@
     <string name="refreshing_message">Ανανέωση… παρακαλώ περιμένετε</string>
     <string name="school_mail_account_title">Πανεπιστημιακό email</string>
     <string name="school_mail_add_attachment">Επισύναψη αρχείου</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Συνημμένα</string>
     <string name="school_mail_auth_failed_banner">Η σύνδεση στο πανεπιστημιακό email απέτυχε. Συνδέσου ξανά.</string>
     <string name="school_mail_auth_failed_notification_text">Άνοιξε το TigerDuck για να συνδεθείς ξανά.</string>

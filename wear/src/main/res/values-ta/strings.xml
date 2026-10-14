@@ -662,6 +662,7 @@
     <string name="refreshing_message">புதுப்பிக்கிறோம்… கொஞ்சம் காத்திருங்கள்</string>
     <string name="school_mail_account_title">பள்ளி மின்னஞ்சல்</string>
     <string name="school_mail_add_attachment">கோப்பை இணை</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">இணைப்புகள்</string>
     <string name="school_mail_auth_failed_banner">பள்ளி மின்னஞ்சல் உள்நுழைவு தோல்வியடைந்தது. மீண்டும் உள்நுழைக.</string>
     <string name="school_mail_auth_failed_notification_text">மீண்டும் உள்நுழைய TigerDuck-ஐத் திறக்கவும்.</string>

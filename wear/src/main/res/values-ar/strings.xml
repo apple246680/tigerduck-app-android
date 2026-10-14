@@ -662,6 +662,7 @@
     <string name="refreshing_message">جارٍ التحديث… انتظر قليلًا</string>
     <string name="school_mail_account_title">البريد المدرسي</string>
     <string name="school_mail_add_attachment">إرفاق ملف</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">المرفقات</string>
     <string name="school_mail_auth_failed_banner">فشل تسجيل الدخول إلى البريد المدرسي. سجّل الدخول مرة أخرى.</string>
     <string name="school_mail_auth_failed_notification_text">افتح TigerDuck لتسجيل الدخول مرة أخرى.</string>

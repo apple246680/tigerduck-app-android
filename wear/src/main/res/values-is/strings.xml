@@ -662,6 +662,7 @@
     <string name="refreshing_message">Uppfærir… bíddu aðeins</string>
     <string name="school_mail_account_title">Skólapóstur</string>
     <string name="school_mail_add_attachment">Hengja skjal við</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Viðhengi</string>
     <string name="school_mail_auth_failed_banner">Innskráning í Skólapóst mistókst. Skráðu þig inn aftur.</string>
     <string name="school_mail_auth_failed_notification_text">Opnaðu TigerDuck til að skrá þig inn aftur.</string>

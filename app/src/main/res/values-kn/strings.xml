@@ -662,6 +662,7 @@
     <string name="refreshing_message">ರಿಫ್ರೆಶ್ ಆಗುತ್ತಿದೆ… ಸ್ವಲ್ಪ ನಿರೀಕ್ಷಿಸಿ</string>
     <string name="school_mail_account_title">ಶಾಲಾ ಇಮೇಲ್</string>
     <string name="school_mail_add_attachment">ಫೈಲ್ ಲಗತ್ತಿಸಿ</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">ಲಗತ್ತುಗಳು</string>
     <string name="school_mail_auth_failed_banner">ಶಾಲಾ ಇಮೇಲ್ ಸೈನ್ ಇನ್ ವಿಫಲವಾಯಿತು. ಮತ್ತೆ ಲಾಗಿನ್ ಮಾಡಿ.</string>
     <string name="school_mail_auth_failed_notification_text">ಮತ್ತೆ ಲಾಗಿನ್ ಮಾಡಲು TigerDuck ತೆರೆಯಿರಿ.</string>

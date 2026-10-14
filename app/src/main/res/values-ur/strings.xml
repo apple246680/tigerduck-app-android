@@ -662,6 +662,7 @@
     <string name="refreshing_message">ریفریش ہو رہا ہے… تھوڑا صبر کریں</string>
     <string name="school_mail_account_title">اسکول ای میل</string>
     <string name="school_mail_add_attachment">فائل منسلک کریں</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">منسلکات</string>
     <string name="school_mail_auth_failed_banner">اسکول ای میل سائن ان ناکام ہو گیا۔ دوبارہ سائن ان کریں۔</string>
     <string name="school_mail_auth_failed_notification_text">دوبارہ سائن ان کرنے کے لیے TigerDuck کھولیں۔</string>

@@ -662,6 +662,7 @@
     <string name="refreshing_message">Menyegar semula… sila tunggu</string>
     <string name="school_mail_account_title">E-mel sekolah</string>
     <string name="school_mail_add_attachment">Lampirkan fail</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Lampiran</string>
     <string name="school_mail_auth_failed_banner">Log masuk e-mel sekolah gagal. Log masuk lagi.</string>
     <string name="school_mail_auth_failed_notification_text">Buka TigerDuck untuk log masuk lagi.</string>

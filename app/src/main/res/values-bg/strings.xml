@@ -662,6 +662,7 @@
     <string name="refreshing_message">Опресняване… моля изчакайте</string>
     <string name="school_mail_account_title">Училищна поща</string>
     <string name="school_mail_add_attachment">Прикачи файл</string>
+    <string name="school_mail_attachment_share">Share</string>
     <string name="school_mail_attachments">Прикачени файлове</string>
     <string name="school_mail_auth_failed_banner">Влизането в училищната поща е неуспешно. Влезте отново.</string>
     <string name="school_mail_auth_failed_notification_text">Отворете TigerDuck, за да влезете отново.</string>
