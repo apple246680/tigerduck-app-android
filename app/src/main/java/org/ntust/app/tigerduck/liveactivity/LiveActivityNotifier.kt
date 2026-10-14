@@ -2,9 +2,7 @@ package org.ntust.app.tigerduck.liveactivity
 
 import android.Manifest
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -14,7 +12,6 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.ntust.app.tigerduck.BuildConfig
-import org.ntust.app.tigerduck.MainActivity
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
@@ -23,6 +20,8 @@ import org.ntust.app.tigerduck.notification.DeviceSkin
 import org.ntust.app.tigerduck.notification.NotificationChannelRegistrar
 import org.ntust.app.tigerduck.notification.NotificationChannels
 import org.ntust.app.tigerduck.notification.brandedNotification
+import org.ntust.app.tigerduck.openAppPendingIntent
+import org.ntust.app.tigerduck.pendingIntent
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -122,14 +121,9 @@ class LiveActivityNotifier @Inject constructor(
             return false
         }
 
-        val contentIntent = PendingIntent.getActivity(
-            context,
-            0,
-            Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
+        // The due-soon assignment opens in Moodle and a class opens the class
+        // table, through MainActivity; see LiveActivitySnapshot.link.
+        val contentIntent = snapshot.link?.pendingIntent(context) ?: openAppPendingIntent(context)
 
         val visibility = if (preferences.showOnLockScreen) {
             NotificationCompat.VISIBILITY_PUBLIC

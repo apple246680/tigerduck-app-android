@@ -1,6 +1,7 @@
 package org.ntust.app.tigerduck.liveactivity
 
 import org.ntust.app.tigerduck.AppConstants
+import org.ntust.app.tigerduck.AppLink
 import org.ntust.app.tigerduck.shared.collapseContiguousPeriods
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.shared.Course
@@ -151,6 +152,7 @@ class LiveActivityResolver {
             progress = progress,
             accentHex = accentHex,
             sourceId = "class-${slot.course.courseNo}-${slot.periods.firstOrNull()}",
+            link = AppLink.ClassTable,
         )
     }
 
@@ -165,6 +167,7 @@ class LiveActivityResolver {
             progress = null,
             accentHex = accentHex,
             sourceId = "prep-${slot.course.courseNo}-${slot.periods.firstOrNull()}",
+            link = AppLink.ClassTable,
         )
 
     private fun assignmentSnapshot(a: Assignment, accentHex: Int): LiveActivitySnapshot =
@@ -178,6 +181,7 @@ class LiveActivityResolver {
             progress = null,
             accentHex = accentHex,
             sourceId = "assignment-${a.assignmentId}",
+            link = AppLink.assignment(a.assignmentId),
         )
 
     private fun formatTimeRange(start: Date, end: Date): String {
