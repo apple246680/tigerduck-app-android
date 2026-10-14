@@ -151,6 +151,18 @@ class CredentialManager private constructor(
         return same
     }
 
+    /**
+     * A school sign-out's credentials: the school account goes, and the library
+     * account with it when it is the same student's, by the student ID read
+     * before the school's is wiped; see [clearLibraryCredentials]. Returns
+     * whether the library account went.
+     */
+    fun signOutSchoolAccount(): Boolean {
+        val departing = ntustStudentId
+        clearNtustCredentials()
+        return clearLibraryCredentials(ifSchoolAccount = departing)
+    }
+
     // ── School mail — its own account, never shared with the NTUST or library one ──
 
     override var mailStudentId: String?
