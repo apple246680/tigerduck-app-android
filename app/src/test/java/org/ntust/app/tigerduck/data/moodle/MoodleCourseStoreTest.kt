@@ -320,4 +320,32 @@ class MoodleCourseStoreTest {
         assertEquals(MoodleAttachment.Link("https://example.com/hw3.pdf"), store.openAttachment(elsewhere, postId = 90))
         assertEquals(0, api.downloads)
     }
+
+    @Test
+    fun `a member's picture is decoded off the thread that asked`() = runTest(UnconfinedTestDispatcher()) {
+        val background = object : kotlinx.coroutines.CoroutineDispatcher() {
+            var used = 0
+            override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) {
+                used++
+                block.run()
+            }
+        }
+        var decoded = 0
+        val store = MoodleCourseStore(
+            courseId = 5, termCourseIds = emptyList(), courseCodes = emptyList(), api = api,
+            context = MoodleCacheContext("B1", cache, isCurrent = { true }, now = { now }),
+            scope = backgroundScope,
+            decodePicture = { decoded++; null },
+            background = background,
+        )
+        val member = org.ntust.app.tigerduck.network.model.moodle.MoodleMember(
+            7, "B1 @ Amy", null, null, null, emptyList(), emptyList(),
+            "https://moodle2.ntust.edu.tw/pluginfile.php/9/user/icon/f1?rev=3", "", emptyList(), emptyList(),
+        )
+
+        store.loadPicture(member)
+
+        assertEquals(1, decoded)
+        assertTrue(background.used > 0)
+    }
 }

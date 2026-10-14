@@ -68,7 +68,6 @@ import org.ntust.app.tigerduck.mail.resolveAttachmentMimeType
 import org.ntust.app.tigerduck.data.moodle.MoodlePersonName
 import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussion
 import org.ntust.app.tigerduck.network.model.moodle.MoodleFile
-import org.ntust.app.tigerduck.network.moodle.MoodleHtmlText
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
 
 /**
@@ -157,8 +156,7 @@ private fun AnnouncementBody(
             modifier = Modifier.semantics { heading() },
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        val markdown = remember(discussion.message) { MoodleHtmlText.markdown(discussion.message) }
-        MoodleMarkdown(markdown, browserPreference, Modifier.fillMaxWidth())
+        rememberMoodleMarkdown(discussion.message)?.let { MoodleMarkdown(it, browserPreference, Modifier.fillMaxWidth()) }
         if (discussion.attachments.isNotEmpty()) {
             Attachments(store, discussion, browserPreference)
         }

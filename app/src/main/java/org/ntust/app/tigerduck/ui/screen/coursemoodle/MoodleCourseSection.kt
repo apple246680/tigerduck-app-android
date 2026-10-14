@@ -53,7 +53,6 @@ import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.moodle.MoodleCourseStore
 import org.ntust.app.tigerduck.data.moodle.MoodleSectionRow
 import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseSummary
-import org.ntust.app.tigerduck.network.moodle.MoodleHtmlText
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
 import java.text.NumberFormat
 
@@ -200,8 +199,9 @@ private fun MoodleCourseSummaryView(summary: MoodleCourseSummary, browserPrefere
             modifier = Modifier.semantics { heading() },
         )
         if (expanded) {
-            val markdown = remember(summary.html) { MoodleHtmlText.markdown(summary.html) }
-            MoodleMarkdown(markdown, browserPreference, Modifier.fillMaxWidth(), compact = true)
+            rememberMoodleMarkdown(summary.html)?.let {
+                MoodleMarkdown(it, browserPreference, Modifier.fillMaxWidth(), compact = true)
+            }
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
                 IconButton(
                     onClick = { expanded = false },

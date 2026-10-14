@@ -1,6 +1,7 @@
 package org.ntust.app.tigerduck.network.moodle
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
@@ -87,38 +88,41 @@ interface MoodleCourseApi {
 }
 
 @Singleton
-class LiveMoodleCourseApi @Inject constructor(
+class LiveMoodleCourseApi internal constructor(
     private val webservice: MoodleWebservice,
+    /** Where answers are read: their HTML is parsed for every post, which is not for the main thread. */
+    private val parse: CoroutineDispatcher,
 ) : MoodleCourseApi {
+
+    @Inject
+    constructor(webservice: MoodleWebservice) : this(webservice, Dispatchers.Default)
 
     override suspend fun functions(): Set<String> =
         webservice.withToken { webservice.siteInfo(it).functions }
 
     override suspend fun forums(courseIds: List<Int>): List<MoodleForum> = webservice.withToken { token ->
-        MoodleJson.forums(
-            webservice.call(
-                MoodleCourseApi.FORUMS_FUNCTION,
-                token,
-                courseIds.mapIndexed { i, id -> "courseids[$i]" to id.toString() },
-            ),
+        val answer = webservice.call(
+            MoodleCourseApi.FORUMS_FUNCTION,
+            token,
+            courseIds.mapIndexed { i, id -> "courseids[$i]" to id.toString() },
         )
+        withContext(parse) { MoodleJson.forums(answer) }
     }
 
     /** `moodlewssettingfilter` runs the message through the site's filters, as the Moodle app asks. */
     override suspend fun discussions(forumId: Int, page: Int): List<MoodleDiscussion> =
         webservice.withToken { token ->
-            MoodleJson.discussions(
-                webservice.call(
-                    MoodleCourseApi.DISCUSSIONS_FUNCTION,
-                    token,
-                    listOf(
-                        "forumid" to forumId.toString(),
-                        "page" to page.toString(),
-                        "perpage" to MoodleCourseApi.DISCUSSIONS_PER_PAGE.toString(),
-                        "moodlewssettingfilter" to "true",
-                    ),
+            val answer = webservice.call(
+                MoodleCourseApi.DISCUSSIONS_FUNCTION,
+                token,
+                listOf(
+                    "forumid" to forumId.toString(),
+                    "page" to page.toString(),
+                    "perpage" to MoodleCourseApi.DISCUSSIONS_PER_PAGE.toString(),
+                    "moodlewssettingfilter" to "true",
                 ),
             )
+            withContext(parse) { MoodleJson.discussions(answer) }
         }
 
     override suspend fun markViewed(discussionId: Int, isCurrent: () -> Boolean) {
@@ -143,7 +147,7 @@ class LiveMoodleCourseApi @Inject constructor(
                 "options[0][value]" to MoodleCourseApi.MEMBER_FIELDS,
             ),
         )
-        MoodleMemberList(ownId = ownId, members = MoodleJson.members(answer))
+        MoodleMemberList(ownId = ownId, members = withContext(parse) { MoodleJson.members(answer) })
     }
 
     /**
@@ -167,14 +171,12 @@ class LiveMoodleCourseApi @Inject constructor(
     override suspend fun gradeItems(courseId: Int): List<MoodleGradeItem> = webservice.withToken { token ->
         val userId = webservice.siteInfo(token).userId
         try {
-            MoodleJson.gradeItems(
-                webservice.call(
-                    MoodleCourseApi.GRADE_ITEMS_FUNCTION,
-                    token,
-                    listOf("courseid" to courseId.toString(), "userid" to userId.toString()),
-                ),
-                userId,
+            val answer = webservice.call(
+                MoodleCourseApi.GRADE_ITEMS_FUNCTION,
+                token,
+                listOf("courseid" to courseId.toString(), "userid" to userId.toString()),
             )
+            withContext(parse) { MoodleJson.gradeItems(answer, userId) }
         } catch (e: MoodleWebserviceError.MalformedResponse) {
             if (e.detail in MoodleCourseApi.GRADES_WITHHELD_CODES) emptyList() else throw e
         }
@@ -191,17 +193,15 @@ class LiveMoodleCourseApi @Inject constructor(
     }
 
     override suspend fun summary(courseId: Int): MoodleCourseSummary = webservice.withToken { token ->
-        MoodleJson.summary(
-            webservice.call(
-                MoodleCourseApi.COURSES_FUNCTION,
-                token,
-                listOf(
-                    "field" to "id",
-                    "value" to courseId.toString(),
-                    "moodlewssettingfilter" to "true",
-                ),
+        val answer = webservice.call(
+            MoodleCourseApi.COURSES_FUNCTION,
+            token,
+            listOf(
+                "field" to "id",
+                "value" to courseId.toString(),
+                "moodlewssettingfilter" to "true",
             ),
-            courseId,
         )
+        withContext(parse) { MoodleJson.summary(answer, courseId) }
     }
 }

@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -59,7 +60,9 @@ import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownTypography
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.style.TextDecoration
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.AppConstants
@@ -67,6 +70,7 @@ import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.moodle.MoodleCourseStore
 import org.ntust.app.tigerduck.data.moodle.MoodleRefreshSchedule
 import org.ntust.app.tigerduck.network.MoodleWebserviceError
+import org.ntust.app.tigerduck.network.moodle.MoodleHtmlText
 import org.ntust.app.tigerduck.ui.component.NoTopBarInsets
 import org.ntust.app.tigerduck.ui.screen.settings.SubSettingsBarHeight
 import org.ntust.app.tigerduck.util.replaceIosArg
@@ -325,6 +329,13 @@ internal fun MoodleMarkdown(
         Markdown(content = markdown, typography = typography, modifier = modifier)
     }
 }
+
+/** Moodle's [html] as Markdown, converted off the main thread; null until it is ready. */
+@Composable
+internal fun rememberMoodleMarkdown(html: String): String? =
+    produceState<String?>(initialValue = null, html) {
+        value = withContext(Dispatchers.Default) { MoodleHtmlText.markdown(html) }
+    }.value
 
 /** Dates as Moodle's screens write them, in Taipei time whatever the device's zone. */
 internal object MoodleDates {

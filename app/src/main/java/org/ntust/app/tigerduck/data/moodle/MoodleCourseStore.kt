@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.compose.ui.graphics.ImageBitmap
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Dispatchers
@@ -53,6 +54,8 @@ class MoodleCourseStore(
     /** Where opened attachments are kept for the account, which another app reads them from. */
     private val openedFilesDir: File? = null,
     private val decodePicture: (ByteArray) -> ImageBitmap? = { null },
+    /** Where pictures are decoded, off the main thread. */
+    private val background: CoroutineDispatcher = Dispatchers.Default,
 ) {
     /** Every course of the term, which one forums call covers. */
     val termCourseIds: List<Int> = (termCourseIds + courseId).distinct().sorted()
@@ -304,7 +307,7 @@ class MoodleCourseStore(
         val local = file?.let { f ->
             withContext(Dispatchers.IO) { runCatching { if (f.exists()) f.readBytes() else null }.getOrNull() }
         }
-        local?.let(decodePicture)?.let { image ->
+        local?.let { bytes -> withContext(background) { decodePicture(bytes) } }?.let { image ->
             _pictures.update { it + (url to image) }
             return
         }
@@ -319,7 +322,7 @@ class MoodleCourseStore(
                 null
             }
         } ?: return
-        val image = decodePicture(bytes) ?: return
+        val image = withContext(background) { decodePicture(bytes) } ?: return
         if (!context.isCurrent()) return
         file?.let { savePicture(bytes, it) }
         _pictures.update { it + (url to image) }
