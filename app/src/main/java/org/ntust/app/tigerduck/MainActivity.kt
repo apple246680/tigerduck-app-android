@@ -37,6 +37,7 @@ import org.ntust.app.tigerduck.analytics.AnalyticsLogger
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.auth.AuthTokenManager
 import org.ntust.app.tigerduck.data.cache.DataCache
+import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.liveactivity.LiveActivityManager
 import org.ntust.app.tigerduck.network.ApiVersionGate
@@ -408,14 +409,12 @@ class MainActivity : AppCompatActivity() {
      */
     private fun openLinkedAssignment(intent: Intent?, restored: Boolean) {
         intent ?: return
-        val link = AppLink.parse(intent.data) as? AppLink.Assignment ?: return
-        intent.data = null
-        setIntent(intent)
-        val fromHistory = intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
-        if (restored || fromHistory) return
+        val hadData = intent.data != null
+        val id = takeLinkedAssignmentId(intent, restored)
+        if (hadData && intent.data == null) setIntent(intent)
+        id ?: return
         lifecycleScope.launch {
-            val assignment = dataCache.loadAssignments().firstOrNull { it.assignmentId == link.id }
-                ?: return@launch
+            val assignment = linkedAssignment(id, dataCache.loadAssignments()) ?: return@launch
             openAssignmentInMoodle(this@MainActivity, assignment)
         }
     }
@@ -588,6 +587,24 @@ private fun UpdateRequiredHost() {
 }
 
 private const val TIGERDUCK_WEBSITE_URL = "https://tigerduck.app"
+
+/**
+ * The assignment id [intent]'s `tigerduck://assignment/<id>` link asks to open
+ * now, or null. The link is taken off [intent] either way, so it opens once
+ * per delivery; and none opens for an Activity rebuilt from saved state
+ * ([restored]) or relaunched from Recents, which hand back the intent it was
+ * first started with. A link of any other kind is left on [intent].
+ */
+internal fun takeLinkedAssignmentId(intent: Intent, restored: Boolean): String? {
+    val link = AppLink.parse(intent.data) as? AppLink.Assignment ?: return null
+    intent.data = null
+    val fromHistory = intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
+    return link.id.takeIf { !restored && !fromHistory }
+}
+
+/** The cached assignment [id] names, or null: as on iOS, only this account's own homework opens. */
+internal fun linkedAssignment(id: String, cached: List<Assignment>): Assignment? =
+    cached.firstOrNull { it.assignmentId == id }
 
 /**
  * Map intent input — the [StartRoute] extra of the app's own widgets and
