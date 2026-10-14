@@ -16,4 +16,6 @@ data class UnsentMark(
     val status: String?,
     /** How many times the backend refused it; `UnsentMarks` parks it after five. */
     val attempts: Int = 0,
+    /** When the backend last refused it, epoch ms; 0 when it never has. */
+    val lastRefusedAtMs: Long = 0L,
 )

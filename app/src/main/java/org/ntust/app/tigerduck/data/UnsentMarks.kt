@@ -45,6 +45,7 @@ class UnsentMarks internal constructor(
     private val records: () -> Boolean,
     private val sends: () -> Boolean,
     private val signInGeneration: () -> Int,
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
     @Inject constructor(
         dataCache: DataCache,
@@ -115,7 +116,7 @@ class UnsentMarks internal constructor(
         if (!sends()) return
         val generation = dataCache.userDataGeneration
         val signIn = signInGeneration()
-        if (parkedRequeued.compareAndSet(false, true)) requeueParked(generation)
+        requeueParked(generation, firstInProcess = parkedRequeued.compareAndSet(false, true))
         for ((id, mark) in waiting()) {
             if (mark.attempts >= MAX_ATTEMPTS) continue
             trySend(id, mark.status ?: continue, generation, signIn)
@@ -170,22 +171,22 @@ class UnsentMarks internal constructor(
     private suspend fun countRefusal(id: String, status: String, generation: Int) = mutex.withLock {
         val waiting = waiting()
         val mark = waiting[id]?.takeIf { it.status == status } ?: return@withLock
-        val counted = mark.copy(attempts = mark.attempts + 1)
+        val counted = mark.copy(attempts = mark.attempts + 1, lastRefusedAtMs = clock())
         if (counted.attempts >= MAX_ATTEMPTS) Log.w(TAG, "mark parked after $MAX_ATTEMPTS refusals")
         save(waiting + (id to counted), generation)
     }
 
-    // A parked mark gets one more try per process: the backend may have the
-    // assignment's row by now.
-    private suspend fun requeueParked(generation: Int) = mutex.withLock {
+    // A parked mark gets one more try per process, and again once
+    // PARKED_RETRY_MS has passed since its last refusal: the backend creates
+    // an assignment's row in its own Moodle fetch, every eight hours, and the
+    // app may stay open far longer than that.
+    private suspend fun requeueParked(generation: Int, firstInProcess: Boolean) = mutex.withLock {
         val waiting = waiting()
-        if (waiting.values.none { it.attempts >= MAX_ATTEMPTS }) return@withLock
-        save(
-            waiting.mapValues { (_, mark) ->
-                if (mark.attempts >= MAX_ATTEMPTS) mark.copy(attempts = MAX_ATTEMPTS - 1) else mark
-            },
-            generation,
-        )
+        val now = clock()
+        fun due(mark: UnsentMark) = mark.attempts >= MAX_ATTEMPTS &&
+            (firstInProcess || now - mark.lastRefusedAtMs !in 0 until PARKED_RETRY_MS)
+        if (waiting.values.none(::due)) return@withLock
+        save(waiting.mapValues { (_, mark) -> if (due(mark)) mark.copy(attempts = MAX_ATTEMPTS - 1) else mark }, generation)
     }
 
     // By assignment id, in the order the marks were made.
@@ -200,6 +201,9 @@ class UnsentMarks internal constructor(
 
         /** Refusals before a mark is parked, as on the iOS outbox. */
         const val MAX_ATTEMPTS = 5
+
+        /** How long a parked mark waits for its next try in a process that stays alive. */
+        const val PARKED_RETRY_MS = 8 * 60 * 60 * 1000L
 
         /** The re-enable conflict category the marks belong to. */
         private const val REENABLE_CATEGORY = "assignments"

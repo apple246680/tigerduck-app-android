@@ -57,7 +57,10 @@ class UnsentMarksTest {
         records = { records },
         sends = { records && sends },
         signInGeneration = { signInGeneration },
+        clock = { now },
     )
+
+    private var now = 1_000_000L
 
     /** The sign-in each PATCH was pinned to. */
     private val signIns = mutableListOf<Int>()
@@ -345,5 +348,26 @@ class UnsentMarksTest {
         marks.keep("7", "ignored", cache.userDataGeneration)
 
         assertEquals(mapOf("7" to "none"), waiting())
+    }
+
+    @Test
+    fun `a parked mark is tried again once eight hours have passed`() = runTest {
+        // A 404 until the backend's own Moodle fetch creates the assignment's
+        // row, which runs every eight hours; the app may stay open for days.
+        answer = { _, _ -> throw PushApiException("HTTP 404", 404) }
+        marks.send("7", "ignored")
+        repeat(UnsentMarks.MAX_ATTEMPTS) { marks.retry() }
+        sent.clear()
+
+        now += 60 * 60 * 1000L
+        marks.retry()
+        assertEquals("parked for now", emptyList<Pair<Int, String>>(), sent)
+
+        now += 7 * 60 * 60 * 1000L
+        answer = { _, _ -> }
+        marks.retry()
+
+        assertEquals(listOf(7 to "ignored"), sent)
+        assertEquals(emptySet<String>(), marks.ids())
     }
 }
