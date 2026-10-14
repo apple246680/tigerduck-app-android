@@ -182,6 +182,25 @@ class MailCheckerTest {
         assertEquals(uid + 10, state.inboxSeenUidNext)
     }
 
+    /**
+     * The list adopted a new UIDVALIDITY while this check was notifying. Its marker is the new
+     * generation's, which this check's UIDs say nothing about: raised to them, it would hide the
+     * new generation's mail below them for good (tigerduck-app/tigerduck-app#484).
+     */
+    @Test
+    fun `a check leaves the marker of a UIDVALIDITY the list adopted during its notify`() = runTest {
+        account.signIn("b10000001", "pw")
+        server.deliver("old one")
+        server.deliver("new one")
+        val newValidity = server.uidValidity + 1
+        val c = checker()
+        notifier.onPostNewMail = { c.noteSeenByPage(FolderStatus(newValidity, 2, 1, 0)) }
+
+        assertEquals(CheckOutcome.NewMail(2), c.check(CheckSource.ALARM))
+        assertEquals(newValidity, state.inboxUidValidity)
+        assertEquals(2L, state.inboxSeenUidNext)
+    }
+
     @Test
     fun `every check is recorded for the diagnostics screen, newest first`() = runTest {
         account.signIn("b10000001", "pw")

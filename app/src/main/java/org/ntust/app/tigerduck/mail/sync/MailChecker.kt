@@ -106,8 +106,11 @@ class MailChecker @Inject constructor(
                 if (toNotify.isNotEmpty()) notifier.postNewMail(INBOX, toNotify)
                 // Spec §8.5 order: notify, then advance -- and never backwards. The page
                 // poll's noteSeenByPage can move the marker further while this check runs;
-                // overwriting it would re-notify mail the list has already shown.
-                state.inboxSeenUidNext = maxOf(state.inboxSeenUidNext, advanced)
+                // overwriting it would re-notify mail the list has already shown. It can also
+                // adopt a new UIDVALIDITY, whose marker this check's UIDs say nothing about.
+                if (state.inboxUidValidity == status.uidValidity) {
+                    state.inboxSeenUidNext = maxOf(state.inboxSeenUidNext, advanced)
+                }
                 // Last, and deliberately after the marker. Warming bodies is a convenience the
                 // check's real job does not depend on, and it is the slowest thing here -- up to
                 // five fetches on a connection that may be on a train. Run before the advance, a
