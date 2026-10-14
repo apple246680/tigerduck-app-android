@@ -258,7 +258,7 @@ class PushRegistrationService @Inject constructor(
             }
             try {
                 if (departing != null) {
-                    departingUnregister.owe(PendingUnregister(deviceId, departing))
+                    departingUnregister.owe(deviceId, departing)
                     // Queued before the first try, so a process ended during
                     // it still has the debt sent; a run finding it paid ends.
                     DepartingUnregisterWorker.enqueue(context)

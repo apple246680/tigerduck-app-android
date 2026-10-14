@@ -29,7 +29,7 @@ class PendingUnregisterPrefsTest {
 
     @Test
     fun `what is owed reads back after a restart, and is gone once cleared`() {
-        PendingUnregisterPrefs(prefs).save(PendingUnregister("device-1", DepartingSession("access-1", "refresh-1", 42L, "https://backend.example/v3")))
+        PendingUnregisterPrefs(prefs).save(PendingUnregister("device-1", DepartingSession("access-1", "refresh-1", 42L, "https://backend.example/v3"), 7L))
 
         // A new instance over the same file, as the next launch has.
         val read = PendingUnregisterPrefs(prefs).load()
@@ -38,6 +38,7 @@ class PendingUnregisterPrefsTest {
         assertEquals("refresh-1", read?.session?.refreshToken)
         assertEquals(42L, read?.session?.accessExpiresAt)
         assertEquals("https://backend.example/v3", read?.session?.baseUrl)
+        assertEquals(7L, read?.owedAt)
 
         PendingUnregisterPrefs(prefs).clear()
         assertNull(PendingUnregisterPrefs(prefs).load())
@@ -45,7 +46,7 @@ class PendingUnregisterPrefsTest {
 
     @Test
     fun `a sign-out's clearing of the session leaves what is owed`() {
-        PendingUnregisterPrefs(prefs).save(PendingUnregister("device-1", DepartingSession("access-1", "refresh-1", 42L, "https://backend.example/v3")))
+        PendingUnregisterPrefs(prefs).save(PendingUnregister("device-1", DepartingSession("access-1", "refresh-1", 42L, "https://backend.example/v3"), 7L))
 
         // What CredentialManager.clearNtustCredentials() removes of the session.
         prefs.edit()
@@ -61,7 +62,7 @@ class PendingUnregisterPrefsTest {
     // reset wipes the credentials.
 
     private fun owe() = PendingUnregisterPrefs(prefs)
-        .save(PendingUnregister("device-1", DepartingSession("access-1", "refresh-1", Long.MAX_VALUE, "https://backend.example/v3")))
+        .save(PendingUnregister("device-1", DepartingSession("access-1", "refresh-1", Long.MAX_VALUE, "https://backend.example/v3"), 0L))
 
     @Test
     fun `the full reset's wipe keeps what is owed and takes every credential else`() {

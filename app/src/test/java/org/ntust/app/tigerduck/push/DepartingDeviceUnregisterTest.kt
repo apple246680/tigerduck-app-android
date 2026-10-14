@@ -4,6 +4,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import org.json.JSONException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -19,7 +20,7 @@ import java.io.IOException
  */
 class DepartingDeviceUnregisterTest {
 
-    private val now = 1_800_000_000_000L
+    private var now = 1_800_000_000_000L
 
     private class MemoryStore : PendingUnregisterStore {
         var pending: PendingUnregister? = null
@@ -47,6 +48,9 @@ class DepartingDeviceUnregisterTest {
     private val refreshReplies = ArrayDeque<DepartingRefresh>()
     private var signedInSince = false
 
+    /** Thrown by each refresh, as a reply that cannot be read would be. */
+    private var refreshThrows: Exception? = null
+
     /** Runs as each refresh is sent, before its reply. */
     private var onRefresh: () -> Unit = {}
 
@@ -60,7 +64,7 @@ class DepartingDeviceUnregisterTest {
             deletes += "$device $token"
             heldDelete?.let { held -> heldDelete = null; return@DepartingDeviceUnregister held.await() }
             when (val reply = deleteReplies.removeFirstOrNull() ?: 204) {
-                is IOException -> throw reply
+                is Exception -> throw reply
                 else -> reply as Int
             }
         },
@@ -68,6 +72,7 @@ class DepartingDeviceUnregisterTest {
             assertEquals("the refresh goes to the backend that issued the token", BACKEND, session.baseUrl)
             refreshes += session.refreshToken
             onRefresh()
+            refreshThrows?.let { throw it }
             refreshReplies.removeFirstOrNull() ?: DepartingRefresh.Refused
         },
         hasSession = { signedInSince },
@@ -82,7 +87,7 @@ class DepartingDeviceUnregisterTest {
         DepartingRefresh.Refreshed(session(access, refresh, now + 900_000))
 
     private suspend fun owe(expiresAt: Long = now + 600_000) =
-        unregister().owe(PendingUnregister("device-1", session("access-1", "refresh-1", expiresAt)))
+        unregister().owe("device-1", session("access-1", "refresh-1", expiresAt))
 
     @Test
     fun `a token that lasts goes out as it is, and the debt ends with the reply`() = runTest {
@@ -250,6 +255,44 @@ class DepartingDeviceUnregisterTest {
         assertEquals(Outcome.DONE, unregister().send())
 
         assertEquals(emptyList<String>(), deletes)
+        assertNull(store.pending)
+    }
+
+    // What cannot be sent, or is never sent, is not kept for good
+
+    @Test
+    fun `a reply that cannot be read keeps the debt for a later try`() = runTest {
+        owe(expiresAt = now - 1)
+        refreshThrows = JSONException("no access_token")
+        assertEquals(Outcome.RETRY, unregister().send())
+        assertEquals("device-1", store.pending?.deviceId)
+
+        refreshThrows = null
+        refreshReplies += refreshed("access-2", "refresh-2")
+        deleteReplies += IllegalArgumentException("unexpected url")
+        assertEquals(Outcome.RETRY, unregister().send())
+        assertEquals("device-1", store.pending?.deviceId)
+    }
+
+    @Test
+    fun `an unregister owed for longer than a refresh token lives is dropped unsent`() = runTest {
+        owe()
+        now += 90L * 24 * 60 * 60 * 1000
+        refreshReplies += refreshed("access-2", "refresh-2")
+
+        assertEquals(Outcome.DONE, unregister().send())
+
+        assertEquals(emptyList<String>(), refreshes)
+        assertEquals(emptyList<String>(), deletes)
+        assertNull(store.pending)
+    }
+
+    @Test
+    fun `giving up drops the debt`() = runTest {
+        owe()
+
+        unregister().abandon()
+
         assertNull(store.pending)
     }
 

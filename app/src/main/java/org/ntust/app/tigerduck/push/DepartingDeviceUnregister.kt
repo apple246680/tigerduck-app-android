@@ -14,7 +14,12 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /** The device unregister a sign-out still owes the backend, with the session it goes out as. */
-class PendingUnregister(val deviceId: String, val session: DepartingSession)
+class PendingUnregister(
+    val deviceId: String,
+    val session: DepartingSession,
+    /** When the sign-out owed it, epoch ms. */
+    val owedAt: Long,
+)
 
 /** Keeps the owed unregister between launches. It holds tokens, so it is stored encrypted. */
 interface PendingUnregisterStore {
@@ -76,17 +81,34 @@ class DepartingDeviceUnregister internal constructor(
     // Shared with a backend sign-in; see OwedUnregister.signingIn.
     private val mutex = owed.mutex
 
-    /** Keeps [pending] until the server has it, in place of any owed before. */
-    suspend fun owe(pending: PendingUnregister) = mutex.withLock { store.save(pending) }
+    /** Keeps the unregister of [deviceId] as [session] until the server has it, in place of any owed before. */
+    suspend fun owe(deviceId: String, session: DepartingSession) =
+        mutex.withLock { store.save(PendingUnregister(deviceId, session, now())) }
+
+    /** Gives up on the debt, dropping the tokens it is kept with. */
+    suspend fun abandon() = mutex.withLock { drop() }
 
     suspend fun send(): Outcome = mutex.withLock {
-        val pending = store.load() ?: return@withLock Outcome.DONE
+        val pending = try {
+            store.load()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "owed unregister unreadable: ${e.javaClass.simpleName}")
+            return@withLock Outcome.RETRY
+        } ?: return@withLock Outcome.DONE
         if (hasSession()) {
             // See the class comment: a sign-in since moved the device to its account.
-            store.clear()
+            drop()
             return@withLock Outcome.DONE
         }
         if (movedElsewhere(pending)) return@withLock Outcome.DONE
+        if (now() - pending.owedAt >= OWED_AT_MOST_MS) {
+            // Past the refresh token's lifetime nothing can go out as the account any more.
+            Log.w(TAG, "the unregister was owed past the session's lifetime; it is dropped")
+            drop()
+            return@withLock Outcome.DONE
+        }
         val outcome = try {
             sendAs(pending)
         } catch (e: CancellationException) {
@@ -94,9 +116,20 @@ class DepartingDeviceUnregister internal constructor(
         } catch (e: IOException) {
             Log.w(TAG, "unregister got no reply: ${e.logSummary()}")
             Outcome.RETRY
+        } catch (e: Exception) {
+            // A reply that could not be read, say. Named by class alone: a message about a
+            // refresh reply could quote the tokens in it.
+            Log.w(TAG, "unregister failed: ${e.javaClass.simpleName}")
+            Outcome.RETRY
         }
-        if (outcome == Outcome.DONE) store.clear()
+        if (outcome == Outcome.DONE) drop()
         outcome
+    }
+
+    // Under the mutex.
+    private fun drop() {
+        runCatching { store.clear() }
+            .onFailure { Log.w(TAG, "owed unregister not cleared: ${it.javaClass.simpleName}") }
     }
 
     /**
@@ -112,7 +145,7 @@ class DepartingDeviceUnregister internal constructor(
     private fun movedElsewhere(pending: PendingUnregister): Boolean {
         if (pending.session.baseUrl == currentBaseUrl()) return false
         Log.w(TAG, "the API endpoint changed since the sign-out; the unregister is dropped")
-        store.clear()
+        drop()
         return true
     }
 
@@ -156,7 +189,7 @@ class DepartingDeviceUnregister internal constructor(
         if (reply !is DepartingRefresh.Refreshed) return null
         // Kept before the DELETE: the server rotated the refresh token, and would take the one it
         // replaced for reuse if a later retry sent it.
-        return PendingUnregister(pending.deviceId, reply.session).also(store::save)
+        return PendingUnregister(pending.deviceId, reply.session, pending.owedAt).also(store::save)
     }
 
     private fun afterFailedRefresh(): Outcome =
@@ -172,5 +205,8 @@ class DepartingDeviceUnregister internal constructor(
 
         // The access token must outlast the DELETE: a minute is ample for one request.
         const val MIN_TOKEN_LIFE_MS = 60_000L
+
+        // The backend's refresh token lifetime (auth_refresh_token_ttl_days in its config).
+        const val OWED_AT_MOST_MS = 90L * 24 * 60 * 60 * 1000
     }
 }

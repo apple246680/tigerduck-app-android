@@ -197,6 +197,7 @@ class AutomaticSignInTest {
         var pending: PendingUnregister? = PendingUnregister(
             "device-1",
             DepartingSession("access-0", "refresh-0", Long.MAX_VALUE, resolveAnnouncementEndpoint(prefs).url),
+            owedAt = 0L,
         )
         val store = object : PendingUnregisterStore {
             override fun load() = pending

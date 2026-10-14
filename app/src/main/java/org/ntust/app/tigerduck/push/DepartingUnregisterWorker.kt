@@ -25,13 +25,26 @@ class DepartingUnregisterWorker @AssistedInject constructor(
     private val unregister: DepartingDeviceUnregister,
 ) : CoroutineWorker(context, params) {
 
-    override suspend fun doWork(): Result = when (unregister.send()) {
-        DepartingDeviceUnregister.Outcome.DONE -> Result.success()
-        DepartingDeviceUnregister.Outcome.RETRY -> Result.retry()
+    override suspend fun doWork(): Result {
+        if (runAttemptCount >= MAX_ATTEMPTS) {
+            unregister.abandon()
+            return Result.success()
+        }
+        return when (unregister.send()) {
+            DepartingDeviceUnregister.Outcome.DONE -> Result.success()
+            DepartingDeviceUnregister.Outcome.RETRY -> Result.retry()
+        }
     }
 
     companion object {
         internal const val UNIQUE_NAME = "departing_device_unregister"
+
+        /**
+         * With the backoff capped at five hours by WorkManager, past the refresh token's 90 days,
+         * after which [DepartingDeviceUnregister] drops the debt itself: this is for a debt that
+         * cannot even be read.
+         */
+        internal const val MAX_ATTEMPTS = 500
 
         /** Queued at every sign-out that owes one; a run finding nothing owed ends at once. */
         fun enqueue(context: Context) {
