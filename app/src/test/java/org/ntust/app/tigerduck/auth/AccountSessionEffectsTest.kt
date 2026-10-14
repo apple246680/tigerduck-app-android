@@ -36,6 +36,7 @@ class AccountSessionEffectsTest {
     private lateinit var workManager: WorkManager
     private val scope = CoroutineScope(UnconfinedTestDispatcher())
     private val signedIn = MutableStateFlow(false)
+    private val liveUpdates = mutableListOf<String>()
 
     @Before
     fun setUp() {
@@ -52,7 +53,12 @@ class AccountSessionEffectsTest {
 
     private fun effects(startSignedIn: Boolean): AccountSessionEffects {
         signedIn.value = startSignedIn
-        return AccountSessionEffects(context = context, authState = signedIn).also { it.start(scope) }
+        return AccountSessionEffects(
+            context = context,
+            authState = signedIn,
+            refreshLiveUpdates = { liveUpdates += "refresh" },
+            stopLiveUpdates = { liveUpdates += "stop" },
+        ).also { it.start(scope) }
     }
 
     private fun backgroundSync(): List<WorkInfo.State> =
@@ -85,5 +91,15 @@ class AccountSessionEffectsTest {
         effects(startSignedIn = true)
 
         assertEquals(emptyList<WorkInfo.State>(), backgroundSync())
+    }
+
+    @Test
+    fun `a sign-out stops the Live Update and a sign-in brings it back`() {
+        effects(startSignedIn = true)
+
+        signedIn.value = false
+        signedIn.value = true
+
+        assertEquals(listOf("stop", "refresh"), liveUpdates)
     }
 }

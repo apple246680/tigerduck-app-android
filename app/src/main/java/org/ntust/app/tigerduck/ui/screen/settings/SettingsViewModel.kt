@@ -26,7 +26,6 @@ import org.ntust.app.tigerduck.data.CourseColorStore
 import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
-import org.ntust.app.tigerduck.liveactivity.LiveActivityManager
 import org.ntust.app.tigerduck.notification.AssignmentNotificationScheduler
 import org.ntust.app.tigerduck.shared.LibraryService
 import org.ntust.app.tigerduck.analytics.AnalyticsLogger
@@ -58,7 +57,6 @@ class SettingsViewModel @Inject constructor(
     val prefs: AppPreferences,
     private val notificationScheduler: AssignmentNotificationScheduler,
     private val courseColorStore: CourseColorStore,
-    private val liveActivityManager: LiveActivityManager,
     private val wearBridge: WearScheduleBridge,
     val identity: PushIdentity,
     private val pushRegistration: PushRegistrationService,
@@ -514,7 +512,6 @@ class SettingsViewModel @Inject constructor(
         authService.logout()
         _isLibraryLoggedIn.value = false
         notificationScheduler.cancelAllTracked()
-        liveActivityManager.stop()
     }
 
     fun loginLibrary(username: String, password: String) {

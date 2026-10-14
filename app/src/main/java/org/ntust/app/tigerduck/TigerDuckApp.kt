@@ -113,7 +113,7 @@ class TigerDuckApp : Application(), Configuration.Provider {
         appScope.launch {
             appPreferences.accentColorChanged.collect { wearBridge.publish() }
         }
-        // The background sync, notifications and Live Updates follow the sign-in from every page.
+        // The background sync and the Live Update follow the sign-in from every page.
         accountSessionEffects.start(appScope)
         // The dot hides itself while signed out, but the tracker is
         // process-wide: a status written before logout would still be here

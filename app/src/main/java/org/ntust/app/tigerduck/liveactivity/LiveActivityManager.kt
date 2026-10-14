@@ -29,20 +29,43 @@ import javax.inject.Singleton
  * forwards the result to the notifier.
  */
 @Singleton
-class LiveActivityManager @Inject constructor(
+class LiveActivityManager internal constructor(
     private val preferences: LiveActivityPreferences,
     private val notifier: LiveActivityNotifier,
     private val dataCache: DataCache,
-    private val authService: AuthService,
+    // authState, not a session-liveness check: see refreshLocked.
+    private val signedIn: () -> Boolean,
     private val appPrefs: AppPreferences,
     private val classPreparingScheduler: ClassPreparingNotificationScheduler,
     private val academicCalendar: org.ntust.app.tigerduck.academic.AcademicCalendarStore,
     private val boundaryScheduler: LiveActivityBoundaryScheduler,
-    @param:ApplicationScope private val appScope: CoroutineScope,
+    private val appScope: CoroutineScope,
 ) {
+    @Inject
+    constructor(
+        preferences: LiveActivityPreferences,
+        notifier: LiveActivityNotifier,
+        dataCache: DataCache,
+        authService: AuthService,
+        appPrefs: AppPreferences,
+        classPreparingScheduler: ClassPreparingNotificationScheduler,
+        academicCalendar: org.ntust.app.tigerduck.academic.AcademicCalendarStore,
+        boundaryScheduler: LiveActivityBoundaryScheduler,
+        @ApplicationScope appScope: CoroutineScope,
+    ) : this(
+        preferences = preferences,
+        notifier = notifier,
+        dataCache = dataCache,
+        signedIn = { authService.authState.value },
+        appPrefs = appPrefs,
+        classPreparingScheduler = classPreparingScheduler,
+        academicCalendar = academicCalendar,
+        boundaryScheduler = boundaryScheduler,
+        appScope = appScope,
+    )
+
     private val resolver = LiveActivityResolver()
-    private val managerJob = SupervisorJob(appScope.coroutineContext[Job])
-    private val scope = appScope + managerJob
+    private val scope = appScope + SupervisorJob(appScope.coroutineContext[Job])
     private var refreshJob: Job? = null
 
     // One refresh at a time. The two boundary alarms can land together — a
@@ -51,13 +74,10 @@ class LiveActivityManager @Inject constructor(
     // chime twice.
     private val refreshLock = Mutex()
 
-    // Hold a reference so `stop()` can halt preference-driven refreshes too;
-    // otherwise a `preferences.changeEvent` arriving after `stop()` would
-    // silently resurrect the notifier machinery.
-    private var prefsCollectorJob: Job? = null
-
     init {
-        prefsCollectorJob = scope.launch {
+        // Kept for the life of the process, signed in or not: a refresh while
+        // nobody is signed in only takes everything down.
+        scope.launch {
             // And on every write of the ignored, marked-done and ignored-course
             // sets: the resolver only sees what is still outstanding.
             merge(preferences.changeEvent, dataCache.assignmentMarksVersion.drop(1))
@@ -72,7 +92,6 @@ class LiveActivityManager @Inject constructor(
      * language; see [LiveActivityNotifier.apply].
      */
     fun refresh(quiet: Boolean = false) {
-        if (!managerJob.isActive) return
         refreshJob?.cancel()
         refreshJob = scope.launch {
             refreshInternal(quiet)
@@ -88,14 +107,18 @@ class LiveActivityManager @Inject constructor(
         refreshInternal()
     }
 
+    /**
+     * Takes the Live Update, the class reminders and their alarms down at
+     * sign-out. The manager itself stays up: it used to stop for the rest of
+     * the process, so after signing in again only a restart brought the Live
+     * Update back. The refresh queued here waits for any still running, finds
+     * nobody signed in, and takes down whatever that one put up.
+     */
     fun stop() {
-        prefsCollectorJob?.cancel()
-        prefsCollectorJob = null
         boundaryScheduler.cancel()
-        refreshJob?.cancel()
         notifier.cancel()
         classPreparingScheduler.cancelAllTracked()
-        managerJob.cancel()
+        refresh()
     }
 
     private suspend fun refreshInternal(quiet: Boolean = false) =
@@ -107,7 +130,7 @@ class LiveActivityManager @Inject constructor(
         // is signed in at all — not whether an SSO cookie happens to be warm.
         // The cookie jar is in-memory, so gating on it stopped the Live Update
         // after every reboot or background kill until the user signed in again.
-        val signedIn = authService.authState.value
+        val signedIn = signedIn()
         if (!preferences.isEnabled || !signedIn) {
             // The other silent way to get no Live Update. Signing out stops it
             // just as completely as the feature toggle, and neither says so

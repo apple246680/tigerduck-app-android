@@ -5,6 +5,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import org.ntust.app.tigerduck.liveactivity.LiveActivityManager
 import org.ntust.app.tigerduck.notification.BackgroundSyncWorker
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -23,14 +24,19 @@ import javax.inject.Singleton
 class AccountSessionEffects internal constructor(
     private val context: Context,
     private val authState: StateFlow<Boolean>,
+    private val refreshLiveUpdates: () -> Unit,
+    private val stopLiveUpdates: () -> Unit,
 ) {
     @Inject
     constructor(
         @ApplicationContext context: Context,
         authService: AuthService,
+        liveActivityManager: LiveActivityManager,
     ) : this(
         context = context,
         authState = authService.authState,
+        refreshLiveUpdates = { liveActivityManager.refresh() },
+        stopLiveUpdates = liveActivityManager::stop,
     )
 
     /** Follows the sign-in state on [scope] for the life of the process. */
@@ -48,9 +54,11 @@ class AccountSessionEffects internal constructor(
 
     private fun onSignedIn() {
         BackgroundSyncWorker.schedule(context)
+        refreshLiveUpdates()
     }
 
     private fun onSignedOut() {
         BackgroundSyncWorker.cancel(context)
+        stopLiveUpdates()
     }
 }
