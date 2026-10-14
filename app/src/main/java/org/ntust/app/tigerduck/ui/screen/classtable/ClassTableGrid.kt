@@ -240,6 +240,10 @@ internal fun TimetableGrid(
                                     y = y,
                                     weekday = weekday,
                                     periodId = period.id,
+                                    clusterPeriods = periods
+                                        .drop(periodIndex)
+                                        .take(role.combinedSpan)
+                                        .map { it.id },
                                     hasAssignmentA = role.courseA.courseNo in courseNosWithAssignments,
                                     hasAssignmentB = role.courseB.courseNo in courseNosWithAssignments,
                                     assignmentsIgnoredA =

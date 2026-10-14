@@ -61,6 +61,11 @@ internal fun ConflictCourseCell(
     y: androidx.compose.ui.unit.Dp,
     weekday: Int,
     periodId: String,
+    /**
+     * The period of each of the cluster's rows, from its first, so each course's label names
+     * the period its own block starts at and that period's room. Empty names [periodId] for both.
+     */
+    clusterPeriods: List<String> = emptyList(),
     hasAssignmentA: Boolean,
     hasAssignmentB: Boolean,
     assignmentsIgnoredA: Boolean,
@@ -144,11 +149,18 @@ internal fun ConflictCourseCell(
             val bBarFraction = (soloBelowB + 0.5f * (1f - soloAboveB - soloBelowB))
                 .coerceAtLeast(0.1f)
             val labels = classTableCellLabels()
-            fun cellLabel(course: Course, hasAssignment: Boolean, assignmentsIgnored: Boolean) =
-                labels.label(course, weekday, periodId, hasAssignment, assignmentsIgnored, conflict = true)
+            fun cellLabel(course: Course, offset: Int, hasAssignment: Boolean, assignmentsIgnored: Boolean) =
+                labels.label(
+                    course,
+                    weekday,
+                    clusterPeriods.getOrNull(offset) ?: periodId,
+                    hasAssignment,
+                    assignmentsIgnored,
+                    conflict = true,
+                )
 
-            val labelA = cellLabel(cellRole.courseA, hasAssignmentA, assignmentsIgnoredA)
-            val labelB = cellLabel(cellRole.courseB, hasAssignmentB, assignmentsIgnoredB)
+            val labelA = cellLabel(cellRole.courseA, cellRole.offsetA, hasAssignmentA, assignmentsIgnoredA)
+            val labelB = cellLabel(cellRole.courseB, cellRole.offsetB, hasAssignmentB, assignmentsIgnoredB)
 
             Box(
                 modifier = Modifier
