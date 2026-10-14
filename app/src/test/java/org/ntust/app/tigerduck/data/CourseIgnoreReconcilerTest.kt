@@ -176,4 +176,58 @@ class CourseIgnoreReconcilerTest {
         // BBB the backend holds no setting for, so a sync keeps it and sends it again.
         assertTrue(CourseIgnoreReconciler.agrees(setOf("1141:AAA", "1141:BBB"), server))
     }
+
+    // ---- a course another device deleted and added back (tigerduck-app-android#182) ----
+
+    private fun row(semester: String, courseNo: String, id: Long) =
+        ServerCourse(courseNo = courseNo, courseName = courseNo, semester = semester, id = id)
+
+    @Test
+    fun `listed rows are keyed by term and course, and a row without an id is left out`() {
+        assertEquals(
+            mapOf("1151:CS1" to 9L),
+            CourseIgnoreReconciler.listedRows(
+                listOf(row("1151", "CS1", 9L), row("1151", "EE2"), ServerCourse("GE3", "GE3", "", id = 4L)),
+            ),
+        )
+    }
+
+    @Test
+    fun `a course back with a new row while another kept its id was re-added`() {
+        val seen = mapOf("1151:CS1" to 1L, "1151:EE2" to 2L, "1142:GE3" to 3L)
+
+        assertEquals(setOf("1151:CS1"), CourseIgnoreReconciler.recreated(mapOf("1151:CS1" to 9L, "1151:EE2" to 2L), seen))
+        assertEquals(
+            "a term reset elsewhere, beside a term that kept its rows",
+            setOf("1151:CS1", "1151:EE2"),
+            CourseIgnoreReconciler.recreated(mapOf("1151:CS1" to 9L, "1151:EE2" to 10L, "1142:GE3" to 3L), seen),
+        )
+    }
+
+    @Test
+    fun `no row kept its id, as after the backend dropped them all, so nothing counts as re-added`() {
+        val seen = mapOf("1151:CS1" to 1L, "1151:EE2" to 2L)
+
+        assertEquals(emptySet<String>(), CourseIgnoreReconciler.recreated(mapOf("1151:CS1" to 9L, "1151:EE2" to 10L), seen))
+        assertEquals(
+            "a course never recorded is not re-added",
+            emptySet<String>(),
+            CourseIgnoreReconciler.recreated(mapOf("1151:CS1" to 1L, "1151:PE4" to 12L), seen),
+        )
+        assertEquals(emptySet<String>(), CourseIgnoreReconciler.recreated(mapOf("1151:CS1" to 9L), emptyMap()))
+    }
+
+    @Test
+    fun `a re-added course takes the server's setting instead of having this device's sent again`() {
+        val listed = listOf(row("1151", "CS1", 9L), row("1151", "EE2", 2L))
+        val server = CourseIgnoreReconciler.serverIgnores(
+            overrides = emptyList(),
+            serverCourses = listed,
+            recreated = setOf("1151:CS1"),
+        )!!
+        val local = setOf("1151:CS1", "1151:EE2")
+
+        assertEquals(setOf("1151:EE2"), CourseIgnoreReconciler.toResend(local, server, emptySet()))
+        assertEquals(setOf("1151:EE2"), CourseIgnoreReconciler.afterSync(local, server, emptySet(), applies = true))
+    }
 }

@@ -539,6 +539,22 @@ class DataCache @Inject constructor(
             ?: emptyList()
     }
 
+    // --- Course rows seen (course key -> server row id) ---
+    // The rows the last full sync that took the course ignores listed; see
+    // CourseIgnoreReconciler.recreated. CourseIgnoreSync is the only writer.
+
+    /** False, and nothing written, when the data was wiped since [generation]. */
+    suspend fun saveCourseRowsSeen(rows: Map<String, Long>, generation: Int? = null): Boolean =
+        saveToUserDataIf(rows, "course_rows_seen.json", generation ?: writeGeneration())
+
+    suspend fun loadCourseRowsSeen(): Map<String, Long> {
+        val type = object : TypeToken<Map<String, Long?>>() {}.type
+        return loadFromUserData<Map<String, Long?>>(type, "course_rows_seen.json")
+            .orEmpty()
+            .mapNotNull { (key, id) -> id?.let { key to it } }
+            .toMap()
+    }
+
     // --- Marked-Completed Assignments (set of assignmentIds) ---
     // Independent from Moodle's `isCompleted`: lets the user manually flag a
     // homework as done from the swipe gesture even when Moodle hasn't (or
@@ -737,6 +753,7 @@ class DataCache @Inject constructor(
                     "selection_dropped.json",
                     "server_known_courses.json",
                     "semester_reset_at.json",
+                    "course_rows_seen.json",
                 ).forEach { name ->
                     runCatching { File(userDataDir, name).delete() }
                 }

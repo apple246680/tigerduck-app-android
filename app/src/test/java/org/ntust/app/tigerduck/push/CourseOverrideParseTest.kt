@@ -68,4 +68,11 @@ class CourseOverrideParseTest {
         assertNull(uploaded.colorHexUpdatedAt)
         assertNull(older.colorHexUpdatedAt)
     }
+
+    @Test
+    fun `a course row's id is read, and is null when it has none`() {
+        assertEquals(42L, serverCourseRowId(JSONObject("""{"id":42,"course_no":"CS1"}""")))
+        assertNull(serverCourseRowId(JSONObject("""{"course_no":"CS1"}""")))
+        assertNull(serverCourseRowId(JSONObject("""{"id":null,"course_no":"CS1"}""")))
+    }
 }

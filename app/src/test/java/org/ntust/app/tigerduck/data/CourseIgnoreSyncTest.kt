@@ -595,4 +595,61 @@ class CourseIgnoreSyncTest {
 
         assertEquals(listOf(Sent("1141AAA", true, null)), sent)
     }
+
+    // ---- a course another device deleted and added back (tigerduck-app-android#182) ----
+
+    /** A snapshot listing AAA and BBB under the row ids given, with no settings. */
+    private fun rows(fetchedAtMs: Long, aaa: Long, bbb: Long) = snapshot(fetchedAtMs).copy(
+        serverCourses = listOf(
+            ServerCourse(courseNo = "AAA", courseName = "A", semester = "1141", id = aaa),
+            ServerCourse(courseNo = "BBB", courseName = "B", semester = "1141", id = bbb),
+        ),
+    )
+
+    @Test
+    fun `a course re-added elsewhere takes the server's setting, not this device's old one`() = runTest {
+        cache.saveIgnoredCourses(setOf("1141:AAA"))
+        sync.applySnapshot(snapshot(fetchedAtMs = 1_000L, "AAA" to true).copy(serverCourses = rows(0, 1, 2).serverCourses), sync.currentGeneration())
+        sent.clear()
+
+        // Another device deleted AAA and added it back: a new row, no setting.
+        val applied = sync.applySnapshot(rows(fetchedAtMs = 2_000L, aaa = 9, bbb = 2), sync.currentGeneration())
+
+        assertEquals(emptySet<String>(), applied)
+        assertEquals(emptyList<Sent>(), sent)
+    }
+
+    @Test
+    fun `settings the backend dropped with every row still go up again`() = runTest {
+        cache.saveIgnoredCourses(setOf("1141:AAA"))
+        sync.applySnapshot(snapshot(fetchedAtMs = 1_000L, "AAA" to true).copy(serverCourses = rows(0, 1, 2).serverCourses), sync.currentGeneration())
+        sent.clear()
+
+        // No row kept its id: the backend dropped them all while no device synced courses.
+        sync.applySnapshot(rows(fetchedAtMs = 2_000L, aaa = 9, bbb = 10), sync.currentGeneration())
+
+        assertEquals(setOf("1141:AAA"), cache.loadIgnoredCourses())
+        assertEquals(listOf(Sent("1141AAA", true, null)), sent)
+    }
+
+    @Test
+    fun `a term this device reset is not read as re-added elsewhere`() = runTest {
+        cache.saveIgnoredCourses(setOf("1141:AAA"))
+        val other = ServerCourse(courseNo = "CCC", courseName = "C", semester = "1142", id = 3)
+        sync.applySnapshot(
+            snapshot(fetchedAtMs = 1_000L, "AAA" to true).copy(serverCourses = rows(0, 1, 2).serverCourses + other),
+            sync.currentGeneration(),
+        )
+        sent.clear()
+
+        // Use Local reset 1141 here; 1142 kept its row.
+        sync.forgetRowsSeen(setOf("1141"))
+        sync.applySnapshot(
+            rows(fetchedAtMs = 2_000L, aaa = 9, bbb = 10).let { it.copy(serverCourses = it.serverCourses + other) },
+            sync.currentGeneration(),
+        )
+
+        assertEquals(setOf("1141:AAA"), cache.loadIgnoredCourses())
+        assertEquals(listOf(Sent("1141AAA", true, null)), sent)
+    }
 }

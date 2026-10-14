@@ -30,12 +30,14 @@ object CourseIgnoreReconciler {
      *
      * Terms this device reset after the snapshot was fetched
      * ([resetSemesters]) are left out: the snapshot still holds them from
-     * before the reset.
+     * before the reset. A course another device deleted and added back
+     * ([recreated]) counts as decided: its setting went with the delete.
      */
     fun serverIgnores(
         overrides: List<CourseOverrideResult>,
         serverCourses: List<ServerCourse>,
         resetSemesters: Set<String> = emptySet(),
+        recreated: Set<String> = emptySet(),
     ): ServerIgnores? {
         if (overrides.isNotEmpty() && overrides.none { it.ignoreAssignments != null }) return null
         val applies = { key: String -> CourseIgnores.semesterOf(key) !in resetSemesters }
@@ -51,8 +53,30 @@ object CourseIgnoreReconciler {
         val decided = overrides.asSequence()
             .filter { it.ignoreAssignments == true || it.ignoreAssignmentsUpdatedAt != null }
             .mapNotNull { keyOf(it.semester, it.courseNo) }
-            .filterTo(mutableSetOf(), applies)
+            .filterTo(mutableSetOf(), applies) + recreated.filter(applies)
         return ServerIgnores(semesters, keys, listed, decided)
+    }
+
+    /** The server row id of each course [serverCourses] lists with one, by course key. */
+    fun listedRows(serverCourses: List<ServerCourse>): Map<String, Long> =
+        serverCourses.mapNotNull { c -> keyOf(c.semester, c.courseNo)?.let { key -> c.id?.let { key to it } } }
+            .toMap()
+
+    /**
+     * The courses of [listed] some device deleted and added back since this
+     * device recorded [seen]: each has a new row id while another row kept
+     * its own. The delete took the course's setting with it, so this device's
+     * old one is not sent again; the server's, none, counts as decided. A
+     * backend dropping every course row, as while no device syncs courses,
+     * leaves no row with its id, and then everything lost is sent again as
+     * before. A course with no recorded id counts as unchanged. Tombstones
+     * cannot tell this: the re-add's upload deletes the ones it names
+     * (`force_keys`). As iOS's `AppState.recreatedCourses`
+     * (tigerduck-app/tigerduck-app#367, tigerduck-app-android#182).
+     */
+    fun recreated(listed: Map<String, Long>, seen: Map<String, Long>): Set<String> {
+        if (listed.none { (key, id) -> seen[key] == id }) return emptySet()
+        return listed.filterTo(mutableMapOf()) { (key, id) -> seen[key]?.let { it != id } == true }.keys
     }
 
     private fun keyOf(semester: String?, courseNo: String?): String? {

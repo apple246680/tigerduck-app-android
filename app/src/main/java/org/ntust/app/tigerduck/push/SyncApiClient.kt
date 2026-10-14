@@ -57,6 +57,12 @@ data class ServerCourse(
     val classroomMapJson: String = "{}",
     val version: Int = 1,
     val updatedAt: String? = null,
+    /**
+     * The server row's id. A course keeps it through every upload and gets a
+     * new one only when its row is deleted and made again; see
+     * `CourseIgnoreReconciler.recreated`. Null from a snapshot without it.
+     */
+    val id: Long? = null,
 )
 
 data class CourseTombstone(
@@ -231,6 +237,7 @@ class SyncApiClient @Inject constructor(
                         classroomMapJson = cmapStr,
                         version = c.optInt("version", 1),
                         updatedAt = nullStr(c, "updated_at"),
+                        id = serverCourseRowId(c),
                     ))
                 }
                 val mId = nullStr(c, "moodle_id") ?: continue
@@ -310,6 +317,10 @@ class SyncApiClient @Inject constructor(
         }
     }
 }
+
+/** A snapshot course row's `id`, or null when it has none. */
+internal fun serverCourseRowId(row: JSONObject): Long? =
+    if (row.isNull("id")) null else row.optLong("id", 0L).takeIf { it > 0 }
 
 /**
  * The snapshot's `course_overrides`. [courseMoodleIdToNo] names the course of

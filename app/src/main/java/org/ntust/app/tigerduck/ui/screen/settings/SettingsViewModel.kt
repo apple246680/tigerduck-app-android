@@ -381,8 +381,11 @@ class SettingsViewModel @Inject constructor(
     private val useLocalHost = object : UseLocalHost {
         override fun beginReset(semester: String) = dataCache.beginReset(semester)
         override fun endReset(semester: String) = dataCache.endReset(semester)
-        override suspend fun stampReset(semester: String, atMs: Long) =
+        override suspend fun stampReset(semester: String, atMs: Long) {
             dataCache.saveSemesterResetAt(semester, atMs)
+            // Its courses come back as new rows, which are not re-added elsewhere.
+            courseIgnoreSync.forgetRowsSeen(setOf(semester))
+        }
         override fun askAgain() = markCategoryReenabled("courses")
     }
 

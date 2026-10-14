@@ -178,6 +178,16 @@ class CourseIgnoreSync internal constructor(
                 touchedAt.filterValues { it >= result.fetchedAtMs }.keys
             val takes = applies && result.fetchedAtMs >= setChosenAt
             if (takes && server != null) {
+                // The rows this take saw, for the next one to tell a course
+                // re-added since. Not a term this device is resetting or
+                // reset after the fetch: its rows are about to change here,
+                // and a course of it counts as unchanged until seen again.
+                val reset = resetSince(result)
+                dataCache.saveCourseRowsSeen(
+                    CourseIgnoreReconciler.listedRows(result.serverCourses)
+                        .filterKeys { CourseIgnores.semesterOf(it) !in reset },
+                    generation,
+                )
                 val now = clock()
                 val rows = serverRows(result)
                 val lost = CourseIgnoreReconciler.toResend(local, server, protectedKeys)
@@ -307,11 +317,29 @@ class CourseIgnoreSync internal constructor(
             if (keptPending.size != pending.size) {
                 dataCache.savePendingCourseIgnores(keptPending, generation)
             }
+            forgetRowsSeenLocked(matches, generation)
             val keys = dataCache.loadIgnoredCourses()
             val kept = keys.filterNotTo(mutableSetOf(), matches)
             kept != keys && dataCache.saveIgnoredCourses(kept, generation)
         }
         if (changed) effects.changed()
+    }
+
+    /**
+     * Forgets the rows the last take saw in [terms], which this device just
+     * reset (Use Local): their courses come back as new rows, which must not
+     * read as re-added elsewhere and take this device's ignores away.
+     */
+    suspend fun forgetRowsSeen(terms: Set<String>) {
+        val generation = currentGeneration()
+        mutex.withLock { forgetRowsSeenLocked({ CourseIgnores.semesterOf(it) in terms }, generation) }
+    }
+
+    // With [mutex] held.
+    private suspend fun forgetRowsSeenLocked(matches: (String) -> Boolean, generation: Int) {
+        val seen = dataCache.loadCourseRowsSeen()
+        val kept = seen.filterKeys { !matches(it) }
+        if (kept.size != seen.size) dataCache.saveCourseRowsSeen(kept, generation)
     }
 
     private suspend fun send(change: PendingCourseIgnore, generation: Int) = sendMutex.withLock {
@@ -420,6 +448,10 @@ class CourseIgnoreSync internal constructor(
             result.courseOverrides,
             result.serverCourses,
             resetSemesters = resetSince(result),
+            recreated = CourseIgnoreReconciler.recreated(
+                CourseIgnoreReconciler.listedRows(result.serverCourses),
+                dataCache.loadCourseRowsSeen(),
+            ),
         )
 
     // The terms this device reset after [result] was fetched, or is resetting.
