@@ -37,6 +37,7 @@ import org.ntust.app.tigerduck.debug.DebugFixtureStore
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.demo.DemoAccount
 import org.ntust.app.tigerduck.network.CourseService
+import org.ntust.app.tigerduck.network.SemesterCatalog
 import org.ntust.app.tigerduck.push.PushApiClient
 import org.ntust.app.tigerduck.push.PushDiagnostic
 import org.ntust.app.tigerduck.push.PushIdentity
@@ -66,6 +67,7 @@ class SettingsViewModel @Inject constructor(
     private val pushApiClient: PushApiClient,
     private val syncApiClient: SyncApiClient,
     private val courseService: CourseService,
+    private val semesterCatalog: SemesterCatalog,
     private val dataCache: DataCache,
     private val debugFixtures: DebugFixtureStore,
     private val demoAccount: DemoAccount,
@@ -360,12 +362,7 @@ class SettingsViewModel @Inject constructor(
 
     private suspend fun resolve(conflict: ReenableConflict, keepLocal: Boolean, generation: Int) {
         if (keepLocal) {
-            if ("courses" in conflict.categories) {
-                val courses = dataCache.loadCourses()
-                val semester = courseService.currentSemesterCode()
-                runCatching { pushApiClient.deleteAllCourses() }
-                runCatching { pushApiClient.uploadCourses(courses, semester) }
-            }
+            if ("courses" in conflict.categories) sendLocalCourses(generation)
             if ("course_colors" in conflict.categories) {
                 val courses = dataCache.loadCourses()
                 for (course in courses) {
@@ -481,6 +478,22 @@ class SettingsViewModel @Inject constructor(
             }
         }
     }
+
+    /** Use Local for courses, every term this phone knows — see [useLocalCourses]. */
+    private suspend fun sendLocalCourses(generation: Int) = useLocalCourses(
+        terms = semesterCatalog.availableSemesters().map { it to dataCache.loadCourses(it) },
+        hiding = dataCache.loadDeletedCourseNos(),
+        backend = PushCourseSyncBackend(pushApiClient),
+        host = object : UseLocalHost {
+            override fun beginReset(semester: String) = dataCache.beginReset(semester)
+            override fun endReset(semester: String) = dataCache.endReset(semester)
+            override suspend fun stampReset(semester: String, atMs: Long) =
+                dataCache.saveSemesterResetAt(semester, atMs)
+            override fun askAgain() = markCategoryReenabled("courses")
+        },
+        now = System::currentTimeMillis,
+        isCurrent = { dataCache.userDataGeneration == generation },
+    )
 
     val isNtustLoggingIn = authService.isLoggingIn
     val ntustLoginError = authService.loginError

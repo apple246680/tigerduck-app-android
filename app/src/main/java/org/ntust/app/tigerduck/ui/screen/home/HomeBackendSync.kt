@@ -180,7 +180,13 @@ class HomeBackendSync @Inject constructor(
             // it. Null means an older backend that does not send the
             // section, so the local set stands.
             result.holidayOverrides?.let(academicCalendar::applySyncedOverrides)
-            syncCourseList(result, syncCourses = "courses" in switchedOn)
+            syncCourseList(
+                result,
+                syncCourses = CourseSyncReconciler.syncsCourseList(
+                    switchOn = "courses" in switchedOn,
+                    pendingConflictCategories = prefs.pendingConflictCategories,
+                ),
+            )
             markCourseSyncAt()
             // Only for the account this sync was for: recorded after a sign-out,
             // it would mark the next account's categories before their first sync.

@@ -194,7 +194,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
             if (prefs.syncCourseColors && result.courseOverrides.isNotEmpty()) {
                 applyCourseOverridesBackground(result.courseOverrides)
             }
-            if (prefs.syncCourses) {
+            if (CourseSyncReconciler.syncsCourseList(prefs.syncCourses, prefs.pendingConflictCategories)) {
                 reconcileCurrentSemester(result)
             }
             prefs.setLastSyncSource(SyncSource.BACKEND)
