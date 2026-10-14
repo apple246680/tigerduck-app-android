@@ -16,16 +16,33 @@ import java.util.Calendar
 object ClassTableSelection {
 
     /**
-     * The course the detail shows for [selected]: the copy in [courses] or, for a course of the
-     * live term picked from the today strip, in [liveCourses], so a rename made from the detail
-     * shows at once. A course no longer listed keeps the copy that was picked.
+     * The course the detail shows for [selected], as it is now, so a rename made from the detail
+     * shows at once: the copy in the term it was picked from. That is [courses], the grid's term,
+     * unless it was picked [fromAnotherTerm], the live term the today strip shows while the grid
+     * is on another, whose copy is in [liveCourses]; one course number can be in both. A course
+     * no longer listed keeps the copy that was picked.
      */
-    fun detailCourse(selected: Course?, courses: List<Course>, liveCourses: List<Course>): Course? {
+    fun detailCourse(
+        selected: Course?,
+        courses: List<Course>,
+        liveCourses: List<Course>,
+        fromAnotherTerm: Boolean,
+    ): Course? {
         selected ?: return null
-        return courses.firstOrNull { it.courseNo == selected.courseNo }
-            ?: liveCourses.firstOrNull { it.courseNo == selected.courseNo }
-            ?: selected
+        val term = if (fromAnotherTerm) liveCourses else courses
+        return term.firstOrNull { it.courseNo == selected.courseNo } ?: selected
     }
+
+    /**
+     * The course a rename of [courseNo] is measured against: the grid term's copy, else the live
+     * term's, for a course picked from the today strip that the grid's term does not list.
+     */
+    fun renameTarget(courseNo: String, courses: List<Course>, liveCourses: List<Course>): Course? =
+        courses.firstOrNull { it.courseNo == courseNo } ?: liveCourses.firstOrNull { it.courseNo == courseNo }
+
+    /** [courses] with [courseNo]'s own name set to [name], or cleared with null. */
+    fun renamed(courses: List<Course>, courseNo: String, name: String?): List<Course> =
+        courses.map { if (it.courseNo == courseNo) it.copy(customCourseName = name) else it }
 
     /** The detail's title: the user's own name for the course, else its [fullName], else its name. */
     fun detailTitle(course: Course, fullName: String?): String =

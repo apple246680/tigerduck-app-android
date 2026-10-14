@@ -49,14 +49,43 @@ class ClassTableSelectionTest {
         val picked = course("CS1", emptyMap())
         val renamed = picked.copy(customCourseName = "Algorithms I")
 
-        assertEquals("Algorithms I", ClassTableSelection.detailCourse(picked, listOf(renamed), emptyList())?.customCourseName)
+        assertEquals("Algorithms I", ClassTableSelection.detailCourse(picked, listOf(renamed), emptyList(), fromAnotherTerm = false)?.customCourseName)
         assertEquals(
             "a carousel course of the live term is found there",
             "Algorithms I",
-            ClassTableSelection.detailCourse(picked, emptyList(), listOf(renamed))?.customCourseName,
+            ClassTableSelection.detailCourse(picked, emptyList(), listOf(renamed), fromAnotherTerm = true)?.customCourseName,
         )
-        assertEquals("one no longer listed keeps what was picked", picked, ClassTableSelection.detailCourse(picked, emptyList(), emptyList()))
-        assertNull("nothing selected, nothing to show", ClassTableSelection.detailCourse(null, listOf(renamed), emptyList()))
+        assertEquals("one no longer listed keeps what was picked", picked, ClassTableSelection.detailCourse(picked, emptyList(), emptyList(), fromAnotherTerm = false))
+        assertNull("nothing selected, nothing to show", ClassTableSelection.detailCourse(null, listOf(renamed), emptyList(), fromAnotherTerm = false))
+    }
+
+    @Test
+    fun `a course of one number in two terms is shown from the term it was picked in`() {
+        val shown = course("CS1", emptyMap()).copy(instructor = "Old term")
+        val live = course("CS1", emptyMap()).copy(instructor = "This term")
+
+        assertEquals(
+            "picked from the today strip while the grid shows an older term",
+            live,
+            ClassTableSelection.detailCourse(live, listOf(shown), listOf(live), fromAnotherTerm = true),
+        )
+        assertEquals(
+            "picked from the grid",
+            shown,
+            ClassTableSelection.detailCourse(shown, listOf(shown), listOf(live), fromAnotherTerm = false),
+        )
+    }
+
+    @Test
+    fun `a rename reaches the live term's copy, even of a course the grid's term does not list`() {
+        val live = course("CS9", emptyMap())
+
+        assertEquals(live, ClassTableSelection.renameTarget("CS9", courses = emptyList(), liveCourses = listOf(live)))
+        assertEquals(
+            listOf(live.copy(customCourseName = "Compilers")),
+            ClassTableSelection.renamed(listOf(live), "CS9", "Compilers"),
+        )
+        assertNull(ClassTableSelection.renameTarget("CS0", listOf(live), listOf(live)))
     }
 
     @Test

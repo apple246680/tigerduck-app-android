@@ -117,7 +117,7 @@ internal fun CourseDetailScreen(
     val moodleIds by viewModel.moodleCourseIdMap.collectAsStateWithLifecycle()
 
     // The course as it is now, so a rename made here shows at once.
-    val course = ClassTableSelection.detailCourse(selected, courses, liveCourses)
+    val course = ClassTableSelection.detailCourse(selected, courses, liveCourses, viewModel.selectedFromAnotherTerm)
     if (course == null) {
         LaunchedEffect(Unit) { onBack() }
         return
