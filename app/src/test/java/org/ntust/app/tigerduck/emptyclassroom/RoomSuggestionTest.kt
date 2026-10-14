@@ -172,6 +172,33 @@ class BuildingDirectoryTest {
 
 class ClassStopTest {
     @Test
+    fun `a course that moves room between neighbouring periods is a stop in each room`() {
+        val course = Course.fromSchedule(
+            courseNo = "CS1001301",
+            courseName = "計算機網路",
+            classroom = "TR-214, IB-305",
+            schedule = mapOf(3 to listOf("1", "2", "3", "4")),
+            classroomMap = mapOf("3-1" to "TR-214", "3-2" to "TR-214", "3-3" to "IB-305", "3-4" to "IB-305"),
+        )
+
+        val stops = ClassStop.stops(listOf(course), weekday = 3)
+
+        assertEquals(listOf("TR-214", "IB-305"), stops.map { it.room })
+        assertEquals(listOf(0, 2), stops.map { it.firstPeriod })
+        assertEquals(listOf(1, 3), stops.map { it.lastPeriod })
+        // So the walk after period 4 starts from IB-305, not TR-214.
+        val suggestion = requireNotNull(
+            RoomSuggestion.make(
+                listOf(RoomUsage("IB-306", List(14) { RoomSlotUse.Free }), RoomUsage("TR-215", List(14) { RoomSlotUse.Free })),
+                period = 4,
+                classes = stops,
+            ),
+        )
+        assertEquals("IB-305", suggestion.previous?.room)
+        assertEquals("IB-306", suggestion.candidates.first().room.room)
+    }
+
+    @Test
     fun `each run of a course is a stop at its periods and the room of its first period`() {
         val course = Course.fromSchedule(
             courseNo = "CS1001301",

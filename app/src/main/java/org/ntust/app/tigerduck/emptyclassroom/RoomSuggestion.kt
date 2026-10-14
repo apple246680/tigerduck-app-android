@@ -13,18 +13,18 @@ data class ClassStop(
 ) {
     companion object {
         /**
-         * One stop per run of neighbouring periods a course meets in on [weekday] (Mon=1 … Sun=7),
-         * placed in the room the class table gives the run's first period.
+         * One stop per run of neighbouring periods a course meets in on [weekday] (Mon=1 … Sun=7)
+         * in the same room, each period's room resolved as the class table resolves it. A course
+         * that moves room between neighbouring periods is two stops, so the walk after it starts
+         * from the room it ends in.
          */
         fun stops(courses: List<Course>, weekday: Int): List<ClassStop> = courses.flatMap { course ->
             val periods = course.schedule[weekday].orEmpty()
                 .mapNotNull(EmptyClassroomSchedule::periodIndex)
                 .distinct()
                 .sorted()
-            runs(periods).map { run ->
-                val periodId = EmptyClassroomSchedule.periodIds[run.first()]
-                val shown = course.classroom(weekday, periodId)
-                val room = Course.splitRooms(shown).firstOrNull() ?: shown
+            runs(periods) { roomAt(course, weekday, it) }.map { run ->
+                val room = roomAt(course, weekday, run.first())
                 ClassStop(
                     course = course.displayName,
                     room = room,
@@ -35,11 +35,22 @@ data class ClassStop(
             }
         }.sortedBy { it.firstPeriod }
 
-        private fun runs(periods: List<Int>): List<List<Int>> {
+        /** The first room the class table gives [course] at [period] on [weekday]. */
+        private fun roomAt(course: Course, weekday: Int, period: Int): String {
+            val shown = course.classroom(weekday, EmptyClassroomSchedule.periodIds[period])
+            return Course.splitRooms(shown).firstOrNull() ?: shown
+        }
+
+        /** Neighbouring periods with the same [room], each run in order. */
+        private fun runs(periods: List<Int>, room: (Int) -> String): List<List<Int>> {
             val runs = mutableListOf<MutableList<Int>>()
             for (period in periods) {
                 val last = runs.lastOrNull()
-                if (last != null && last.last() + 1 == period) last += period else runs += mutableListOf(period)
+                if (last != null && last.last() + 1 == period && room(last.last()) == room(period)) {
+                    last += period
+                } else {
+                    runs += mutableListOf(period)
+                }
             }
             return runs
         }
