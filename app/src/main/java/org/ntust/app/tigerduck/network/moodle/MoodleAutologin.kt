@@ -6,10 +6,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import org.ntust.app.tigerduck.auth.AuthService
+import org.ntust.app.tigerduck.auth.AuthTokenManager
 import org.ntust.app.tigerduck.demo.DemoAccount
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.network.MoodleTokenService
@@ -33,14 +32,19 @@ class MoodleAutologin internal constructor(
     private val scope: CoroutineScope,
     /** Real time, not the debug clock: Moodle counts [KEY_INTERVAL_MS] in real time. */
     private val now: () -> Long = System::currentTimeMillis,
-    /** Moves on at every sign-out, so a key that arrives after one is dropped. */
+    /**
+     * Moves on at every sign-out, read as it is now: the sign-out moves it where it runs, so a key
+     * that arrives after one is dropped, as iOS reads its session's generation.
+     */
     private val signInGeneration: () -> Int,
+    /** Whether a private token is stored, which a sign-out clears where it runs. */
+    private val hasPrivateToken: () -> Boolean,
 ) {
     @Inject
     constructor(
         webservice: MoodleWebservice,
         tokenService: MoodleTokenService,
-        authService: AuthService,
+        authTokenManager: AuthTokenManager,
         demoAccount: DemoAccount,
         @ApplicationScope appScope: CoroutineScope,
     ) : this(
@@ -49,7 +53,8 @@ class MoodleAutologin internal constructor(
             if (demoAccount.isActive) null else requestKey(webservice, tokenService::currentPrivateToken)
         },
         scope = appScope,
-        signInGeneration = SignOuts(authService, appScope)::generation,
+        signInGeneration = { authTokenManager.signInGeneration },
+        hasPrivateToken = { tokenService.currentPrivateToken() != null },
     )
 
     data class Key(val userId: Int, val value: String, val autologinUrl: String)
@@ -75,7 +80,7 @@ class MoodleAutologin internal constructor(
             startKeyRequest(generation)
         }
         val key = withTimeoutOrNull(KEY_WAIT_MS) { request.await() } ?: return url
-        if (signInGeneration() != generation) return url
+        if (!isStillSignedIn(generation)) return url
         return signedInUrl(key, url) ?: url
     }
 
@@ -94,7 +99,7 @@ class MoodleAutologin internal constructor(
                 Log.w(TAG, "autologin key unavailable: ${e.logSummary()}")
                 null
             }
-            if (key == null || key.value.isEmpty() || signInGeneration() != generation) return@async null
+            if (key == null || key.value.isEmpty() || !isStillSignedIn(generation)) return@async null
             synchronized(lock) { lastKeyAtMs = now() }
             key
         } finally {
@@ -102,24 +107,14 @@ class MoodleAutologin internal constructor(
         }
     }
 
+    /** No sign-out since [generation] was read: the generation has not moved and the token is still stored. */
+    private fun isStillSignedIn(generation: Int): Boolean = signInGeneration() == generation && hasPrivateToken()
+
     /** A last key stamped ahead of the clock, left by a clock set back, counts as old. */
     private fun isKeyDue(): Boolean {
         val last = lastKeyAtMs ?: return true
         val age = now() - last
         return age >= KEY_INTERVAL_MS || age < 0
-    }
-
-    /** Counts sign-outs, as the course stores do; see [MoodleAutologin.signInGeneration]. */
-    private class SignOuts(authService: AuthService, scope: CoroutineScope) {
-        @Volatile
-        var generation = 0
-            private set
-
-        init {
-            scope.launch {
-                authService.authState.collect { signedIn -> if (!signedIn) generation++ }
-            }
-        }
     }
 
     companion object {

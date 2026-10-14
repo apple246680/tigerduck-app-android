@@ -30,6 +30,7 @@ class MoodleAutologinTest {
     private var requests = 0
     private var answer: suspend () -> MoodleAutologin.Key? = { key }
     private var generation = 0
+    private var privateToken: String? = "private"
     private var nowMs = 1_000_000_000L
 
     private fun TestScope.autologin() = MoodleAutologin(
@@ -40,6 +41,7 @@ class MoodleAutologinTest {
         scope = backgroundScope,
         now = { nowMs },
         signInGeneration = { generation },
+        hasPrivateToken = { privateToken != null },
     )
 
     @Test
@@ -104,6 +106,33 @@ class MoodleAutologinTest {
         }
 
         assertEquals(page, autologin().url(page))
+    }
+
+    @Test
+    fun `a key that lands once the private token is gone, as a sign-out clears it, is dropped`() = runTest {
+        answer = {
+            privateToken = null
+            key
+        }
+
+        assertEquals(page, autologin().url(page))
+    }
+
+    @Test
+    fun `a sign-out read at once drops a key that lands after it, though nothing has heard of it yet`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        answer = {
+            gate.await()
+            key
+        }
+        val autologin = autologin()
+        val opening = backgroundScope.async { autologin.url(page) }
+        runCurrent()
+        // The sign-out moves the generation where it runs, before any collector sees it.
+        generation++
+        gate.complete(Unit)
+
+        assertEquals(page, opening.await())
     }
 
     @Test
