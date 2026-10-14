@@ -69,9 +69,8 @@ fun TriggersDebugScreen(
     var showWhatsNewSample by remember { mutableStateOf(false) }
     val whatsNewSample = rememberWhatsNewSampleFlow(onEvent = { statusMessage = it })
 
-    // The switch must be on for the steady-state flip to even register, so the
-    // replay is only meaningful when it is.
-    val canTriggerFlip = appState.flipToLibraryEnabled
+    // The prompt offers to turn the switch on, so it is replayed only while it is off.
+    val canTriggerFlip = !appState.flipToLibraryEnabled
 
     Scaffold(
         topBar = {
@@ -149,11 +148,11 @@ fun TriggersDebugScreen(
             TriggerSection(
                 header = "Flip to Library",
                 footer = if (!canTriggerFlip) {
-                    "Requires Flip-to-Library to be enabled. " +
-                        "Turn it on in Settings first."
+                    "Requires Flip-to-Library to be off. " +
+                        "Turn it off in Settings first."
                 } else {
-                    "Resets the first-trigger seen flag, waits 3 seconds, then " +
-                        "replays the same prompt a real face-down gesture surfaces."
+                    "Resets the answered flag, waits 3 seconds, then " +
+                        "replays the prompt a library sign-in shows."
                 },
             ) {
                 Button(
@@ -163,7 +162,7 @@ fun TriggersDebugScreen(
                     },
                     enabled = canTriggerFlip && !isFlipArmed,
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("First library flip after 3 sec") }
+                ) { Text("Flip offer after 3 sec") }
                 if (isFlipArmed) {
                     Text(
                         "Flip prompt scheduled. Stay here or navigate to any tab — " +

@@ -29,11 +29,13 @@ import org.ntust.app.tigerduck.data.preferences.CourseNameScale
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.data.preferences.LibraryTabAddMigration
 import org.ntust.app.tigerduck.data.preferences.effectiveCloudSyncEnabled
+import org.ntust.app.tigerduck.library.FlipToLibraryDefaultOffMigration
 import org.ntust.app.tigerduck.library.LibrarySession
 import org.ntust.app.tigerduck.network.CalendarService
 import org.ntust.app.tigerduck.network.NtustSessionManager
 import org.ntust.app.tigerduck.notification.AssignmentReminderOffset
 import org.ntust.app.tigerduck.notification.SystemPermissions
+import org.ntust.app.tigerduck.ui.firsttrigger.FirstTriggerPromptKey
 import org.ntust.app.tigerduck.ui.haptics.HapticScenario
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.logSummary
@@ -152,6 +154,9 @@ class AppState @Inject constructor(
         // After the pin and the clean-up above, so a pre-2.3.0 bar the pin
         // stores gets Library too, and a slot the clean-up frees counts.
         LibraryTabAddMigration.runIfNeeded(prefs)
+        // Before flipToLibraryEnabled is read below, so the switch it may
+        // store is the one this process starts with.
+        FlipToLibraryDefaultOffMigration.runIfNeeded(prefs)
     }
 
     private var hasCompletedOnboardingState by mutableStateOf(prefs.hasCompletedOnboarding)
@@ -397,13 +402,26 @@ class AppState @Inject constructor(
 
     private var flipToLibraryEnabledState by mutableStateOf(prefs.flipToLibraryEnabled)
 
+    /**
+     * Written even when it reads the same, the first time: a stored off is an
+     * answer, which the default off is not (see FlipToLibraryDefaultOffMigration).
+     */
     var flipToLibraryEnabled: Boolean
         get() = flipToLibraryEnabledState
         set(value) {
-            if (flipToLibraryEnabledState == value) return
+            if (flipToLibraryEnabledState == value && prefs.hasStoredFlipToLibrary) return
             flipToLibraryEnabledState = value
             prefs.flipToLibraryEnabled = value
         }
+
+    /**
+     * The flip switch in Settings. A change there answers the question the app
+     * asks after a library sign-in, which then is not asked.
+     */
+    fun setFlipToLibraryFromSettings(enabled: Boolean) {
+        prefs.setFirstTriggerPromptSeen(FirstTriggerPromptKey.FLIP_TO_LIBRARY.storageKey, true)
+        flipToLibraryEnabled = enabled
+    }
 
     private var cloudSyncEnabledState by mutableStateOf(prefs.cloudSyncEnabled)
 
@@ -538,6 +556,8 @@ class AppState @Inject constructor(
             // would add Library back to a bar the user has set up since.
             prefs.previousDefaultTabsChecked = true
             prefs.libraryTabAddChecked = true
+            // Nothing from before the reset is left for it to read.
+            prefs.flipToLibraryDefaultOffChecked = true
 
             // The mutableState caches above were seeded from prefs at init
             // time. Re-read so the UI shows defaults instead of ghost values

@@ -80,7 +80,7 @@ fun LibrarySettingsScreen(
                         } else {
                             stringResource(R.string.settings_flip_to_library_unsupported)
                         },
-                        onCheckedChange = { viewModel.appState.flipToLibraryEnabled = it },
+                        onCheckedChange = { viewModel.appState.setFlipToLibraryFromSettings(it) },
                     )
                 }
             }

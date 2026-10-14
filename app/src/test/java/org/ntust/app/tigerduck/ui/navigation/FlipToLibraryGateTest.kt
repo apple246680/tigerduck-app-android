@@ -30,4 +30,16 @@ class FlipToLibraryGateTest {
         assertFalse(FlipToLibraryGate.switchReadsOn(enabled = false, signedInToLibrary = true))
         assertTrue(FlipToLibraryGate.switchTakesInput(signedInToLibrary = true))
     }
+
+    @Test
+    fun `the gesture is offered once signed in to the library, with the switch off and never asked`() {
+        assertTrue(FlipToLibraryGate.offersGesture(signedInToLibrary = true, enabled = false, asked = false))
+    }
+
+    @Test
+    fun `the gesture is not offered signed out, already on, or once answered`() {
+        assertFalse(FlipToLibraryGate.offersGesture(signedInToLibrary = false, enabled = false, asked = false))
+        assertFalse(FlipToLibraryGate.offersGesture(signedInToLibrary = true, enabled = true, asked = false))
+        assertFalse(FlipToLibraryGate.offersGesture(signedInToLibrary = true, enabled = false, asked = true))
+    }
 }

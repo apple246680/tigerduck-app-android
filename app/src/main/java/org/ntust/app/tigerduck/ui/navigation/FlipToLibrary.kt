@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import dagger.hilt.EntryPoint
@@ -70,6 +71,24 @@ fun FlipToLibraryEffect(
         signedInToLibrary = signedIn,
     )
 
+    // Asks once whether to turn the gesture on: right after a library sign-in,
+    // or at a launch already signed in. The root host holds it behind What's
+    // New and the update prompt; the wizard, which signs in too, is over
+    // before this is composed.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(signedIn, appState.flipToLibraryEnabled, lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            if (FlipToLibraryGate.offersGesture(
+                    signedInToLibrary = signedIn,
+                    enabled = appState.flipToLibraryEnabled,
+                    asked = firstTriggerController.hasSeen(FirstTriggerPromptKey.FLIP_TO_LIBRARY),
+                )
+            ) {
+                FlipToLibraryPrompt.request(firstTriggerController, appState)
+            }
+        }
+    }
+
     // Cold-start race: MainNavigation installs this effect before NavHost
     // declares its graph, so a flip during initial composition lands before
     // navigate() has any destinations to route to. Dropping the callback
@@ -86,24 +105,11 @@ fun FlipToLibraryEffect(
             // sensor callbacks deliver on the main thread by default. Re-checking
             // the switch closes the brief window where the user toggles
             // flipToLibrary off and a sensor event lands before
-            // DisposableEffect restarts and unregisters the detector.
+            // DisposableEffect restarts and unregisters the detector. Only
+            // someone who turned it on is listening, so a flip that passes
+            // these opens Library straight away.
             if (!appState.flipToLibraryEnabled) return@FlipDetector
-            // Gate the prompt behind the library session. The first-trigger
-            // prompt explains the gesture in lieu of navigating, so it must
-            // only be consumed on a flip that could actually navigate —
-            // otherwise a signed-out user who flips by accident taps Keep,
-            // burns the one-time prompt, and their first *working* flip after
-            // signing in jumps straight to Library with no explanation.
             if (!appState.librarySession.refresh()) return@FlipDetector
-            // First-trigger UX: the first successful flip surfaces a root-level
-            // keep/turn-off prompt instead of jumping tabs, so the user isn't
-            // dropped into an unfamiliar screen before agreeing to the gesture.
-            // The root dialog needs no back stack, so this runs before the
-            // cold-start guard below.
-            if (!firstTriggerController.hasSeen(FirstTriggerPromptKey.FLIP_TO_LIBRARY)) {
-                FlipToLibraryFirstTrigger.request(firstTriggerController, appState)
-                return@FlipDetector
-            }
             if (navController.currentBackStackEntry == null) {
                 pendingFlip = true
                 return@FlipDetector
@@ -157,6 +163,13 @@ internal object FlipToLibraryGate {
     fun switchReadsOn(enabled: Boolean, signedInToLibrary: Boolean): Boolean = enabled && signedInToLibrary
 
     fun switchTakesInput(signedInToLibrary: Boolean): Boolean = signedInToLibrary
+
+    /**
+     * Whether to ask to turn the gesture on: signed in to the library, with the
+     * switch off and the question never answered.
+     */
+    fun offersGesture(signedInToLibrary: Boolean, enabled: Boolean, asked: Boolean): Boolean =
+        signedInToLibrary && !enabled && !asked
 }
 
 private fun navigateToLibrary(navController: NavController, context: Context) {
@@ -169,20 +182,19 @@ private fun navigateToLibrary(navController: NavController, context: Context) {
 }
 
 /**
- * Shared builder for the flip-to-library first-trigger prompt. Extracted so the
- * debug Triggers screen can replay the exact prompt a real face-down gesture
- * surfaces. No-ops once the prompt has been seen — call
- * [FirstTriggerPromptController.reset] first to re-test it.
+ * The question that offers the flip gesture, shared with the debug Triggers
+ * screen, which replays it after [FirstTriggerPromptController.reset]. No-ops
+ * once the question has been answered.
  *
- * Keep leaves the toggle on and does not navigate on this first flip (the user
- * has only just learned the gesture). Turn off disables the feature, which the
- * `DisposableEffect` in [FlipToLibraryEffect] observes to tear down the sensor.
+ * Turn on stores the switch on, which the `DisposableEffect` in
+ * [FlipToLibraryEffect] observes to start the sensor. Maybe later stores it
+ * off: an answer, which the default off is not.
  */
-object FlipToLibraryFirstTrigger {
+object FlipToLibraryPrompt {
     fun request(controller: FirstTriggerPromptController, appState: AppState) {
         controller.requestIfFirstTime(
             key = FirstTriggerPromptKey.FLIP_TO_LIBRARY,
-            onAccept = { /* keep enabled; no navigation on the first flip */ },
+            onAccept = { appState.flipToLibraryEnabled = true },
             onDecline = { appState.flipToLibraryEnabled = false },
         )
     }

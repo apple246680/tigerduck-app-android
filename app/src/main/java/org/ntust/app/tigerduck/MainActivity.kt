@@ -232,9 +232,14 @@ class MainActivity : AppCompatActivity() {
                         }
 
                         // First-trigger opt-in prompts (e.g. flip-to-library):
-                        // root-level so the prompt can surface over any tab the
-                        // gesture fires from, independent of the nav back stack.
-                        FirstTriggerPromptHost(firstTriggerPromptController)
+                        // root-level so the prompt can surface over any tab,
+                        // independent of the nav back stack. A pending one
+                        // waits for What's New and the update prompt to close,
+                        // as on the iPhone, rather than stacking on them.
+                        val updatePending by updateChecker.pendingUpdate.collectAsStateWithLifecycle()
+                        if (whatsNewFlow.value == null && updatePending == null) {
+                            FirstTriggerPromptHost(firstTriggerPromptController)
+                        }
 
                         // Operator-issued popup: rendered over whatever screen
                         // the user lands on after tapping the notification.
