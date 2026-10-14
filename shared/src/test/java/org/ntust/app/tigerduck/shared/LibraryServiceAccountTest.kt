@@ -1,6 +1,9 @@
 package org.ntust.app.tigerduck.shared
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import okhttp3.Call
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Protocol
@@ -10,6 +13,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * A library sign-in whose account signs out, or is replaced, while its request
@@ -49,6 +54,14 @@ class LibraryServiceAccountTest {
             libraryTokenExpiry = 0L
         }
 
+        /** An account whose token is still good, so a code asks for nothing else. */
+        fun storeValid(username: String, password: String) {
+            libraryUsername = username
+            libraryPassword = password
+            libraryToken = "valid"
+            libraryTokenExpiry = Long.MAX_VALUE
+        }
+
         /** An account whose token has run out, so the next code signs in again. */
         fun storeExpired(username: String, password: String) {
             libraryUsername = username
@@ -64,6 +77,9 @@ class LibraryServiceAccountTest {
     private var whileSigningIn: () -> Unit = {}
     private var signIns = 0
 
+    /** Runs while the library is answering a code request, with the call waiting on it. */
+    private var whileFetchingCode: (Call) -> Unit = {}
+
     private val library = Interceptor { chain ->
         val path = chain.request().url.encodedPath
         val body = when {
@@ -72,7 +88,10 @@ class LibraryServiceAccountTest {
                 whileSigningIn()
                 """{"data":{"username":"B10000001","token":"token-$signIns","expirationTimeStamp":${Long.MAX_VALUE}}}"""
             }
-            path.endsWith(LibraryApi.PATH_GENERATE_QR) -> """{"data":"code"}"""
+            path.endsWith(LibraryApi.PATH_GENERATE_QR) -> {
+                whileFetchingCode(chain.call())
+                """{"data":"code"}"""
+            }
             else -> error("unexpected request to $path")
         }
         Response.Builder()
@@ -180,5 +199,31 @@ class LibraryServiceAccountTest {
         assertEquals("token-1", service.ensureToken())
         assertEquals("B10000001", store.libraryUsername)
         assertEquals("token-1", store.libraryToken)
+    }
+
+    /**
+     * A code request whose caller is cancelled, as the watch's page is when the phone hands over
+     * another account, stops waiting for the library at once rather than holding the page until
+     * it answers or times out.
+     */
+    @Test
+    fun `cancelling a code request cancels the call it waits on`() = runBlocking {
+        store.storeValid("B10000001", "pw")
+        val asked = CountDownLatch(1)
+        val answer = CountDownLatch(1)
+        var call: Call? = null
+        whileFetchingCode = {
+            call = it
+            asked.countDown()
+            answer.await(5, TimeUnit.SECONDS)
+        }
+        val request = launch(Dispatchers.Default) { runCatching { service.generateQRCode() } }
+        assertTrue(asked.await(5, TimeUnit.SECONDS))
+
+        request.cancel()
+
+        assertTrue(call!!.isCanceled())
+        answer.countDown()
+        request.join()
     }
 }

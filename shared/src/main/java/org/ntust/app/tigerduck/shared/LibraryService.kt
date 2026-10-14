@@ -3,15 +3,21 @@ package org.ntust.app.tigerduck.shared
 import android.util.Log
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import okhttp3.logging.HttpLoggingInterceptor
+import java.io.IOException
+import kotlin.coroutines.resumeWithException
 
 /**
  * NTUST library passport + virtual-code client. Shared between phone (`:app`)
@@ -82,7 +88,7 @@ class LibraryService(
                 .post(body)
                 .build()
 
-            client.newCall(request).execute().use { response ->
+            send(request).use { response ->
                 val responseBody = response.body.string()
                 val loginResponse = runCatching {
                     gson.fromJson(responseBody, LibraryLoginResponse::class.java)
@@ -135,7 +141,7 @@ class LibraryService(
             .post(body)
             .build()
 
-        client.newCall(request).execute().use { response ->
+        send(request).use { response ->
             val responseBody = response.body.string()
             val qrResponse = runCatching {
                 gson.fromJson(responseBody, LibraryQRResponse::class.java)
@@ -150,6 +156,23 @@ class LibraryService(
             }
             qrResponse.data
         }
+    }
+
+    /**
+     * Sends [request] and waits for its response, cancelling the call when the caller is
+     * cancelled. A blocking execute() went on until the library answered or timed out, and held
+     * a caller that had already moved on, such as the watch's page after the phone handed over
+     * another account.
+     */
+    private suspend fun send(request: Request): Response = suspendCancellableCoroutine { waiting ->
+        val call = client.newCall(request)
+        waiting.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) = waiting.resumeWithException(e)
+
+            override fun onResponse(call: Call, response: Response) =
+                waiting.resume(response) { _, unused, _ -> unused.close() }
+        })
     }
 
     /**
