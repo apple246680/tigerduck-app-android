@@ -83,15 +83,15 @@ fun openMoodleContentLink(context: Context, url: String, browserPreference: Stri
 
 /**
  * Opens a downloaded Moodle [file] in another app: a content URI to the app's own copy, readable
- * once by the app picked, so no link with the account's key ever leaves the app. A web page or an
- * SVG, which can run scripts, goes to the share sheet as iOS sends it, not to a viewer. Through
- * the system's chooser, which says so itself when no app takes the file; the read grant rides the
- * wrapped intent's clip, which the chooser passes on.
+ * once by the app picked, so no link with the account's key ever leaves the app. A web page, an
+ * SVG or any other XML, which a browser renders and may run scripts in, goes to the share sheet
+ * as iOS sends it, not to a viewer. Through the system's chooser, which says so itself when no
+ * app takes the file; the read grant rides the wrapped intent's clip, which the chooser passes on.
  */
 fun moodleFileIntent(context: Context, file: File, mimeType: String): Intent {
     val uri = FileProvider.getUriForFile(context, fileProviderAuthority(context), file)
-    val intent = if (mimeType.lowercase() in SHARED_NOT_VIEWED) {
-        Intent(Intent.ACTION_SEND).setType(mimeType).putExtra(Intent.EXTRA_STREAM, uri)
+    val intent = if (isSharedNotViewed(mimeType)) {
+        Intent(Intent.ACTION_SEND).setTypeAndNormalize(mimeType).putExtra(Intent.EXTRA_STREAM, uri)
     } else {
         Intent(Intent.ACTION_VIEW).setDataAndTypeAndNormalize(uri, mimeType)
     }
@@ -100,7 +100,12 @@ fun moodleFileIntent(context: Context, file: File, mimeType: String): Intent {
     return Intent.createChooser(intent, null)
 }
 
-private val SHARED_NOT_VIEWED = setOf("text/html", "application/xhtml+xml", "image/svg+xml")
+private fun isSharedNotViewed(mimeType: String): Boolean {
+    val base = mimeType.substringBefore(';').trim().lowercase()
+    return base in SHARED_NOT_VIEWED || base.endsWith("+xml")
+}
+
+private val SHARED_NOT_VIEWED = setOf("text/html", "text/xml", "application/xml")
 
 /**
  * The type to open a Moodle file as: the one Moodle lists, unless that is its `document/unknown`

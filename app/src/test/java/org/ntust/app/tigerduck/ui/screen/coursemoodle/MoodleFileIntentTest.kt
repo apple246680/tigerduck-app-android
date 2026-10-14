@@ -2,6 +2,7 @@ package org.ntust.app.tigerduck.ui.screen.coursemoodle
 
 import android.app.Application
 import android.content.Intent
+import android.net.Uri
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -23,7 +24,7 @@ class MoodleFileIntentTest {
      * for the rest of the process, and each Robolectric test has an app folder of its own.
      */
     @Test
-    fun `an attachment leaves as a content URI, a web page through the share sheet, nothing else at all`() {
+    fun `an attachment leaves as a content URI, a web page or XML through the share sheet, nothing else at all`() {
         val context = RuntimeEnvironment.getApplication()
         fun file(path: String) = File(context.cacheDir, path).apply {
             parentFile!!.mkdirs()
@@ -38,17 +39,31 @@ class MoodleFileIntentTest {
         val view = chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
         assertEquals(Intent.ACTION_VIEW, view.action)
         assertEquals("the grant rides the wrapped intent's clip through the chooser", view.data, view.clipData!!.getItemAt(0).uri)
+        assertEquals("and the chooser carries it on", view.data, chooser.clipData!!.getItemAt(0).uri)
+        assertTrue(chooser.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
         assertEquals("content", view.data!!.scheme)
         assertEquals("application/pdf", view.type)
         assertTrue(view.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
         assertFalse(view.data.toString().let { it.contains("token") || it.contains("pluginfile") })
 
-        for ((name, type) in listOf("notes.html" to "text/html", "page.xhtml" to "application/xhtml+xml", "logo.svg" to "image/svg+xml")) {
+        val scripted = listOf(
+            "notes.html" to "text/html", "page.xhtml" to "application/xhtml+xml", "logo.svg" to "image/svg+xml",
+            "feed.xml" to "text/xml", "data.xml" to "application/xml", "news.rss" to "application/rss+xml",
+            "upper.html" to "Text/HTML; charset=utf-8",
+        )
+        for ((name, type) in scripted) {
+            val shareChooser = moodleFileIntent(context, file("TigerDuckCache/moodle_open/a1/s1/$name"), type)
             @Suppress("DEPRECATION")
-            val shared = moodleFileIntent(context, file("TigerDuckCache/moodle_open/a1/s1/$name"), type)
-                .getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
+            val shared = shareChooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
             assertEquals(name, Intent.ACTION_SEND, shared.action)
+            assertEquals(name, Intent.normalizeMimeType(type), shared.type)
+            @Suppress("DEPRECATION")
+            val stream = shared.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)!!
+            assertEquals("content", stream.scheme)
+            assertEquals(stream, shared.clipData!!.getItemAt(0).uri)
             assertTrue(shared.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
+            assertEquals(stream, shareChooser.clipData!!.getItemAt(0).uri)
+            assertTrue(shareChooser.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
         }
 
         val cached = file("TigerDuckCache/moodle/B1/courses/5/grades.json")
