@@ -16,9 +16,8 @@ internal fun String.replaceIosArg(arg: Int, value: String): String =
     replace("%$arg\$@", value)
 
 /**
- * [replaceIosArg] for a whole number, which the iOS-first strings write as
- * `%1$lld` (`a11y_course_color_swatch`, `a11y_calendar_day`). Java formatting
- * has no `ll` length, so `getString(id, n)` would throw on these.
+ * The integer form of [replaceIosArg]: iOS writes a count as `%1$lld` (or `%1$ld`, `%1$d`),
+ * and Java's formatter rejects the `ll` length modifier outright.
  */
 internal fun String.replaceIosArg(arg: Int, value: Long): String =
-    replace("%$arg\$lld", value.toString()).replace("%$arg\$d", value.toString())
+    replace(Regex("%$arg\\$(?:ll|l)?d"), value.toString())

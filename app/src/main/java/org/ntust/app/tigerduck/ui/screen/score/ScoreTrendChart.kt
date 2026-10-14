@@ -70,7 +70,6 @@ import org.ntust.app.tigerduck.ui.theme.ContentAlpha
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.replaceIosArg
 
-private val trendAccent = Color(0xFF4ECDC4)
 private val AXIS_LABEL_WIDTH = 28.dp
 @Composable
 internal fun RankingsTrendCard(
@@ -168,6 +167,9 @@ private fun TrendChart(
     selectedTerm: String?,
     onSelect: (String) -> Unit,
 ) {
+    // The accent, as everything else that marks a choice is, and as the
+    // iPhone draws its trend.
+    val trendAccent = MaterialTheme.colorScheme.primary
     val onSurface = MaterialTheme.colorScheme.onSurface
     val axisColor = onSurface.copy(alpha = 0.25f)
     val ruleColor = onSurface.copy(alpha = 0.35f)

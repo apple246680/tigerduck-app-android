@@ -4,8 +4,6 @@
 
 package org.ntust.app.tigerduck.ui.screen.settings
 
-import android.content.Intent
-import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -36,22 +34,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import org.ntust.app.tigerduck.BuildConfig
+import org.ntust.app.tigerduck.AppUrls
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
+import org.ntust.app.tigerduck.ui.BrowserPreference
 import org.ntust.app.tigerduck.ui.component.ContentCard
 import org.ntust.app.tigerduck.ui.component.PageHeader
 import org.ntust.app.tigerduck.ui.component.SectionHeader
 import org.ntust.app.tigerduck.ui.component.TigerDuckDialog
 import org.ntust.app.tigerduck.ui.haptics.HapticScenario
 import org.ntust.app.tigerduck.ui.haptics.Haptics
+import org.ntust.app.tigerduck.ui.openLink
 import org.ntust.app.tigerduck.ui.screen.mail.ForgotMailPasswordLink
 import org.ntust.app.tigerduck.ui.screen.mail.MailAccountViewModel
 import org.ntust.app.tigerduck.ui.screen.mail.messageRes
@@ -130,7 +130,7 @@ fun SettingsScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val appVersion = remember { BuildConfig.VERSION_NAME }
+    val appVersion = remember { appVersionLabel(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE) }
 
     // About section dependencies: UpdateChecker for "Check for updates" and
     // WhatsNewRepository for the manual What's New entry point. Pulled via
@@ -338,14 +338,14 @@ fun SettingsScreen(
                         // Link opening method
                         SettingsPickerRow(
                             label = stringResource(R.string.settings_link_opening_method),
-                            value = if (browserPreference == "inApp") {
+                            value = if (browserPreference == BrowserPreference.IN_APP) {
                                 stringResource(R.string.settings_browser_in_app)
                             } else {
                                 stringResource(R.string.settings_browser_system_default)
                             },
                             options = listOf(
-                                "system" to stringResource(R.string.settings_browser_system_default),
-                                "inApp" to stringResource(R.string.settings_browser_in_app)
+                                BrowserPreference.SYSTEM to stringResource(R.string.settings_browser_system_default),
+                                BrowserPreference.IN_APP to stringResource(R.string.settings_browser_in_app)
                             ),
                             selectedKey = browserPreference,
                             onSelect = { viewModel.appState.browserPreference = it }
@@ -533,7 +533,7 @@ fun SettingsScreen(
                         // into their browser mid-hop.
                         HorizontalDivider()
                         SettingsLinkRow(stringResource(R.string.settings_check_server_status)) {
-                            openUrl(context, "https://status.tigerduck.app/", browserPreference)
+                            openLink(context, AppUrls.SERVER_STATUS, browserPreference)
                         }
                         // What's New — only when pages or a summary are
                         // registered for the resolved locale. During early
@@ -548,7 +548,7 @@ fun SettingsScreen(
                         }
                         HorizontalDivider()
                         SettingsLinkRow(stringResource(R.string.settings_official_website)) {
-                            openUrl(context, "https://tigerduck.app/", browserPreference)
+                            openLink(context, AppUrls.WEBSITE, browserPreference)
                         }
                         HorizontalDivider()
                         SettingsLinkRow(stringResource(R.string.settings_about_others)) {
@@ -732,17 +732,16 @@ fun SettingsScreen(
         )
     }
 }
+/**
+ * The About section's version row: the version and, in brackets, the build
+ * number, which tells test builds of one version apart in a bug report. The
+ * iPhone shows "2.4.0 (Build 123)"; the bare number needs no translation.
+ */
+internal fun appVersionLabel(versionName: String, versionCode: Int): String = "$versionName ($versionCode)"
+
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 internal interface SettingsEntryPoint {
     fun updateChecker(): UpdateChecker
     fun whatsNewRepository(): WhatsNewRepository
-}
-private fun openUrl(context: android.content.Context, url: String, browserPreference: String) {
-    val uri = url.toUri()
-    if (browserPreference == "inApp") {
-        CustomTabsIntent.Builder().build().launchUrl(context, uri)
-    } else {
-        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-    }
 }

@@ -6,17 +6,20 @@ import org.junit.Test
 class IosPlaceholderTest {
 
     @Test
-    fun `a string argument fills its iOS placeholder`() {
-        assertEquals("To: a@b.c", "To: %1\$@".replaceIosArg(1, "a@b.c"))
+    fun `a text placeholder takes its value`() {
+        assertEquals("Hello, Ada", "Hello, %1\$@".replaceIosArg(1, "Ada"))
     }
 
     @Test
-    fun `a whole number fills an iOS long long placeholder`() {
-        assertEquals("Wednesday, 3 events", "%1\$@, %2\$lld events".replaceIosArg(1, "Wednesday").replaceIosArg(2, 3L))
+    fun `a count placeholder takes its number in every width iOS writes`() {
+        // Java's formatter throws on "%2$lld", the form the shared strings carry.
+        assertEquals("Oct 14, 3 events", "%1\$@, %2\$lld events".replaceIosArg(1, "Oct 14").replaceIosArg(2, 3L))
+        assertEquals("3 and 4", "%1\$ld and %2\$d".replaceIosArg(1, 3L).replaceIosArg(2, 4L))
     }
 
     @Test
-    fun `a whole number fills a plain integer placeholder`() {
-        assertEquals("Color 2", "Color %1\$d".replaceIosArg(1, 2L))
+    fun `a count goes only where its own position is named`() {
+        assertEquals("%2\$lld left", "%2\$lld left".replaceIosArg(1, 7L))
+        assertEquals("%11\$lld", "%11\$lld".replaceIosArg(1, 7L))
     }
 }

@@ -17,7 +17,7 @@ import org.ntust.app.tigerduck.AppConstants
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.ui.screen.calendar.CalendarGrid
-import org.ntust.app.tigerduck.ui.screen.calendar.calendarDayLabel
+import org.ntust.app.tigerduck.ui.screen.calendar.dayCellDescription
 import org.ntust.app.tigerduck.ui.screen.classtable.SoloCourseCell
 import org.ntust.app.tigerduck.ui.screen.settings.AccentColorSwatches
 import java.time.LocalDate
@@ -102,19 +102,19 @@ class TalkBackActivatableTest {
 
     @Test
     fun aCalendarDay() {
-        fun day(iso: String) = Date.from(LocalDate.parse(iso).atStartOfDay(AppConstants.TAIPEI_ZONE).toInstant())
+        fun day(date: LocalDate) = Date.from(date.atStartOfDay(AppConstants.TAIPEI_ZONE).toInstant())
         rule.setContent {
             CalendarGrid(
-                monthDate = day("2026-10-01"),
-                selectedDate = day("2026-10-14"),
-                events = emptyList(),
+                monthDate = day(LocalDate.parse("2026-10-01")),
+                selectedDate = day(LocalDate.parse("2026-10-14")),
+                eventsByDay = emptyMap(),
                 onDateSelected = {},
             )
         }
 
         val locale = context.resources.configuration.locales[0] ?: Locale.getDefault()
         assertActivatable(
-            calendarDayLabel(context.getString(R.string.a11y_calendar_day), day("2026-10-15"), 0, locale)
+            dayCellDescription(context.getString(R.string.a11y_calendar_day), LocalDate.parse("2026-10-15"), 0, locale)
         )
     }
 
