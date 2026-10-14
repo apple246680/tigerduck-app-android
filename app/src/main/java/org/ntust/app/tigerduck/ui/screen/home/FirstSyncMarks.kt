@@ -9,12 +9,16 @@ import org.ntust.app.tigerduck.util.logSummary
  * [AssignmentOverrideReconciler.isFirstUpload]. True only once every mark has
  * landed: a server still empty because a PATCH failed would otherwise read as
  * "cleared elsewhere" on the next sync, and wipe the mark it never got. The
- * other marks still go up after a failure. An id that is not a Moodle
- * assignment id is skipped.
+ * other marks still go up after a failure, and the one that failed goes to
+ * [keep] (`UnsentMarks.keep`): once the others reach the server it is no
+ * longer empty, so the next sync is no first sync, and only that protects
+ * the mark and sends it again. An id that is not a Moodle assignment id is
+ * skipped.
  */
 internal suspend fun sendFirstSyncMarks(
     localIgnored: Set<String>,
     localCompleted: Set<String>,
+    keep: suspend (assignmentId: String, status: String) -> Unit,
     send: suspend (assignmentId: Int, status: String) -> Unit,
 ): Boolean {
     var allSent = true
@@ -28,7 +32,8 @@ internal suspend fun sendFirstSyncMarks(
             throw e
         } catch (e: Exception) {
             allSent = false
-            Log.w("FirstSyncMarks", "[Sync] first-sync mark upload failed: ${e.logSummary()}")
+            Log.w("FirstSyncMarks", "[Sync] first-sync mark upload failed, kept: ${e.logSummary()}")
+            keep(id, status)
         }
     }
     return allSent

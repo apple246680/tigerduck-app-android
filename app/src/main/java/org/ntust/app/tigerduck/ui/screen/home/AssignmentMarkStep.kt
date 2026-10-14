@@ -29,6 +29,8 @@ internal class AssignmentMarkStep(
      * not heard of them.
      */
     private val unsent: suspend () -> Set<String>,
+    /** `UnsentMarks.keep`: a first-sync mark that did not land waits there. */
+    private val keepUnsent: suspend (assignmentId: String, status: String, generation: Int) -> Unit,
 ) {
     /** This phone's marks on disk. */
     interface MarkStore {
@@ -44,9 +46,16 @@ internal class AssignmentMarkStep(
      * `AppPreferences.assignmentMarksSyncedOnce`. [syncsMarks] is the switch
      * as the sync read it with the other categories; [signIn] the sign-in it
      * began under (`AuthTokenManager.signInGeneration`), which the first-sync
-     * upload is pinned to.
+     * upload is pinned to; [generation] the data generation it began under,
+     * which a first-sync mark that did not land is kept for.
      */
-    suspend fun pull(state: HomeSyncState, result: BackendSyncResult, syncsMarks: Boolean, signIn: Int): Boolean {
+    suspend fun pull(
+        state: HomeSyncState,
+        result: BackendSyncResult,
+        syncsMarks: Boolean,
+        signIn: Int,
+        generation: Int,
+    ): Boolean {
         if (!syncsMarks) {
             Log.i(TAG, "[Sync] leaving assignment marks alone: Assignments sync is off")
             return false
@@ -64,7 +73,11 @@ internal class AssignmentMarkStep(
         ) {
             // Pinned to [signIn]: after a sign-out the rest go without a
             // token, not as the next account's marks.
-            val allSent = sendFirstSyncMarks(localIgnored, localCompleted) { id, status -> send(id, status, signIn) }
+            val allSent = sendFirstSyncMarks(
+                localIgnored,
+                localCompleted,
+                keep = { id, status -> keepUnsent(id, status, generation) },
+            ) { id, status -> send(id, status, signIn) }
             // Switched off meanwhile, the rest were never sent.
             return allSent && switchOn()
         }
@@ -141,6 +154,7 @@ internal class AssignmentMarkStep(
             },
             send = send,
             unsent = unsentMarks::ids,
+            keepUnsent = unsentMarks::keep,
         )
     }
 }

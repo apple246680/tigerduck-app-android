@@ -55,6 +55,7 @@ class AssignmentMarkStepTest {
             send(id, status)
         },
         unsent = { unsent },
+        keepUnsent = { id, _, _ -> unsent = unsent + id },
     )
 
     private val state = HomeSyncState(
@@ -80,7 +81,7 @@ class AssignmentMarkStepTest {
     fun `with the switch off the server's marks are not taken`() = runTest {
         switchOn = false
 
-        val synced = step.pull(state, server(ignored = setOf("1")), syncsMarks = false, signIn = SIGN_IN)
+        val synced = step.pull(state, server(ignored = setOf("1")), syncsMarks = false, signIn = SIGN_IN, generation = 0)
 
         assertFalse(synced)
         assertEquals(0, writes)
@@ -92,7 +93,7 @@ class AssignmentMarkStepTest {
         switchOn = false
         completed = setOf("2")
 
-        step.pull(state, server(), syncsMarks = false, signIn = SIGN_IN)
+        step.pull(state, server(), syncsMarks = false, signIn = SIGN_IN, generation = 0)
 
         assertEquals(emptyList<Pair<Int, String>>(), sent)
     }
@@ -101,7 +102,7 @@ class AssignmentMarkStepTest {
     fun `a switch turned off while the sync ran leaves the marks alone`() = runTest {
         onRead = { switchOn = false }
 
-        val synced = step.pull(state, server(ignored = setOf("1")), syncsMarks = true, signIn = SIGN_IN)
+        val synced = step.pull(state, server(ignored = setOf("1")), syncsMarks = true, signIn = SIGN_IN, generation = 0)
 
         assertFalse(synced)
         assertEquals(0, writes)
@@ -111,7 +112,7 @@ class AssignmentMarkStepTest {
     fun `the assignments re-enable check holds the marks`() = runTest {
         pending = setOf("assignments")
 
-        assertFalse(step.pull(state, server(ignored = setOf("1")), syncsMarks = true, signIn = SIGN_IN))
+        assertFalse(step.pull(state, server(ignored = setOf("1")), syncsMarks = true, signIn = SIGN_IN, generation = 0))
         assertEquals(0, writes)
     }
 
@@ -122,7 +123,7 @@ class AssignmentMarkStepTest {
         pending = setOf("assignments")
         ignored = setOf("1")
 
-        val synced = step.pull(state, server(), syncsMarks = true, signIn = SIGN_IN)
+        val synced = step.pull(state, server(), syncsMarks = true, signIn = SIGN_IN, generation = 0)
 
         assertTrue(synced)
         assertEquals(listOf(1 to STATUS_IGNORED), sent)
@@ -134,7 +135,7 @@ class AssignmentMarkStepTest {
         pending = setOf("assignments")
         ignored = setOf("1")
 
-        assertFalse(step.pull(state, server(), syncsMarks = false, signIn = SIGN_IN))
+        assertFalse(step.pull(state, server(), syncsMarks = false, signIn = SIGN_IN, generation = 0))
         assertEquals(emptyList<Pair<Int, String>>(), sent)
     }
 
@@ -142,7 +143,7 @@ class AssignmentMarkStepTest {
     fun `the account's first sync here sends this phone's marks up instead of taking the empty server`() = runTest {
         ignored = setOf("1")
 
-        val synced = step.pull(state, server(), syncsMarks = true, signIn = SIGN_IN)
+        val synced = step.pull(state, server(), syncsMarks = true, signIn = SIGN_IN, generation = 0)
 
         assertTrue(synced)
         assertEquals(listOf(1 to STATUS_IGNORED), sent)
@@ -154,7 +155,7 @@ class AssignmentMarkStepTest {
         ignored = setOf("1")
         send = { _, _ -> throw IOException("offline") }
 
-        assertFalse(step.pull(state, server(), syncsMarks = true, signIn = SIGN_IN))
+        assertFalse(step.pull(state, server(), syncsMarks = true, signIn = SIGN_IN, generation = 0))
     }
 
     @Test
@@ -162,7 +163,7 @@ class AssignmentMarkStepTest {
         syncedBefore = true
         ignored = setOf("1")
 
-        val synced = step.pull(state, server(), syncsMarks = true, signIn = SIGN_IN)
+        val synced = step.pull(state, server(), syncsMarks = true, signIn = SIGN_IN, generation = 0)
 
         assertTrue(synced)
         assertEquals(emptyList<Pair<Int, String>>(), sent)
@@ -176,7 +177,7 @@ class AssignmentMarkStepTest {
         completed = setOf("1")
         val snapshot = server(ignored = setOf("1"))
 
-        step.pull(state, snapshot, syncsMarks = true, signIn = SIGN_IN)
+        step.pull(state, snapshot, syncsMarks = true, signIn = SIGN_IN, generation = 0)
 
         assertEquals(setOf("1"), completed)
         assertEquals(listOf("1"), state.conflicts.value.map { it.id })
@@ -213,7 +214,7 @@ class AssignmentMarkStepTest {
         state.markedCompletedIds.value = setOf("3")
         unsent = setOf("3")
 
-        step.pull(state, server(), syncsMarks = true, signIn = SIGN_IN)
+        step.pull(state, server(), syncsMarks = true, signIn = SIGN_IN, generation = 0)
 
         assertEquals(setOf("3"), completed)
         assertEquals(setOf("3"), state.markedCompletedIds.value)
@@ -238,9 +239,25 @@ class AssignmentMarkStepTest {
         ignored = setOf("1")
         completed = setOf("2")
 
-        step.pull(state, server(), syncsMarks = true, signIn = SIGN_IN)
+        step.pull(state, server(), syncsMarks = true, signIn = SIGN_IN, generation = 0)
 
         assertEquals(listOf(SIGN_IN, SIGN_IN), signIns)
+    }
+
+    @Test
+    fun `a first-sync mark that did not land outlives the next sync`() = runTest {
+        ignored = setOf("1", "2")
+        state.ignoredAssignmentIds.value = setOf("1", "2")
+        send = { id, status ->
+            if (id == 2) throw IOException("offline")
+            sent += id to status
+        }
+
+        assertFalse(step.pull(state, server(), syncsMarks = true, signIn = SIGN_IN, generation = 0))
+        // The server now has 1, so the next sync is no first sync.
+        step.pull(state, server(ignored = setOf("1")), syncsMarks = true, signIn = SIGN_IN, generation = 0)
+
+        assertEquals(setOf("1", "2"), ignored)
     }
 
     private companion object {

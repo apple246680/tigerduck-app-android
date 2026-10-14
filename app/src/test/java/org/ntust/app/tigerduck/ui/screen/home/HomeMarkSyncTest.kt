@@ -79,7 +79,7 @@ class HomeMarkSyncTest {
 
     /** What `HomeBackendSync.pull` passes: the switch as read with the other categories. */
     private suspend fun fullSync(result: BackendSyncResult) =
-        step.pull(state, result, syncsMarks = "assignments" in categoriesSwitchedOn(prefs), signIn = 0)
+        step.pull(state, result, syncsMarks = "assignments" in categoriesSwitchedOn(prefs), signIn = 0, generation = cache.userDataGeneration)
 
     @Test
     fun `with the Assignments switch off a full sync leaves this phone's marks alone`() = runTest {

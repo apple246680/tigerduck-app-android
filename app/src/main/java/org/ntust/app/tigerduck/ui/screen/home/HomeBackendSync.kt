@@ -157,7 +157,7 @@ class HomeBackendSync @Inject constructor(
             // Recorded at once, for this account only: a later step that
             // fails must not leave the next sync reading an empty server as
             // this phone's first.
-            if (markStep.pull(state, result, syncsMarks = "assignments" in switchedOn, signIn = signIn) &&
+            if (markStep.pull(state, result, "assignments" in switchedOn, signIn, generation) &&
                 authService.isStillSignedInAs(account)
             ) {
                 prefs.assignmentMarksSyncedOnce = true
