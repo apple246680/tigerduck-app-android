@@ -148,15 +148,14 @@ class LibraryViewModel @Inject constructor(
 
     fun onPause() = pass.pause()
 
-    /** The page is on screen; the flip-to-library offer waits until it is left. */
-    fun onPageShown() = pagePresence.appear(this)
-
     /**
-     * The page left the screen; [recreating] when only to be built again, as
-     * at a rotation. This view model outlives that, and leaves the page's
+     * Counts the page as shown while its back stack entry is resumed; the
+     * flip-to-library offer waits until it is left. [recreating] says whether
+     * a pause is one only to build the activity again, as when the dark theme
+     * or the font size changes. This view model outlives that, and leaves the
      * count when it is cleared.
      */
-    fun onPageHidden(recreating: Boolean) = pagePresence.disappear(this, recreating)
+    fun presenceObserver(recreating: () -> Boolean) = pagePresence.observer(this, recreating)
 
     override fun onCleared() {
         pagePresence.disappear(this)
