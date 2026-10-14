@@ -81,7 +81,8 @@ class CredentialManager private constructor(
         token: String?,
         tokenExpiry: Long,
         byUser: Boolean,
-    ): Boolean = libraryAccount.saveIfCurrent(generation, byUser, { libraryUsername }, username) {
+        stillCurrent: () -> Boolean,
+    ): Boolean = libraryAccount.saveIfCurrent(generation, byUser, { libraryUsername }, username, stillCurrent) {
         prefs.edit()
             .putString("library_username", username)
             .putString("library_password", password)
@@ -138,17 +139,38 @@ class CredentialManager private constructor(
         }
     }
 
+    // Moved by each school sign-out, under the library account's lock.
+    private var schoolAccount = 0
+
+    /**
+     * Moved by each school sign-out. The school sign-in reads it before its
+     * SSO step, and its own library step stores nothing once it has moved
+     * (see [isSchoolAccount]). Only that step: a sign-in with another
+     * student's stored library credentials, which the sign-out keeps, still
+     * stores its token or its refusal, as on the iPhone.
+     */
+    val schoolAccountGeneration: Int get() = libraryAccount.atomically { schoolAccount }
+
+    /**
+     * Whether no school sign-out has come since [read] was read from
+     * [schoolAccountGeneration]. Asked as the library step's answer is
+     * stored, under the same lock as the sign-out.
+     */
+    fun isSchoolAccount(read: Int): Boolean = libraryAccount.atomically { schoolAccount == read }
+
     /**
      * The library sign-out a school sign-out makes: the library account goes
      * when it is [ifSchoolAccount]'s, the departing student ID, compared without case, as the school sign-in
      * upper-cases the ID; another student's stays. Either way the school
-     * sign-in's own library step, if still out, stores nothing. Returns whether
-     * the library account went.
+     * sign-in's own library step, if still out, stores nothing. Atomic with
+     * the library's saves, so that step cannot store the departing account
+     * after this looked. Returns whether the library account went.
      */
-    fun clearLibraryCredentials(ifSchoolAccount: String?): Boolean {
+    fun clearLibraryCredentials(ifSchoolAccount: String?): Boolean = libraryAccount.atomically {
+        schoolAccount++
         val same = ifSchoolAccount != null && libraryUsername.equals(ifSchoolAccount, ignoreCase = true)
-        if (same) clearLibraryCredentials() else libraryAccount.endAppSignIns()
-        return same
+        if (same) clearLibraryCredentials()
+        same
     }
 
     /**

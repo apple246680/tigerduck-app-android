@@ -47,7 +47,8 @@ class LibraryServiceStoredSignInTest {
             token: String?,
             tokenExpiry: Long,
             byUser: Boolean,
-        ): Boolean = account.saveIfCurrent(generation, byUser, { libraryUsername }, username) {
+            stillCurrent: () -> Boolean,
+        ): Boolean = account.saveIfCurrent(generation, byUser, { libraryUsername }, username, stillCurrent) {
             libraryUsername = username
             libraryPassword = password
             libraryToken = token

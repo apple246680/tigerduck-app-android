@@ -130,15 +130,18 @@ class LibraryService(
      * own ([byUser] false) also yields to another account stored meanwhile; one
      * the user asked for replaces it. The caller reads the generation from the
      * store when its sign-in starts: right before this call, or earlier, as the
-     * school sign-in does before its SSO step.
+     * school sign-in does before its SSO step. [stillCurrent] is asked as the
+     * answer is stored: false stores nothing either, for a caller whose own
+     * account, such as the school one it signs in with, changed meanwhile.
      */
     suspend fun login(
         username: String,
         password: String,
         accountGeneration: Int,
         byUser: Boolean,
+        stillCurrent: () -> Boolean = { true },
     ): String = tokenMutex.withLock {
-        loginInternal(username, password, accountGeneration, byUser)
+        loginInternal(username, password, accountGeneration, byUser, stillCurrent)
     }
 
     private suspend fun loginInternal(
@@ -146,6 +149,7 @@ class LibraryService(
         password: String,
         accountGeneration: Int,
         byUser: Boolean,
+        stillCurrent: () -> Boolean = { true },
     ): String =
         withContext(Dispatchers.IO) {
             val body = gson.toJson(LibraryLoginRequest(username, password))
@@ -165,6 +169,7 @@ class LibraryService(
                     answer.token,
                     answer.expirationTimeStamp,
                     byUser,
+                    stillCurrent,
                 )
                 if (!stored) throw LibraryServiceError.CredentialsNotFound()
                 answer.token

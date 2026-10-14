@@ -130,6 +130,8 @@ class AuthService @Inject constructor(
     private val schoolSignIn = SchoolSignIn(
         libraryStore = credentials,
         libraryService = libraryService,
+        schoolAccount = { credentials.schoolAccountGeneration },
+        isSchoolAccount = credentials::isSchoolAccount,
         studentId = { credentials.ntustStudentId },
         password = { credentials.ntustPassword },
         sessionIsWarm = { sessionManager.cookiesValid },

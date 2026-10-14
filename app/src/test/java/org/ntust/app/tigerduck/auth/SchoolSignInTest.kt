@@ -44,7 +44,8 @@ class SchoolSignInTest {
             token: String?,
             tokenExpiry: Long,
             byUser: Boolean,
-        ): Boolean = account.saveIfCurrent(generation, byUser, { libraryUsername }, username) {
+            stillCurrent: () -> Boolean,
+        ): Boolean = account.saveIfCurrent(generation, byUser, { libraryUsername }, username, stillCurrent) {
             libraryUsername = username
             libraryPassword = password
             libraryToken = token
@@ -60,6 +61,9 @@ class SchoolSignInTest {
     }
 
     private val library = MemoryLibrary()
+
+    /** Moved by each school sign-out, as the credential store's is. */
+    private var schoolAccount = 0
     private var storedId: String? = "B10000001"
     private var storedPassword: String? = "pw"
     private var warm = false
@@ -91,6 +95,8 @@ class SchoolSignInTest {
     private val signIn = SchoolSignIn(
         libraryStore = library,
         libraryService = LibraryService(library, extraInterceptors = listOf(libraryServer)),
+        schoolAccount = { schoolAccount },
+        isSchoolAccount = { it == schoolAccount },
         studentId = { storedId },
         password = { storedPassword },
         sessionIsWarm = { warm },
@@ -139,6 +145,20 @@ class SchoolSignInTest {
     @Test
     fun `a sign-out during the SSO step of a typed sign-in keeps the library step from storing it`() = runTest {
         duringSchoolSignIn = { library.signOut() }
+
+        assertTrue(signIn.typed("B10000002", "pw2"))
+
+        assertNoLibraryAccount()
+    }
+
+    /**
+     * A school sign-out keeps a library account of another student, so it
+     * moves no library generation; the step still stores nothing for the
+     * student who left.
+     */
+    @Test
+    fun `a school sign-out while the library answers keeps the library step from storing it`() = runTest {
+        duringLibrarySignIn = { schoolAccount++ }
 
         assertTrue(signIn.typed("B10000002", "pw2"))
 

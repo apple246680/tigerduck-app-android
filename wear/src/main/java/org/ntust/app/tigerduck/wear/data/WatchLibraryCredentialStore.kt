@@ -78,7 +78,8 @@ class WatchLibraryCredentialStore @VisibleForTesting internal constructor(
         token: String?,
         tokenExpiry: Long,
         byUser: Boolean,
-    ): Boolean = account.saveIfCurrent(generation, byUser, { prefs.getString(KEY_USERNAME, null) }, username) {
+        stillCurrent: () -> Boolean,
+    ): Boolean = account.saveIfCurrent(generation, byUser, { prefs.getString(KEY_USERNAME, null) }, username, stillCurrent) {
         prefs.edit()
             .putString(KEY_USERNAME, username)
             .putString(KEY_PASSWORD, password)

@@ -30,7 +30,10 @@ interface LibraryCredentialStore {
      * stored once the account has signed out since [generation] was read; a
      * sign-in the app makes on its own ([byUser] false) also yields to another
      * account stored meanwhile, while one the user asked for replaces it.
-     * Atomic with a sign-out, so one cannot fall between the check and the writes.
+     * Nothing is stored either while [stillCurrent] is false, for a caller
+     * whose own account, such as the school one it signs in with, changed
+     * meanwhile. Atomic with a sign-out, so one cannot fall between the check
+     * and the writes.
      */
     fun saveLibrarySignIn(
         generation: Int,
@@ -39,6 +42,7 @@ interface LibraryCredentialStore {
         token: String?,
         tokenExpiry: Long,
         byUser: Boolean,
+        stillCurrent: () -> Boolean = { true },
     ): Boolean
 
     /**
@@ -79,11 +83,8 @@ class LibraryAccountGate {
         remove()
     }
 
-    /**
-     * Keeps the sign-ins the app makes on its own that are still out from
-     * storing anything, without a sign-out: one the user asked for still can.
-     */
-    fun endAppSignIns(): Unit = synchronized(this) { generation++ }
+    /** Runs [block] atomic with sign-outs, the accounts handed over and saves. */
+    fun <T> atomically(block: () -> T): T = synchronized(this) { block() }
 
     /** Runs [block] while the generation is still [read], atomic with sign-outs and saves; null once it moved. */
     fun <T> whileCurrent(read: Int, block: () -> T): T? = synchronized(this) {
@@ -99,20 +100,21 @@ class LibraryAccountGate {
     /**
      * Runs [save], which stores [username]'s sign-in, unless the account has
      * signed out since [read] was read, or, unless [byUser], another account
-     * was stored since; says whether it did. Replacing [storedUsername]'s
-     * account with another moves the generation. Student IDs are compared
-     * without case: the school sign-in upper-cases them, the library form
-     * keeps what was typed.
+     * was stored since, or [stillCurrent] is false; says whether it did.
+     * Replacing [storedUsername]'s account with another moves the generation.
+     * Student IDs are compared without case: the school sign-in upper-cases
+     * them, the library form keeps what was typed.
      */
     fun saveIfCurrent(
         read: Int,
         byUser: Boolean,
         storedUsername: () -> String?,
         username: String,
+        stillCurrent: () -> Boolean = { true },
         save: () -> Unit,
     ): Boolean = synchronized(this) {
         val refused = if (byUser) signedOutAt > read else generation != read
-        if (refused) return false
+        if (refused || !stillCurrent()) return false
         if (!storedUsername().equals(username, ignoreCase = true)) generation++
         save()
         true

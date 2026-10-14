@@ -12,11 +12,12 @@ import kotlin.coroutines.cancellation.CancellationException
  * [AuthService] so a test can run it; [AuthService] holds its lock around each
  * call.
  *
- * The typed sign-in reads the library account generation before anything
- * else: a sign-out from then on takes the library account too, and the library
- * sign-in then stores nothing for the account that left. That sign-in is one
- * the app makes on its own, so it also yields to a library account the user
- * signed in to meanwhile.
+ * The typed sign-in reads the library account generation and the school
+ * account's before anything else: a school sign-out from then on, which takes
+ * the library account only when it is the same student's, keeps the library
+ * sign-in from storing anything for the account that left. That sign-in is
+ * one the app makes on its own, so it also yields to a library account the
+ * user signed in to meanwhile.
  *
  * Signing in again with the stored school account leaves the library alone:
  * only the stored library credentials renew its token, under the rules in
@@ -27,6 +28,10 @@ internal class SchoolSignIn(
     /** What [libraryService] stores into. */
     private val libraryStore: LibraryCredentialStore,
     private val libraryService: LibraryService,
+    /** Moved by each school sign-out; see [org.ntust.app.tigerduck.data.preferences.CredentialManager.schoolAccountGeneration]. */
+    private val schoolAccount: () -> Int,
+    /** Whether no school sign-out has come since the [schoolAccount] given was read. */
+    private val isSchoolAccount: (Int) -> Boolean,
     private val studentId: () -> String?,
     private val password: () -> String?,
     private val sessionIsWarm: () -> Boolean,
@@ -37,8 +42,9 @@ internal class SchoolSignIn(
     /** A sign-in with credentials just entered. Throws what the SSO step throws; the library step only logs. */
     suspend fun typed(studentId: String, password: String): Boolean {
         val libraryAccount = libraryStore.libraryAccountGeneration
+        val school = schoolAccount()
         val success = signInToSchool(studentId, password, true)
-        if (success && !libraryStore.isLibraryTokenValid) signInToLibrary(studentId, password, libraryAccount)
+        if (success && !libraryStore.isLibraryTokenValid) signInToLibrary(studentId, password, libraryAccount, school)
         return success
     }
 
@@ -54,13 +60,13 @@ internal class SchoolSignIn(
         return signInToSchool(studentId.trim().uppercase(), password, false)
     }
 
-    private suspend fun signInToLibrary(studentId: String, password: String, libraryAccount: Int) {
+    private suspend fun signInToLibrary(studentId: String, password: String, libraryAccount: Int, school: Int) {
         // Best-effort: library credentials may differ from NTUST SSO, so a
         // failure here must not fail the SSO login — but log it, otherwise
         // "library QR never works" is undiagnosable in the field. That
         // includes an answer dropped for an account that signed out.
         try {
-            libraryService.login(studentId, password, libraryAccount, byUser = false)
+            libraryService.login(studentId, password, libraryAccount, byUser = false) { isSchoolAccount(school) }
             afterLibrarySignIn()
         } catch (e: CancellationException) {
             throw e
