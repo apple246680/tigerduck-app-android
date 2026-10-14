@@ -51,6 +51,7 @@ class AuthService @Inject constructor(
     @param:ApplicationScope private val appScope: CoroutineScope,
     private val demoAccount: org.ntust.app.tigerduck.demo.DemoAccount,
     private val prefs: org.ntust.app.tigerduck.data.preferences.AppPreferences,
+    private val classroomUsage: org.ntust.app.tigerduck.emptyclassroom.ClassroomUsageService,
 ) {
     /**
      * A demo session presents as signed in, with or without an account.
@@ -323,6 +324,10 @@ class AuthService @Inject constructor(
         // sign in would find its session warm and read its roster.
         courseService.cancelSharedFetches()
         moodleService.cancelSharedFetches()
+        // Likewise the empty-classroom finder: its kept days came from this session, and a read
+        // still queued for it must not sign the departing account in again. The next account
+        // opens on its own building.
+        org.ntust.app.tigerduck.emptyclassroom.forgetEmptyClassroom(classroomUsage, prefs)
         sessionManager.signOut()
         bulletinReadStateStore.clear()
         // The cache they dated is wiped below; left behind, they would date

@@ -70,6 +70,7 @@ import org.ntust.app.tigerduck.ui.screen.calendar.CalendarScreen
 import org.ntust.app.tigerduck.ui.screen.calendar.CalendarViewModel
 import org.ntust.app.tigerduck.ui.screen.classtable.ClassTableScreen
 import org.ntust.app.tigerduck.ui.screen.classtable.ClassTableViewModel
+import org.ntust.app.tigerduck.ui.screen.emptyclassroom.EmptyClassroomScreen
 import org.ntust.app.tigerduck.ui.screen.home.HomeScreen
 import org.ntust.app.tigerduck.ui.screen.home.HomeViewModel
 import org.ntust.app.tigerduck.ui.screen.library.LibraryScreen
@@ -106,6 +107,7 @@ sealed class Screen(val route: String) {
     object AnnouncementSubscriptions : Screen("announcements/subscriptions")
     object Library : Screen("library")
     object Score : Screen("score")
+    object EmptyClassroom : Screen("emptyClassroom")
     object More : Screen("more")
     object Settings : Screen("settings")
     object TabEditor : Screen("tabEditor")
@@ -480,6 +482,9 @@ fun MainNavigation(
             page(Screen.Score.route) {
                 ScoreScreen(onOpenSignInSettings = openSignInSettings)
             }
+            page(Screen.EmptyClassroom.route) {
+                EmptyClassroomScreen(onOpenSignInSettings = openSignInSettings)
+            }
             page(Screen.More.route) { MoreScreen(navController, appState) }
             page(Screen.Settings.route) {
                 SettingsScreen(
@@ -689,6 +694,7 @@ fun AppFeature.toRoute(): String = when (this) {
     AppFeature.SCHOOL_MAIL -> Screen.SchoolMail.route
     AppFeature.LIBRARY -> Screen.Library.route
     AppFeature.SCORE -> Screen.Score.route
+    AppFeature.EMPTY_CLASSROOM -> Screen.EmptyClassroom.route
     AppFeature.MORE -> Screen.More.route
     AppFeature.SETTINGS -> Screen.Settings.route
     else -> "placeholder/$id"
