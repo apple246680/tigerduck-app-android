@@ -70,6 +70,19 @@ internal fun effectiveCloudSyncWrite(requested: Boolean, flavor: String = BuildC
 internal fun keepsPreviousDefaultTabs(hasCompletedOnboarding: Boolean, hasStoredTabs: Boolean): Boolean =
     hasCompletedOnboarding && !hasStoredTabs
 
+/**
+ * A full reset's credential step: every credential goes, and then the watch is
+ * told, so a library account of another student, which the school sign-out
+ * before it keeps, does not stay on the watch.
+ */
+internal suspend fun clearAllCredentials(
+    credentials: CredentialManager,
+    publishLibraryCredentialsToWatch: suspend () -> Unit,
+) {
+    credentials.clearAll()
+    publishLibraryCredentialsToWatch()
+}
+
 @Singleton
 class AppState @Inject constructor(
     val authService: AuthService,
@@ -85,6 +98,7 @@ class AppState @Inject constructor(
     private val demoAccount: org.ntust.app.tigerduck.demo.DemoAccount,
     private val mailAccount: org.ntust.app.tigerduck.mail.MailAccount,
     val librarySession: LibrarySession,
+    private val wearBridge: org.ntust.app.tigerduck.wear.WearScheduleBridge,
 ) {
     /**
      * Whether the demo account was signed in when this process started.
@@ -535,7 +549,7 @@ class AppState @Inject constructor(
         authService.logout()
         scope.launch {
             runCatching { dataCache.clearEverything() }
-            credentials.clearAll()
+            clearAllCredentials(credentials, wearBridge::publishLibraryCredentials)
             prefs.clearAllPrefs()
             // Re-stamp the schema so the dialog doesn't re-fire on next launch.
             prefs.dataSchemaVersion = DataMigration.CURRENT_SCHEMA
