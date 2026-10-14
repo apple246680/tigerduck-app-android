@@ -190,8 +190,8 @@ class MailChecker @Inject constructor(
             if (!stillSignedIn()) return
             try {
                 val body = session.fetchBody(INBOX, summary.uid)
-                if (!stillSignedIn()) return
-                cache.saveBody(INBOX, summary.uid, uidValidity, body)
+                // Asked under the cache's lock, which the sign-out's clear takes too.
+                if (!cache.saveBodyIf(INBOX, summary.uid, uidValidity, body, stillSignedIn)) return
             } catch (e: CancellationException) {
                 // Not runCatching: that catches Throwable, so a cancellation would be swallowed
                 // here and the loop would carry on fetching for a check nobody is waiting for.
