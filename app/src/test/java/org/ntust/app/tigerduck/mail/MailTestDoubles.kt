@@ -3,6 +3,9 @@ package org.ntust.app.tigerduck.mail
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
+import kotlinx.coroutines.runBlocking
 import org.ntust.app.tigerduck.mail.imap.SpecialFolder
 import org.ntust.app.tigerduck.mail.model.MailAddress
 import org.ntust.app.tigerduck.mail.model.MailBody
@@ -18,6 +21,19 @@ import org.ntust.app.tigerduck.mail.sync.MailBackgroundScheduler
  * A test that asserts on that work waits for it (it lands on [Dispatchers.IO]).
  */
 fun testApplicationScope(): CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+/**
+ * Stops what a test left running on a [testApplicationScope] and waits for it
+ * to end. Sign-out's cache wipe would otherwise outlive the test and race
+ * TemporaryFolder deleting the same folder, and what it throws then fails a
+ * later runTest, in any class, as UncaughtExceptionsBeforeTest. Call it from
+ * an @After, which runs before rules such as TemporaryFolder clean up.
+ */
+fun CoroutineScope.cancelAndJoinBlocking() {
+    // Read here: inside runBlocking, coroutineContext is runBlocking's own.
+    val job = coroutineContext.job
+    runBlocking { job.cancelAndJoin() }
+}
 
 class InMemoryMailDevServerStore(
     override var settings: MailDevServerSettings = MailDevServerSettings.OFF,

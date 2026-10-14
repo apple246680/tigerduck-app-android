@@ -6,6 +6,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -25,6 +26,7 @@ import org.ntust.app.tigerduck.mail.MailError
 import org.ntust.app.tigerduck.mail.MainDispatcherRule
 import org.ntust.app.tigerduck.mail.RecordingNotifier
 import org.ntust.app.tigerduck.mail.RecordingScheduler
+import org.ntust.app.tigerduck.mail.cancelAndJoinBlocking
 import org.ntust.app.tigerduck.mail.imap.FolderSelection
 import org.ntust.app.tigerduck.mail.imap.ResolvedFolders
 import org.ntust.app.tigerduck.mail.imap.SpecialFolder
@@ -47,10 +49,16 @@ class SchoolMailListViewModelTest {
     private lateinit var account: MailAccount
     private lateinit var vm: SchoolMailListViewModel
 
+    // Where the sign-out test's cache wipe runs, stopped before TemporaryFolder deletes its folder.
+    private val appScope = testApplicationScope()
+
+    @After
+    fun stopAppScope() = appScope.cancelAndJoinBlocking()
+
     @Before
     fun setUp() {
         account = MailAccount(InMemoryCredentialStore(), state, server.factory(), MailCache(tmp.root),
-            FakeDemoGate(), schoolMailSite(), RecordingScheduler(), RecordingNotifier(), testApplicationScope())
+            FakeDemoGate(), schoolMailSite(), RecordingScheduler(), RecordingNotifier(), appScope)
         runBlocking { account.signIn("b10000001", "pw") }
         vm = SchoolMailListViewModel(repo, account, MailChecker(account, state, server.factory(), RecordingNotifier(), MailCache(tmp.root)) { 0 }, schoolMailSite())
     }
