@@ -316,6 +316,64 @@ class EmptyClassroomViewModelTest {
     }
 
     @Test
+    fun `an open room's sheet follows each read of the day and closes once a read lacks the room`() {
+        val harness = Harness(time(14, 10, 5))
+        harness.serveDay(listOf(Pages.row("TR-214", "..............")))
+        harness.model.appear()
+        harness.model.open(harness.state.usage!!.rooms.first())
+        assertEquals(true, harness.state.openRoom?.isFree(2))
+
+        harness.serveDay(listOf(Pages.row("TR-214", "..b...........")))
+        harness.model.refresh()
+        assertEquals(false, harness.state.openRoom?.isFree(2))
+
+        harness.serveDay(listOf(Pages.row("IB-508", "..............")))
+        harness.model.refresh()
+        assertNull(harness.state.openRoom)
+
+        // The room back in a later read does not open the sheet again.
+        harness.serveDay(listOf(Pages.row("TR-214", "..............")))
+        harness.model.refresh()
+        assertEquals(listOf("TR-214"), harness.rooms)
+        assertNull(harness.state.openRoom)
+    }
+
+    @Test
+    fun `an open room's sheet closes on another day, even one with the room, and on an account change`() {
+        val harness = Harness(time(14, 10, 5))
+        harness.serveDay(listOf(Pages.row("TR-214", "..............")))
+        harness.model.appear()
+        harness.serveDay(listOf(Pages.row("TR-214", "..............")))
+        harness.model.select(day(16))
+        harness.model.select(day(14))
+        val room = harness.state.usage!!.rooms.first()
+
+        harness.model.open(room)
+        harness.model.select(day(16))
+        assertEquals(listOf("TR-214"), harness.rooms)
+        assertNull(harness.state.openRoom)
+
+        harness.model.open(room)
+        assertEquals(room, harness.state.openRoom)
+        harness.model.accountChanged()
+        assertEquals(listOf("TR-214"), harness.rooms)
+        assertNull(harness.state.openRoom)
+    }
+
+    @Test
+    fun `a closed room's sheet stays closed`() {
+        val harness = Harness(time(14, 10, 5))
+        harness.serveDay(listOf(Pages.row("TR-214", "..............")))
+        harness.model.appear()
+        harness.model.open(harness.state.usage!!.rooms.first())
+
+        harness.model.closeRoom()
+
+        assertNull(harness.state.openRoom)
+        assertNull(harness.state.openRoomName)
+    }
+
+    @Test
     fun `leaving the screen stops its read, so nothing it started lands later`() {
         val harness = Harness(time(14, 22, 30))
         val gate = CompletableDeferred<Unit>()

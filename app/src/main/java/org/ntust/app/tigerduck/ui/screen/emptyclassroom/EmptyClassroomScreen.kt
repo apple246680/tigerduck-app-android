@@ -18,11 +18,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -52,7 +48,6 @@ fun EmptyClassroomScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val signedIn by viewModel.signedIn.collectAsStateWithLifecycle()
-    var openRoom by remember { mutableStateOf<String?>(null) }
 
     val activity = LocalActivity.current
     // Back in the foreground the screen reads again, which sends nothing while the day is fresh.
@@ -62,9 +57,6 @@ fun EmptyClassroomScreen(
         viewModel.appear()
         onStopOrDispose { if (activity?.isChangingConfigurations != true) viewModel.disappear() }
     }
-    LaunchedEffect(signedIn) { if (!signedIn) openRoom = null }
-    // A room's sheet shows one day; another day closes it.
-    LaunchedEffect(state.selectedDay) { openRoom = null }
 
     Box(Modifier.fillMaxSize()) {
         TigerPullToRefresh(
@@ -92,13 +84,15 @@ fun EmptyClassroomScreen(
                         }
                     }
                 } else {
-                    finderContent(state, viewModel, onRoom = { openRoom = it.room })
+                    finderContent(state, viewModel, onRoom = viewModel::open)
                 }
             }
         }
     }
 
-    val room = openRoom?.let { name -> state.usage?.rooms?.firstOrNull { it.room == name } }
+    // Looked up in the rooms on screen, so a read that lands while the sheet is open reaches it;
+    // another day, an account change, or rooms without it close the sheet.
+    val room = state.openRoom
     if (room != null) {
         val siteNames = state.usage?.buildingNames.orEmpty()
         val place = RoomPlace.of(room.room)
@@ -110,7 +104,7 @@ fun EmptyClassroomScreen(
             period = state.selectedPeriod,
             ended = state.endedPeriods,
             nowPeriod = state.currentPeriod,
-            onDismiss = { openRoom = null },
+            onDismiss = viewModel::closeRoom,
         )
     }
 }

@@ -21,6 +21,7 @@ import org.ntust.app.tigerduck.emptyclassroom.ClassroomUsageService
 import org.ntust.app.tigerduck.emptyclassroom.DayOff
 import org.ntust.app.tigerduck.emptyclassroom.EmptyClassroomSchedule
 import org.ntust.app.tigerduck.emptyclassroom.KeptUsage
+import org.ntust.app.tigerduck.emptyclassroom.RoomUsage
 import org.ntust.app.tigerduck.shared.Course
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -54,6 +55,11 @@ data class FinderState(
     /** A day on screen is being read again, without a pull. */
     val isReloading: Boolean = false,
     val nextTeachingDay: LocalDate? = null,
+    /**
+     * The room whose sheet is open. Only its name is kept, so the sheet shows the room as the
+     * latest read has it; another day, or rooms without it, close the sheet.
+     */
+    val openRoomName: String? = null,
 ) {
     val today: LocalDate get() = now.toLocalDate()
 
@@ -70,6 +76,9 @@ data class FinderState(
     val currentPeriod: Int? get() = if (isShowingToday) EmptyClassroomSchedule.upcomingPeriod(now) else null
 
     val usage: CampusUsage? get() = (content as? FinderContent.Rooms)?.usage
+
+    /** The room whose sheet is open, as the rooms on screen have it. */
+    val openRoom: RoomUsage? get() = openRoomName?.let { name -> usage?.rooms?.firstOrNull { it.room == name } }
 }
 
 /**
@@ -128,7 +137,7 @@ class EmptyClassroomViewModel internal constructor(
             val (day, period) = EmptyClassroomSchedule.opening(
                 state.now, EmptyClassroomSchedule.DAY_COUNT - 1, ::isTeachingDay,
             )
-            _state.update { it.copy(selectedDay = day, selectedPeriod = period) }
+            edit { it.copy(selectedDay = day, selectedPeriod = period) }
             hasOpened = true
         }
         startTicker()
@@ -142,7 +151,7 @@ class EmptyClassroomViewModel internal constructor(
         stopLoading()
         tickerJob?.cancel()
         tickerJob = null
-        _state.update { it.copy(isRefreshing = false, isReloading = false) }
+        edit { it.copy(isRefreshing = false, isReloading = false) }
     }
 
     /**
@@ -155,7 +164,7 @@ class EmptyClassroomViewModel internal constructor(
         coursesJob?.cancel()
         coursesJob = null
         courses = emptyList()
-        _state.update {
+        edit {
             it.copy(
                 content = FinderContent.Loading,
                 classes = emptyList(),
@@ -186,30 +195,38 @@ class EmptyClassroomViewModel internal constructor(
 
     fun select(day: LocalDate) {
         if (day == _state.value.selectedDay) return
-        _state.update { it.copy(selectedDay = day) }
+        edit { it.copy(selectedDay = day) }
         refreshClasses()
         load(force = false)
     }
 
     fun select(period: Int) {
         if (period !in EmptyClassroomSchedule.periodIds.indices) return
-        _state.update { it.copy(selectedPeriod = period) }
+        edit { it.copy(selectedPeriod = period) }
     }
 
     fun pick(building: String) {
         env.pickedBuilding = building
-        _state.update { it.copy(pickedBuilding = building) }
+        edit { it.copy(pickedBuilding = building) }
+    }
+
+    fun open(room: RoomUsage) {
+        edit { it.copy(openRoomName = room.room) }
+    }
+
+    fun closeRoom() {
+        edit { it.copy(openRoomName = null) }
     }
 
     /** A pull: reads the day again even when it was read moments ago, and the user's classes. */
     fun refresh() {
-        _state.update { it.copy(isRefreshing = true) }
+        edit { it.copy(isRefreshing = true) }
         reloadCourses()
         load(force = true)
     }
 
     fun retry() {
-        _state.update { it.copy(content = FinderContent.Loading) }
+        edit { it.copy(content = FinderContent.Loading) }
         load(force = true)
     }
 
@@ -219,7 +236,7 @@ class EmptyClassroomViewModel internal constructor(
         val state = _state.value
         val classes = ClassStop.stops(courses, state.selectedDay.dayOfWeek.value)
         val remaining = java.time.temporal.ChronoUnit.DAYS.between(state.selectedDay, state.days.last()).toInt()
-        _state.update {
+        edit {
             it.copy(
                 classes = classes,
                 nextTeachingDay = EmptyClassroomSchedule.nextTeachingDay(state.selectedDay, remaining, ::isTeachingDay),
@@ -247,7 +264,7 @@ class EmptyClassroomViewModel internal constructor(
         }
         val credentials = env.credentials() ?: return show(FinderContent.Loading)
         val kept = service.keptUsage(day)
-        _state.update {
+        edit {
             it.copy(
                 content = kept?.let(::contentOf) ?: FinderContent.Loading,
                 isReloading = kept != null && !it.isRefreshing,
@@ -267,11 +284,11 @@ class EmptyClassroomViewModel internal constructor(
             if (running?.second == id) running = null
             if (!isActive || _state.value.selectedDay != day || !env.isCurrent(credentials)) return@launch
             outcome.onSuccess { fresh ->
-                _state.update { it.copy(content = contentOf(fresh), isRefreshing = false, isReloading = false) }
+                edit { it.copy(content = contentOf(fresh), isRefreshing = false, isReloading = false) }
             }.onFailure { error ->
                 if (error is ClassroomUsageError.SignedOut) return@launch
                 val offline = env.isOffline(error)
-                _state.update {
+                edit {
                     // A day already on screen stays when reading it again fails; the service
                     // stops offering a day as old as half a day to stand in while it reloads.
                     val content = if (it.content == FinderContent.Loading) FinderContent.Failed(offline) else it.content
@@ -282,7 +299,7 @@ class EmptyClassroomViewModel internal constructor(
     }
 
     private fun show(content: FinderContent) {
-        _state.update { it.copy(content = content, isRefreshing = false, isReloading = false) }
+        edit { it.copy(content = content, isRefreshing = false, isReloading = false) }
     }
 
     private fun contentOf(kept: KeptUsage): FinderContent =
@@ -306,7 +323,20 @@ class EmptyClassroomViewModel internal constructor(
     }
 
     private fun tick() {
-        _state.update { it.copy(now = env.now()) }
+        edit { it.copy(now = env.now()) }
+    }
+
+    /**
+     * Every change of the state goes through here, so an open room's sheet closes on another day
+     * and once the rooms on screen lack the room, a loading screen included; the room's return
+     * in a later read does not open it again.
+     */
+    private inline fun edit(transform: (FinderState) -> FinderState) {
+        _state.update { old ->
+            val new = transform(old)
+            val closes = new.openRoomName != null && (new.selectedDay != old.selectedDay || new.openRoom == null)
+            if (closes) new.copy(openRoomName = null) else new
+        }
     }
 
     override fun onCleared() {
