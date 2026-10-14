@@ -44,12 +44,18 @@ class UnsentMarksTest {
     /** What a new process builds over the same files. */
     private fun newProcess() = UnsentMarks(
         dataCache = cache,
-        sender = MarkSender { id, status ->
+        sender = MarkSender { id, status, signIn ->
+            signIns += signIn
             sent += id to status
             answer(id, status)
         },
         sends = { sends },
+        signInGeneration = { signInGeneration },
     )
+
+    /** The sign-in each PATCH was pinned to. */
+    private val signIns = mutableListOf<Int>()
+    private var signInGeneration = 1
 
     @Test
     fun `a tap whose PATCH fails is kept, and the next sync sends it and lets it go`() = runTest {
@@ -157,5 +163,84 @@ class UnsentMarksTest {
         marks.keep("7", "ignored", generation)
 
         assertEquals(emptySet<String>(), marks.ids())
+    }
+
+    @Test
+    fun `a waiting mark a newer tap replaced is not sent over it`() = runTest {
+        answer = { _, _ -> throw IOException("offline") }
+        marks.send("8", "ignored")
+        marks.send("7", "ignored")
+        val eightOut = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        answer = { id, _ ->
+            if (id == 8) {
+                eightOut.complete(Unit)
+                release.await()
+            }
+        }
+        sent.clear()
+
+        // A sync's retry reads both, and sends 8 first.
+        val retry = launch { marks.retry() }
+        eightOut.await()
+        // The user unmarks 7 while 8 is out.
+        val tap = launch { marks.send("7", "none") }
+        testScheduler.runCurrent()
+        release.complete(Unit)
+        retry.join()
+        tap.join()
+
+        assertEquals(listOf(8 to "ignored", 7 to "none"), sent)
+    }
+
+    @Test
+    fun `a waiting mark is not sent once the account has signed out`() = runTest {
+        answer = { _, _ -> throw IOException("offline") }
+        marks.send("7", "ignored")
+        marks.send("8", "ignored")
+        sent.clear()
+        answer = { id, _ ->
+            if (id == 7) {
+                // Signed out, and someone else signed in, while 7 was out.
+                cache.clearAllUserData()
+                signInGeneration++
+            }
+        }
+
+        marks.retry()
+
+        assertEquals(listOf(7 to "ignored"), sent)
+    }
+
+    @Test
+    fun `every PATCH is pinned to the sign-in that was current when its mark was read`() = runTest {
+        signInGeneration = 4
+
+        marks.send("7", "ignored")
+
+        assertEquals(listOf(4), signIns)
+    }
+
+    @Test
+    fun `two overlapping syncs send a waiting mark once`() = runTest {
+        answer = { _, _ -> throw IOException("offline") }
+        marks.send("7", "ignored")
+        sent.clear()
+        val out = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        answer = { _, _ ->
+            out.complete(Unit)
+            release.await()
+        }
+
+        val one = launch { marks.retry() }
+        out.await()
+        val two = launch { marks.retry() }
+        testScheduler.runCurrent()
+        release.complete(Unit)
+        one.join()
+        two.join()
+
+        assertEquals(listOf(7 to "ignored"), sent)
     }
 }

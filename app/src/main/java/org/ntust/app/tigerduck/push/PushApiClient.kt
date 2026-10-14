@@ -55,8 +55,11 @@ class PushApiClient @Inject constructor(
      * session. Without one it throws [NotSignedInException] and the request
      * is not sent.
      */
-    private suspend fun Request.Builder.addAuthHeader(): Request.Builder =
-        header("Authorization", authTokenManager.requireAuthHeader())
+    private suspend fun Request.Builder.addAuthHeader(signIn: Int? = null): Request.Builder =
+        header(
+            "Authorization",
+            if (signIn == null) authTokenManager.requireAuthHeader() else authTokenManager.requireAuthHeader(signIn),
+        )
 
     /**
      * Register the device with no account attached.
@@ -222,9 +225,15 @@ class PushApiClient @Inject constructor(
         }
     }
 
+    /**
+     * [signIn], when given, pins the request to that sign-in
+     * ([AuthTokenManager.signInGeneration]): after a sign-out it goes without
+     * a token rather than with the next account's.
+     */
     suspend fun patchAssignmentOverride(
         assignmentId: Int,
         localStatus: String,
+        signIn: Int? = null,
     ) = withContext(Dispatchers.IO) {
         if (!isSyncCapable || !prefs.syncAssignments) return@withContext
         val payload = mapOf("local_status" to localStatus)
@@ -232,7 +241,7 @@ class PushApiClient @Inject constructor(
         val request = Request.Builder()
             .url("$baseUrl/sync/assignments/$assignmentId/override")
             .patch(body)
-            .addAuthHeader()
+            .addAuthHeader(signIn)
             .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {

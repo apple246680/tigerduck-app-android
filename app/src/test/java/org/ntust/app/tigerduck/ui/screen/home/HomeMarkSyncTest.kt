@@ -58,7 +58,12 @@ class HomeMarkSyncTest {
         prefs = AppPreferences(context)
         cache = DataCache(context, AcademicCalendarStore(context, OkHttpClient(), prefs))
         // Sending as with TigerSync on, which the fdroid build never is.
-        unsent = UnsentMarks(cache, MarkSender { id, status -> send(id, status) }, sends = { prefs.syncAssignments })
+        unsent = UnsentMarks(
+            cache,
+            MarkSender { id, status, _ -> send(id, status) },
+            sends = { prefs.syncAssignments },
+            signInGeneration = { 0 },
+        )
         step = AssignmentMarkStep.over(prefs, cache, unsent, send)
     }
 

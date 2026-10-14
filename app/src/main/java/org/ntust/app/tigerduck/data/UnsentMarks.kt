@@ -4,6 +4,7 @@ import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.ntust.app.tigerduck.auth.AuthTokenManager
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.push.PushApiClient
@@ -13,7 +14,7 @@ import javax.inject.Singleton
 
 /** Sends one assignment's mark; see [PushApiClient.patchAssignmentOverride]. */
 internal fun interface MarkSender {
-    suspend fun send(assignmentId: Int, status: String)
+    suspend fun send(assignmentId: Int, status: String, signIn: Int)
 }
 
 /**
@@ -39,15 +40,18 @@ class UnsentMarks internal constructor(
     private val dataCache: DataCache,
     private val sender: MarkSender,
     private val sends: () -> Boolean,
+    private val signInGeneration: () -> Int,
 ) {
     @Inject constructor(
         dataCache: DataCache,
         pushApiClient: PushApiClient,
         prefs: AppPreferences,
+        authTokenManager: AuthTokenManager,
     ) : this(
         dataCache = dataCache,
         sender = MarkSender(pushApiClient::patchAssignmentOverride),
         sends = { sendsMarks(prefs) },
+        signInGeneration = { authTokenManager.signInGeneration },
     )
 
     private val mutex = Mutex()
@@ -63,10 +67,11 @@ class UnsentMarks internal constructor(
     suspend fun send(assignmentId: String, status: String) {
         if (!sends()) return
         val generation = dataCache.userDataGeneration
+        val signIn = signInGeneration()
         val kept = mutex.withLock {
             dataCache.saveUnsentMarks(dataCache.loadUnsentMarks() + (assignmentId to status), generation)
         }
-        if (kept) trySend(assignmentId, status, generation)
+        if (kept) trySend(assignmentId, status, generation, signIn)
     }
 
     /**
@@ -85,7 +90,8 @@ class UnsentMarks internal constructor(
     suspend fun retry() {
         if (!sends()) return
         val generation = dataCache.userDataGeneration
-        for ((id, status) in dataCache.loadUnsentMarks()) trySend(id, status, generation)
+        val signIn = signInGeneration()
+        for ((id, status) in dataCache.loadUnsentMarks()) trySend(id, status, generation, signIn)
     }
 
     /** The server's marks were taken over this phone's, so what waited is no longer wanted. */
@@ -93,18 +99,35 @@ class UnsentMarks internal constructor(
         mutex.withLock { dataCache.saveUnsentMarks(emptyMap()) }
     }
 
-    private suspend fun trySend(id: String, status: String, generation: Int) {
+    /**
+     * Sends [id]'s [status] if it is still the mark waiting for it, for the
+     * account whose data [generation] and sign-in [signIn] were read with.
+     * Checked under the send lock, right before the request: a newer tap of
+     * the id, a send of it that landed meanwhile, or a sign-out each make it
+     * stale, and sent it would undo the newer mark, repeat the request, or
+     * land on the next account. The request itself carries [signIn], so a
+     * sign-out after the check sends it without a token rather than with the
+     * next account's.
+     */
+    private suspend fun trySend(id: String, status: String, generation: Int, signIn: Int) {
         val intId = id.toIntOrNull()
-        if (intId != null) {
+        val sent = sendMutex.withLock {
+            val current = sends() && mutex.withLock {
+                generation == dataCache.userDataGeneration && dataCache.loadUnsentMarks()[id] == status
+            }
+            if (!current) return
+            if (intId == null) return@withLock true
             try {
-                sendMutex.withLock { sender.send(intId, status) }
+                sender.send(intId, status, signIn)
+                true
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "mark PATCH failed, kept for the next sync: ${e.logSummary()}")
-                return
+                false
             }
         }
+        if (!sent) return
         // Only if no newer tap of the id replaced it meanwhile.
         mutex.withLock {
             val waiting = dataCache.loadUnsentMarks()
