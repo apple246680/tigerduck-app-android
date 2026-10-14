@@ -328,6 +328,9 @@ class AuthService @Inject constructor(
         // The cache they dated is wiped below; left behind, they would date
         // the next account's data, and hold its first background sync off.
         prefs.clearSyncStamps()
+        // The term picked in the class table was the departing student's. Cleared, the next
+        // student's picker follows the newest term.
+        prefs.classTableSelectedSemester = null
         // A re-enable check compares this device's data, which is wiped below.
         // Left pending, it would hold the next session's assignment marks and
         // then offer Use Local, sending that emptied data over the server's.
