@@ -9,6 +9,8 @@ import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.debug.DebugFixtureStore
+import org.ntust.app.tigerduck.network.MoodleCourseIds
+import org.ntust.app.tigerduck.network.moodle.MoodleCourseApi
 import org.ntust.app.tigerduck.ui.component.ServerStatusTracker
 import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
@@ -121,8 +123,27 @@ class DemoAccount @Inject constructor(
         ServerStatusTracker.exitDemoMode()
     }
 
+    /**
+     * The demo account's Moodle, which answers from the bundled file; null outside the demo
+     * account, or for a file without a `moodle` section.
+     */
+    fun moodleApi(): MoodleCourseApi? {
+        if (!isActive) return null
+        val moodle = load(currentLang())?.moodle ?: return null
+        return DemoMoodleCourseApi(moodle)
+    }
+
     private suspend fun write(fixture: DemoFixture) {
         fixture.courses?.let { dataCache.saveCourses(it) }
+        // The ids the course detail finds the demo courses' Moodle content under. A course has
+        // no idnumber of its own, so it is looked up as `<term><courseNo>`, as one added by hand.
+        fixture.moodle?.let { moodle ->
+            val term = dataCache.currentSemesterCode()
+            val ids = moodle.courses.associate {
+                MoodleCourseIds.normalizedIdnumber(term + it.courseNo) to it.moodleId
+            }
+            dataCache.saveMoodleCourseIds(dataCache.loadMoodleCourseIds() + ids)
+        }
         fixture.assignments?.let { dataCache.saveAssignments(it) }
         fixture.bulletins?.let { bulletinCache.save(it) }
         fixture.calendar?.let { dataCache.saveCalendarEvents(it) }

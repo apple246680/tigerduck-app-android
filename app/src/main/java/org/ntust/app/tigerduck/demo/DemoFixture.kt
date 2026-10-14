@@ -36,6 +36,8 @@ data class DemoFixture(
     val assignments: List<Assignment>?,
     val bulletins: List<BulletinSummary>?,
     val calendar: List<CalendarEvent>?,
+    /** The courses' Moodle content; see [DemoMoodle]. */
+    val moodle: DemoMoodle?,
 ) {
     /**
      * Whether a school sign-in attempt names this account: the student ID
@@ -84,6 +86,7 @@ data class DemoFixture(
                 assignments = root.list("assignments") { o, _ -> parseAssignment(o, lang) },
                 bulletins = root.list("bulletins") { o, i -> parseBulletin(o, i) },
                 calendar = root.list("calendar") { o, i -> parseCalendarEvent(o, i) },
+                moodle = DemoMoodleFixture.parse(root, lang),
             )
         }
 

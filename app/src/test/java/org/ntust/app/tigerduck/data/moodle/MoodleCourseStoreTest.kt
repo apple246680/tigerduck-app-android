@@ -1,0 +1,230 @@
+package org.ntust.app.tigerduck.data.moodle
+
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.ntust.app.tigerduck.network.MoodleWebserviceError
+import org.ntust.app.tigerduck.network.moodle.MoodleCourseApi
+import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseGrades
+import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseSummary
+import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussion
+import org.ntust.app.tigerduck.network.model.moodle.MoodleForum
+import org.ntust.app.tigerduck.network.model.moodle.MoodleGradeItem
+import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberList
+import java.io.IOException
+import java.lang.reflect.Type
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class MoodleCourseStoreTest {
+
+    private class MemoryCache : MoodleCachePort {
+        val files = mutableMapOf<String, Pair<Any, Long>>()
+
+        @Suppress("UNCHECKED_CAST")
+        override suspend fun <T> load(type: Type, name: String): Pair<T, Long>? = files[name] as Pair<T, Long>?
+
+        override suspend fun save(value: Any, fetchedAtMs: Long, name: String) {
+            files[name] = value to fetchedAtMs
+        }
+    }
+
+    private class FakeApi : MoodleCourseApi {
+        var allowed = setOf(
+            MoodleCourseApi.FORUMS_FUNCTION, MoodleCourseApi.DISCUSSIONS_FUNCTION,
+            MoodleCourseApi.VIEW_DISCUSSION_FUNCTION, MoodleCourseApi.MEMBERS_FUNCTION,
+            MoodleCourseApi.GRADE_ITEMS_FUNCTION, MoodleCourseApi.COURSES_FUNCTION,
+        )
+        var forumList = listOf<MoodleForum>()
+        var pages = mapOf<Int, List<MoodleDiscussion>>()
+        var gradeCalls = 0
+        var gate: CompletableDeferred<Unit>? = null
+        var gradesAnswer: () -> List<MoodleGradeItem> = { emptyList() }
+        var membersAnswer: () -> MoodleMemberList = { MoodleMemberList(null, emptyList()) }
+        val viewed = mutableListOf<Int>()
+
+        override suspend fun functions() = allowed
+        override suspend fun forums(courseIds: List<Int>) = forumList.filter { it.courseId in courseIds }
+        var failNextPage = false
+        override suspend fun discussions(forumId: Int, page: Int): List<MoodleDiscussion> {
+            if (failNextPage) {
+                failNextPage = false
+                throw IOException("offline")
+            }
+            return pages[page].orEmpty()
+        }
+        override suspend fun markViewed(discussionId: Int, isCurrent: () -> Boolean) {
+            viewed += discussionId
+        }
+        override suspend fun members(courseId: Int) = membersAnswer()
+        override suspend fun picture(url: String) = ByteArray(0)
+        override suspend fun gradeItems(courseId: Int): List<MoodleGradeItem> {
+            gradeCalls++
+            gate?.await()
+            return gradesAnswer()
+        }
+        override suspend fun summary(courseId: Int) = MoodleCourseSummary.EMPTY
+        override suspend fun fileUrl(fileUrl: String): String? = null
+    }
+
+    private var now = 1_000_000L
+    private var signedIn = true
+    private val cache = MemoryCache()
+    private val api = FakeApi()
+
+    private fun TestScope.store() = MoodleCourseStore(
+        courseId = 5,
+        termCourseIds = listOf(6),
+        courseCodes = listOf("CS3005301"),
+        api = api,
+        context = MoodleCacheContext("B1", cache, isCurrent = { signedIn }, now = { now }),
+        scope = backgroundScope,
+    )
+
+    private val item = MoodleGradeItem(1, "HW1", "mod", "assign", 31, "95", 100.0, false, "")
+
+    @Test
+    fun `the cached copy shows before any fetch`() = runTest(UnconfinedTestDispatcher()) {
+        cache.files["courses/5/grades"] = MoodleCourseGrades(listOf(item)) to 999L
+        val store = store()
+        store.awaitCache()
+
+        assertEquals(listOf(item), store.grades.value!!.items)
+        assertEquals(999L, store.grades.state.value.fetchedAtMs)
+        assertEquals(0, api.gradeCalls)
+    }
+
+    @Test
+    fun `a refresh asked for while one runs joins it`() = runTest(UnconfinedTestDispatcher()) {
+        api.gate = CompletableDeferred()
+        api.gradesAnswer = { listOf(item) }
+        val store = store()
+
+        val first = async { store.refreshGrades() }
+        val second = async { store.refreshGrades() }
+        runCurrent()
+        api.gate!!.complete(Unit)
+        first.await()
+        second.await()
+
+        assertEquals(1, api.gradeCalls)
+        assertEquals(listOf(item), store.grades.value!!.items)
+        assertEquals(now, cache.files["courses/5/grades"]!!.second)
+    }
+
+    @Test
+    fun `a failed refresh keeps the copy and says why`() = runTest(UnconfinedTestDispatcher()) {
+        cache.files["courses/5/grades"] = MoodleCourseGrades(listOf(item)) to 999L
+        api.gradesAnswer = { throw IOException("offline") }
+        val store = store()
+
+        store.refreshGrades()
+
+        assertEquals(listOf(item), store.grades.value!!.items)
+        assertTrue(store.grades.state.value.failure is IOException)
+        assertEquals("a failure is not dated as a fetch", 999L, store.grades.state.value.fetchedAtMs)
+    }
+
+    @Test
+    fun `an answer that lands after a sign-out is neither shown nor kept`() = runTest(UnconfinedTestDispatcher()) {
+        api.gradesAnswer = {
+            signedIn = false
+            listOf(item)
+        }
+        val store = store()
+
+        store.refreshGrades()
+
+        assertNull(store.grades.value)
+        assertTrue(cache.files.isEmpty())
+    }
+
+    @Test
+    fun `a site that does not allow a call hides its row rather than failing`() = runTest(UnconfinedTestDispatcher()) {
+        api.allowed = emptySet()
+        val store = store()
+
+        store.refreshGrades()
+        store.refreshMembers()
+        store.refreshForums()
+
+        assertTrue(store.grades.value!!.items.isEmpty())
+        assertNull(store.grades.state.value.failure)
+        assertTrue(store.sectionRows.value.isEmpty())
+    }
+
+    @Test
+    fun `a course that hides its participants has no members row`() = runTest(UnconfinedTestDispatcher()) {
+        api.membersAnswer = { throw MoodleWebserviceError.MalformedResponse("nopermissions") }
+        val store = store()
+
+        store.refreshMembers()
+
+        assertTrue(store.members.value!!.members.isEmpty())
+        assertNull(store.members.state.value.failure)
+    }
+
+    @Test
+    fun `one forums call covers the term, and the course's news forum is its announcements`() = runTest(UnconfinedTestDispatcher()) {
+        api.forumList = listOf(
+            testForum(1, courseId = 5, type = "news", count = 2, unread = 1),
+            testForum(2, courseId = 6, type = "news", count = 4),
+        )
+        val store = store()
+
+        store.refreshForums()
+
+        assertEquals(listOf(5, 6), store.forums.value!!.courseIds)
+        assertEquals(1, store.newsForum.value!!.id)
+        assertEquals(MoodleSectionRow(MoodleSectionRow.Kind.ANNOUNCEMENTS, 2, true), store.sectionRows.value.single())
+    }
+
+    @Test
+    fun `opening an announcement clears its dot and logs the view`() = runTest(UnconfinedTestDispatcher()) {
+        api.forumList = listOf(testForum(1, courseId = 5, type = "news", count = 2, unread = 1))
+        api.pages = mapOf(0 to listOf(testDiscussion(10, unread = 1), testDiscussion(11)))
+        val store = store()
+        store.refreshForums()
+        val pages = store.announcementPages()!!
+        pages.refresh()
+        assertEquals("loading the list marks nothing read", emptyList<Int>(), api.viewed)
+
+        store.open(pages.list.value!!.discussions.first { it.id == 10 })
+        runCurrent()
+
+        assertEquals(listOf(10), api.viewed)
+        assertEquals(0, pages.list.value!!.discussions.first { it.id == 10 }.unreadCount)
+        assertEquals(false, store.sectionRows.value.single().hasUnread)
+    }
+
+    @Test
+    fun `the next page loads at the list's end, and a failed one can be retried`() = runTest(UnconfinedTestDispatcher()) {
+        api.forumList = listOf(testForum(1, courseId = 5, type = "news", count = 21))
+        api.pages = mapOf(0 to (1..20).map { testDiscussion(it, created = 100L + it) })
+        val store = store()
+        store.refreshForums()
+        val pages = store.announcementPages()!!
+        pages.refresh()
+        val last = MoodleDiscussions.sorted(pages.list.value!!).last().id
+        assertTrue(pages.list.value!!.hasMore)
+
+        api.failNextPage = true
+        pages.loadMore(last)
+        assertTrue(pages.pageFailure.value is IOException)
+        assertEquals("a failed page leaves the list as it was", 20, pages.list.value!!.discussions.size)
+
+        api.pages = api.pages + (1 to listOf(testDiscussion(21, created = 1)))
+        pages.loadMore(last)
+
+        assertNull(pages.pageFailure.value)
+        assertEquals(21, pages.list.value!!.discussions.size)
+        assertEquals(false, pages.list.value!!.hasMore)
+    }
+}
