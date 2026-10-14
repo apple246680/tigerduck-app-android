@@ -266,7 +266,7 @@ class MoodleService @Inject constructor(
                 val userId = getSiteInfoUserId(token)
                 val courses = callGetAssignments(token, courseIds)
                 val all = courses.flatMap { it.assignments }
-                val toAsk = assignmentsToAsk(all, confirmed, closed)
+                val toAsk = assignmentsToAsk(all, confirmed, closed, System.currentTimeMillis())
                 asked = toAsk.size
                 askedAt = System.currentTimeMillis()
                 val statuses = mapAtMost(MAX_CONCURRENT_SCHOOL_REQUESTS, toAsk) { a ->
@@ -470,30 +470,44 @@ class MoodleService @Inject constructor(
          * The assignments of a round Moodle is asked about: not one without a
          * due date or taking no submissions, which the list leaves out
          * anyway; not one the cache has [confirmed]; and not one [closed]
-         * (by id, when it was last asked, epoch ms), a cutoff past at that
-         * asking with nothing handed in, which cannot change. As iOS's
-         * `AppServiceBridge.recordsToAskAbout` (tigerduck-app/tigerduck-app#257).
+         * (by id, when Moodle said so, epoch ms) within the last
+         * [CLOSED_FOR_MS]. As iOS's `AppServiceBridge.recordsToAskAbout`
+         * (tigerduck-app/tigerduck-app#257).
          */
         internal fun assignmentsToAsk(
             assignments: List<MoodleAssignmentNode>,
             confirmed: Map<Int, Date>,
             closed: Map<Int, Long>,
+            nowMs: Long,
         ): List<MoodleAssignmentNode> = assignments.filter {
-            it.duedate > 0 && it.nosubmissions == 0 && it.id !in confirmed && !isClosed(it, closed[it.id])
+            it.duedate > 0 && it.nosubmissions == 0 && it.id !in confirmed && !stillClosed(closed[it.id], nowMs)
         }
 
-        // Past its cutoff when asked at [askedAtMs].
-        private fun isClosed(assignment: MoodleAssignmentNode, askedAtMs: Long?): Boolean {
-            val cutoff = assignment.cutoffdate?.takeIf { it > 0 } ?: return false
-            return askedAtMs != null && cutoff * 1000 < askedAtMs
+        /**
+         * How long an assignment found closed is not asked about. Not for
+         * good: a teacher can grant an extension or lift a lock afterwards,
+         * and the student's clock or Moodle's answer can be wrong.
+         */
+        internal const val CLOSED_FOR_MS = 24 * 60 * 60 * 1000L
+
+        // Closed at [closedAtMs], and not longer ago than CLOSED_FOR_MS by a
+        // clock that has not gone back past it.
+        private fun stillClosed(closedAtMs: Long?, nowMs: Long): Boolean {
+            closedAtMs ?: return false
+            val age = nowMs - closedAtMs
+            return age in 0 until CLOSED_FOR_MS
         }
 
         /**
          * The closed assignments after a round asked at [askedAtMs]: each one
-         * Moodle answered not handed in after its cutoff, with no extension
-         * past then, dated by this round, and each one [kept] from before
-         * that this round did not ask about. One handed in, or answered
-         * before its cutoff, is left out.
+         * Moodle answered not handed in and no longer editable or submittable
+         * by this student (`canedit`, `cansubmit`, which take the student's
+         * own cutoff, override and extension into account), once its
+         * submissions had opened; and each one [kept] from before that this
+         * round did not ask about, while still closed. Not one Moodle does
+         * not say this of: closed by this phone's clock and the assignment's
+         * cutoff, one an extension or an override keeps open was never asked
+         * about again.
          */
         internal fun closedUnsubmitted(
             assignments: List<MoodleAssignmentNode>,
@@ -505,14 +519,14 @@ class MoodleService @Inject constructor(
             for (assignment in assignments) {
                 val status = statuses[assignment.id]
                 if (status != null) {
-                    val attempt = status.lastattempt
-                    val extendedUntil = (attempt?.extensionduedate ?: 0L) * 1000
-                    if (attempt?.handedIn == null && isClosed(assignment, askedAtMs) && extendedUntil < askedAtMs) {
+                    val attempt = status.lastattempt ?: continue
+                    val opened = (assignment.allowsubmissionsfromdate ?: 0L) * 1000 <= askedAtMs
+                    if (attempt.handedIn == null && attempt.canedit == false && attempt.cansubmit != true && opened) {
                         closed[assignment.id] = askedAtMs
                     }
                 } else {
                     val keptAt = kept[assignment.id] ?: continue
-                    if (isClosed(assignment, keptAt)) closed[assignment.id] = keptAt
+                    if (stillClosed(keptAt, askedAtMs)) closed[assignment.id] = keptAt
                 }
             }
             return closed
