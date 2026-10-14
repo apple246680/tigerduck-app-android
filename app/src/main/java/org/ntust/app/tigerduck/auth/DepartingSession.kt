@@ -26,6 +26,6 @@ sealed interface DepartingRefresh {
     /** Turned down: the session is over on the server, and nothing can go out as it any more. */
     data object Refused : DepartingRefresh
 
-    /** A 429 or a 5xx, or no reply: worth trying again later with the same token. */
+    /** A 429 or a 5xx, or a send that never left the phone: worth trying again later with the same token. */
     data object Unavailable : DepartingRefresh
 }

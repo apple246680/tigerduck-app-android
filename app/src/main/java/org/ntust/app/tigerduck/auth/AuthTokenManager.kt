@@ -224,19 +224,26 @@ class AuthTokenManager(
      * Refreshes a [DepartingSession] for the sign-out's device unregister.
      * Stores nothing: the pair is the departing account's, and the session
      * here is whoever signs in next. Sent once more at once when no reply came
-     * back, as [sendWithOneResend] does; a second that gets none either is
-     * [DepartingRefresh.Unavailable], left for a later try.
+     * back, and a resend that does not refresh is [DepartingRefresh.Refused],
+     * as [sendWithOneResend] has it: the token may have been rotated, and a
+     * later send of it would be taken for reuse.
      */
     suspend fun refreshDeparting(departing: DepartingSession): DepartingRefresh = withContext(Dispatchers.IO) {
         // To the backend that issued the session, whatever the endpoint setting says now.
         val base = departing.baseUrl
         val first = send(departing.refreshToken, DEPARTING, base)
-        when (val outcome = if (first == RefreshOutcome.NoReply) send(departing.refreshToken, DEPARTING, base) else first) {
+        val outcome = if (first == RefreshOutcome.NoReply) {
+            send(departing.refreshToken, DEPARTING, base) as? RefreshOutcome.Refreshed ?: RefreshOutcome.Refused
+        } else {
+            first
+        }
+        when (outcome) {
             is RefreshOutcome.Refreshed -> DepartingRefresh.Refreshed(
                 DepartingSession(outcome.accessToken, outcome.refreshToken, outcome.expiresAt, base),
             )
-            RefreshOutcome.Refused -> DepartingRefresh.Refused
-            RefreshOutcome.NoReply, RefreshOutcome.Unavailable -> DepartingRefresh.Unavailable
+            // NoReply comes only from the first send, which was sent again above.
+            RefreshOutcome.Refused, RefreshOutcome.NoReply -> DepartingRefresh.Refused
+            RefreshOutcome.Unavailable -> DepartingRefresh.Unavailable
         }
     }
 

@@ -467,6 +467,37 @@ class AuthTokenManagerRefreshTest {
         }
     }
 
+    // The sign-out's unregister refreshes the departing session, which is never stored
+
+    private fun departing() = DepartingSession("access-1", "refresh-1", 0L, "http://127.0.0.1:9/v3")
+
+    @Test
+    fun `a departing refresh whose reply was lost is sent once more with the same token`() = runTest {
+        val manager = manager(Reply.Lost, Reply.Pair("access-2", "refresh-2"))
+
+        val reply = manager.refreshDeparting(departing())
+
+        assertEquals("refresh-2", (reply as DepartingRefresh.Refreshed).session.refreshToken)
+        assertEquals(listOf("refresh-1", "refresh-1"), sentRefreshTokens)
+    }
+
+    @Test
+    fun `a departing refresh lost twice is given up, never sent again later`() = runTest {
+        // Within its grace the backend answers a rotated token once more; any later send of it is
+        // taken for reuse, which revokes the session and leaves the unregister nothing to go out as.
+        val manager = manager(Reply.Lost, Reply.Lost)
+
+        assertEquals(DepartingRefresh.Refused, manager.refreshDeparting(departing()))
+        assertEquals(listOf("refresh-1", "refresh-1"), sentRefreshTokens)
+    }
+
+    @Test
+    fun `a departing refresh the backend did not take is left for a later try`() = runTest {
+        val manager = manager(Reply.Status(503))
+
+        assertEquals(DepartingRefresh.Unavailable, manager.refreshDeparting(departing()))
+    }
+
     private fun manager(vararg replies: Reply, reloginSucceeds: Boolean = false) = AuthTokenManager(
         tokens = tokens,
         httpClient = backend(*replies),
