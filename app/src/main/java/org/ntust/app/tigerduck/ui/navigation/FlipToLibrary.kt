@@ -16,6 +16,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavController
+import androidx.navigation.compose.currentBackStackEntryAsState
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -75,16 +76,21 @@ fun FlipToLibraryEffect(
     )
 
     // Asks once whether to turn the gesture on: right after a library sign-in,
-    // or at a launch already signed in. The root host holds it behind What's
-    // New and the update prompt; the wizard, which signs in too, is over
-    // before this is composed.
+    // or at a launch already signed in. Not over the Library page, where it
+    // would cover the code someone just signed in to show: leaving the page
+    // asks (tigerduck-app/tigerduck-app#529). The root host holds it behind
+    // What's New and the update prompt; the wizard, which signs in too, is
+    // over before this is composed.
     val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(signedIn, appState.flipToLibraryEnabled, lifecycleOwner) {
+    val currentEntry by navController.currentBackStackEntryAsState()
+    val onLibraryPage = currentEntry?.destination?.route == Screen.Library.route
+    LaunchedEffect(signedIn, appState.flipToLibraryEnabled, onLibraryPage, lifecycleOwner) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
             if (FlipToLibraryGate.offersGesture(
                     signedInToLibrary = signedIn,
                     enabled = appState.flipToLibraryEnabled,
                     asked = firstTriggerController.hasSeen(FirstTriggerPromptKey.FLIP_TO_LIBRARY),
+                    onLibraryPage = onLibraryPage,
                 )
             ) {
                 FlipToLibraryPrompt.request(firstTriggerController, appState)
@@ -169,10 +175,12 @@ internal object FlipToLibraryGate {
 
     /**
      * Whether to ask to turn the gesture on: signed in to the library, with the
-     * switch off and the question never answered.
+     * switch off and the question never answered. Not over the Library page,
+     * where the prompt would cover the code someone just signed in to show;
+     * leaving the page asks.
      */
-    fun offersGesture(signedInToLibrary: Boolean, enabled: Boolean, asked: Boolean): Boolean =
-        signedInToLibrary && !enabled && !asked
+    fun offersGesture(signedInToLibrary: Boolean, enabled: Boolean, asked: Boolean, onLibraryPage: Boolean): Boolean =
+        signedInToLibrary && !enabled && !asked && !onLibraryPage
 }
 
 private fun navigateToLibrary(navController: NavController, context: Context) {

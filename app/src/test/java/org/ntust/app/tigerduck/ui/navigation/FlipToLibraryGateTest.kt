@@ -33,13 +33,20 @@ class FlipToLibraryGateTest {
 
     @Test
     fun `the gesture is offered once signed in to the library, with the switch off and never asked`() {
-        assertTrue(FlipToLibraryGate.offersGesture(signedInToLibrary = true, enabled = false, asked = false))
+        assertTrue(FlipToLibraryGate.offersGesture(signedInToLibrary = true, enabled = false, asked = false, onLibraryPage = false))
     }
 
     @Test
     fun `the gesture is not offered signed out, already on, or once answered`() {
-        assertFalse(FlipToLibraryGate.offersGesture(signedInToLibrary = false, enabled = false, asked = false))
-        assertFalse(FlipToLibraryGate.offersGesture(signedInToLibrary = true, enabled = true, asked = false))
-        assertFalse(FlipToLibraryGate.offersGesture(signedInToLibrary = true, enabled = false, asked = true))
+        assertFalse(FlipToLibraryGate.offersGesture(signedInToLibrary = false, enabled = false, asked = false, onLibraryPage = false))
+        assertFalse(FlipToLibraryGate.offersGesture(signedInToLibrary = true, enabled = true, asked = false, onLibraryPage = false))
+        assertFalse(FlipToLibraryGate.offersGesture(signedInToLibrary = true, enabled = false, asked = true, onLibraryPage = false))
+    }
+
+    /** It would cover the code someone just signed in to show (tigerduck-app/tigerduck-app#529). */
+    @Test
+    fun `the gesture is not offered over the Library page, and leaving it asks`() {
+        assertFalse(FlipToLibraryGate.offersGesture(signedInToLibrary = true, enabled = false, asked = false, onLibraryPage = true))
+        assertTrue(FlipToLibraryGate.offersGesture(signedInToLibrary = true, enabled = false, asked = false, onLibraryPage = false))
     }
 }
