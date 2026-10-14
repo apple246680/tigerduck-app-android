@@ -18,6 +18,8 @@ import org.ntust.app.tigerduck.ui.component.ServerStatusTracker
 import org.ntust.app.tigerduck.debug.DebugClockController
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.liveactivity.LiveActivityManager
+import org.ntust.app.tigerduck.liveactivity.LiveActivityPreferences
+import org.ntust.app.tigerduck.notification.ClassReminders
 import org.ntust.app.tigerduck.notification.NotificationChannelRegistrar
 import org.ntust.app.tigerduck.analytics.AnalyticsLogger
 import org.ntust.app.tigerduck.push.FcmBootstrap
@@ -61,6 +63,9 @@ class TigerDuckApp : Application(), Configuration.Provider {
     lateinit var liveActivityManager: LiveActivityManager
 
     @Inject
+    lateinit var liveActivityPreferences: LiveActivityPreferences
+
+    @Inject
     lateinit var uiLanguage: UiLanguageMonitor
 
     @Inject
@@ -88,6 +93,11 @@ class TigerDuckApp : Application(), Configuration.Provider {
         // upgrade launch and rebuild caches that a pending migration step then
         // deleted. AppState re-reads the cached outcome for the reset prompt.
         dataMigration.run()
+        // Next, while the Live Update settings are still as the previous
+        // build left them: the class reminder takes its settings from them
+        // once, before anything can arm a reminder or pull the settings
+        // document.
+        ClassReminders.migrateIfNeeded(appPreferences, liveActivityPreferences)
         analyticsLogger.setEnabled(appPreferences.analyticsEnabled)
         // Seeded here so a cold launch with cloud sync off does not show the
         // status dot's backend row as "unknown" until the first sync guard

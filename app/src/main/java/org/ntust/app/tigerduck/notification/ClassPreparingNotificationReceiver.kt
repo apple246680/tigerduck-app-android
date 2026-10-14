@@ -66,12 +66,7 @@ class ClassPreparingNotificationReceiver : BroadcastReceiver() {
         // cancel via auto-cancel-on-tap, matching the original behaviour.
         val leadTimeMs = intent.getLongExtra(EXTRA_LEAD_TIME_MS, 0L)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(rawContext, Manifest.permission.POST_NOTIFICATIONS)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            return
-        }
+        if (!mayPost(rawContext, deps.appPreferences())) return
 
         // Receiver contexts carry the SYSTEM locale, not the user's in-app
         // language choice (AppCompat per-app locales don't reach broadcast
@@ -97,6 +92,18 @@ class ClassPreparingNotificationReceiver : BroadcastReceiver() {
         const val EXTRA_END_MS = "end_ms"
         const val EXTRA_NOTIFICATION_ID = "notification_id"
         const val EXTRA_LEAD_TIME_MS = "lead_time_ms"
+
+        /**
+         * The class reminder switch is on, and the app may post
+         * notifications. Read when the alarm fires: turning reminders off
+         * cancels the alarms already armed, but one armed in a race with that
+         * cancel would still land here, and the switch has the last word.
+         */
+        internal fun mayPost(context: Context, prefs: AppPreferences): Boolean =
+            prefs.classReminderEnabled &&
+                (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+                    PackageManager.PERMISSION_GRANTED)
 
         /**
          * Post the reminder, past every check onReceive makes first; the

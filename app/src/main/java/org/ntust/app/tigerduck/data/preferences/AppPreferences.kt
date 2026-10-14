@@ -19,6 +19,7 @@ import org.ntust.app.tigerduck.data.model.AssignmentFilter
 import org.ntust.app.tigerduck.data.model.HomeSection
 import org.ntust.app.tigerduck.data.preferences.AppPreferences.Companion.themeColorsDark
 import org.ntust.app.tigerduck.notification.AssignmentReminderOffset
+import org.ntust.app.tigerduck.notification.ClassReminders
 import org.ntust.app.tigerduck.ui.haptics.HapticScenario
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -553,6 +554,67 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
     var hasUnconfirmedAssignmentSyncEdit: Boolean
         get() = prefs.getBoolean("hasUnconfirmedAssignmentSyncEdit", false)
         set(value) = prefs.edit().putBoolean("hasUnconfirmedAssignmentSyncEdit", value).apply()
+
+    // Emitted on an actual change to the class reminder's switch or lead
+    // time, whoever made it — the settings screen or a pull of the shared
+    // `notification` document — so LiveActivityManager re-arms the alarms.
+    private val _classReminderSettingsChanged = MutableSharedFlow<Unit>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val classReminderSettingsChanged: SharedFlow<Unit> = _classReminderSettingsChanged.asSharedFlow()
+
+    /**
+     * Class reminders on or off; see [ClassReminders]. The default is a new
+     * install's: an existing one is given its value once, from the Live
+     * Update settings it used to follow, by [ClassReminders.migrateIfNeeded].
+     */
+    var classReminderEnabled: Boolean
+        get() = prefs.getBoolean("classReminderEnabled", true)
+        set(value) {
+            val previous = classReminderEnabled
+            prefs.edit().putBoolean("classReminderEnabled", value).apply()
+            if (value != previous) _classReminderSettingsChanged.tryEmit(Unit)
+        }
+
+    /**
+     * Minutes before each class the reminder fires. One of
+     * [ClassReminders.LEAD_CHOICES_MINUTES], or a lead time carried over from
+     * the Live Update's slider, held to its range.
+     */
+    var classReminderLeadMinutes: Int
+        get() = ClassReminders.clampLead(
+            prefs.getInt("classReminderLeadMinutes", ClassReminders.DEFAULT_LEAD_MINUTES)
+        )
+        set(value) {
+            val previous = classReminderLeadMinutes
+            val clamped = ClassReminders.clampLead(value)
+            prefs.edit().putInt("classReminderLeadMinutes", clamped).apply()
+            if (clamped != previous) _classReminderSettingsChanged.tryEmit(Unit)
+        }
+
+    /**
+     * The user picked [classReminderLeadMinutes] on this device since the
+     * document's `courses.reminder_offsets_minutes` was last adopted. Until
+     * then a push leaves those offsets alone: they may hold a value this
+     * build offers no choice for. iOS's `hasPickedClassReminderLead`.
+     */
+    var hasPickedClassReminderLead: Boolean
+        get() = prefs.getBoolean("hasPickedClassReminderLead", false)
+        set(value) = prefs.edit().putBoolean("hasPickedClassReminderLead", value).apply()
+
+    /**
+     * The `courses` section's mirror of [hasUnconfirmedAssignmentSyncEdit]:
+     * a class reminder edit not yet confirmed to have reached the server.
+     */
+    var hasUnconfirmedClassReminderSyncEdit: Boolean
+        get() = prefs.getBoolean("hasUnconfirmedClassReminderSyncEdit", false)
+        set(value) = prefs.edit().putBoolean("hasUnconfirmedClassReminderSyncEdit", value).apply()
+
+    /** Set once [ClassReminders.migrateIfNeeded] has given this install its class reminder settings. */
+    var classReminderSettingsMigrated: Boolean
+        get() = prefs.getBoolean("classReminderSettingsMigrated", false)
+        set(value) = prefs.edit().putBoolean("classReminderSettingsMigrated", value).apply()
 
     var homeSections: List<HomeSection>
         get() {

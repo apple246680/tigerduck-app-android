@@ -17,6 +17,8 @@ import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.notification.ClassPreparingNotificationScheduler
+import org.ntust.app.tigerduck.notification.ClassReminderSettings
+import org.ntust.app.tigerduck.notification.ClassReminders
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import java.util.Date
 import javax.inject.Inject
@@ -59,9 +61,13 @@ class LiveActivityManager @Inject constructor(
     init {
         prefsCollectorJob = scope.launch {
             // And on every write of the ignored, marked-done and ignored-course
-            // sets: the resolver only sees what is still outstanding.
-            merge(preferences.changeEvent, dataCache.assignmentMarksVersion.drop(1))
-                .collect { refresh() }
+            // sets: the resolver only sees what is still outstanding. And on a
+            // change to the class reminder's settings, which this arms.
+            merge(
+                preferences.changeEvent,
+                dataCache.assignmentMarksVersion.drop(1),
+                appPrefs.classReminderSettingsChanged,
+            ).collect { refresh() }
         }
     }
 
@@ -108,6 +114,23 @@ class LiveActivityManager @Inject constructor(
         // The cookie jar is in-memory, so gating on it stopped the Live Update
         // after every reboot or background kill until the user signed in again.
         val signedIn = authService.authState.value
+        // Classes do not meet on a school holiday, nor before 開學 — 選課 fills
+        // the timetable weeks ahead of the term, so having courses is not
+        // evidence that classes have started. Neither the chip nor the
+        // class-preparing alarm should surface one on such a day. Read once
+        // and used for both so a flip between the two calls cannot leave them
+        // disagreeing.
+        val calendar = academicCalendar.current()
+        val optedIn = academicCalendar.optedInHolidayIds
+        // 翹課 parked — see DataCache's skipped-dates section. Not read, so
+        // pre-v2.0.1 marks can't suppress a class the user can no longer unskip.
+        val skipped = emptyMap<String, List<String>>()
+        // val skipped = dataCache.loadSkippedDates()
+
+        // Before the Live Update's own gate: class reminders have a switch of
+        // their own and no longer stop with the Live Update.
+        armClassReminders(signedIn, skipped, calendar, optedIn)
+
         if (!preferences.isEnabled || !signedIn) {
             // The other silent way to get no Live Update. Signing out stops it
             // just as completely as the feature toggle, and neither says so
@@ -119,19 +142,10 @@ class LiveActivityManager @Inject constructor(
                 )
             }
             notifier.cancel()
-            classPreparingScheduler.cancelAllTracked()
             boundaryScheduler.cancel()
             return
         }
         val now = Date(AppClock.nowMillis())
-        // Classes do not meet on a school holiday, nor before 開學 — 選課 fills
-        // the timetable weeks ahead of the term, so having courses is not
-        // evidence that classes have started. Neither the chip nor the
-        // class-preparing alarm should surface one on such a day. Read once
-        // and used for both so a flip between the two calls cannot leave them
-        // disagreeing.
-        val calendar = academicCalendar.current()
-        val optedIn = academicCalendar.optedInHolidayIds
         val today = AppClock.localDateTime().toLocalDate()
         val quietToday = calendar.isQuietDay(today, optedIn)
         // Emptying the list is what gates the resolver, which is pure and
@@ -139,10 +153,6 @@ class LiveActivityManager @Inject constructor(
         // same list, so no boundary alarm is armed for a quiet day either.
         val courses = if (quietToday) emptyList() else dataCache.loadCourses()
         val assignments = dataCache.loadOutstandingAssignments()
-        // 翹課 parked — see DataCache's skipped-dates section. Not read, so
-        // pre-v2.0.1 marks can't suppress a class the user can no longer unskip.
-        val skipped = emptyMap<String, List<String>>()
-        // val skipped = dataCache.loadSkippedDates()
 
         val snapshot = resolver.resolve(
             courses = courses,
@@ -164,26 +174,37 @@ class LiveActivityManager @Inject constructor(
         }
         val spelledOut = notifier.apply(snapshot, quiet)
 
-        // Keep the class-preparing alarm set in sync with the current
-        // course list + lead-time preference so reminders fire even when
-        // the app is fully closed.
-        if (preferences.showClassPreparing) {
-            // Passes the full course list, not the holiday-emptied one: the
-            // scheduler reaches ten days ahead and does its own per-day
-            // check, so handing it today's emptiness would cancel next
-            // week's reminders too.
-            classPreparingScheduler.scheduleAll(
-                courses = dataCache.loadCourses(),
-                skippedDates = skipped,
-                leadTimeSec = preferences.classPreparingLeadTimeSec,
-                calendar = calendar,
-                optedInHolidayIds = optedIn,
-            )
-        } else {
-            classPreparingScheduler.cancelAllTracked()
-        }
-
         scheduleBoundaryRefresh(snapshot, courses, assignments, skipped, now, spelledOut)
+    }
+
+    /**
+     * Keeps the class reminder alarms in step with the course list and the
+     * class reminder's own switch and lead time ([ClassReminders]), so a
+     * reminder fires even while the app is closed. Signing out cancels them.
+     */
+    private suspend fun armClassReminders(
+        signedIn: Boolean,
+        skipped: Map<String, List<String>>,
+        calendar: org.ntust.app.tigerduck.academic.AcademicCalendar,
+        optedIn: Set<Int>,
+    ) {
+        val settings = ClassReminderSettings(appPrefs.classReminderEnabled, appPrefs.classReminderLeadMinutes)
+        val leadSec = ClassReminders.leadSecondsToArm(settings, signedIn)
+        if (leadSec == null) {
+            classPreparingScheduler.cancelAllTracked()
+            return
+        }
+        // The full course list, never one emptied for a quiet day: the
+        // scheduler reaches ten days ahead and does its own per-day check,
+        // so handing it today's emptiness would cancel next week's reminders
+        // too.
+        classPreparingScheduler.scheduleAll(
+            courses = dataCache.loadCourses(),
+            skippedDates = skipped,
+            leadTimeSec = leadSec,
+            calendar = calendar,
+            optedInHolidayIds = optedIn,
+        )
     }
 
     /**
