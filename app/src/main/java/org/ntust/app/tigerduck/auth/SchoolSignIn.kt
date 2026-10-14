@@ -41,8 +41,10 @@ internal class SchoolSignIn(
 ) {
     /** A sign-in with credentials just entered. Throws what the SSO step throws; the library step only logs. */
     suspend fun typed(studentId: String, password: String): Boolean {
-        val libraryAccount = libraryStore.libraryAccountGeneration
+        // The school account first: a school sign-out between the two reads
+        // that keeps another student's library account moves only it.
         val school = schoolAccount()
+        val libraryAccount = libraryStore.libraryAccountGeneration
         val success = signInToSchool(studentId, password, true)
         if (success && !libraryStore.isLibraryTokenValid) signInToLibrary(studentId, password, libraryAccount, school)
         return success

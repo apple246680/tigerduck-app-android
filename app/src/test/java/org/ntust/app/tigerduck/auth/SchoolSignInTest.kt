@@ -35,7 +35,14 @@ class SchoolSignInTest {
         override var libraryTokenExpiry: Long = 0L
         override val isLibraryTokenValid: Boolean
             get() = libraryToken != null && System.currentTimeMillis() < libraryTokenExpiry
-        override val libraryAccountGeneration: Int get() = account.current
+        /** Runs as the library account generation is read. */
+        var onGenerationRead: () -> Unit = {}
+
+        override val libraryAccountGeneration: Int
+            get() {
+                onGenerationRead()
+                return account.current
+            }
 
         override fun saveLibrarySignIn(
             generation: Int,
@@ -159,6 +166,23 @@ class SchoolSignInTest {
     @Test
     fun `a school sign-out while the library answers keeps the library step from storing it`() = runTest {
         duringLibrarySignIn = { schoolAccount++ }
+
+        assertTrue(signIn.typed("B10000002", "pw2"))
+
+        assertNoLibraryAccount()
+    }
+
+    /**
+     * The school account is read before the library generation: a school sign-out between the
+     * two reads, which keeps another student's library account and so moves no generation,
+     * still keeps the step from storing anything.
+     */
+    @Test
+    fun `a school sign-out as the sign-in begins keeps the library step from storing it`() = runTest {
+        library.onGenerationRead = {
+            library.onGenerationRead = {}
+            schoolAccount++
+        }
 
         assertTrue(signIn.typed("B10000002", "pw2"))
 
