@@ -97,4 +97,19 @@ class CalendarDaysTest {
             assertEquals("'$suffix'", "10月14日 (今日)", dayTitle(today, today, Locale.TAIWAN, suffix))
         }
     }
+
+    // --- what TalkBack reads for a day cell ----------------------------------------------------
+
+    @Test
+    fun `a day cell reads its full date and its number of events`() {
+        val day = LocalDate.of(2026, 10, 14)
+        assertEquals(
+            "Wednesday, October 14, 2026, 2 events",
+            dayCellDescription("%1\$@, %2\$lld events", day, 2, Locale.US),
+        )
+        assertEquals(
+            "2026年10月14日 星期三，共 0 個事件",
+            dayCellDescription("%1\$@，共 %2\$lld 個事件", day, 0, Locale.TAIWAN),
+        )
+    }
 }

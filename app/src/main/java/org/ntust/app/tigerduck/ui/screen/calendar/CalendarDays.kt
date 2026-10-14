@@ -4,8 +4,10 @@ import android.text.format.DateFormat
 import org.ntust.app.tigerduck.AppConstants
 import org.ntust.app.tigerduck.data.model.CalendarEvent
 import org.ntust.app.tigerduck.data.model.EventSource
+import org.ntust.app.tigerduck.util.replaceIosArg
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import java.util.Date
 import java.util.Locale
 
@@ -49,3 +51,14 @@ internal fun dayTitle(date: LocalDate, today: LocalDate, locale: Locale, todaySu
     // check can go. Both forms give exactly one space meanwhile.
     return if (todaySuffix.startsWith("(")) "$title $todaySuffix" else title + todaySuffix
 }
+
+/**
+ * What TalkBack reads for a day cell: [template] (`a11y_calendar_day`, "%1$@, %2$lld events")
+ * filled with [date] in [locale]'s full form and [eventCount], as the iPhone labels the cell.
+ * The full date because the cell shows only its number; the count because the dots are
+ * colour alone.
+ */
+internal fun dayCellDescription(template: String, date: LocalDate, eventCount: Int, locale: Locale): String =
+    template
+        .replaceIosArg(1, DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale).format(date))
+        .replaceIosArg(2, eventCount.toLong())

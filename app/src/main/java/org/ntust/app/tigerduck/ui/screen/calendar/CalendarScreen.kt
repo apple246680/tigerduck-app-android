@@ -50,6 +50,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -170,16 +176,9 @@ fun CalendarScreen(
                     }
 
                     item {
-                        // The selected date over its events, as the iPhone
-                        // heads the list: after a swipe to another month the
-                        // grid alone no longer says which day this is.
-                        SectionHeader(
-                            dayTitle(
-                                date = selectedDate.taipeiDate(),
-                                today = Date(AppClock.nowMillis()).taipeiDate(),
-                                locale = LocalConfiguration.current.locales[0],
-                                todaySuffix = stringResource(R.string.calendar_date_today_suffix),
-                            ),
+                        CalendarDayHeading(
+                            date = selectedDate.taipeiDate(),
+                            today = Date(AppClock.nowMillis()).taipeiDate(),
                         )
                     }
 
@@ -218,6 +217,24 @@ fun CalendarScreen(
         }
         SnackbarHost(snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter))
     } // Box
+}
+
+/**
+ * The selected date over its events, as the iPhone heads the list: after a
+ * swipe to another month the grid alone no longer says which day this is.
+ */
+@Composable
+internal fun CalendarDayHeading(date: LocalDate, today: LocalDate) {
+    SectionHeader(
+        dayTitle(
+            date = date,
+            today = today,
+            locale = LocalConfiguration.current.locales[0],
+            todaySuffix = stringResource(R.string.calendar_date_today_suffix),
+        ),
+        // So TalkBack's heading navigation jumps from the grid to the list.
+        modifier = Modifier.semantics { heading() },
+    )
 }
 
 @Composable
@@ -345,7 +362,7 @@ private fun MonthCalendar(
 }
 
 @Composable
-private fun CalendarGrid(
+internal fun CalendarGrid(
     monthDate: Date,
     selectedDate: Date,
     eventsByDay: Map<LocalDate, List<CalendarEvent>>,
@@ -367,6 +384,8 @@ private fun CalendarGrid(
     val rows = (totalCells + 6) / 7
     val selectedDay = selectedDate.taipeiDate()
     val today = Date(AppClock.nowMillis()).taipeiDate()
+    val locale = LocalConfiguration.current.locales[0]
+    val dayDescription = stringResource(R.string.a11y_calendar_day)
 
     Column(modifier = Modifier.fillMaxWidth()) {
         repeat(rows) { row ->
@@ -390,8 +409,10 @@ private fun CalendarGrid(
                         val day = LocalDate.of(year, month + 1, dayNum)
                         val isSelected = day == selectedDay
                         val isToday = day == today
-                        val dotSources = remember(eventsByDay[day]) {
-                            dotSources(eventsByDay[day].orEmpty())
+                        val dayEvents = eventsByDay[day].orEmpty()
+                        val dotSources = remember(dayEvents) { dotSources(dayEvents) }
+                        val description = remember(dayDescription, day, dayEvents.size, locale) {
+                            dayCellDescription(dayDescription, day, dayEvents.size, locale)
                         }
 
                         Box(
@@ -406,10 +427,20 @@ private fun CalendarGrid(
                                         else -> Color.Transparent
                                     }
                                 )
-                                .clickable { onDateSelected(dayDate) },
+                                .clickable(role = Role.Button) { onDateSelected(dayDate) }
+                                // One stop per day, read as the iPhone reads
+                                // it: the full date and how many events, since
+                                // the dots say it in colour alone.
+                                .semantics {
+                                    contentDescription = description
+                                    selected = isSelected
+                                },
                             contentAlignment = Alignment.Center
                         ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.clearAndSetSemantics {},
+                            ) {
                                 Text(
                                     text = "$dayNum",
                                     style = MaterialTheme.typography.bodyMedium,
