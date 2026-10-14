@@ -69,8 +69,10 @@ class AcademicCalendarStore @Inject constructor(
     /**
      * Emits when a refresh changes the calendar or the user's holiday opt-ins
      * change, for the paired watch, which keeps the quiet days it was last
-     * sent and cannot ask this store. Separate from [calendar], whose collectors
-     * would load the cached payload on every process start.
+     * sent and cannot ask this store, and for the empty-classroom finder, which
+     * may have read a day the calendar then takes off. Separate from
+     * [calendar], whose collectors would load the cached payload on every
+     * process start.
      */
     val changes: SharedFlow<Unit> = _changes.asSharedFlow()
 

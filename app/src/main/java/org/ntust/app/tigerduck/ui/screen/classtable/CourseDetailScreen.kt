@@ -96,9 +96,10 @@ import java.util.Locale
  *   4. Incomplete assignments, each opening in Moodle, then the course's Moodle section, whose
  *      rows open the Moodle screens over this page
  *
- * [showsMoodle] is off for a course on someone else's class table: the Moodle course is the
- * signed-in student's. The page closes itself when there is no selected course to show, as after
- * the process was restored or the account signed out.
+ * A course on someone else's class table shows read-only: no rename, and none of the Moodle
+ * course or assignments, which are the signed-in student's. The page closes itself when there is
+ * no selected course to show, as after the process was restored, the account signed out or the
+ * class table switched.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -107,7 +108,6 @@ internal fun CourseDetailScreen(
     browserPreference: String,
     onBack: () -> Unit,
     onOpenRoute: (String) -> Unit,
-    showsMoodle: Boolean = true,
     moodleViewModel: MoodleCourseViewModel = hiltViewModel(),
 ) {
     val selected by viewModel.selectedCourse.collectAsStateWithLifecycle()
@@ -115,9 +115,18 @@ internal fun CourseDetailScreen(
     val liveCourses by viewModel.liveSemesterCourses.collectAsStateWithLifecycle()
     val outstanding by viewModel.outstandingAssignments.collectAsStateWithLifecycle()
     val moodleIds by viewModel.moodleCourseIdMap.collectAsStateWithLifecycle()
+    val shown by viewModel.shownTable.collectAsStateWithLifecycle()
+    val readOnly = shown.person != null
+    val showsMoodle = !readOnly
 
-    // The course as it is now, so a rename made here shows at once.
-    val course = ClassTableSelection.detailCourse(selected, courses, liveCourses, viewModel.selectedFromAnotherTerm)
+    // The course as it is now, so a rename made here shows at once. Someone else's from their
+    // class table, not the user's copy of a course both take.
+    val course = ClassTableSelection.detailCourse(
+        selected,
+        if (readOnly) shown.courses else courses,
+        liveCourses,
+        viewModel.selectedFromAnotherTerm,
+    )
     if (course == null) {
         LaunchedEffect(Unit) { onBack() }
         return
@@ -127,7 +136,9 @@ internal fun CourseDetailScreen(
     val title = viewModel.detailTitle(course)
     val classroom = viewModel.selectedCourseClassroom
     val timeRange = viewModel.selectedCourseTimeRange
-    val assignments = remember(outstanding, course.courseNo) { outstanding.filter { it.courseNo == course.courseNo } }
+    val assignments = remember(outstanding, course.courseNo, readOnly) {
+        if (readOnly) emptyList() else outstanding.filter { it.courseNo == course.courseNo }
+    }
     val moodleCourseId = remember(course.courseNo, moodleIds) { viewModel.moodleCourseIdFor(course) }
     LaunchedEffect(moodleCourseId, showsMoodle) {
         moodleViewModel.bind(moodleCourseId.takeIf { showsMoodle }, course.courseNo)
@@ -153,8 +164,10 @@ internal fun CourseDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { renaming = true }) {
-                        Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.class_table_rename_title))
+                    if (!readOnly) {
+                        IconButton(onClick = { renaming = true }) {
+                            Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.class_table_rename_title))
+                        }
                     }
                     if (showsMoodle && moodleCourseId != null) {
                         IconButton(onClick = { openCourseInMoodle(context, moodleCourseId) }) {
@@ -202,7 +215,7 @@ internal fun CourseDetailScreen(
         }
     }
 
-    if (renaming) {
+    if (renaming && !readOnly) {
         CourseRenameDialog(viewModel = viewModel, course = course, onDismiss = { renaming = false })
     }
 }

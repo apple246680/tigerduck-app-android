@@ -40,6 +40,7 @@ import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
+import org.ntust.app.tigerduck.data.UnsentMarks
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.network.CourseService
 import org.ntust.app.tigerduck.network.SemesterCatalog
@@ -55,6 +56,7 @@ import org.ntust.app.tigerduck.ui.component.ServerKind
 import org.ntust.app.tigerduck.ui.component.ServerStatus
 import org.ntust.app.tigerduck.ui.component.ServerStatusTracker
 import org.ntust.app.tigerduck.ui.screen.settings.categoriesSwitchedOn
+import org.ntust.app.tigerduck.ui.screen.settings.categoriesSynced
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.logSummary
 import org.ntust.app.tigerduck.widget.WidgetUpdater
@@ -110,8 +112,13 @@ class HomeBackendSync @Inject constructor(
     private val widgetUpdater: WidgetUpdater,
     private val academicCalendar: org.ntust.app.tigerduck.academic.AcademicCalendarStore,
     private val courseIgnoreSync: CourseIgnoreSync,
+    private val unsentMarks: UnsentMarks,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) {
+
+    private val markStep = AssignmentMarkStep.over(
+        prefs, dataCache, unsentMarks, pushApiClient::patchAssignmentOverride,
+    )
 
     /**
      * Pull everything from the backend and reconcile it into [state].
@@ -135,13 +142,26 @@ class HomeBackendSync @Inject constructor(
             if (BuildConfig.DEBUG) ServerFailureSimulator.check(ServerKind.BACKEND)
             val account = authService.storedStudentId
             val generation = courseIgnoreSync.currentGeneration()
-            // Unsent course-ignore changes go first, so the snapshot has them.
+            // Unsent course-ignore changes and marks go first, so the snapshot has them.
             courseIgnoreSync.retryPending()
-            val result = syncApiClient.fetchFullSync()
-            syncAssignmentOverrides(state, result)
-            // One reading of the switches, for the course steps below and for what
+            unsentMarks.retry()
+            // The first-sync mark upload is pinned to the sign-in read here:
+            // a sign-out and another sign-in meanwhile must not send these
+            // marks as theirs.
+            val (result, signIn) = fetchPinned({ authTokenManager.signInGeneration }) {
+                syncApiClient.fetchFullSync()
+            }
+            // One reading of the switches, for the steps below and for what
             // this sync records as synced: one flipped meanwhile counts from the next.
             val switchedOn = categoriesSwitchedOn(prefs)
+            // Recorded at once, for this account only: a later step that
+            // fails must not leave the next sync reading an empty server as
+            // this phone's first.
+            if (markStep.pull(state, result, "assignments" in switchedOn, signIn, generation) &&
+                authService.isStillSignedInAs(account)
+            ) {
+                prefs.assignmentMarksSyncedOnce = true
+            }
             courseIgnoreSync.applySnapshot(result, generation)?.let { state.ignoredCourseKeys.value = it }
             // Course overrides and deletion detection always run regardless
             // of whether this was a first-time migration.
@@ -157,11 +177,17 @@ class HomeBackendSync @Inject constructor(
             // it. Null means an older backend that does not send the
             // section, so the local set stands.
             result.holidayOverrides?.let(academicCalendar::applySyncedOverrides)
-            syncCourseList(result, syncCourses = "courses" in switchedOn)
+            syncCourseList(
+                result,
+                syncCourses = CourseSyncReconciler.syncsCourseList(
+                    switchOn = "courses" in switchedOn,
+                    pendingConflictCategories = prefs.pendingConflictCategories,
+                ),
+            )
             markCourseSyncAt()
             // Only for the account this sync was for: recorded after a sign-out,
             // it would mark the next account's categories before their first sync.
-            if (authService.isStillSignedInAs(account)) prefs.syncedCategories += switchedOn
+            if (authService.isStillSignedInAs(account)) prefs.syncedCategories += categoriesSynced(switchedOn, prefs)
             state.lastKnownRevision = result.currentRevision
             ServerStatusTracker.set(ServerStatus.OK, ServerKind.BACKEND)
             prefs.setLastSyncSource(SyncSource.BACKEND)
@@ -269,77 +295,11 @@ class HomeBackendSync @Inject constructor(
                 runCatching { pushApiClient.patchAssignmentOverride(mid, c.localStatus) }
             }
         } else {
-            val outcome = AssignmentOverrideReconciler.serverWins(
-                serverIgnored = result.ignoredIds,
-                serverCompleted = result.completedIds,
-                inFlightIgnored = state.ignoredAssignmentIds.value,
-                inFlightCompleted = state.markedCompletedIds.value,
-                pendingOverrides = state.pendingOverrides,
-            )
-            commitOverrides(state, outcome)
+            markStep.keepServer(state, result)
             if (result.courseOverrides.isNotEmpty()) {
                 applyCourseOverrides(state, result.courseOverrides)
             }
         }
-    }
-
-    private suspend fun syncAssignmentOverrides(state: HomeSyncState, result: BackendSyncResult) {
-        if (AssignmentOverrideReconciler.isHeldForReenable(prefs.pendingConflictCategories)) return
-        val localIgnored = dataCache.loadIgnoredAssignments()
-        val localMarked = dataCache.loadMarkedCompletedAssignments()
-
-        if (AssignmentOverrideReconciler.isFirstUpload(
-                serverIgnored = result.ignoredIds,
-                serverCompleted = result.completedIds,
-                localIgnored = localIgnored,
-                localCompleted = localMarked,
-            )
-        ) {
-            for (id in localIgnored) {
-                runCatching {
-                    pushApiClient.patchAssignmentOverride(
-                        id.toIntOrNull() ?: return@runCatching,
-                        AssignmentOverrideReconciler.STATUS_IGNORED,
-                    )
-                }
-            }
-            for (id in localMarked) {
-                runCatching {
-                    pushApiClient.patchAssignmentOverride(
-                        id.toIntOrNull() ?: return@runCatching,
-                        AssignmentOverrideReconciler.STATUS_COMPLETED,
-                    )
-                }
-            }
-            return
-        }
-
-        val byId = state.allAssignments.value.associateBy { it.assignmentId }
-        val outcome = AssignmentOverrideReconciler.reconcile(
-            serverIgnored = result.ignoredIds,
-            serverCompleted = result.completedIds,
-            localIgnored = localIgnored,
-            localCompleted = localMarked,
-            inFlightIgnored = state.ignoredAssignmentIds.value,
-            inFlightCompleted = state.markedCompletedIds.value,
-            pendingOverrides = state.pendingOverrides,
-            labelFor = { byId[it]?.title },
-        )
-        commitOverrides(state, outcome)
-        if (outcome.conflicts.isNotEmpty()) {
-            state.pendingResult = result
-            state.conflicts.value = outcome.conflicts
-        }
-    }
-
-    private suspend fun commitOverrides(
-        state: HomeSyncState,
-        outcome: AssignmentOverrideReconciler.Outcome,
-    ) {
-        dataCache.replaceIgnoredAssignments(outcome.ignored)
-        dataCache.replaceMarkedCompletedAssignments(outcome.completed)
-        state.ignoredAssignmentIds.value = outcome.ignored
-        state.markedCompletedIds.value = outcome.completed
     }
 
     private suspend fun applyCourseOverrides(
@@ -525,6 +485,23 @@ class HomeBackendSync @Inject constructor(
         const val SYNC_PREFS = "tigerduck_sync"
         const val KEY_LAST_COURSE_SYNC_AT = "last_course_sync_at"
     }
+}
+
+/** A full sync's snapshot, and the sign-in its first-sync mark upload is pinned to. */
+internal data class PinnedSnapshot(val result: BackendSyncResult, val signIn: Int)
+
+/**
+ * [fetch]es a full sync's snapshot, with the sign-in
+ * (`AuthTokenManager.signInGeneration`) read before it: read after, a
+ * sign-out and another sign-in while the fetch was out would pin this
+ * account's first-sync mark upload to the next account's session.
+ */
+internal suspend fun fetchPinned(
+    signInGeneration: () -> Int,
+    fetch: suspend () -> BackendSyncResult,
+): PinnedSnapshot {
+    val signIn = signInGeneration()
+    return PinnedSnapshot(fetch(), signIn)
 }
 
 /**

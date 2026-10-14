@@ -103,6 +103,17 @@ class AuthTokenManager(
     suspend fun requireAuthHeader(): String = authHeader() ?: throw NotSignedInException()
 
     /**
+     * [requireAuthHeader] pinned to sign-in [signIn] ([signInGeneration]): once
+     * that account has signed out, none, rather than the next account's
+     * token. For work that read its data as one account and sends it later.
+     */
+    suspend fun requireAuthHeader(signIn: Int): String {
+        if (signInGeneration != signIn || !signInIfSignedOut()) throw NotSignedInException()
+        val access = validTokenIfSignedIn(signIn) ?: refresh(signIn) ?: throw NotSignedInException()
+        return "Bearer $access"
+    }
+
+    /**
      * Signs in when there is no session, and says whether there is one now.
      * Runs on each return to the app, before a registration or a sync, and
      * from [authHeader].
