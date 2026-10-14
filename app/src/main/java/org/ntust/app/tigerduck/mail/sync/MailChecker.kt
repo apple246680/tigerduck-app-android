@@ -80,6 +80,9 @@ class MailChecker @Inject constructor(
     }
 
     private suspend fun run(source: CheckSource): CheckOutcome = withContext(Dispatchers.IO) {
+        // Before the account, so a sign-out or a sign-in from here on, even the same student's
+        // again, makes this check's results the sign-in before's.
+        val generation = account.accountGeneration
         val credentials = account.credentialsOrNull() ?: return@withContext CheckOutcome.NotSignedIn
         if (state.authFailed || !state.notificationsEnabled) return@withContext CheckOutcome.Disabled
         if (source == CheckSource.FOREGROUND) {
@@ -91,7 +94,7 @@ class MailChecker @Inject constructor(
         // The state, the cache and the notifications belong to whoever is signed in now. A check
         // that outlives its account -- a sign-out, or another student signing in meanwhile --
         // writes, files and posts nothing more, so it asks again right before each of those.
-        val stillSignedIn = { account.studentId.equals(credentials.studentId, ignoreCase = true) }
+        val stillSignedIn = { account.accountGeneration == generation }
         try {
             sessions.open(credentials).use { session ->
                 val status = session.status(INBOX)

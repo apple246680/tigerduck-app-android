@@ -333,6 +333,28 @@ class MailCheckerTest {
         assertEquals(CheckOutcome.NotSignedIn, outcome)
     }
 
+    /**
+     * The same student signing out and back in, with the password the server now takes, is a new
+     * sign-in: the check of the sign-in before reports nothing of its rejected password into it.
+     */
+    @Test
+    fun `a rejected password of the sign-in before leaves the same student's new sign-in on`() = runTest {
+        account.signIn("b10000001", "pw")
+        val c = checker(MailSessionFactory { _ ->
+            signOutAndSettle()
+            server.passwords["B10000001"] = "new"
+            runBlocking { assertNull(account.signIn("b10000001", "new")) }
+            throw MailError.AuthFailed()
+        })
+
+        val outcome = c.check(CheckSource.ALARM)
+
+        assertFalse(state.authFailed)
+        assertFalse(account.authFailed.value)
+        assertEquals(0, notifier.authFailures)
+        assertEquals(CheckOutcome.NotSignedIn, outcome)
+    }
+
     @Test
     fun `every check is recorded for the diagnostics screen, newest first`() = runTest {
         account.signIn("b10000001", "pw")

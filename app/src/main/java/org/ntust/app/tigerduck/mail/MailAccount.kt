@@ -20,6 +20,7 @@ import org.ntust.app.tigerduck.mail.store.MailCache
 import org.ntust.app.tigerduck.mail.store.MailCredentialStore
 import org.ntust.app.tigerduck.mail.store.MailStateStore
 import org.ntust.app.tigerduck.mail.sync.MailBackgroundScheduler
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -61,6 +62,15 @@ class MailAccount @Inject constructor(
     val authFailed: StateFlow<Boolean> = _authFailed.asStateFlow()
 
     val studentId: String? get() = credentials.mailStudentId
+
+    private val generation = AtomicInteger()
+
+    /**
+     * Moved by every sign-in and sign-out. Work that reads the account and then runs on reads this
+     * first: once it has moved, the work holds an account that left, even when the same student
+     * has signed in again since.
+     */
+    val accountGeneration: Int get() = generation.get()
 
     /**
      * The signed-in student's own address, without decrypting the password the way
@@ -122,6 +132,8 @@ class MailAccount @Inject constructor(
      * cancelling the notifications are IO and finish on their own.
      */
     fun signOut() {
+        // First, so a check asking from here on is already told its account left.
+        generation.incrementAndGet()
         scheduler.cancel()
         credentials.clearMailCredentials()
         state.clear()
@@ -142,6 +154,7 @@ class MailAccount @Inject constructor(
     }
 
     private fun save(creds: MailCredentials) {
+        generation.incrementAndGet()
         credentials.mailStudentId = creds.studentId
         credentials.mailPassword = creds.password
         state.authFailed = false
