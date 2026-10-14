@@ -76,7 +76,13 @@ internal class AssignmentMarkStep(
             val allSent = sendFirstSyncMarks(
                 localIgnored,
                 localCompleted,
-                keep = { id, status -> keepUnsent(id, status, generation) },
+                keep = { id, status ->
+                    // Only while it is still this phone's mark: a tap made
+                    // while the PATCH was out is newer, and goes up itself.
+                    if (id !in state.pendingOverrides && statusOn(state, id) == status) {
+                        keepUnsent(id, status, generation)
+                    }
+                },
             ) { id, status -> send(id, status, signIn) }
             // Switched off meanwhile, the rest were never sent.
             return allSent && switchOn()
@@ -123,6 +129,13 @@ internal class AssignmentMarkStep(
             pendingOverrides = state.pendingOverrides + unsent(),
         )
         commit(state, outcome)
+    }
+
+    // The mark Home shows for [id] now; taps change these at once.
+    private fun statusOn(state: HomeSyncState, id: String): String = when (id) {
+        in state.ignoredAssignmentIds.value -> AssignmentOverrideReconciler.STATUS_IGNORED
+        in state.markedCompletedIds.value -> AssignmentOverrideReconciler.STATUS_COMPLETED
+        else -> AssignmentOverrideReconciler.STATUS_NONE
     }
 
     private suspend fun commit(state: HomeSyncState, outcome: AssignmentOverrideReconciler.Outcome) {

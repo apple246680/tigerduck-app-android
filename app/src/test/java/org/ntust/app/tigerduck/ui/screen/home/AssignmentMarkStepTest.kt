@@ -260,6 +260,33 @@ class AssignmentMarkStepTest {
         assertEquals(setOf("1", "2"), ignored)
     }
 
+    @Test
+    fun `a mark cleared while its first-sync PATCH was out is not kept to go up again`() = runTest {
+        ignored = setOf("1")
+        state.ignoredAssignmentIds.value = setOf("1")
+        send = { _, _ ->
+            // The user clears it on Home meanwhile; that tap goes up itself.
+            state.ignoredAssignmentIds.value = emptySet()
+            throw IOException("offline")
+        }
+
+        step.pull(state, server(), syncsMarks = true, signIn = SIGN_IN, generation = 0)
+
+        assertEquals("nothing kept to undo the clear", emptySet<String>(), unsent)
+    }
+
+    @Test
+    fun `a mark whose own tap is still going up is left to that tap`() = runTest {
+        ignored = setOf("1")
+        state.ignoredAssignmentIds.value = setOf("1")
+        state.pendingOverrides += "1"
+        send = { _, _ -> throw IOException("offline") }
+
+        step.pull(state, server(), syncsMarks = true, signIn = SIGN_IN, generation = 0)
+
+        assertEquals(emptySet<String>(), unsent)
+    }
+
     private companion object {
         const val SIGN_IN = 7
     }
