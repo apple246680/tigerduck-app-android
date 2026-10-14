@@ -17,6 +17,7 @@ import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.notification.ClassPreparingNotificationScheduler
+import org.ntust.app.tigerduck.notification.ClassReminderAlarms
 import org.ntust.app.tigerduck.notification.ClassReminderSettings
 import org.ntust.app.tigerduck.notification.ClassReminders
 import org.ntust.app.tigerduck.shared.clock.AppClock
@@ -31,17 +32,45 @@ import javax.inject.Singleton
  * forwards the result to the notifier.
  */
 @Singleton
-class LiveActivityManager @Inject constructor(
+class LiveActivityManager internal constructor(
     private val preferences: LiveActivityPreferences,
     private val notifier: LiveActivityNotifier,
     private val dataCache: DataCache,
-    private val authService: AuthService,
+    private val isSignedIn: () -> Boolean,
     private val appPrefs: AppPreferences,
-    private val classPreparingScheduler: ClassPreparingNotificationScheduler,
+    private val classPreparingScheduler: ClassReminderAlarms,
     private val academicCalendar: org.ntust.app.tigerduck.academic.AcademicCalendarStore,
     private val boundaryScheduler: LiveActivityBoundaryScheduler,
-    @param:ApplicationScope private val appScope: CoroutineScope,
+    private val appScope: CoroutineScope,
 ) {
+    // The real entry point, which Hilt calls. The primary constructor takes
+    // the sign-in state and the class reminder alarms as plain types, so
+    // LiveActivityManagerTest can build the real manager around a fake
+    // scheduler without AuthService's dependency graph. Same split as
+    // LiveActivityPreferences and NotificationSettingsSync.
+    @Inject constructor(
+        preferences: LiveActivityPreferences,
+        notifier: LiveActivityNotifier,
+        dataCache: DataCache,
+        authService: AuthService,
+        appPrefs: AppPreferences,
+        classPreparingScheduler: ClassPreparingNotificationScheduler,
+        academicCalendar: org.ntust.app.tigerduck.academic.AcademicCalendarStore,
+        boundaryScheduler: LiveActivityBoundaryScheduler,
+        @ApplicationScope appScope: CoroutineScope,
+    ) : this(
+        preferences = preferences,
+        notifier = notifier,
+        dataCache = dataCache,
+        // authState, not a session-liveness check; see refreshLocked.
+        isSignedIn = { authService.authState.value },
+        appPrefs = appPrefs,
+        classPreparingScheduler = classPreparingScheduler,
+        academicCalendar = academicCalendar,
+        boundaryScheduler = boundaryScheduler,
+        appScope = appScope,
+    )
+
     private val resolver = LiveActivityResolver()
     private val managerJob = SupervisorJob(appScope.coroutineContext[Job])
     private val scope = appScope + managerJob
@@ -113,7 +142,7 @@ class LiveActivityManager @Inject constructor(
         // is signed in at all — not whether an SSO cookie happens to be warm.
         // The cookie jar is in-memory, so gating on it stopped the Live Update
         // after every reboot or background kill until the user signed in again.
-        val signedIn = authService.authState.value
+        val signedIn = isSignedIn()
         // Classes do not meet on a school holiday, nor before 開學 — 選課 fills
         // the timetable weeks ahead of the term, so having courses is not
         // evidence that classes have started. Neither the chip nor the
