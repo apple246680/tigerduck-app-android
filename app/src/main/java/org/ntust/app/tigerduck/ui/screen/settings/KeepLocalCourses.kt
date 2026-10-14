@@ -4,6 +4,7 @@ import android.util.Log
 import kotlinx.coroutines.CancellationException
 import java.util.concurrent.atomic.AtomicBoolean
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
+import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.push.PushApiClient
 import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.util.logSummary
@@ -16,14 +17,38 @@ internal interface CourseSyncBackend {
     suspend fun deleteCourse(courseKey: String)
 }
 
-internal class PushCourseSyncBackend(private val api: PushApiClient) : CourseSyncBackend {
-    override suspend fun deleteAllCourses(semester: String) = api.deleteAllCourses(semester)
+/** Course sync went off while Use Local was sending: the question is asked again. */
+internal class CourseSyncOffException : IllegalStateException("course sync is off")
 
-    override suspend fun uploadCourses(courses: List<Course>, semester: String) {
-        api.uploadCourses(courses, semester)
+/**
+ * [CourseSyncBackend] over [PushApiClient], whose course requests return
+ * quietly unsent with cloud or course sync off. Use Local's fail instead: a
+ * term reset followed by an upload that never went would leave every other
+ * device hiding the whole term, with nothing to ask the question again.
+ */
+internal class PushCourseSyncBackend(
+    private val api: PushApiClient,
+    private val prefs: AppPreferences,
+) : CourseSyncBackend {
+    private fun ensureSends() {
+        if (!prefs.cloudSyncEnabled || !prefs.syncCourses) throw CourseSyncOffException()
     }
 
-    override suspend fun deleteCourse(courseKey: String) = api.deleteCourse(courseKey)
+    override suspend fun deleteAllCourses(semester: String) {
+        ensureSends()
+        api.deleteAllCourses(semester)
+    }
+
+    override suspend fun uploadCourses(courses: List<Course>, semester: String) {
+        ensureSends()
+        // Null: switched off between the check and the request.
+        api.uploadCourses(courses, semester) ?: throw CourseSyncOffException()
+    }
+
+    override suspend fun deleteCourse(courseKey: String) {
+        ensureSends()
+        api.deleteCourse(courseKey)
+    }
 }
 
 /**

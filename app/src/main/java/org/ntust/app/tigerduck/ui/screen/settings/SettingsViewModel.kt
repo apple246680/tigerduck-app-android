@@ -511,7 +511,7 @@ class SettingsViewModel @Inject constructor(
     private suspend fun sendLocalCourses(generation: Int, latch: UseLocalLatch) = useLocalCourses(
         terms = semesterCatalog.availableSemesters().map { it to dataCache.loadCourses(it) },
         hiding = dataCache.loadDeletedCourseNos(),
-        backend = PushCourseSyncBackend(pushApiClient),
+        backend = PushCourseSyncBackend(pushApiClient, prefs),
         latch = latch,
         host = useLocalHost,
         now = System::currentTimeMillis,
