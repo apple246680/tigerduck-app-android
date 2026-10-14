@@ -30,7 +30,7 @@ import org.ntust.app.tigerduck.data.CourseTombstoneKeys
 import org.ntust.app.tigerduck.data.UnsentMarks
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.push.BackendSyncResult
-import org.ntust.app.tigerduck.ui.screen.home.AssignmentOverrideReconciler
+import org.ntust.app.tigerduck.ui.screen.home.BackgroundMarkStep
 import org.ntust.app.tigerduck.ui.screen.home.CourseSyncReconciler
 import org.ntust.app.tigerduck.data.CourseRosterMerge
 import org.ntust.app.tigerduck.data.RefreshPolicy
@@ -172,32 +172,12 @@ class BackgroundSyncWorker @AssistedInject constructor(
             // Marks whose PATCH failed go first, so the snapshot has them.
             unsentMarks.retry()
             val result = syncApiClient.fetchFullSync()
-            val localIgnored = dataCache.loadIgnoredAssignments()
-            val localMarked = dataCache.loadMarkedCompletedAssignments()
             // With the Assignments switch off, the re-enable check pending,
             // or marks the server lacks on the account's first sync here
             // (Home's sync sends those up), the marks stay as they are.
-            val takesMarks = AssignmentOverrideReconciler.backgroundTakesMarks(
-                syncsMarks = prefs.syncAssignments,
-                pendingConflictCategories = prefs.pendingConflictCategories,
-                syncedBefore = prefs.assignmentMarksSyncedOnce,
-                serverIgnored = result.ignoredIds,
-                serverCompleted = result.completedIds,
-                localIgnored = localIgnored,
-                localCompleted = localMarked,
-            )
-            val marks = AssignmentOverrideReconciler.backgroundMarks(
-                serverIgnored = result.ignoredIds,
-                serverCompleted = result.completedIds,
-                unsent = unsentMarks.statuses(),
-            )
-            if (takesMarks) {
-                dataCache.replaceIgnoredAssignments(marks.ignored)
-                dataCache.replaceMarkedCompletedAssignments(marks.completed)
-                if (authService.isStillSignedInAs(account)) prefs.assignmentMarksSyncedOnce = true
-            }
-            val marksChanged = takesMarks &&
-                (marks.ignored != localIgnored || marks.completed != localMarked)
+            val marks = BackgroundMarkStep.over(prefs, dataCache, unsentMarks).pull(result)
+            if (marks.taken && authService.isStillSignedInAs(account)) prefs.assignmentMarksSyncedOnce = true
+            val marksChanged = marks.changed
             courseIgnoreSync.applySnapshot(result, generation)
 
             if (prefs.syncCourseColors && result.courseOverrides.isNotEmpty()) {
