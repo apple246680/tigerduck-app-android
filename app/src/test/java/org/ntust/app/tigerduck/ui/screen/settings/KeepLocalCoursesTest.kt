@@ -138,6 +138,41 @@ class KeepLocalCoursesTest {
     }
 
     @Test
+    fun `custom names a term reset wiped go back up`() = runTest {
+        val server = FakeCourseServer(rows = setOf("client:1151:CS1", "client:1151:CS2"))
+        server.names["client:1151:CS1"] = mutableMapOf("zh" to "微積分")
+        val withId = Course(courseNo = "CS2", courseName = "CS2", moodleIdNumber = "1151CS2X")
+
+        keepLocalCourses(
+            listOf("1151" to roster("CS1") + withId),
+            hiding = emptySet(),
+            backend = server,
+            customNames = mapOf(
+                "CS1" to mapOf("zh" to "微積分", "en" to "Calc"),
+                "CS2" to mapOf("en" to "OS"),
+                "CS9" to mapOf("en" to "Not on the timetable"),
+            ),
+        )
+
+        assertEquals(mapOf("zh" to "微積分", "en" to "Calc"), server.names["client:1151:CS1"])
+        assertEquals(mapOf("en" to "OS"), server.names["client:1151:CS2"])
+    }
+
+    @Test
+    fun `a hidden course's name is not sent`() = runTest {
+        val server = FakeCourseServer(rows = setOf("client:1151:CS1", "client:1151:CS2"))
+
+        keepLocalCourses(
+            listOf("1151" to roster("CS1", "CS2")),
+            hiding = setOf("1151:CS2"),
+            backend = server,
+            customNames = mapOf("CS2" to mapOf("en" to "Gone")),
+        )
+
+        assertEquals(emptyMap<String, Map<String, String>>(), server.names)
+    }
+
+    @Test
     fun `nothing more is sent once the sign-in it was answered under is gone`() = runTest {
         val server = FakeCourseServer(rows = setOf("client:1151:CS1", "client:1142:CS9"))
         var checks = 0
@@ -188,6 +223,7 @@ class UseLocalCoursesTest {
         terms = terms.toList(),
         hiding = emptySet(),
         backend = server,
+        customNames = emptyMap(),
         latch = UseLocalLatch(terms.map { it.first }, host),
         host = host,
         now = { 42L },
@@ -198,12 +234,14 @@ class UseLocalCoursesTest {
         override suspend fun deleteAllCourses(semester: String) = throw IOException("offline")
         override suspend fun uploadCourses(courses: List<Course>, semester: String) = Unit
         override suspend fun deleteCourse(courseKey: String) = Unit
+        override suspend fun patchCustomName(moodleId: String, name: String, locale: String) = Unit
     }
 
     private class Recording(private val onRequest: () -> Unit = {}) : CourseSyncBackend {
         override suspend fun deleteAllCourses(semester: String) = onRequest()
         override suspend fun uploadCourses(courses: List<Course>, semester: String) = onRequest()
         override suspend fun deleteCourse(courseKey: String) = onRequest()
+        override suspend fun patchCustomName(moodleId: String, name: String, locale: String) = onRequest()
     }
 
     @Test
@@ -314,19 +352,35 @@ private class FakeCourseServer(
     /** How many of the next [deleteCourse] calls fail before reaching the server. */
     var failingDeletes = 0
 
+    /**
+     * Custom names by course key. The override row they live on goes with
+     * its course row (`ON DELETE CASCADE` in the backend's
+     * `server/sync/models/courses.py`).
+     */
+    val names = mutableMapOf<String, MutableMap<String, String>>()
+
+    // The moodle_id each row was stored under, which the override PATCH
+    // resolves: the uploaded one, or "{semester}{course_no}" without one.
+    private val moodleIds = rows.associateWith { it.removePrefix("client:").replace(":", "") }.toMutableMap()
+
     override suspend fun deleteAllCourses(semester: String) {
         resets += semester
         val prefix = "client:$semester:"
         val removed = rows.filter { it.startsWith(prefix) }
         rows -= removed.toSet()
+        removed.forEach(names::remove)
         for (key in tombstones.keys.filter { it.startsWith(prefix) }) tombstones[key] = true
         for (key in removed) tombstones[key] = true
     }
 
     override suspend fun uploadCourses(courses: List<Course>, semester: String) {
-        val keys = courses.map { "client:$semester:${it.courseNo}" }
-        for (key in keys) if (tombstones[key] == true) tombstones.remove(key)
-        rows += keys.filter { it !in tombstones }
+        for (course in courses) {
+            val key = "client:$semester:${course.courseNo}"
+            if (tombstones[key] == true) tombstones.remove(key)
+            if (key in tombstones) continue
+            rows += key
+            moodleIds[key] = course.moodleIdNumber?.takeIf { it.isNotEmpty() } ?: "$semester${course.courseNo}"
+        }
     }
 
     override suspend fun deleteCourse(courseKey: String) {
@@ -335,6 +389,12 @@ private class FakeCourseServer(
             throw IOException("connection lost")
         }
         if (!rows.remove(courseKey)) return
+        names.remove(courseKey)
         tombstones.putIfAbsent(courseKey, false)
+    }
+
+    override suspend fun patchCustomName(moodleId: String, name: String, locale: String) {
+        val key = rows.firstOrNull { moodleIds[it] == moodleId } ?: throw IOException("HTTP 404")
+        names.getOrPut(key) { mutableMapOf() }[locale] = name
     }
 }

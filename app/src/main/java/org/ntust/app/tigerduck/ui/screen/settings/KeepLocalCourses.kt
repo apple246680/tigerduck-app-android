@@ -2,12 +2,12 @@ package org.ntust.app.tigerduck.ui.screen.settings
 
 import android.util.Log
 import kotlinx.coroutines.CancellationException
-import java.util.concurrent.atomic.AtomicBoolean
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.push.PushApiClient
 import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.util.logSummary
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** The course requests Use Local sends, so a test can stand in for the backend. */
 internal interface CourseSyncBackend {
@@ -15,6 +15,9 @@ internal interface CourseSyncBackend {
     suspend fun deleteAllCourses(semester: String)
     suspend fun uploadCourses(courses: List<Course>, semester: String)
     suspend fun deleteCourse(courseKey: String)
+
+    /** `PATCH /sync/courses/{moodle_id}/override` with one locale's custom name. */
+    suspend fun patchCustomName(moodleId: String, name: String, locale: String)
 }
 
 /** Course sync went off while Use Local was sending: the question is asked again. */
@@ -49,6 +52,11 @@ internal class PushCourseSyncBackend(
         ensureSends()
         api.deleteCourse(courseKey)
     }
+
+    override suspend fun patchCustomName(moodleId: String, name: String, locale: String) {
+        ensureSends()
+        api.patchCourseOverride(moodleId, customName = name, locale = locale)
+    }
 }
 
 /**
@@ -69,7 +77,9 @@ internal class PushCourseSyncBackend(
  *
  * [terms] maps each semester to its cached courses; [hiding] is the
  * deleted-course store, where a legacy bare entry hides its course in every
- * term. Not a full reset: that erases every term's tombstones and stamps
+ * term. [customNames] (by course number, then locale; empty with name sync
+ * off) go up again for every course of a term that was reset, which deletes
+ * them on the server along with the course rows. Not a full reset: that erases every term's tombstones and stamps
  * `courses_reset_at`, which this phone's next sync then took for a reset made
  * elsewhere, dropping its hidden and hand-typed courses.
  *
@@ -81,6 +91,7 @@ internal suspend fun keepLocalCourses(
     terms: List<Pair<String, List<Course>>>,
     hiding: Set<String>,
     backend: CourseSyncBackend,
+    customNames: Map<String, Map<String, String>> = emptyMap(),
     isCurrent: () -> Boolean = { true },
 ) {
     fun ensureCurrent() {
@@ -97,6 +108,21 @@ internal suspend fun keepLocalCourses(
         }
         ensureCurrent()
         backend.uploadCourses(courses + stubs, semester)
+        if (courses.isNotEmpty()) {
+            // The reset took the term's override rows, names included, with
+            // its course rows; colours ride the upload, names do not.
+            for (course in courses.filter { it.courseNo !in hiddenNos }.sortedBy { it.courseNo }) {
+                val names = customNames[course.courseNo] ?: continue
+                // The id the upload stored the row under, as the backend
+                // derives it; see CourseUploadPayload.
+                val moodleId = course.moodleIdNumber?.takeIf { it.isNotEmpty() } ?: "$semester${course.courseNo}"
+                for ((locale, name) in names.toSortedMap()) {
+                    if (name.isEmpty()) continue
+                    ensureCurrent()
+                    backend.patchCustomName(moodleId, name, locale)
+                }
+            }
+        }
         for (courseNo in hiddenNos.sorted()) {
             ensureCurrent()
             backend.deleteCourse("client:$semester:$courseNo")
@@ -167,6 +193,7 @@ internal suspend fun useLocalCourses(
     terms: List<Pair<String, List<Course>>>,
     hiding: Set<String>,
     backend: CourseSyncBackend,
+    customNames: Map<String, Map<String, String>>,
     latch: UseLocalLatch,
     host: UseLocalHost,
     now: () -> Long,
@@ -174,7 +201,7 @@ internal suspend fun useLocalCourses(
 ) {
     try {
         try {
-            keepLocalCourses(terms, hiding, backend, isCurrent)
+            keepLocalCourses(terms, hiding, backend, customNames, isCurrent)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

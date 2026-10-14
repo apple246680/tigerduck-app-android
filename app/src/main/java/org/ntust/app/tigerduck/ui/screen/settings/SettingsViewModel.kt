@@ -512,6 +512,8 @@ class SettingsViewModel @Inject constructor(
         terms = semesterCatalog.availableSemesters().map { it to dataCache.loadCourses(it) },
         hiding = dataCache.loadDeletedCourseNos(),
         backend = PushCourseSyncBackend(pushApiClient, prefs),
+        // A term's reset takes its courses' names off the server with them.
+        customNames = if (prefs.syncCourseNames) dataCache.loadCourseCustomNames() else emptyMap(),
         latch = latch,
         host = useLocalHost,
         now = System::currentTimeMillis,
