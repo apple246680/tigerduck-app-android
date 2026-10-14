@@ -445,6 +445,11 @@ class AppState @Inject constructor(
     // by SettingsScreen after the animation finishes.
     var pendingNtustSignInHighlight by mutableStateOf(false)
 
+    // "Sign in again", after the automatic sign-in failed: opens the school
+    // sign-in over whatever page asked (NtustSignInSheetHost), as the iPhone
+    // does. Not persisted.
+    var ntustSignInSheetRequested by mutableStateOf(false)
+
     private var configuredTabsState by mutableStateOf(prefs.configuredTabs)
 
     var configuredTabs: List<AppFeature>

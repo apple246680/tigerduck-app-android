@@ -4,6 +4,9 @@ import android.util.Log
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -82,6 +85,16 @@ class AuthTokenManager(
      */
     val signInGeneration: Int get() = synchronized(signInLock) { generation }
 
+    private val _lastSignInFailed = MutableStateFlow(false)
+
+    /**
+     * Whether the last sign-in that had credentials to send failed: from then
+     * until another starts, one succeeds or the account signs out. The
+     * TigerSync status asks the user to sign in again while it holds and
+     * there is no session.
+     */
+    val lastSignInFailed: StateFlow<Boolean> = _lastSignInFailed.asStateFlow()
+
     // Resolve per-call so the debug API-endpoint override applies immediately,
     // matching PushApiClient — pinning at construction made login/refresh
     // traffic ignore an override that push traffic honored, minting tokens on
@@ -126,6 +139,7 @@ class AuthTokenManager(
         val attempt = CompletableDeferred<Boolean>()
         val current = synchronized(signInLock) {
             signInUnderWay = attempt
+            _lastSignInFailed.value = false
             generation
         }
         return runSignIn(attempt, current, signIn)
@@ -149,6 +163,7 @@ class AuthTokenManager(
             signInUnderWay ?: run {
                 if (isSignInPaused()) return false
                 signInUnderWay = attempt
+                _lastSignInFailed.value = false
                 null
             }
         }
@@ -195,6 +210,7 @@ class AuthTokenManager(
             SignInAttempt.FAILED -> signInFailedAt = now()
             SignInAttempt.NOTHING_TO_SEND -> Unit
         }
+        _lastSignInFailed.value = attempt == SignInAttempt.FAILED
         attempt == SignInAttempt.SIGNED_IN
     }
 
@@ -275,6 +291,7 @@ class AuthTokenManager(
             tokens.clear()
             signInUnderWay = null
             signInFailedAt = null
+            _lastSignInFailed.value = false
         }
     }
 

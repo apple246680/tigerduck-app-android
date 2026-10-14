@@ -160,6 +160,7 @@ fun AppNavigation(
             onStartRouteConsumed = onStartRouteConsumed,
         )
         PermissionWarningDialogHost(appState.systemPermissions)
+        org.ntust.app.tigerduck.ui.screen.signin.NtustSignInSheetHost()
     }
 
     val needsReset by appState.needsUserReset.collectAsStateWithLifecycle()
