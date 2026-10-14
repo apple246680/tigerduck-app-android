@@ -71,21 +71,51 @@ import java.util.Date
 @Composable
 fun ClassTableImportHost(viewModel: ClassTableImportViewModel, onImported: () -> Unit) {
     val model = viewModel.session.collectAsStateWithLifecycle().value ?: return
-    val state by model.state.collectAsStateWithLifecycle()
     val latestOnImported by rememberUpdatedState(onImported)
-    LaunchedEffect(state.isFinished) {
-        if (state.isFinished) {
-            viewModel.end()
-            latestOnImported()
-        }
-    }
     val pickPicture = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) viewModel.readPicture(uri)
     }
+    ClassTableImportPage(
+        model = model,
+        onClose = viewModel::end,
+        onFinished = {
+            viewModel.end()
+            latestOnImported()
+        },
+        onPickPicture = {
+            pickPicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        },
+    )
+}
+
+/**
+ * [model]'s import page, confirm dialog and prompts. [onClose] is the user leaving, which nothing
+ * offers while the person is being saved; [onFinished] is the import done, saved or called off by
+ * a sign-in change.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun ClassTableImportPage(
+    model: ClassTableImportModel,
+    onClose: () -> Unit,
+    onFinished: () -> Unit,
+    onPickPicture: () -> Unit,
+) {
+    val state by model.state.collectAsStateWithLifecycle()
+    val latestOnFinished by rememberUpdatedState(onFinished)
+    LaunchedEffect(state.isFinished) {
+        if (state.isFinished) latestOnFinished()
+    }
+    // Not while the person is being written: the import then ends saved, and closes itself.
+    val close: () -> Unit = { if (!model.state.value.isSaving) onClose() }
 
     Dialog(
-        onDismissRequest = viewModel::end,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        onDismissRequest = close,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+            dismissOnBackPress = !state.isSaving,
+        ),
     ) {
         // Dark whatever the app's theme, as on iOS: the page is the camera's picture.
         TigerDuckAppTheme(darkTheme = true, accentColor = MaterialTheme.colorScheme.primary) {
@@ -96,7 +126,7 @@ fun ClassTableImportHost(viewModel: ClassTableImportViewModel, onImported: () ->
                     TopAppBar(
                         title = { Text(stringResource(R.string.class_table_import)) },
                         navigationIcon = {
-                            IconButton(onClick = viewModel::end) {
+                            IconButton(onClick = close, enabled = !state.isSaving) {
                                 Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.action_close))
                             }
                         },
@@ -112,11 +142,7 @@ fun ClassTableImportHost(viewModel: ClassTableImportViewModel, onImported: () ->
                         contentAlignment = Alignment.Center,
                     ) {
                         FilledTonalButton(
-                            onClick = {
-                                pickPicture.launch(
-                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                                )
-                            },
+                            onClick = onPickPicture,
                             enabled = state.isIdle,
                             contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
                         ) {
@@ -179,6 +205,8 @@ private fun ImportConfirmDialog(model: ClassTableImportModel, code: ClassTableSh
         confirmEnabled = state.canImport,
         dismissText = stringResource(R.string.action_cancel),
         onDismiss = model::cancel,
+        // Cancel stops a lookup; once the person is being written it is too late.
+        dismissEnabled = !state.isSaving,
         dismissable = !state.isLookingUp,
     ) {
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {

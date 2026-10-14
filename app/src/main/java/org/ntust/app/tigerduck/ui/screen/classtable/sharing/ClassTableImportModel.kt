@@ -61,6 +61,11 @@ class ClassTableImportModel(
         val pending: ClassTableShareCode? = null,
         val nickname: String = "",
         val isLookingUp: Boolean = false,
+        /**
+         * While the store writes the person, which nothing interrupts: Close, Cancel and back do
+         * nothing then, as iOS refuses a swipe while busy, and the import ends saved.
+         */
+        val isSaving: Boolean = false,
         val isReadingImage: Boolean = false,
         /** Set once the person is saved, or once the account signed out meanwhile; the import closes then. */
         val isFinished: Boolean = false,
@@ -75,9 +80,6 @@ class ClassTableImportModel(
 
     private var lookupJob: Job? = null
     private var imageJob: Job? = null
-
-    /** While the store writes the person; read and written on the import's own thread. */
-    private var committing = false
 
     // --- Reading a code ---
 
@@ -187,11 +189,11 @@ class ClassTableImportModel(
                 return@launch
             }
             // Past this point the write goes through whatever happens: cancel waits for it.
-            committing = true
+            _state.update { it.copy(isSaving = true) }
             val person = try {
                 withContext(NonCancellable) { store.add(job.code, job.nickname, courses) }
             } finally {
-                committing = false
+                _state.update { it.copy(isSaving = false) }
             }
             if (person == null) {
                 _state.update { it.copy(isLookingUp = false, prompt = Prompt.SaveFailed(job)) }
@@ -222,7 +224,7 @@ class ClassTableImportModel(
      * nothing is kept on the device that the screen said was called off.
      */
     fun cancel() {
-        if (committing) return
+        if (_state.value.isSaving) return
         imageJob?.cancel()
         imageJob = null
         lookupJob?.cancel()
