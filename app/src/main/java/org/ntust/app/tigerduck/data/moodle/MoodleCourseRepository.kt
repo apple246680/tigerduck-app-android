@@ -78,6 +78,7 @@ class MoodleCourseRepository @Inject constructor(
             context = context,
             scope = scope,
             picturesDir = File(dataCache.moodleFilesDir(account), "pictures"),
+            openedFilesDir = dataCache.moodleOpenedFilesDir(account),
             decodePicture = ::decode,
         ).also { stores[account to courseId] = it }
     }

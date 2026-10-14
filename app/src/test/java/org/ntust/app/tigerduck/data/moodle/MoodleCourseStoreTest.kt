@@ -81,13 +81,21 @@ class MoodleCourseStoreTest {
             return gradesAnswer()
         }
         override suspend fun summary(courseId: Int) = MoodleCourseSummary.EMPTY
-        override suspend fun fileUrl(fileUrl: String): String? = null
+        var downloads = 0
+        var downloadAnswer: (java.io.File) -> Unit = { it.writeText("pdf bytes") }
+        override suspend fun download(file: org.ntust.app.tigerduck.network.model.moodle.MoodleFile, target: java.io.File) {
+            downloads++
+            downloadAnswer(target)
+        }
     }
 
     private var now = 1_000_000L
     private var signedIn = true
     private val cache = MemoryCache()
     private val api = FakeApi()
+
+    @get:org.junit.Rule
+    val tmp = org.junit.rules.TemporaryFolder()
 
     private fun TestScope.store() = MoodleCourseStore(
         courseId = 5,
@@ -96,6 +104,12 @@ class MoodleCourseStoreTest {
         api = api,
         context = MoodleCacheContext("B1", cache, isCurrent = { signedIn }, now = { now }),
         scope = backgroundScope,
+        openedFilesDir = tmp.root,
+    )
+
+    private val attachment = org.ntust.app.tigerduck.network.model.moodle.MoodleFile(
+        name = "hw3.pdf", size = 9, mimeType = "application/pdf", modified = 1L, path = "/",
+        url = "https://moodle2.ntust.edu.tw/webservice/pluginfile.php/1/mod_forum/attachment/90/hw3.pdf",
     )
 
     private val item = MoodleGradeItem(1, "HW1", "mod", "assign", 31, "95", 100.0, false, "")
@@ -268,5 +282,42 @@ class MoodleCourseStoreTest {
 
         assertEquals(1, api.memberCalls)
         assertEquals("B1 @ Amy", store.member(7)!!.fullName)
+    }
+
+    @Test
+    fun `an attachment is downloaded into the app once, and opened from there after`() = runTest(UnconfinedTestDispatcher()) {
+        val store = store()
+
+        val first = store.openAttachment(attachment, postId = 90)
+        val second = store.openAttachment(attachment, postId = 90)
+
+        val file = (first as MoodleAttachment.Local).file
+        assertEquals("pdf bytes", file.readText())
+        assertTrue("kept under the account's own folder", file.canonicalPath.startsWith(tmp.root.canonicalPath))
+        assertEquals(file, (second as MoodleAttachment.Local).file)
+        assertEquals(1, api.downloads)
+    }
+
+    @Test
+    fun `a failed download leaves nothing behind and says why`() = runTest(UnconfinedTestDispatcher()) {
+        api.downloadAnswer = { target ->
+            target.writeText("half")
+            throw IOException("connection reset")
+        }
+        val store = store()
+
+        val result = store.openAttachment(attachment, postId = 90)
+
+        assertTrue((result as MoodleAttachment.Failed).error is IOException)
+        assertTrue(tmp.root.walkTopDown().none { it.isFile })
+    }
+
+    @Test
+    fun `a file that is not on the Moodle site opens as a link, with no key and no download`() = runTest(UnconfinedTestDispatcher()) {
+        val store = store()
+        val elsewhere = attachment.copy(url = "https://example.com/hw3.pdf")
+
+        assertEquals(MoodleAttachment.Link("https://example.com/hw3.pdf"), store.openAttachment(elsewhere, postId = 90))
+        assertEquals(0, api.downloads)
     }
 }

@@ -58,17 +58,23 @@ class DataCacheMoodleTest {
     }
 
     @Test
-    fun `sign-out wipes every account's copies and pictures`() = runTest {
+    fun `sign-out wipes every account's copies, pictures and opened files`() = runTest {
         cache.saveMoodleData(grades, 1L, "courses/5/grades", "B11300001")
         val picture = File(cache.moodleFilesDir("B11300001"), "pictures/1-3").apply {
             parentFile!!.mkdirs()
             writeBytes(byteArrayOf(1))
         }
 
+        val opened = File(cache.moodleOpenedFilesDir("B11300001"), "90/hw3.pdf").apply {
+            parentFile!!.mkdirs()
+            writeText("pdf")
+        }
+
         cache.clearAllUserData()
 
         assertNull(cache.loadMoodleData<MoodleCourseGrades>(type, "courses/5/grades", "B11300001"))
         assertFalse(picture.exists())
+        assertFalse("opened attachments go too", opened.exists())
     }
 
     @Test

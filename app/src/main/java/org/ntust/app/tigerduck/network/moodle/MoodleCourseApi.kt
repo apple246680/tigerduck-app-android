@@ -7,6 +7,7 @@ import okhttp3.Request
 import org.ntust.app.tigerduck.network.MoodleWebserviceError
 import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseSummary
 import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussion
+import org.ntust.app.tigerduck.network.model.moodle.MoodleFile
 import org.ntust.app.tigerduck.network.model.moodle.MoodleForum
 import org.ntust.app.tigerduck.network.model.moodle.MoodleGradeItem
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberList
@@ -50,11 +51,10 @@ interface MoodleCourseApi {
     suspend fun summary(courseId: Int): MoodleCourseSummary
 
     /**
-     * Where the file at [fileUrl] opens from outside the app, with the account's file key in it;
-     * null when it cannot, as for a file off the Moodle site or with no network to ask on.
-     * Phase 1 hands this to the browser; phase 2 downloads in the app instead.
+     * Downloads [file], a file Moodle's own site serves, into [target]. The account's key goes in
+     * the request only, which never leaves the app; another app gets the copy, not the link.
      */
-    suspend fun fileUrl(fileUrl: String): String?
+    suspend fun download(file: MoodleFile, target: java.io.File)
 
     companion object {
         const val FORUMS_FUNCTION = "mod_forum_get_forums_by_courses"
@@ -180,8 +180,14 @@ class LiveMoodleCourseApi @Inject constructor(
         }
     }
 
-    override suspend fun fileUrl(fileUrl: String): String? = webservice.withToken { token ->
-        MoodleFileUrls.downloadUrl(fileUrl, webservice.siteInfo(token).privateAccessKey, token)
+    override suspend fun download(file: MoodleFile, target: java.io.File) {
+        webservice.withToken { token ->
+            val url = MoodleFileUrls.downloadUrl(file.url, webservice.siteInfo(token).privateAccessKey, token)
+                ?: throw MoodleWebserviceError.MalformedResponse("not a Moodle file")
+            withContext(Dispatchers.IO) {
+                webservice.downloadTo(Request.Builder().url(url).get().build(), target, file.mimeType)
+            }
+        }
     }
 
     override suspend fun summary(courseId: Int): MoodleCourseSummary = webservice.withToken { token ->

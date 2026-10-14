@@ -153,4 +153,16 @@ class MoodleWebserviceTest {
         service.siteInfo("t2")
         assertEquals("another token asks again", 2, sent.size)
     }
+
+    @Test
+    fun `a downloaded file must be the file Moodle listed`() {
+        MoodleWebservice.checkFile(200, "application/pdf; name=a.pdf", "application/pdf")
+        MoodleWebservice.checkFile(200, "application/octet-stream", null)
+        assertThrows("a sign-in page in its place", MoodleWebserviceError.MalformedResponse::class.java) {
+            MoodleWebservice.checkFile(200, "text/html", "application/pdf")
+        }
+        assertThrows(MoodleWebserviceError.HttpStatus::class.java) {
+            MoodleWebservice.checkFile(404, "text/html", "application/pdf")
+        }
+    }
 }

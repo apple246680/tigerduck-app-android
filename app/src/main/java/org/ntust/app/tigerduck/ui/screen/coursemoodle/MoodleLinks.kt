@@ -2,7 +2,10 @@ package org.ntust.app.tigerduck.ui.screen.coursemoodle
 
 import android.content.Context
 import android.content.Intent
+import androidx.core.content.FileProvider
 import androidx.core.net.toUri
+import org.ntust.app.tigerduck.util.fileProviderAuthority
+import java.io.File
 import org.ntust.app.tigerduck.network.moodle.MoodleWebservice
 import org.ntust.app.tigerduck.ui.screen.mail.openMailLink
 import java.net.URLEncoder
@@ -73,6 +76,18 @@ fun openMoodleContentLink(context: Context, url: String, browserPreference: Stri
         }
         else -> openMailLink(context, url, browserPreference)
     }
+}
+
+/**
+ * Opens a downloaded Moodle [file] in another app: a content URI to the app's own copy, readable
+ * once by the app picked, so no link with the account's key ever leaves the app.
+ */
+fun moodleFileIntent(context: Context, file: File, mimeType: String): Intent {
+    val uri = FileProvider.getUriForFile(context, fileProviderAuthority(context), file)
+    val view = Intent(Intent.ACTION_VIEW)
+        .setDataAndTypeAndNormalize(uri, mimeType)
+        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    return Intent.createChooser(view, file.name)
 }
 
 /** [url] as the website serves it: the web-service file path becomes the web one, without a token. */

@@ -110,6 +110,26 @@ class MoodleWebservice internal constructor(
             response.body.bytes()
         }
 
+    /**
+     * Streams [request]'s file into [target]. A Moodle error, which comes as JSON, throws its own
+     * case; anything other than the file Moodle listed, such as a sign-in page, throws
+     * [MoodleWebserviceError.MalformedResponse]. Blocking: call on IO.
+     */
+    fun downloadTo(request: Request, target: java.io.File, expectedMime: String?) {
+        client().newCall(request).execute().use { response ->
+            val type = response.header("Content-Type")
+            if (baseType(type) == "application/json" && (response.body.contentLength() in 0..ERROR_REPLY_LIMIT)) {
+                val bytes = response.body.bytes()
+                MoodleWebserviceError.fromJsonBody(String(bytes, Charsets.UTF_8))?.let { throw it }
+                checkFile(response.code, type, expectedMime)
+                target.writeBytes(bytes)
+                return
+            }
+            checkFile(response.code, type, expectedMime)
+            target.outputStream().use { out -> response.body.byteStream().copyTo(out) }
+        }
+    }
+
     /** The site info for [token], asked once per token. Concurrent callers share one request. */
     suspend fun siteInfo(token: String): MoodleSiteInfo {
         siteInfoCache?.takeIf { it.first == token }?.let { return it.second }
@@ -148,6 +168,24 @@ class MoodleWebservice internal constructor(
                 checkAnswer(response.code, response.header("Retry-After"), body)
                 body
             }
+
+        /** A Moodle error is a few hundred bytes, so a longer JSON reply is the file itself. */
+        private const val ERROR_REPLY_LIMIT = 64 * 1024L
+
+        /** `"Application/PDF; name=a.pdf"` -> `"application/pdf"`. */
+        private fun baseType(raw: String?): String? =
+            raw?.substringBefore(';')?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+
+        /**
+         * Moodle serves a stored file with the MIME type it lists for it, so another type is a
+         * page standing in for the file.
+         */
+        internal fun checkFile(code: Int, contentType: String?, expectedMime: String?) {
+            if (code != 200) throw MoodleWebserviceError.HttpStatus(code)
+            val expected = baseType(expectedMime) ?: return
+            val served = baseType(contentType)
+            if (served != expected) throw MoodleWebserviceError.MalformedResponse(served.orEmpty())
+        }
 
         internal fun checkAnswer(code: Int, retryAfter: String?, body: String) {
             MoodleWebserviceError.fromJsonBody(body)?.let { throw it }

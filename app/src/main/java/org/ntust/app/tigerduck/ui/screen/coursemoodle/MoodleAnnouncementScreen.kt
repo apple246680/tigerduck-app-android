@@ -1,6 +1,5 @@
 package org.ntust.app.tigerduck.ui.screen.coursemoodle
 
-import android.content.Intent
 import android.text.format.Formatter
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -15,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.outlined.PictureAsPdf
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,12 +58,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.R
+import org.ntust.app.tigerduck.data.moodle.MoodleAttachment
 import org.ntust.app.tigerduck.data.moodle.MoodleCourseStore
+import org.ntust.app.tigerduck.mail.resolveAttachmentMimeType
 import org.ntust.app.tigerduck.data.moodle.MoodlePersonName
 import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussion
 import org.ntust.app.tigerduck.network.model.moodle.MoodleFile
@@ -158,7 +160,7 @@ private fun AnnouncementBody(
         val markdown = remember(discussion.message) { MoodleHtmlText.markdown(discussion.message) }
         MoodleMarkdown(markdown, browserPreference, Modifier.fillMaxWidth())
         if (discussion.attachments.isNotEmpty()) {
-            Attachments(store, discussion)
+            Attachments(store, discussion, browserPreference)
         }
     }
 }
@@ -206,7 +208,7 @@ private fun AuthorRow(store: MoodleCourseStore, discussion: MoodleDiscussion, on
 }
 
 @Composable
-private fun Attachments(store: MoodleCourseStore, discussion: MoodleDiscussion) {
+private fun Attachments(store: MoodleCourseStore, discussion: MoodleDiscussion, browserPreference: String) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Spacer(Modifier.height(4.dp))
         Text(
@@ -224,7 +226,7 @@ private fun Attachments(store: MoodleCourseStore, discussion: MoodleDiscussion) 
                             color = cardDividerColor(),
                         )
                     }
-                    AttachmentRow(store, file, discussion.id)
+                    AttachmentRow(store, file, discussion, browserPreference)
                 }
             }
         }
@@ -232,32 +234,45 @@ private fun Attachments(store: MoodleCourseStore, discussion: MoodleDiscussion) 
 }
 
 /**
- * A file the post carries. A tap opens it outside the app, with the account's file key in its
- * link; phase 2 downloads it into the app instead. A long press offers "Open in Moodle".
+ * A file the post carries. A tap downloads it into the app, with a spinner while it does, and
+ * opens the copy in another app; a file off the Moodle site opens as its own link. A long press
+ * offers "Open in Moodle".
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AttachmentRow(store: MoodleCourseStore, file: MoodleFile, discussionId: Int) {
+private fun AttachmentRow(store: MoodleCourseStore, file: MoodleFile, discussion: MoodleDiscussion, browserPreference: String) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val downloading by store.downloading.collectAsStateWithLifecycle()
+    val busy = file.url in downloading
     var menu by remember { mutableStateOf(false) }
     val openInMoodle = stringResource(R.string.action_open_in_moodle)
-    val unavailable = stringResource(R.string.error_network_unavailable)
     Box {
         ListItem(
             modifier = Modifier.combinedClickable(
+                enabled = !busy,
                 role = Role.Button,
                 onLongClickLabel = openInMoodle,
                 onLongClick = { menu = true },
                 onClick = {
                     scope.launch {
-                        val url = store.fileUrl(file.url)
-                        val opened = url != null && runCatching {
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW, url.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                            )
-                        }.isSuccess
-                        if (!opened) Toast.makeText(context, unavailable, Toast.LENGTH_SHORT).show()
+                        when (val opened = store.openAttachment(file, discussion.postId)) {
+                            is MoodleAttachment.Local -> runCatching {
+                                context.startActivity(
+                                    moodleFileIntent(
+                                        context,
+                                        opened.file,
+                                        resolveAttachmentMimeType(file.mimeType.orEmpty(), file.name),
+                                    ),
+                                )
+                            }
+                            is MoodleAttachment.Link -> openMoodleContentLink(context, opened.url, browserPreference)
+                            is MoodleAttachment.Failed -> Toast.makeText(
+                                context,
+                                moodleErrorText(context.resources, opened.error),
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
                     }
                 },
             ),
@@ -271,6 +286,11 @@ private fun AttachmentRow(store: MoodleCourseStore, file: MoodleFile, discussion
             } else {
                 null
             },
+            trailingContent = if (busy) {
+                { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) }
+            } else {
+                null
+            },
         )
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             DropdownMenuItem(
@@ -278,7 +298,7 @@ private fun AttachmentRow(store: MoodleCourseStore, file: MoodleFile, discussion
                 leadingIcon = { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
                 onClick = {
                     menu = false
-                    openMoodlePage(context, MoodlePage.discussion(discussionId))
+                    openMoodlePage(context, MoodlePage.discussion(discussion.id))
                 },
             )
         }

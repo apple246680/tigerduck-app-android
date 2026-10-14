@@ -11,6 +11,9 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
  */
 object MoodleFileUrls {
 
+    /** Whether [fileUrl] is a file the Moodle site's `pluginfile.php` serves, which takes the key. */
+    fun isMoodleFile(fileUrl: String): Boolean = downloadUrl(fileUrl, accessKey = null, token = "") != null
+
     /**
      * [fileUrl] with the key in it, or null for a file not served by the Moodle site's
      * `pluginfile.php`, which no key may be sent to.

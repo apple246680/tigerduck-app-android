@@ -32,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import android.content.res.Resources
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -164,22 +165,25 @@ internal fun MoodleFirstLoad(failure: Throwable?, onRetry: () -> Unit, modifier:
 
 /** [error] as the reader is told it: Moodle's own words where it has them. */
 @Composable
-internal fun moodleErrorMessage(error: Throwable): String {
-    if (MoodleWebserviceError.isNetwork(error)) return stringResource(R.string.error_network_unavailable)
+internal fun moodleErrorMessage(error: Throwable): String = moodleErrorText(LocalContext.current.resources, error)
+
+/** [moodleErrorMessage] outside composition, as for a toast. */
+internal fun moodleErrorText(resources: Resources, error: Throwable): String {
+    if (MoodleWebserviceError.isNetwork(error)) return resources.getString(R.string.error_network_unavailable)
     return when (error) {
-        is MoodleWebserviceError.SiteMaintenance -> stringResource(R.string.error_moodle_site_maintenance)
-        is MoodleWebserviceError.InvalidToken -> stringResource(R.string.error_moodle_invalid_token)
-        is MoodleWebserviceError.InvalidCredentials -> stringResource(R.string.error_moodle_invalid_credentials)
-        is MoodleWebserviceError.MissingStoredCredentials -> stringResource(R.string.error_moodle_missing_credentials)
+        is MoodleWebserviceError.SiteMaintenance -> resources.getString(R.string.error_moodle_site_maintenance)
+        is MoodleWebserviceError.InvalidToken -> resources.getString(R.string.error_moodle_invalid_token)
+        is MoodleWebserviceError.InvalidCredentials -> resources.getString(R.string.error_moodle_invalid_credentials)
+        is MoodleWebserviceError.MissingStoredCredentials -> resources.getString(R.string.error_moodle_missing_credentials)
         is MoodleWebserviceError.SsoLoginRejected -> error.reason?.takeIf { it.isNotBlank() }
-            ?.let { stringResource(R.string.error_moodle_sso_rejected_with_reason).replaceIosArg(1, it) }
-            ?: stringResource(R.string.error_moodle_sso_rejected)
+            ?.let { resources.getString(R.string.error_moodle_sso_rejected_with_reason).replaceIosArg(1, it) }
+            ?: resources.getString(R.string.error_moodle_sso_rejected)
         is MoodleWebserviceError.AccessDenied,
-        is MoodleWebserviceError.WebserviceDisabled -> stringResource(R.string.error_moodle_webservice_disabled)
-        is MoodleWebserviceError.HttpStatus -> stringResource(R.string.error_moodle_http_status_format, error.code)
+        is MoodleWebserviceError.WebserviceDisabled -> resources.getString(R.string.error_moodle_webservice_disabled)
+        is MoodleWebserviceError.HttpStatus -> resources.getString(R.string.error_moodle_http_status_format, error.code)
         is MoodleWebserviceError.MalformedResponse ->
-            stringResource(R.string.error_moodle_malformed_response_format).replaceIosArg(1, error.detail)
-        else -> stringResource(R.string.error_moodle_malformed_response_format)
+            resources.getString(R.string.error_moodle_malformed_response_format).replaceIosArg(1, error.detail)
+        else -> resources.getString(R.string.error_moodle_malformed_response_format)
             .replaceIosArg(1, error.javaClass.simpleName)
     }
 }

@@ -232,6 +232,7 @@ class DemoMoodleCourseApi(
         )
     }
 
-    /** No file leaves the demo account: it has no network to fetch one on. */
-    override suspend fun fileUrl(fileUrl: String): String? = null
+    /** The demo account has no network to fetch a file on. */
+    override suspend fun download(file: MoodleFile, target: java.io.File) =
+        throw java.io.IOException("demo mode has no files")
 }

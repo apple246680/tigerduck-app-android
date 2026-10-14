@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -19,6 +20,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.ntust.app.tigerduck.network.moodle.MoodleCourseApi
+import org.ntust.app.tigerduck.network.moodle.MoodleFileUrls
+import org.ntust.app.tigerduck.network.model.moodle.MoodleFile
 import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseGrades
 import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseSummary
 import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussion
@@ -47,6 +50,8 @@ class MoodleCourseStore(
     private val scope: CoroutineScope,
     /** Where member pictures are kept; null keeps them in memory only. */
     private val picturesDir: File? = null,
+    /** Where opened attachments are kept for the account, which another app reads them from. */
+    private val openedFilesDir: File? = null,
     private val decodePicture: (ByteArray) -> ImageBitmap? = { null },
 ) {
     /** Every course of the term, which one forums call covers. */
@@ -230,15 +235,52 @@ class MoodleCourseStore(
 
     // --- Files ---
 
-    /** Where an attachment opens from outside the app; null when it cannot be opened now. */
-    suspend fun fileUrl(url: String): String? = try {
-        api.fileUrl(url)
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        Log.w(TAG, "file url not resolved: ${e.logSummary()}")
-        null
+    private val _downloading = MutableStateFlow<Set<String>>(emptySet())
+
+    /** The attachments being downloaded, by URL, for the rows to show progress on. */
+    val downloading: StateFlow<Set<String>> = _downloading.asStateFlow()
+
+    /**
+     * An attachment of post [postId], ready to open: the copy in the app, downloaded first when
+     * there is none, or for a file off the Moodle site its own link, which carries no key. A
+     * download that fails leaves no partial copy behind. Phase 2 adds progress, cancelling and
+     * dropping copies Moodle has a newer version of.
+     */
+    suspend fun openAttachment(file: MoodleFile, postId: Int): MoodleAttachment {
+        if (!MoodleFileUrls.isMoodleFile(file.url)) return MoodleAttachment.Link(file.url)
+        val dir = openedFilesDir ?: return MoodleAttachment.Failed(IllegalStateException("no folder for files"))
+        val target = File(File(dir, postId.toString()), safeFileName(file.name))
+        if (withContext(Dispatchers.IO) { target.isFile }) return MoodleAttachment.Local(target)
+        _downloading.update { it + file.url }
+        return try {
+            val partial = File(target.parentFile, ".${target.name}.part")
+            try {
+                withContext(Dispatchers.IO) { target.parentFile?.mkdirs() }
+                api.download(file, partial)
+                withContext(Dispatchers.IO) {
+                    if (!partial.renameTo(target)) throw java.io.IOException("could not keep the file")
+                }
+                if (!context.isCurrent()) {
+                    withContext(Dispatchers.IO) { target.delete() }
+                    throw CancellationException("signed out")
+                }
+                MoodleAttachment.Local(target)
+            } finally {
+                withContext(NonCancellable + Dispatchers.IO) { partial.delete() }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "attachment not downloaded: ${e.logSummary()}")
+            MoodleAttachment.Failed(e)
+        } finally {
+            _downloading.update { it - file.url }
+        }
     }
+
+    /** [name] as one file name, nothing in it able to climb out of its folder. */
+    private fun safeFileName(name: String): String =
+        name.replace(Regex("[/\\\u0000]"), "_").trim().trimStart('.').ifEmpty { "file" }
 
     // --- Pictures ---
 
@@ -327,4 +369,11 @@ class MoodleCourseStore(
                 .values.distinct().sorted()
         }
     }
+}
+
+/** An attachment as it opens: the copy in the app, its own link off the Moodle site, or why neither. */
+sealed interface MoodleAttachment {
+    data class Local(val file: File) : MoodleAttachment
+    data class Link(val url: String) : MoodleAttachment
+    data class Failed(val error: Throwable) : MoodleAttachment
 }

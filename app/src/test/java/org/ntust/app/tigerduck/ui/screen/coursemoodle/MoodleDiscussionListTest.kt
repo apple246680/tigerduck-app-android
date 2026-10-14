@@ -64,7 +64,7 @@ class MoodleDiscussionListTest {
         override suspend fun picture(url: String) = ByteArray(0)
         override suspend fun gradeItems(courseId: Int) = emptyList<MoodleGradeItem>()
         override suspend fun summary(courseId: Int) = MoodleCourseSummary.EMPTY
-        override suspend fun fileUrl(fileUrl: String): String? = null
+        override suspend fun download(file: org.ntust.app.tigerduck.network.model.moodle.MoodleFile, target: java.io.File) = Unit
     }
 
     private val cache = object : MoodleCachePort {

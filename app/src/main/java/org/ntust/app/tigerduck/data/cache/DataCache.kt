@@ -641,6 +641,14 @@ class DataCache @Inject constructor(
 
     private val moodleDir: File get() = File(cacheDir, MOODLE_DIR)
 
+    /**
+     * Where [account]'s opened Moodle files are kept: copies the app hands to another app through
+     * its FileProvider (`moodle_files` in res/xml/file_provider_paths.xml). Apart from
+     * [moodleFilesDir], so that path exposes nothing but these copies.
+     */
+    fun moodleOpenedFilesDir(account: String): File =
+        File(File(cacheDir, MOODLE_OPENED_DIR), moodleAccountFolder(account))
+
     private fun moodleFile(name: String, account: String): File {
         // A name is the app's own, such as "courses/123/grades"; dot segments never come from it,
         // but nothing outside the account's folder may be written if one ever did.
@@ -718,8 +726,9 @@ class DataCache @Inject constructor(
                     cacheDir.listFiles { _, name -> name.startsWith("score_") && name.endsWith(".json") }
                         ?.forEach { it.delete() }
                 }
-                // Every account's Moodle copies and member pictures.
+                // Every account's Moodle copies, member pictures and opened files.
                 runCatching { moodleDir.deleteRecursively() }
+                runCatching { File(cacheDir, MOODLE_OPENED_DIR).deleteRecursively() }
             }
         }
         userDataMutex.withLock {
@@ -846,6 +855,7 @@ class DataCache @Inject constructor(
         private const val TAG = "DataCache"
 
         private const val MOODLE_DIR = "moodle"
+        private const val MOODLE_OPENED_DIR = "moodle_open"
 
         /** See saveMoodleData: bump with any change to the classes in network/model/moodle. */
         internal const val MOODLE_CACHE_SCHEMA = 1
