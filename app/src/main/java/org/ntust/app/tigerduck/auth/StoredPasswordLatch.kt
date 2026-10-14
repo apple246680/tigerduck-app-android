@@ -19,8 +19,8 @@ import javax.inject.Singleton
  * The school refused the stored password in a sign-in the user did not start. Each refusal counts
  * toward the account's lockout, which keeps the student out of every school system, so from then
  * on no automatic sign-in posts that password: not the SSO sign-ins the pages and the background
- * sync make, and not the Moodle token harvest. It lifts when the user signs in by hand, which is
- * how a changed password gets in, and on sign-out. The iPhone app keeps the same latch
+ * sync make, and not the Moodle token harvest. It lifts when a sign-in by hand stores the password
+ * the school took, which is how a changed password gets in, and on sign-out. The iPhone app keeps the same latch
  * (`SSOLoginService.storedPasswordRejected`).
  *
  * One for the whole app, and kept across restarts: a process the background sync starts must not
@@ -50,7 +50,7 @@ interface StoredPasswordLatch {
      */
     fun markRejected(generation: Int, studentId: String, password: String, reason: String?)
 
-    /** After a sign-in the user made succeeds, and on sign-out. */
+    /** When a sign-in the user made stores the password the school took, and on sign-out. */
     fun clear()
 
     /**

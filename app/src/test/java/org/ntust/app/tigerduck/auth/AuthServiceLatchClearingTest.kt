@@ -5,11 +5,10 @@ import org.junit.Test
 import java.io.File
 
 /**
- * Where AuthService lifts the stored-password latch: on sign-out, as the refusal belonged to the
- * password leaving with the account, and as soon as a sign-in stores a new password, so nothing
- * between the store and the end of the sign-in still holds that password's refusal against it.
- * AuthService needs the Android Keystore, which no JVM test can open, so this reads its source,
- * as ImportedClassTablesClearingTest does; StoredPasswordLatchTest covers what the call does.
+ * AuthService lifts the stored-password latch on sign-out, as the refusal belonged to the password
+ * leaving with the account. AuthService needs the Android Keystore, which no JVM test can open, so
+ * this reads its source, as ImportedClassTablesClearingTest does; StoredPasswordLatchTest covers
+ * what the call does. A sign-in lifts it as it stores the new password: TypedAccountSignInTest.
  */
 class AuthServiceLatchClearingTest {
 
@@ -44,16 +43,5 @@ class AuthServiceLatchClearingTest {
     @Test
     fun `the sign-out lifts the latch`() {
         assertEquals(1, Regex("""\bstoredPasswordLatch\.clear\(\)""").findAll(body("fun logout()")).count())
-    }
-
-    @Test
-    fun `each sign-in lifts it right after it stores the new password`() {
-        val lines = body("suspend fun login(").lines().map { it.trim() }
-            .filter { it.isNotEmpty() && !it.startsWith("//") }
-        val stores = lines.indices.filter { lines[it] == "credentials.ntustPassword = password" }
-
-        // The demo account's sign-in and the school's.
-        assertEquals(2, stores.size)
-        stores.forEach { assertEquals("storedPasswordLatch.clear()", lines[it + 1]) }
     }
 }

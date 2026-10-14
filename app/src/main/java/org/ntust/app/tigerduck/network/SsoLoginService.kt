@@ -91,6 +91,10 @@ class SsoLoginService internal constructor(
      * of a session left by the account before. So this one empties the jar
      * first. Under the same lock, so a login still running for the account
      * that left finishes before the jar is emptied, not after.
+     *
+     * It posts the credentials whatever the latch holds, and leaves the latch
+     * as it is: the refused password is still the one stored until the
+     * sign-in stores the new one, which lifts it (TypedAccountSignIn).
      */
     suspend fun signIn(
         serviceUrl: String,
@@ -98,11 +102,7 @@ class SsoLoginService internal constructor(
         password: String
     ): Boolean = loginMutex.withLock {
         sessionManager.invalidateSession()
-        logIn(serviceUrl, studentId, password, typed = true).also { signedIn ->
-            // The way in for a changed password: automatic sign-ins may post
-            // the stored one again.
-            if (signedIn) passwordLatch.clear()
-        }
+        logIn(serviceUrl, studentId, password, typed = true)
     }
 
     /**

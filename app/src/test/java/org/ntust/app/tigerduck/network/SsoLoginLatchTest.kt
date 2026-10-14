@@ -92,14 +92,16 @@ class SsoLoginLatchTest {
     }
 
     @Test
-    fun `a sign-in the user types posts despite the latch and lifts it`() = runTest {
+    fun `a sign-in the user types posts despite the latch, which lifts only with the new password's store`() = runTest {
         latch.markRejected(latch.generation, STUDENT, PASSWORD, REASON)
         accepts = true
 
         assertTrue(service.signIn(SERVICE, STUDENT, "new-password"))
 
         assertEquals(1, posts.size)
-        assertFalse(latch.isRejected)
+        // The refused password is still the one stored: TypedAccountSignIn lifts the latch as
+        // it stores the new one.
+        assertTrue(latch.isRejected)
     }
 
     @Test
