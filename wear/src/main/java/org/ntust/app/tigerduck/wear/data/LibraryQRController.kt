@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.ntust.app.tigerduck.shared.LibraryApi
@@ -76,18 +77,25 @@ class LibraryQRController(
             // Joined, not only cancelled: its render may still be finishing, and
             // its cleanup would mark this one's fetch as done.
             previous?.cancelAndJoin()
-            // collectLatest cancels and joins the previous account's cycle the same way.
-            accounts.distinctUntilChanged().collectLatest { account ->
-                // Another account's code is not this one's, even while the new one loads.
-                if (!account.equals(shownAccount, ignoreCase = true)) {
-                    _qrBitmap.value = null
-                    _qrPatternBounds.value = null
-                    _countdown.value = 0
+            accounts.distinctUntilChanged()
+                // Another account's code is not this one's. Taken off as the account changes,
+                // before collectLatest waits for the previous account's cycle to end, which a
+                // fetch still running can hold up.
+                .onEach { account -> if (!account.equals(shownAccount, ignoreCase = true)) clearCode() }
+                // collectLatest cancels and joins the previous account's cycle the same way.
+                .collectLatest { account ->
+                    if (!account.equals(shownAccount, ignoreCase = true)) clearCode()
+                    // Until a fetch fails, as before: the page is opened again for another try.
+                    while (refresh(qrSidePx, account)) countDown()
                 }
-                // Until a fetch fails, as before: the page is opened again for another try.
-                while (refresh(qrSidePx, account)) countDown()
-            }
         }
+    }
+
+    private fun clearCode() {
+        shownAccount = null
+        _qrBitmap.value = null
+        _qrPatternBounds.value = null
+        _countdown.value = 0
     }
 
     /** Pause refreshes when the page leaves the screen. */
@@ -98,10 +106,7 @@ class LibraryQRController(
     /** Drop the cached bitmap (e.g. after a logout push from phone). */
     fun reset() {
         stop()
-        shownAccount = null
-        _qrBitmap.value = null
-        _qrPatternBounds.value = null
-        _countdown.value = 0
+        clearCode()
         _error.value = null
     }
 

@@ -2,11 +2,13 @@ package org.ntust.app.tigerduck.wear.data
 
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -16,7 +18,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.ntust.app.tigerduck.shared.LibraryServiceError
 import org.robolectric.RobolectricTestRunner
+import kotlin.coroutines.Continuation
 import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
 /**
  * The watch's code page when the phone signs the library account out or hands
@@ -75,6 +80,28 @@ class LibraryQRControllerTest {
 
         assertNull(controller.qrBitmap.value)
         assertTrue(controller.isLoading.value)
+    }
+
+    /**
+     * The phone hands over another account while the previous one's code is being fetched again,
+     * and that fetch does not stop at once: the previous code goes as the account changes, not
+     * once the fetch is over, so it never stands beside the next student's ID.
+     */
+    @Test
+    fun `another account takes the previous code off at once, while its fetch runs on`() {
+        var held: Continuation<String>? = null
+        answers += { "code" }
+        answers += { withContext(NonCancellable) { suspendCoroutine { held = it } } }
+        answers += { awaitCancellation() }
+        controller.start(64, accounts)
+        // A restart for the same account fetches again with its code still up.
+        controller.start(128, accounts)
+        assertNotNull(controller.qrBitmap.value)
+
+        accounts.value = "B10000002"
+
+        assertNull(controller.qrBitmap.value)
+        held!!.resume("late")
     }
 
     @Test
