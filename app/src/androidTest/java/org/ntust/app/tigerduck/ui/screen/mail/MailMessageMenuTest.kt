@@ -57,7 +57,8 @@ class MailMessageMenuTest {
                     onDismiss = {},
                     onMode = {},
                     onViewInLight = { viewInLight = !viewInLight },
-                    onMarkUnread = {},
+                    seen = true,
+                    onToggleSeen = {},
                     onMove = {},
                     onDelete = {},
                 )

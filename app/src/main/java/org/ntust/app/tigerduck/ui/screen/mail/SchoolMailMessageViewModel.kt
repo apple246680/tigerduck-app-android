@@ -123,7 +123,7 @@ class SchoolMailMessageViewModel @Inject constructor(
         val confirmDelete: Boolean = false,
         val confirmDeleteForever: Boolean = false,
         val actionError: MailError? = null,
-        /** Moved, deleted or marked unread: the screen pops. */
+        /** Moved or deleted: the screen pops. */
         val closed: Boolean = false,
         /**
          * The signed-in student's own address, which the header's To and Cc lines pick out. Read
@@ -287,6 +287,8 @@ class SchoolMailMessageViewModel @Inject constructor(
         if (!summary.flags.seen) {
             try {
                 repository.setSeen(folder, uid, true)
+                // So the menu offers Mark unread for the mail it now is.
+                showSeen(true)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -559,9 +561,23 @@ class SchoolMailMessageViewModel @Inject constructor(
 
     // --- actions ------------------------------------------------------------------------
 
-    fun markUnread() = act {
-        repository.setSeen(folder, uid, false)
-        update { it.copy(closed = true) }
+    /**
+     * Mark read / Mark unread, whichever the mail is not: the flag changes on the server and on
+     * screen, and the mail stays open, as on the iPhone. The list reads it from the cache the
+     * repository updated when it is shown again.
+     */
+    fun toggleSeen() {
+        val ready = _state.value.content as? Content.Ready ?: return
+        val seen = !ready.summary.flags.seen
+        act {
+            repository.setSeen(folder, uid, seen)
+            showSeen(seen)
+        }
+    }
+
+    private fun showSeen(seen: Boolean) = update { st ->
+        val ready = st.content as? Content.Ready ?: return@update st
+        st.copy(content = ready.copy(summary = ready.summary.copy(flags = ready.summary.flags.copy(seen = seen))))
     }
 
     fun moveTargets(): List<String> {

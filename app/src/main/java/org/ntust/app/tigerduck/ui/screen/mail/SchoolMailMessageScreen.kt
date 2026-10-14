@@ -244,7 +244,8 @@ fun SchoolMailMessageScreen(
                                 onDismiss = { menuOpen = false },
                                 onMode = { menuOpen = false; viewModel.selectMode(it) },
                                 onViewInLight = { menuOpen = false; viewInLight = !viewInLight },
-                                onMarkUnread = { menuOpen = false; viewModel.markUnread() },
+                                seen = ready?.summary?.flags?.seen,
+                                onToggleSeen = { menuOpen = false; viewModel.toggleSeen() },
                                 onMove = { menuOpen = false; showMove = true },
                                 onDelete = { menuOpen = false; viewModel.delete() },
                             )
@@ -502,7 +503,9 @@ internal fun MessageMenu(
     onDismiss: () -> Unit,
     onMode: (ViewMode) -> Unit,
     onViewInLight: () -> Unit,
-    onMarkUnread: () -> Unit,
+    /** Whether the mail is read, which decides Mark unread or Mark read; null, before it has loaded, leaves the item out. */
+    seen: Boolean?,
+    onToggleSeen: () -> Unit,
     onMove: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -537,7 +540,12 @@ internal fun MessageMenu(
             )
         }
         HorizontalDivider()
-        DropdownMenuItem(text = { Text(stringResource(R.string.school_mail_mark_unread)) }, onClick = onMarkUnread)
+        if (seen != null) {
+            DropdownMenuItem(
+                text = { Text(stringResource(if (seen) R.string.school_mail_mark_unread else R.string.school_mail_mark_read)) },
+                onClick = onToggleSeen,
+            )
+        }
         DropdownMenuItem(text = { Text(stringResource(R.string.school_mail_move_to)) }, onClick = onMove)
         HorizontalDivider()
         // Red, like deleting a course from the class table (ClassTableCourseCell) -- the one
@@ -619,9 +627,7 @@ private fun MessageHeader(summary: MailSummary, mailDomain: String, selfAddress:
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (secondary != null) {
-                    Text(secondary, style = MaterialTheme.typography.bodySmall, color = cs.outline)
-                }
+                if (secondary != null) SenderAddress(secondary)
             }
             if (MailWarnings.isExternalSender(from, summary.returnPath, mailDomain)) {
                 Surface(shape = RoundedCornerShape(50), color = WarningOrange.copy(alpha = 0.18f)) {
@@ -665,6 +671,14 @@ internal fun LinkedPlainText(text: String, links: List<PlainTextLink>, onLink: (
         }
     }
     Text(annotated, style = MaterialTheme.typography.bodyMedium, modifier = modifier)
+}
+
+/** The sender's address under their name, selectable so it can be copied like the recipients'. */
+@Composable
+internal fun SenderAddress(address: String) {
+    SelectionContainer {
+        Text(address, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+    }
 }
 
 /** The warning, with the address it is about on a second line -- unless there isn't one to name. */

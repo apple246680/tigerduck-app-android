@@ -718,6 +718,40 @@ class SchoolMailMessageViewModelTest {
         assertEquals(0, vm.state.value.savedCount)
     }
 
+    // --- read / unread ----------------------------------------------------------------------
+
+    @Test
+    fun `Mark unread keeps the mail open, and Mark read takes it back`() {
+        repo.add("INBOX", mailSummary(5))
+        repo.bodies[5] = MailBody(null, "hello", emptyList(), emptyMap())
+        val vm = vm()
+        vm.load()
+        // Opening it read it, and the menu has to know that to offer Mark unread.
+        assertTrue(ready(vm).summary.flags.seen)
+
+        vm.toggleSeen()
+        assertEquals(Triple("INBOX", 5L, false), repo.seenCalls.last())
+        assertFalse(ready(vm).summary.flags.seen)
+        assertFalse(vm.state.value.closed)
+
+        vm.toggleSeen()
+        assertEquals(Triple("INBOX", 5L, true), repo.seenCalls.last())
+        assertTrue(ready(vm).summary.flags.seen)
+        assertFalse(vm.state.value.closed)
+    }
+
+    @Test
+    fun `a read toggle the server refuses leaves the flag as it was`() {
+        repo.add("INBOX", mailSummary(5, seen = true))
+        repo.bodies[5] = MailBody(null, "hello", emptyList(), emptyMap())
+        val vm = vm()
+        vm.load()
+        repo.seenError = MailError.ServerBusy()
+        vm.toggleSeen()
+        assertTrue(ready(vm).summary.flags.seen)
+        assertTrue(vm.state.value.actionError is MailError.ServerBusy)
+    }
+
     // --- links in a plain-text mail ------------------------------------------------------------
 
     @Test
