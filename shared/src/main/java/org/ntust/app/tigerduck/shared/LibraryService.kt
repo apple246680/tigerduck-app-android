@@ -216,9 +216,11 @@ class LibraryService(
             // Read under the lock, so no attempt is cancelled for an older
             // generation after this read it and before this joins.
             val key = SignInKey(username, credentials.libraryAccountGeneration)
-            // One cancelled but not yet done is not joined: its caller would
-            // get a cancellation it did not ask for.
-            (pendingSignIns[key]?.takeUnless { it.job.isCancelled } ?: startSignIn(key)).also { it.waiting++ }
+            // One cancelled as abandoned but not yet done is not joined: its
+            // caller would get a cancellation it did not ask for. One that
+            // failed and is not yet removed is, and shares its outcome rather
+            // than sending the password again.
+            (pendingSignIns[key]?.takeUnless { it.abandoned } ?: startSignIn(key)).also { it.waiting++ }
         }
         try {
             return attempt.job.await()
@@ -248,6 +250,9 @@ class LibraryService(
 
         /** The generation its answer is for. */
         val generation: Int get() = signingInAt ?: key.generation
+
+        /** Cancelled because no one waits for it and its account has gone; guarded by [pendingSignIns]. */
+        var abandoned = false
     }
 
     /**
@@ -286,7 +291,10 @@ class LibraryService(
         val generation = credentials.libraryAccountGeneration
         pendingSignIns.values
             .filter { it.waiting == 0 && it.generation != generation }
-            .forEach { it.job.cancel() }
+            .forEach {
+                it.abandoned = true
+                it.job.cancel()
+            }
     }
 
     private suspend fun storedSignIn(signingInAt: (Int) -> Unit): String = tokenMutex.withLock {
