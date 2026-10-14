@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -79,6 +80,12 @@ fun FlipToLibraryEffect(
     var pendingFlip by remember(navController, appState) { mutableStateOf(false) }
 
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    // The app window's; a dialog or sheet is a window of its own.
+    val windowInfo = LocalWindowInfo.current
+    fun mayNavigateNow() = FlipToLibraryGate.mayNavigate(
+        windowFocused = windowInfo.isWindowFocused,
+        currentRoute = navController.currentDestination?.route,
+    )
     val detector = remember(navController, appState) {
         FlipDetector(context) {
             // Fire-time guards. All checks are synchronous and main-thread —
@@ -95,6 +102,11 @@ fun FlipToLibraryEffect(
             // burns the one-time prompt, and their first *working* flip after
             // signing in jumps straight to Library with no explanation.
             if (!appState.isLibraryLoggedIn) return@FlipDetector
+            // Not over a dialog, a sheet or a mail draft: leaving the page
+            // drops what the user was in the middle of, and the first-trigger
+            // prompt would land on top of it. Nothing is consumed, so the
+            // next flip with nothing open works.
+            if (!mayNavigateNow()) return@FlipDetector
             // First-trigger UX: the first successful flip surfaces a root-level
             // keep/turn-off prompt instead of jumping tabs, so the user isn't
             // dropped into an unfamiliar screen before agreeing to the gesture.
@@ -121,7 +133,8 @@ fun FlipToLibraryEffect(
             // can change while the back stack is being built.
             if (appState.flipToLibraryEnabled &&
                 appState.libraryFeatureEnabled &&
-                appState.isLibraryLoggedIn
+                appState.isLibraryLoggedIn &&
+                mayNavigateNow()
             ) {
                 navigateToLibrary(navController, context)
             }
@@ -175,6 +188,29 @@ object FlipToLibraryFirstTrigger {
             onDecline = { appState.flipToLibraryEnabled = false },
         )
     }
+}
+
+/**
+ * Whether a face-down flip may leave the current page for Library. The
+ * iPhone ignores the flip while a sheet or alert is presented, since the
+ * switch would drop whatever the user was in the middle of.
+ */
+internal object FlipToLibraryGate {
+    /**
+     * Pages the iPhone presents as a sheet, which the flip leaves alone
+     * there: the mail composer, whose draft would be dropped.
+     */
+    private val SHEET_ROUTES = setOf(Screen.SchoolMailCompose.route)
+
+    /**
+     * [windowFocused] is whether the app's own window has the focus. A
+     * dialog, a bottom sheet, a dropdown menu, a system permission prompt
+     * and the pulled-down notification shade are each a window of their
+     * own that takes it, so this one check covers them all, the way the
+     * iPhone asks UIKit whether anything is presented.
+     */
+    fun mayNavigate(windowFocused: Boolean, currentRoute: String?): Boolean =
+        windowFocused && currentRoute !in SHEET_ROUTES
 }
 
 @EntryPoint
