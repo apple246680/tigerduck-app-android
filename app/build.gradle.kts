@@ -140,9 +140,14 @@ android {
             // ReleaseLogRulesTest reads the R8 rules, which are no input of the
             // test task otherwise: a change to them alone would leave it UP-TO-DATE.
             all { it.inputs.file("proguard-rules.pro") }
-            // ReleaseLogLinesTest reads the watch's sources too, which nothing
-            // here compiles.
-            all { it.inputs.dir("../wear/src/main").withPathSensitivity(PathSensitivity.RELATIVE) }
+            // ReleaseLogLinesTest reads the watch's sources too, and
+            // NetworkSecurityConfigTest its manifest and network config, which
+            // nothing here builds.
+            all {
+                it.inputs.files(
+                    fileTree("../wear/src/main") { include("**/*.kt", "AndroidManifest.xml", "res/xml/**") },
+                ).withPathSensitivity(PathSensitivity.RELATIVE)
+            }
         }
     }
 
