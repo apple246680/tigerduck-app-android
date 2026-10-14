@@ -47,7 +47,22 @@ data class ImportedPerson(
         /** The courses' names, times and rooms from NTUST's course query. */
         val courses: List<Course>,
     )
+
+    /** Newest first, as the term picker lists them. */
+    val semesters: List<String> get() = terms.map { it.semester }.sortedDescending()
+
+    /** The term to open this class table on: [keeping] when the person shared it, else their latest. */
+    fun semester(keeping: String): String =
+        if (keeping in semesters) keeping else semesters.firstOrNull() ?: keeping
+
+    fun courses(semester: String): List<Course> = terms.firstOrNull { it.semester == semester }?.courses.orEmpty()
 }
+
+/**
+ * What a change to a person did. One deleted, or imported again, since the change began is
+ * [SKIPPED], which is not a failure; after [FAILED] the store holds what it held before.
+ */
+enum class ImportedClassTableChange { SAVED, SKIPPED, FAILED }
 
 /** What [ImportedClassTableStore] holds at one moment. */
 data class ImportedClassTables(
@@ -60,6 +75,14 @@ data class ImportedClassTables(
 
     /** For the sign-out confirmation, which says the imported class tables go too. */
     val hasImportedClassTables: Boolean get() = people.isNotEmpty()
+
+    /**
+     * The NTUST account's sign-out deletes the imported class tables, so with any here it calls
+     * [confirm] to ask first; otherwise it signs out at once with [signOut].
+     */
+    fun requestSignOut(confirm: () -> Unit, signOut: () -> Unit) {
+        if (hasImportedClassTables) confirm() else signOut()
+    }
 
     fun person(studentId: String): ImportedPerson? = people.firstOrNull { it.studentId == studentId }
 }
@@ -100,6 +123,16 @@ class ImportedClassTableStore internal constructor(
      */
     val tables: StateFlow<ImportedClassTables> = _tables.asStateFlow()
 
+    /** A class table that was shown: [id] is a person's, or null for the user's own. */
+    private class Shown(val id: String?)
+
+    // Guards the switches between class tables, which callers make from the main thread while a
+    // deletion running in [locked] may move the class table back to the user's own.
+    private val shownLock = Any()
+
+    /** The class table shown before the current one; null before the first switch. */
+    private var previousShown: Shown? = null
+
     // The fields below are read and written only inside [locked].
     private var loaded = false
 
@@ -121,7 +154,8 @@ class ImportedClassTableStore internal constructor(
     /**
      * Adds the person [code] is from, each term with its course details from [courses], keyed by
      * semester. A student ID already here keeps its entry, place and nickname, and takes the
-     * code's terms, its share time and [importedAt]. Null when a new person's nickname is blank.
+     * code's terms, its share time and [importedAt]. Null when a new person's nickname is blank, or
+     * when the file could not be written: nothing changes then, in memory or on disk.
      */
     suspend fun add(
         code: ClassTableShareCode,
@@ -152,45 +186,114 @@ class ImportedClassTableStore internal constructor(
             person = ImportedPerson(UUID.randomUUID().toString(), code.studentId, name, at, code.sharedAt, terms)
             updated = people + person
         }
-        owner = account ?: owner
+        val newOwner = account ?: owner
+        if (!save(updated, newOwner)) return@locked null
+        owner = newOwner
         _tables.update { it.copy(people = updated) }
-        saveIfAllowed()
         person
     }
 
-    suspend fun rename(id: String, nickname: String) {
-        locked {
-            loadIfNeeded()
-            val name = nickname.trim()
-            if (name.isEmpty() || _tables.value.people.none { it.id == id }) return@locked
-            _tables.update { tables ->
-                tables.copy(people = tables.people.map { if (it.id == id) it.copy(nickname = name) else it })
-            }
-            saveIfAllowed()
+    suspend fun rename(id: String, nickname: String): ImportedClassTableChange = locked {
+        loadIfNeeded()
+        val name = nickname.trim()
+        val people = _tables.value.people
+        if (name.isEmpty() || people.none { it.id == id }) return@locked ImportedClassTableChange.SKIPPED
+        val updated = people.map { if (it.id == id) it.copy(nickname = name) else it }
+        if (!save(updated, owner)) return@locked ImportedClassTableChange.FAILED
+        _tables.update { it.copy(people = updated) }
+        ImportedClassTableChange.SAVED
+    }
+
+    /**
+     * Swaps in a new lookup of [courseNos], one term's course codes, for that term of [id] as
+     * imported at [importedAt]. A person imported again while the lookup ran, with the same codes
+     * or others, keeps the new import's courses.
+     */
+    suspend fun updateCourses(
+        id: String,
+        semester: String,
+        courseNos: List<String>,
+        courses: List<Course>,
+        importedAt: Instant,
+    ): ImportedClassTableChange = locked {
+        loadIfNeeded()
+        val people = _tables.value.people
+        val old = people.firstOrNull { it.id == id }
+        if (old == null || old.importedAt != importedAt ||
+            old.terms.none { it.semester == semester && it.courseNos == courseNos }
+        ) {
+            return@locked ImportedClassTableChange.SKIPPED
         }
+        val terms = old.terms.map {
+            if (it.semester == semester) ImportedPerson.Term(semester, courseNos.toList(), courses.toList()) else it
+        }
+        val updated = people.map { if (it.id == id) old.copy(terms = terms) else it }
+        if (!save(updated, owner)) return@locked ImportedClassTableChange.FAILED
+        _tables.update { it.copy(people = updated) }
+        ImportedClassTableChange.SAVED
     }
 
     /** Removes [id]; the class table goes back to the user's own if [id]'s was shown. */
-    suspend fun delete(id: String) {
-        locked {
-            loadIfNeeded()
-            if (_tables.value.people.none { it.id == id }) return@locked
+    suspend fun delete(id: String): ImportedClassTableChange = locked {
+        loadIfNeeded()
+        val people = _tables.value.people
+        if (people.none { it.id == id }) return@locked ImportedClassTableChange.SKIPPED
+        val updated = people.filter { it.id != id }
+        val newOwner = if (updated.isEmpty()) null else owner
+        if (!save(updated, newOwner)) return@locked ImportedClassTableChange.FAILED
+        owner = newOwner
+        synchronized(shownLock) {
+            // One update, so no one reads the class table of someone already gone.
+            if (_tables.value.shownPersonId == id) previousShown = Shown(id)
             _tables.update { tables ->
-                tables.copy(
-                    people = tables.people.filter { it.id != id },
-                    shownPersonId = tables.shownPersonId.takeUnless { it == id },
-                )
+                tables.copy(people = updated, shownPersonId = tables.shownPersonId.takeUnless { it == id })
             }
-            if (_tables.value.people.isEmpty()) owner = null
-            saveIfAllowed()
         }
+        ImportedClassTableChange.SAVED
     }
 
     /** Shows [id]'s class table, or the user's own for null; an id not in the store is ignored. */
     fun show(id: String?) {
-        _tables.update { tables ->
-            if (id == null || tables.people.any { it.id == id }) tables.copy(shownPersonId = id) else tables
+        synchronized(shownLock) {
+            if (id == null || _tables.value.people.any { it.id == id }) setShownLocked(id)
         }
+    }
+
+    /**
+     * Shows the class table shown before the current one, or the next one when there is none to
+     * go back to: before the first switch, or once that person is deleted.
+     */
+    fun showPrevious() {
+        synchronized(shownLock) {
+            val previous = previousShown
+            if (previous != null && (previous.id == null || _tables.value.people.any { it.id == previous.id })) {
+                setShownLocked(previous.id)
+            } else {
+                showNextLocked()
+            }
+        }
+    }
+
+    /**
+     * Shows the class table after the shown one: the user's own, then each person in import
+     * order, then the user's own again.
+     */
+    fun showNext() {
+        synchronized(shownLock) { showNextLocked() }
+    }
+
+    private fun showNextLocked() {
+        val order = listOf<String?>(null) + _tables.value.people.map { it.id }
+        val index = order.indexOf(_tables.value.shownPersonId).coerceAtLeast(0)
+        setShownLocked(order[(index + 1) % order.size])
+    }
+
+    /** Called holding [shownLock]; remembers the class table shown until now for [showPrevious]. */
+    private fun setShownLocked(id: String?) {
+        val current = _tables.value.shownPersonId
+        if (current == id) return
+        previousShown = Shown(current)
+        _tables.update { it.copy(shownPersonId = id) }
     }
 
     /** For the user's own sign-out: a renewed session or a relogin in the background must not call it. */
@@ -218,7 +321,7 @@ class ImportedClassTableStore internal constructor(
         val current = owner
         if (current == null) {
             owner = studentId
-            saveIfAllowed()
+            save(_tables.value.people, studentId)
         } else if (current != studentId) {
             clear()
         }
@@ -228,7 +331,10 @@ class ImportedClassTableStore internal constructor(
         loaded = true
         owner = null
         mayWrite = true
-        _tables.value = ImportedClassTables()
+        synchronized(shownLock) {
+            previousShown = null
+            _tables.value = ImportedClassTables()
+        }
         if (file.exists() && !file.delete()) Log.w(TAG, "Could not delete the imported class tables")
     }
 
@@ -275,21 +381,29 @@ class ImportedClassTableStore internal constructor(
         return Stored(stored.owner, people)
     }
 
-    private fun saveIfAllowed() {
-        if (!mayWrite) return
-        val stored = ImportedClassTablesFileDto(FILE_VERSION, owner, _tables.value.people.map { it.toDto() })
+    /**
+     * Writes [people] under [owner] and says whether the file now holds them. A caller publishes a
+     * change only after this, so the people on screen are always the ones a relaunch reads back.
+     */
+    private fun save(people: List<ImportedPerson>, owner: String?): Boolean {
+        if (!mayWrite) return false
+        val stored = ImportedClassTablesFileDto(FILE_VERSION, owner, people.map { it.toDto() })
         // Written whole and moved over the old file, so a crash mid-write leaves the last good one.
         val tmp = File(file.parentFile, "${file.name}.tmp")
-        try {
+        return try {
             file.parentFile?.mkdirs()
             tmp.writeText(gson.toJson(stored))
-            if (!tmp.renameTo(file)) {
+            if (tmp.renameTo(file)) {
+                true
+            } else {
                 Log.w(TAG, "Could not replace the imported class tables")
                 tmp.delete()
+                false
             }
         } catch (e: IOException) {
             Log.w(TAG, "Could not write the imported class tables: ${e.logSummary()}")
             tmp.delete()
+            false
         }
     }
 

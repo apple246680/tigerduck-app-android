@@ -530,4 +530,17 @@ class CourseIgnoreSyncTest {
 
         assertEquals(listOf(Sent("1141AAA", null, 77)), sent)
     }
+
+    @Test
+    fun `Use Local sends the ignores of a term it reset after the check's snapshot`() = runTest {
+        // Use Local reset and re-uploaded 1141, then could not read the
+        // server again and fell back to the check's older snapshot, which
+        // would leave 1141 out as a term reset after it.
+        cache.saveIgnoredCourses(setOf("1141:AAA"))
+        cache.saveSemesterResetAt("1141", 2_000L)
+
+        sync.pushLocal(snapshot(fetchedAtMs = 1_000L), sync.currentGeneration())
+
+        assertEquals(listOf(Sent("1141AAA", true, null)), sent)
+    }
 }

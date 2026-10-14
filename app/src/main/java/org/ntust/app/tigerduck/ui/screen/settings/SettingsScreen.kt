@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -114,6 +115,8 @@ fun SettingsScreen(
     }
 
     var showNtustLoginSheet by remember { mutableStateOf(false) }
+    var confirmNtustSignOut by remember { mutableStateOf(false) }
+    val importedClassTables by viewModel.importedClassTables.collectAsStateWithLifecycle()
     var showLibraryLoginSheet by remember { mutableStateOf(false) }
 
     // Auto-dismiss dialogs when login succeeds
@@ -241,7 +244,13 @@ fun SettingsScreen(
                             subtitle = if (isNtustLoggedIn) viewModel.ntustStudentId else null,
                             isLoggingIn = isNtustLoggingIn,
                             onLogin = { showNtustLoginSheet = true },
-                            onLogout = { viewModel.logoutNtust() },
+                            onLogout = {
+                                // The sign-out deletes the imported class tables, so it asks first.
+                                importedClassTables.requestSignOut(
+                                    confirm = { confirmNtustSignOut = true },
+                                    signOut = { viewModel.logoutNtust() },
+                                )
+                            },
                             actionMinWidth = accountButtonMinWidth,
                             highlight = highlightNtustRow,
                             onHighlightConsumed = { highlightNtustRow = false },
@@ -720,6 +729,24 @@ fun SettingsScreen(
             onLogin = { u, p -> mailViewModel.signIn(u, p) },
             onDismiss = { showMailLoginSheet = false },
             footer = { ForgotMailPasswordLink(browserPreference) },
+        )
+    }
+
+    if (confirmNtustSignOut) {
+        TigerDuckDialog(
+            onDismissRequest = { confirmNtustSignOut = false },
+            title = stringResource(R.string.action_sign_out),
+            message = stringResource(R.string.settings_sign_out_imported_tables),
+            confirmText = stringResource(R.string.action_sign_out),
+            confirmColors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.error,
+                contentColor = MaterialTheme.colorScheme.onError,
+            ),
+            onConfirm = {
+                confirmNtustSignOut = false
+                viewModel.logoutNtust()
+            },
+            dismissText = stringResource(R.string.action_cancel),
         )
     }
 

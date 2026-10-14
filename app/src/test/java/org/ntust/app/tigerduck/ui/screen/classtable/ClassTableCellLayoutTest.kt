@@ -56,6 +56,28 @@ class ClassTableCellLayoutTest {
         assertEquals(listOf(1, 2, 3, 4, 5, 6), ClassTableCellLayout.activeWeekdays(listOf(sat)))
     }
 
+    // ---- a course meeting twice ----
+
+    @Test
+    fun `a course whose two blocks another course bridges keeps both`() {
+        // A meets on 1-2 and 4-5, B on 2-4: one cluster down to period 5, with A's second block
+        // in it (https://github.com/tigerduck-app/tigerduck-app/issues/470).
+        val courses = listOf(
+            course("A", mapOf(1 to listOf("1", "2", "4", "5"))),
+            course("B", mapOf(1 to listOf("2", "3", "4"))),
+        )
+        val role = roleAt(courses, 1, "1")
+        assertTrue("$role", role is CellRole.MultiConflictStart)
+        role as CellRole.MultiConflictStart
+        assertEquals(5, role.combinedSpan)
+        assertEquals(
+            listOf(Triple("A", 0, 2), Triple("B", 1, 3), Triple("A", 3, 2)),
+            role.members.map { Triple(it.course.courseNo, it.offset, it.span) },
+        )
+        assertEquals(listOf("1", "2", "4"), role.members.map { it.firstPeriodId })
+        assertEquals(CellRole.Skip, roleAt(courses, 1, "5"))
+    }
+
     // ---- solo blocks ----
 
     @Test
@@ -201,4 +223,44 @@ class ClassTableCellLayoutTest {
             ClassTableCellLayout.findTripleConflict(existing, course("C", mapOf(1 to listOf("3"))))
         )
     }
+
+    // ---- contentKey: which cells fade on a switch ----
+
+    @Test
+    fun `a course both class tables have at the same place keeps its key, whatever its colour`() {
+        val mine = course("CS1", mapOf(1 to listOf("2", "3")))
+        val theirs = mine.copy(customColorHex = "#E57373")
+
+        val a = ClassTableCellLayout.contentKey(roleAt(listOf(mine), 1, "2"), "TR-313")
+        val b = ClassTableCellLayout.contentKey(roleAt(listOf(theirs), 1, "2"), "TR-313")
+
+        assertEquals(a, b)
+    }
+
+    @Test
+    fun `another course, name, room or span makes a new key`() {
+        val base = course("CS1", mapOf(1 to listOf("2", "3")))
+        fun key(c: Course, room: String? = null) = ClassTableCellLayout.contentKey(roleAt(listOf(c), 1, "2"), room)
+
+        val keys = listOf(
+            key(base),
+            key(course("CS2", mapOf(1 to listOf("2", "3")))),
+            key(base.copy(customCourseName = "Renamed")),
+            key(base, room = "TR-313"),
+            key(course("CS1", mapOf(1 to listOf("2", "3", "4")))),
+        )
+
+        assertEquals(keys.size, keys.toSet().size)
+    }
+
+    @Test
+    fun `slots with no course of their own have no key, and conflicts have one`() {
+        val a = course("A", mapOf(1 to listOf("2", "3")))
+        val b = course("B", mapOf(1 to listOf("3", "4")))
+
+        assertNull(ClassTableCellLayout.contentKey(CellRole.Empty, null))
+        assertNull(ClassTableCellLayout.contentKey(CellRole.Skip, null))
+        assertNotNull(ClassTableCellLayout.contentKey(roleAt(listOf(a, b), 1, "2"), null))
+    }
 }
+

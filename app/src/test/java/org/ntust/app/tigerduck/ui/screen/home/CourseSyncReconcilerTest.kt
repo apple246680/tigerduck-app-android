@@ -505,4 +505,33 @@ class CourseSyncReconcilerTest {
         assertNull(CourseSyncReconciler.mergeCustomNames(emptyMap(), o, syncNames = false))
         assertNull(CourseSyncReconciler.mergeCustomNames(emptyMap(), emptyList(), syncNames = true))
     }
+
+    // ---- the courses re-enable check ----
+
+    @Test
+    fun `the course list is held while the courses re-enable check waits for the user`() {
+        // A reconcile meanwhile un-hides a course deleted here while sync was
+        // off, since the server still lists it, and Use Local could then no
+        // longer keep it deleted (tigerduck-app-android#153).
+        assertFalse(CourseSyncReconciler.syncsCourseList(switchOn = true, pendingConflictCategories = setOf("courses")))
+        assertFalse(
+            CourseSyncReconciler.syncsCourseList(switchOn = true, pendingConflictCategories = setOf("assignments", "courses"))
+        )
+    }
+
+    @Test
+    fun `the course list syncs when its switch is on and no courses check is pending`() {
+        assertTrue(CourseSyncReconciler.syncsCourseList(switchOn = true, pendingConflictCategories = emptySet()))
+        assertTrue(
+            CourseSyncReconciler.syncsCourseList(
+                switchOn = true,
+                pendingConflictCategories = setOf("course_colors", "course_names", "assignments"),
+            )
+        )
+    }
+
+    @Test
+    fun `the course list does not sync with its switch off`() {
+        assertFalse(CourseSyncReconciler.syncsCourseList(switchOn = false, pendingConflictCategories = emptySet()))
+    }
 }
