@@ -55,6 +55,8 @@ import org.ntust.app.tigerduck.ui.haptics.Haptics
 fun FlipToLibraryEffect(
     navController: NavController,
     appState: AppState,
+    /** Whether a page the app was opened on, such as the library shortcut's, is still to open. */
+    startRoutePending: Boolean = false,
 ) {
     val context = LocalContext.current
     val supported = remember(context) { FlipDetector.isSupported(context) }
@@ -80,12 +82,13 @@ fun FlipToLibraryEffect(
     // or at a launch already signed in. Not over the Library page, where it
     // would cover the code someone just signed in to show: leaving the page
     // asks (tigerduck-app/tigerduck-app#529). Nor before the first page is
-    // up, which can be Library. The root host holds it behind What's New and
+    // up, which can be Library, nor while the page the app was opened on is
+    // still to open. The root host holds it behind What's New and
     // the update prompt, and while a Library page shows; the wizard, which
     // signs in too, is over before this is composed.
     val lifecycleOwner = LocalLifecycleOwner.current
     val currentEntry by navController.currentBackStackEntryAsState()
-    val onLibraryPage = FlipToLibraryGate.offerWaitsForPage(currentEntry?.destination?.route)
+    val onLibraryPage = FlipToLibraryGate.offerWaitsForPage(currentEntry?.destination?.route, startRoutePending)
     LaunchedEffect(signedIn, appState.flipToLibraryEnabled, onLibraryPage, lifecycleOwner) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
             if (FlipToLibraryGate.offersGesture(
@@ -188,10 +191,12 @@ internal object FlipToLibraryGate {
      * Whether the offer waits for the page shown, [currentRoute]: on the
      * Library page, and before the back stack has a page at all, as in the
      * first composition of a cold start, whose first page can be Library (the
-     * first tab, or the library shortcut).
+     * first tab). Also while a page the app was opened on is still to open
+     * ([startRoutePending]): the library shortcut opens the first tab for a
+     * frame before Library.
      */
-    fun offerWaitsForPage(currentRoute: String?): Boolean =
-        currentRoute == null || currentRoute == Screen.Library.route
+    fun offerWaitsForPage(currentRoute: String?, startRoutePending: Boolean): Boolean =
+        startRoutePending || currentRoute == null || currentRoute == Screen.Library.route
 }
 
 private fun navigateToLibrary(navController: NavController, context: Context) {

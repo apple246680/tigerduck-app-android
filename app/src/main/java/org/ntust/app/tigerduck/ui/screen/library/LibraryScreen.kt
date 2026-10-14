@@ -153,7 +153,7 @@ fun LibraryScreen(
     // the code. It shows once the page is left.
     DisposableEffect(viewModel) {
         viewModel.onPageShown()
-        onDispose { viewModel.onPageHidden() }
+        onDispose { viewModel.onPageHidden(recreating = activity?.isChangingConfigurations == true) }
     }
 
     // Key on `storedUsername` (a real StateFlow) instead of the plain

@@ -73,4 +73,21 @@ class FirstTriggerPromptHoldTest {
         libraryPage.disappear(second)
         assertFalse(libraryPage.shown.value)
     }
+
+    /**
+     * A rotation tears the page down only to build it again: it stays shown in between, so a
+     * held prompt does not show for the frame before the new page is up.
+     */
+    @Test
+    fun `a Library page rebuilt by a rotation stays shown through it`() {
+        val page = Any()
+        libraryPage.appear(page)
+
+        libraryPage.disappear(page, recreating = true)
+        assertTrue(libraryPage.shown.value)
+
+        libraryPage.appear(page)
+        libraryPage.disappear(page)
+        assertFalse(libraryPage.shown.value)
+    }
 }

@@ -151,7 +151,12 @@ class LibraryViewModel @Inject constructor(
     /** The page is on screen; the flip-to-library offer waits until it is left. */
     fun onPageShown() = pagePresence.appear(this)
 
-    fun onPageHidden() = pagePresence.disappear(this)
+    /**
+     * The page left the screen; [recreating] when only to be built again, as
+     * at a rotation. This view model outlives that, and leaves the page's
+     * count when it is cleared.
+     */
+    fun onPageHidden(recreating: Boolean) = pagePresence.disappear(this, recreating)
 
     override fun onCleared() {
         pagePresence.disappear(this)

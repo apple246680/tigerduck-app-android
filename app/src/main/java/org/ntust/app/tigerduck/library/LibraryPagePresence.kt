@@ -26,7 +26,13 @@ class LibraryPagePresence @Inject constructor() {
         _shown.value = true
     }
 
-    fun disappear(page: Any) = synchronized(pages) {
+    /**
+     * [page] left the screen. One torn down only to be built again
+     * ([recreating]), as at a rotation, stays: it shows again once rebuilt,
+     * and a held prompt would show for the frame in between.
+     */
+    fun disappear(page: Any, recreating: Boolean = false) = synchronized(pages) {
+        if (recreating) return@synchronized
         pages -= page
         _shown.value = pages.isNotEmpty()
     }

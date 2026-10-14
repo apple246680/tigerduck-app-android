@@ -56,8 +56,17 @@ class FlipToLibraryGateTest {
      */
     @Test
     fun `the offer waits while no page is shown yet, and on the Library page`() {
-        assertTrue(FlipToLibraryGate.offerWaitsForPage(currentRoute = null))
-        assertTrue(FlipToLibraryGate.offerWaitsForPage(currentRoute = Screen.Library.route))
-        assertFalse(FlipToLibraryGate.offerWaitsForPage(currentRoute = Screen.Home.route))
+        assertTrue(FlipToLibraryGate.offerWaitsForPage(currentRoute = null, startRoutePending = false))
+        assertTrue(FlipToLibraryGate.offerWaitsForPage(currentRoute = Screen.Library.route, startRoutePending = false))
+        assertFalse(FlipToLibraryGate.offerWaitsForPage(currentRoute = Screen.Home.route, startRoutePending = false))
+    }
+
+    /**
+     * The library shortcut opens the app on its first tab and then on Library: the offer waits
+     * out that first page too, rather than being made for the frame before Library opens.
+     */
+    @Test
+    fun `the offer waits while a page the app was opened on is still to open`() {
+        assertTrue(FlipToLibraryGate.offerWaitsForPage(currentRoute = Screen.Home.route, startRoutePending = true))
     }
 }
