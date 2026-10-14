@@ -17,6 +17,7 @@ import org.ntust.app.tigerduck.shared.Course
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import java.io.File
 import java.time.Instant
 
 /**
@@ -198,10 +199,11 @@ class ImportedClassTableStoreTest {
             file.writeText(kept)
             val store = store()
 
-            store.add(code("B11300001", fall), "Ming", emptyMap())
+            // Refused rather than kept in memory only, where a relaunch would lose it.
+            assertNull(store.add(code("B11300001", fall), "Ming", emptyMap()))
 
             assertEquals(kept, file.readText())
-            assertEquals(listOf("Ming"), store.nicknames())
+            assertTrue(store.nicknames().isEmpty())
         }
     }
 
@@ -213,7 +215,7 @@ class ImportedClassTableStoreTest {
         // Skipped where the test runs as a user who reads every file anyway.
         assumeTrue(file.setReadable(false) && !file.canRead())
         try {
-            store().add(code("B11300001", fall), "Ming", emptyMap())
+            assertNull(store().add(code("B11300001", fall), "Ming", emptyMap()))
         } finally {
             file.setReadable(true)
         }
@@ -329,5 +331,180 @@ class ImportedClassTableStoreTest {
         store.add(code("B11300002", fall), "Hua", emptyMap())
 
         assertEquals(listOf("Hua"), store.nicknames())
+    }
+
+    // --- Saves that fail (#213) ---
+
+    @Test
+    fun `an import whose first write is blocked reports it, keeps nothing, and a retry once unblocked keeps the person`() =
+        runTest {
+            // A folder that cannot be made, as a file already has its name.
+            val obstacle = File(context.noBackupFilesDir, "obstacle").apply { parentFile!!.mkdirs(); writeText("") }
+            val blocked = File(obstacle, "imported_class_tables.json")
+            val store = ImportedClassTableStore({ blocked }, { account }, Dispatchers.Unconfined)
+
+            assertNull(store.add(code("B11300001", fall), "Ming", emptyMap()))
+            assertTrue(store.nicknames().isEmpty())
+            assertFalse(blocked.exists())
+
+            assertTrue(obstacle.delete())
+            assertNotNull(store.add(code("B11300001", fall), "Ming", emptyMap()))
+            assertEquals(listOf("Ming"), store.nicknames())
+            val relaunched = ImportedClassTableStore({ blocked }, { account }, Dispatchers.Unconfined)
+            assertEquals(listOf("Ming"), relaunched.load().people.map { it.nickname })
+        }
+
+    @Test
+    fun `a failed replacement of the file leaves the people, the shown one and the file as they were`() = runTest {
+        val store = store()
+        val ming = store.add(code("B11300001", fall), "Ming", emptyMap())!!
+        store.show(ming.id)
+        val before = store.tables.value
+        // A folder with something in it where the file goes, which the written copy cannot be moved over.
+        assertTrue(file.delete())
+        assertTrue(File(file, "kept").apply { parentFile!!.mkdirs() }.createNewFile())
+
+        assertNull(store.add(code("B11300002", spring), "Hua", emptyMap()))
+        assertNull(store.add(code("B11300001", spring), "", emptyMap()))
+        assertEquals(ImportedClassTableChange.FAILED, store.rename(ming.id, "Xiao Ming"))
+        assertEquals(
+            ImportedClassTableChange.FAILED,
+            store.updateCourses(ming.id, "1151", fall.courseNos, emptyList(), ming.importedAt),
+        )
+        assertEquals(ImportedClassTableChange.FAILED, store.delete(ming.id))
+
+        assertEquals(before, store.tables.value)
+        assertTrue(file.isDirectory)
+        assertFalse(File(file.parentFile, "${file.name}.tmp").exists())
+
+        // Once the obstacle is gone the same changes go through, and a relaunch reads them back.
+        assertTrue(file.deleteRecursively())
+        assertEquals(ImportedClassTableChange.SAVED, store.rename(ming.id, "Xiao Ming"))
+        assertEquals(listOf("Xiao Ming"), store().load().people.map { it.nickname })
+    }
+
+    @Test
+    fun `changes to someone no longer here are skipped, not failed`() = runTest {
+        val store = store()
+        val ming = store.add(code("B11300001", fall), "Ming", emptyMap())!!
+        store.delete(ming.id)
+
+        assertEquals(ImportedClassTableChange.SKIPPED, store.rename(ming.id, "Xiao Ming"))
+        assertEquals(ImportedClassTableChange.SKIPPED, store.delete(ming.id))
+        assertEquals(
+            ImportedClassTableChange.SKIPPED,
+            store.updateCourses(ming.id, "1151", fall.courseNos, emptyList(), ming.importedAt),
+        )
+    }
+
+    // --- Looking a term up again ---
+
+    @Test
+    fun `a new lookup replaces that term's courses and keeps the rest`() = runTest {
+        val store = store()
+        val circuits = Course(courseNo = "EE1010002", courseName = "Circuits")
+        val ming = store.add(
+            code("B11300001", fall, spring), "Ming", mapOf("1142" to listOf(circuits)),
+        )!!
+        val calculus = Course(courseNo = "MA1010001", courseName = "Calculus")
+
+        val change = store.updateCourses(ming.id, "1151", fall.courseNos, listOf(calculus), ming.importedAt)
+
+        assertEquals(ImportedClassTableChange.SAVED, change)
+        val person = store().load().people.single()
+        assertEquals(listOf("Calculus"), person.courses("1151").map { it.courseName })
+        assertEquals(listOf("Circuits"), person.courses("1142").map { it.courseName })
+        assertEquals(ming.importedAt, person.importedAt)
+    }
+
+    @Test
+    fun `a lookup that started before the person was imported again is skipped`() = runTest {
+        val store = store()
+        val ming = store.add(code("B11300001", fall), "Ming", emptyMap(), Instant.ofEpochSecond(1_000))!!
+        store.add(code("B11300001", fall), "", emptyMap(), Instant.ofEpochSecond(2_000))
+        val stale = Course(courseNo = "CS1010001", courseName = "Old")
+
+        val change = store.updateCourses(ming.id, "1151", fall.courseNos, listOf(stale), ming.importedAt)
+
+        assertEquals(ImportedClassTableChange.SKIPPED, change)
+        assertTrue(store.tables.value.people.single().courses("1151").isEmpty())
+    }
+
+    // --- Switching ---
+
+    @Test
+    fun `next goes through the user's own class table and then each person in import order`() = runTest {
+        val store = store()
+        val ming = store.add(code("B11300001", fall), "Ming", emptyMap())!!
+        val hua = store.add(code("B11300002", fall), "Hua", emptyMap())!!
+
+        val shown = (1..4).map {
+            store.showNext()
+            store.tables.value.shownPersonId
+        }
+
+        assertEquals(listOf(ming.id, hua.id, null, ming.id), shown)
+    }
+
+    @Test
+    fun `previous swaps between the last two class tables, and goes on to the next with none to go back to`() =
+        runTest {
+            val store = store()
+            val ming = store.add(code("B11300001", fall), "Ming", emptyMap())!!
+            val hua = store.add(code("B11300002", fall), "Hua", emptyMap())!!
+
+            // Before the first switch there is nothing to go back to.
+            store.showPrevious()
+            assertEquals(ming.id, store.tables.value.shownPersonId)
+
+            store.show(hua.id)
+            store.showPrevious()
+            assertEquals(ming.id, store.tables.value.shownPersonId)
+            store.showPrevious()
+            assertEquals(hua.id, store.tables.value.shownPersonId)
+
+            // Back to the user's own, which counts as a class table to go back to.
+            store.show(null)
+            store.showPrevious()
+            assertEquals(hua.id, store.tables.value.shownPersonId)
+            store.showPrevious()
+            assertNull(store.tables.value.shownPersonId)
+
+            // Once the one to go back to is deleted, the next one shows.
+            store.show(ming.id)
+            store.show(hua.id)
+            store.delete(ming.id)
+            store.showPrevious()
+            assertNull(store.tables.value.shownPersonId)
+        }
+
+    @Test
+    fun `deleting the shown person makes it the one to go back to, which then is gone`() = runTest {
+        val store = store()
+        val ming = store.add(code("B11300001", fall), "Ming", emptyMap())!!
+        store.add(code("B11300002", fall), "Hua", emptyMap())
+        store.show(ming.id)
+
+        store.delete(ming.id)
+        assertNull(store.tables.value.shownPersonId)
+        store.showPrevious()
+
+        assertEquals("Hua", store.tables.value.shownPerson?.nickname)
+    }
+
+    @Test
+    fun `a person opens on the term on screen when they shared it, else on their latest`() {
+        val person = ImportedPerson(
+            id = "x", studentId = null, nickname = "Ming", importedAt = Instant.EPOCH, sharedAt = null,
+            terms = listOf(
+                ImportedPerson.Term("1142", emptyList(), emptyList()),
+                ImportedPerson.Term("114H", emptyList(), emptyList()),
+                ImportedPerson.Term("1151", emptyList(), emptyList()),
+            ),
+        )
+
+        assertEquals(listOf("1151", "114H", "1142"), person.semesters)
+        assertEquals("1142", person.semester(keeping = "1142"))
+        assertEquals("1151", person.semester(keeping = "1132"))
     }
 }
