@@ -56,7 +56,14 @@ class RecordingNotifier : MailNotifier {
     }
     override fun postAuthFailure() { authFailures++ }
     override fun cancelMessage(uid: Long) { cancelledUids += uid }
-    override fun cancelAll() { cancelledAll++ }
+    val cancelledPosted = mutableListOf<List<MailSummary>>()
+    override fun cancelPosted(messages: List<MailSummary>) { cancelledPosted += messages }
+    /** Fires inside [cancelAll] -- lets a test wait for sign-out's own cleanup, which runs on its own. */
+    var onCancelAll: (() -> Unit)? = null
+    override fun cancelAll() {
+        cancelledAll++
+        onCancelAll?.invoke()
+    }
 }
 
 class FakeDemoGate(override var appDemoActive: Boolean = false) : MailDemoGate {

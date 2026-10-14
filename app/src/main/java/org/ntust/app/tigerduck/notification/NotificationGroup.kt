@@ -130,6 +130,9 @@ enum class NotificationGroup(
         rest.forEach { manager.cancel(it.tag, it.id) }
     }
 
+    /** Cancel this stack's summary, for a caller that has just cancelled every member it posted. */
+    fun cancelSummary(context: Context) = NotificationManagerCompat.from(context).cancel(SUMMARY_TAG, summaryId)
+
     /**
      * The longest any member of this stack has left before it expires, at
      * least [newest] — the member just posted, which the system may not list
