@@ -41,6 +41,13 @@ sealed interface SearchOutcome {
     data class LoadedOnly(override val messages: List<MailSummary>) : SearchOutcome
 }
 
+/**
+ * How a search reads mail that is already loaded, where the server's own SEARCH is not available:
+ * the subject and the sender's name and address, case-insensitively.
+ */
+internal fun matchesLoadedMail(s: MailSummary, q: String) =
+    q.isNotEmpty() && (s.subject.contains(q, true) || s.from?.address?.contains(q, true) == true || s.from?.name?.contains(q, true) == true)
+
 interface SchoolMailRepository {
     suspend fun folders(): ResolvedFolders
 
@@ -343,13 +350,13 @@ class MailRepository @Inject constructor(
 
     override suspend fun search(folder: String, query: String): SearchOutcome {
         val q = query.trim()
-        if (account.isDemo) return SearchOutcome.LoadedOnly(demoPage(folder).messages.filter { matches(it, q) })
+        if (account.isDemo) return SearchOutcome.LoadedOnly(demoPage(folder).messages.filter { matchesLoadedMail(it, q) })
         return try {
             val uids = withSession { it.search(folder, q) }.take(PAGE_SIZE)
             SearchOutcome.Server(withSession { it.fetchByUids(folder, uids) })
         } catch (e: MailError.SearchUnsupported) {
             val loaded = cachedPage(folder)?.messages.orEmpty()
-            SearchOutcome.LoadedOnly(loaded.filter { matches(it, q) })
+            SearchOutcome.LoadedOnly(loaded.filter { matchesLoadedMail(it, q) })
         }
     }
 
@@ -633,9 +640,6 @@ class MailRepository @Inject constructor(
         val page = cachedPage(folder) ?: return@withContext
         cache.saveFolder(folder, page.copy(messages = page.messages.filterNot { it.uid == uid }, totalMessages = (page.totalMessages - 1).coerceAtLeast(0)))
     }
-
-    private fun matches(s: MailSummary, q: String) =
-        q.isNotEmpty() && (s.subject.contains(q, true) || s.from?.address?.contains(q, true) == true || s.from?.name?.contains(q, true) == true)
 
     companion object {
         const val PAGE_SIZE = 50

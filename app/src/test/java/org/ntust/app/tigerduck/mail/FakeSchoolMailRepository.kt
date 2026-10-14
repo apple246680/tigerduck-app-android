@@ -212,8 +212,12 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         mail[folder]?.removeAll { it.uid == uid }
     }
 
+    /** Thrown by [search] for a folder, after it is recorded as touched. */
+    var searchError: MailError? = null
+
     override suspend fun search(folder: String, query: String): SearchOutcome {
         foldersTouched += folder
+        searchError?.let { throw it }
         val hits = sorted(folder).filter { query in it.subject }
         return if (searchUnsupported) SearchOutcome.LoadedOnly(hits) else SearchOutcome.Server(hits)
     }

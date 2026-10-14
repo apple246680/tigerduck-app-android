@@ -17,6 +17,7 @@ import org.ntust.app.tigerduck.mail.MailError
 import org.ntust.app.tigerduck.mail.MailSite
 import org.ntust.app.tigerduck.mail.SchoolMailRepository
 import org.ntust.app.tigerduck.mail.SearchOutcome
+import org.ntust.app.tigerduck.mail.matchesLoadedMail
 import org.ntust.app.tigerduck.mail.imap.FolderSelection
 import org.ntust.app.tigerduck.mail.imap.SpecialFolder
 import org.ntust.app.tigerduck.mail.model.MailPage
@@ -64,8 +65,8 @@ class SchoolMailListViewModel @Inject constructor(
         val mergedFolders: List<String> = emptyList(),
         val messages: List<MailRow> = emptyList(),
         /**
-         * Only ever describes a *load*: [load], [fetchFirstPage], [paginate], [runSearch]. A
-         * failed one-off action reports through [actionError] instead, so it can neither paint
+         * Only ever describes a *load*: [load], [fetchFirstPage], [paginate]. A failed search, like a
+         * failed one-off action, reports through [actionError] instead, so it can neither paint
          * the header dot red for the rest of the session nor replace a list that loaded perfectly
          * well with the "couldn't load" empty state.
          */
@@ -443,9 +444,23 @@ class SchoolMailListViewModel @Inject constructor(
         _state.update { it.copy(isSearching = true) }
         try {
             // One SEARCH per real folder, merged the same way the list itself is. A folder whose
-            // server refused the search still contributes its locally-matched mail, and the
-            // "loaded only" note appears as soon as any one of them fell back.
-            val outcomes = _state.value.targets.map { folder -> folder to repository.search(folder, query) }
+            // server refused the search, or could not be reached, still contributes its matches
+            // among the mail already loaded, and the "loaded only" note appears as soon as any
+            // one of them fell back.
+            //
+            // A failure is the search's, never the list's: the list it would replace is as good as
+            // it was a moment ago, so it reaches [UiState.actionError] and not [UiState.loadState].
+            var failure: MailError? = null
+            val outcomes = _state.value.targets.map { folder ->
+                folder to try {
+                    repository.search(folder, query)
+                } catch (e: MailError) {
+                    if (failure == null) failure = e
+                    SearchOutcome.LoadedOnly(
+                        _state.value.messages.filter { it.folder == folder && matchesLoadedMail(it.summary, query) }.map { it.summary },
+                    )
+                }
+            }
             if (_state.value.selected != selection) return
             val rows = outcomes.flatMap { (folder, outcome) -> outcome.messages.map { MailRow(folder, it) } }
             _state.update {
@@ -454,8 +469,7 @@ class SchoolMailListViewModel @Inject constructor(
                     searchLocalOnly = outcomes.any { (_, outcome) -> outcome is SearchOutcome.LoadedOnly },
                 )
             }
-        } catch (e: MailError) {
-            fail(e)
+            failure?.let(::actionFail)
         } finally {
             _state.update { it.copy(isSearching = false) }
         }

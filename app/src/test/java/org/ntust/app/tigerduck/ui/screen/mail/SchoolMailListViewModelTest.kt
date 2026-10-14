@@ -115,6 +115,21 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
+    fun `a search the server fails keeps the list and shows the loaded matches`() {
+        repo.add("INBOX", mailSummary(1, subject = "期中考"), mailSummary(2, subject = "other"))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        repo.searchError = MailError.Network()
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        val s = vm.state.value
+        assertTrue(s.loadState is SchoolMailListViewModel.LoadState.Loaded)
+        assertEquals(listOf(1L), s.displayed.map { it.uid })
+        assertTrue(s.searchLocalOnly)
+        assertTrue(s.actionError is MailError.Network)
+    }
+
+    @Test
     fun `swiping toggles read on the server and in the list`() {
         repo.add("INBOX", mailSummary(1))
         vm.load()
