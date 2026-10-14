@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -28,58 +29,89 @@ import javax.inject.Singleton
  * cache folder. The demo account's stores answer from the bundled file.
  */
 @Singleton
-class MoodleCourseRepository @Inject constructor(
-    private val live: LiveMoodleCourseApi,
-    private val demoAccount: DemoAccount,
-    private val dataCache: DataCache,
-    private val authService: AuthService,
-    @param:ApplicationScope appScope: CoroutineScope,
+class MoodleCourseRepository internal constructor(
+    private val signedIn: () -> Boolean,
+    /** The account the stores are for; null with none. */
+    private val account: () -> String?,
+    private val isDemo: () -> Boolean,
+    private val liveApi: MoodleCourseApi,
+    private val demoApi: () -> MoodleCourseApi?,
+    private val idMap: suspend () -> Map<String, Int>,
+    private val cachePort: (account: String) -> MoodleCachePort,
+    private val picturesDir: (account: String) -> File?,
+    private val openedFilesDir: (account: String) -> File?,
+    private val decode: (ByteArray) -> ImageBitmap?,
+    authState: Flow<Boolean>,
+    appScope: CoroutineScope,
+    private val newScope: () -> CoroutineScope = { CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate) },
 ) {
+    @Inject
+    constructor(
+        live: LiveMoodleCourseApi,
+        demoAccount: DemoAccount,
+        dataCache: DataCache,
+        authService: AuthService,
+        @ApplicationScope appScope: CoroutineScope,
+    ) : this(
+        signedIn = { authService.authState.value },
+        // A demo session can present as signed in with no stored ID; its cache needs a folder all
+        // the same.
+        account = {
+            authService.storedStudentId?.takeIf { it.isNotBlank() }
+                ?: if (demoAccount.isActive) DEMO_ACCOUNT else null
+        },
+        isDemo = { demoAccount.isActive },
+        liveApi = live,
+        demoApi = demoAccount::moodleApi,
+        idMap = dataCache::loadMoodleCourseIds,
+        cachePort = { account -> DataCachePort(dataCache, account) },
+        picturesDir = { account -> File(dataCache.moodleFilesDir(account), "pictures") },
+        openedFilesDir = dataCache::moodleOpenedFilesDir,
+        decode = ::decodeBitmap,
+        authState = authService.authState,
+        appScope = appScope,
+    )
+
     private val lock = Mutex()
     private var stores = mutableMapOf<Pair<String, Int>, MoodleCourseStore>()
     private var scope = newScope()
-    private var demoApi: MoodleCourseApi? = null
+    private var demo: MoodleCourseApi? = null
 
     init {
         appScope.launch {
-            authService.authState.collect { signedIn -> if (!signedIn) clear() }
+            authState.collect { signedIn -> if (!signedIn) clear() }
         }
     }
-
-    /** The account the stores are for: the stored student ID, or the demo account's stand-in. */
-    private fun currentAccount(): String? =
-        authService.storedStudentId?.takeIf { it.isNotBlank() }
-            ?: if (demoAccount.isActive) DEMO_ACCOUNT else null
 
     /**
      * The store for Moodle course [courseId], built on first use; null when signed out. [courseNo]
      * is the class table's course number, which the summary is also checked against.
      */
     suspend fun store(courseId: Int, courseNo: String? = null): MoodleCourseStore? = lock.withLock {
-        if (!authService.authState.value) return@withLock null
-        val account = currentAccount() ?: return@withLock null
+        if (!signedIn()) return@withLock null
+        val account = account() ?: return@withLock null
         stores[account to courseId]?.let { return@withLock it }
-        val idMap = dataCache.loadMoodleCourseIds()
-        val api = if (demoAccount.isActive) {
-            demoApi ?: demoAccount.moodleApi()?.also { demoApi = it } ?: return@withLock null
+        val api = if (isDemo()) {
+            demo ?: demoApi()?.also { demo = it } ?: return@withLock null
         } else {
-            live
+            liveApi
         }
+        val ids = idMap()
         val context = MoodleCacheContext(
             account = account,
-            cache = DataCachePort(dataCache, account),
-            isCurrent = { authService.authState.value && currentAccount() == account },
+            cache = cachePort(account),
+            isCurrent = { signedIn() && account() == account },
         )
         MoodleCourseStore(
             courseId = courseId,
-            termCourseIds = MoodleCourseStore.termCourseIds(courseId, idMap),
-            courseCodes = MoodleCourseStore.courseCodes(courseId, courseNo, idMap),
+            termCourseIds = MoodleCourseStore.termCourseIds(courseId, ids),
+            courseCodes = MoodleCourseStore.courseCodes(courseId, courseNo, ids),
             api = api,
             context = context,
             scope = scope,
-            picturesDir = File(dataCache.moodleFilesDir(account), "pictures"),
-            openedFilesDir = dataCache.moodleOpenedFilesDir(account),
-            decodePicture = ::decode,
+            picturesDir = picturesDir(account),
+            openedFilesDir = openedFilesDir(account),
+            decodePicture = decode,
         ).also { stores[account to courseId] = it }
     }
 
@@ -88,13 +120,8 @@ class MoodleCourseRepository @Inject constructor(
         scope.cancel()
         scope = newScope()
         stores = mutableMapOf()
-        demoApi = null
+        demo = null
     }
-
-    private fun newScope() = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-
-    private fun decode(bytes: ByteArray): ImageBitmap? =
-        runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }.getOrNull()
 
     private class DataCachePort(private val dataCache: DataCache, private val account: String) : MoodleCachePort {
         override suspend fun <T> load(type: Type, name: String): Pair<T, Long>? =
@@ -105,7 +132,9 @@ class MoodleCourseRepository @Inject constructor(
     }
 
     private companion object {
-        /** A demo session can present as signed in with no stored ID; its cache needs a folder all the same. */
         const val DEMO_ACCOUNT = "demo"
+
+        fun decodeBitmap(bytes: ByteArray): ImageBitmap? =
+            runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }.getOrNull()
     }
 }
