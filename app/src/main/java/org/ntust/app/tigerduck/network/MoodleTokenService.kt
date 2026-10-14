@@ -237,6 +237,10 @@ class MoodleTokenService internal constructor(
             }
             val postUrl = responseUrl.resolve(fields.action)
                 ?: throw MoodleWebserviceError.MalformedResponse("Invalid SSO action: ${fields.action}")
+            // The credentials go to the school's sign-in host and nowhere else.
+            if (!isSignInHost(postUrl)) {
+                throw MoodleWebserviceError.MalformedResponse("SSO action outside the sign-in host")
+            }
             val payload = linkedMapOf(
                 "__RequestVerificationToken" to fields.antiforgery,
                 "Username" to studentId,

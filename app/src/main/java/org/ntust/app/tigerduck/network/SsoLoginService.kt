@@ -53,6 +53,11 @@ internal suspend fun <T> fetchWithSsoSession(
     return fetch() ?: bounced()
 }
 
+/** Where the sign-in form may post the credentials: the school's sign-in host, over HTTPS. */
+internal fun isSignInHost(url: HttpUrl): Boolean = url.isHttps && url.host == SIGN_IN_HOST
+
+private const val SIGN_IN_HOST = "ssoam2.ntust.edu.tw"
+
 @Singleton
 class SsoLoginService internal constructor(
     private val sessionManager: NtustSessionManager,
@@ -170,6 +175,9 @@ class SsoLoginService internal constructor(
         }
 
         val actionUrl = resolveUrl(form.action, url)
+        // The credentials go to the school's sign-in host and nowhere else, whatever the page
+        // names as the form's action. As on the iPhone (ssoActionHostAllowlist).
+        if (!isSignInHost(actionUrl)) throw SsoLoginError.InvalidResponse()
         // Again right before the password goes out: another sign-in's refusal
         // may have landed since the check above.
         if (!typed) passwordLatch.rejection.value?.let { throw SsoLoginError.LoginFailed(it.reason) }
