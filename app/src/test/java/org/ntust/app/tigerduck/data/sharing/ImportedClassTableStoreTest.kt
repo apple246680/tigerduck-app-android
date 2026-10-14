@@ -507,4 +507,17 @@ class ImportedClassTableStoreTest {
         assertEquals("1142", person.semester(keeping = "1142"))
         assertEquals("1151", person.semester(keeping = "1132"))
     }
+
+    @Test
+    fun `the sign-out asks first only when it would delete imported class tables`() = runTest {
+        val store = store()
+        val asked = mutableListOf<String>()
+
+        store.tables.value.requestSignOut(confirm = { asked += "confirm" }, signOut = { asked += "sign out" })
+        store.add(code("B11300001", fall), "Ming", emptyMap())
+        store.tables.value.requestSignOut(confirm = { asked += "confirm" }, signOut = { asked += "sign out" })
+
+        assertEquals(listOf("sign out", "confirm"), asked)
+    }
 }
+

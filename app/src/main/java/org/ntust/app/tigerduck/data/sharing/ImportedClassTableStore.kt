@@ -76,6 +76,14 @@ data class ImportedClassTables(
     /** For the sign-out confirmation, which says the imported class tables go too. */
     val hasImportedClassTables: Boolean get() = people.isNotEmpty()
 
+    /**
+     * The NTUST account's sign-out deletes the imported class tables, so with any here it calls
+     * [confirm] to ask first; otherwise it signs out at once with [signOut].
+     */
+    fun requestSignOut(confirm: () -> Unit, signOut: () -> Unit) {
+        if (hasImportedClassTables) confirm() else signOut()
+    }
+
     fun person(studentId: String): ImportedPerson? = people.firstOrNull { it.studentId == studentId }
 }
 
