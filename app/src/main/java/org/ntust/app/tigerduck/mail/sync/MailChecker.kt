@@ -55,6 +55,9 @@ class MailChecker @Inject constructor(
 ) {
     private val mutex = Mutex()
 
+    // Held around each read-and-write of the inbox marker: a check's and the list's.
+    private val markerLock = Any()
+
     suspend fun check(source: CheckSource): CheckOutcome {
         val outcome = if (!mutex.tryLock()) {
             CheckOutcome.Busy
@@ -70,7 +73,7 @@ class MailChecker @Inject constructor(
     }
 
     /** The list page showed the inbox up to [status]; those mails must never notify later. */
-    fun noteSeenByPage(status: FolderStatus) {
+    fun noteSeenByPage(status: FolderStatus) = synchronized(markerLock) {
         if (status.uidValidity != state.inboxUidValidity) {
             state.inboxUidValidity = status.uidValidity
             state.inboxSeenUidNext = status.uidNext
@@ -98,12 +101,15 @@ class MailChecker @Inject constructor(
         try {
             sessions.open(credentials).use { session ->
                 val status = session.status(INBOX)
-                if (!stillSignedIn()) return@withContext CheckOutcome.NotSignedIn
-                val marker = state.inboxSeenUidNext
-                if (status.uidValidity != state.inboxUidValidity || marker <= 0) {
-                    state.inboxUidValidity = status.uidValidity
-                    state.inboxSeenUidNext = status.uidNext
-                    return@withContext CheckOutcome.Baseline(status.uidNext)
+                val marker = synchronized(markerLock) {
+                    if (!stillSignedIn()) return@withContext CheckOutcome.NotSignedIn
+                    val stored = state.inboxSeenUidNext
+                    if (status.uidValidity != state.inboxUidValidity || stored <= 0) {
+                        state.inboxUidValidity = status.uidValidity
+                        state.inboxSeenUidNext = status.uidNext
+                        return@withContext CheckOutcome.Baseline(status.uidNext)
+                    }
+                    stored
                 }
                 if (status.uidNext <= marker) return@withContext CheckOutcome.NoChange
                 val fresh = session.fetchSince(INBOX, marker).filter { it.uid >= marker }
@@ -126,8 +132,10 @@ class MailChecker @Inject constructor(
                 // poll's noteSeenByPage can move the marker further while this check runs;
                 // overwriting it would re-notify mail the list has already shown. It can also
                 // adopt a new UIDVALIDITY, whose marker this check's UIDs say nothing about.
-                if (state.inboxUidValidity == status.uidValidity) {
-                    state.inboxSeenUidNext = maxOf(state.inboxSeenUidNext, advanced)
+                synchronized(markerLock) {
+                    if (stillSignedIn() && state.inboxUidValidity == status.uidValidity) {
+                        state.inboxSeenUidNext = maxOf(state.inboxSeenUidNext, advanced)
+                    }
                 }
                 // Last, and deliberately after the marker. Warming bodies is a convenience the
                 // check's real job does not depend on, and it is the slowest thing here -- up to

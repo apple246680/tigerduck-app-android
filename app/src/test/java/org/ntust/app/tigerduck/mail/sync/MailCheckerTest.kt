@@ -355,6 +355,36 @@ class MailCheckerTest {
         assertEquals(CheckOutcome.NotSignedIn, outcome)
     }
 
+    /**
+     * The list's poll adopts a new UIDVALIDITY right after the check read the old one, on its way
+     * to raising the marker: the check must not raise the new generation's marker to its own UIDs.
+     */
+    @Test
+    fun `a new UIDVALIDITY the list stores just as the check advances keeps its own marker`() = runTest {
+        account.signIn("b10000001", "pw")
+        server.deliver("old one")
+        server.deliver("new one")
+        val newValidity = server.uidValidity + 1
+        val c = checker()
+        var poll: Thread? = null
+        notifier.onPostNewMail = {
+            // The next read is the advance's.
+            state.onUidValidityRead = {
+                state.onUidValidityRead = null
+                val polled = CountDownLatch(1)
+                poll = thread { c.noteSeenByPage(FolderStatus(newValidity, 2, 1, 0)); polled.countDown() }
+                // Given the time to finish first if it could; held behind the advance, it cannot.
+                polled.await(300, TimeUnit.MILLISECONDS)
+            }
+        }
+
+        assertEquals(CheckOutcome.NewMail(2), c.check(CheckSource.ALARM))
+        poll!!.join(5_000)
+
+        assertEquals(newValidity, state.inboxUidValidity)
+        assertEquals(2L, state.inboxSeenUidNext)
+    }
+
     @Test
     fun `every check is recorded for the diagnostics screen, newest first`() = runTest {
         account.signIn("b10000001", "pw")
