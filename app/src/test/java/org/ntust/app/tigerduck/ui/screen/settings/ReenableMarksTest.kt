@@ -141,14 +141,14 @@ class ReenableMarksTest {
         // Turned off while the sync ran, so its marks step left the marks alone.
         prefs.syncAssignments = false
 
-        prefs.syncedCategories += categoriesSynced(switchedOn, prefs)
+        prefs.syncedCategories += categoriesSynced(switchedOn, REENABLE_CATEGORIES, prefs)
 
         assertEquals(REENABLE_CATEGORIES - "assignments", prefs.syncedCategories)
     }
 
     @Test
     fun `every category the sync read as on is recorded when none went off`() {
-        assertEquals(REENABLE_CATEGORIES, categoriesSynced(categoriesSwitchedOn(prefs), prefs))
+        assertEquals(REENABLE_CATEGORIES, categoriesSynced(categoriesSwitchedOn(prefs), REENABLE_CATEGORIES, prefs))
     }
 
     @Test
@@ -160,5 +160,32 @@ class ReenableMarksTest {
 
         assertEquals(setOf("assignments"), prefs.pendingConflictCategories)
         assertTrue(CourseSyncReconciler.syncsCourseList(prefs.syncCourses, prefs.pendingConflictCategories))
+    }
+
+    private fun taken(
+        marksTaken: Boolean = true,
+        courseListSynced: Boolean = true,
+        syncColors: Boolean = true,
+        syncNames: Boolean = true,
+        hasOverrides: Boolean = true,
+        coursesLoaded: Boolean = true,
+    ) = categoriesTaken(marksTaken, courseListSynced, syncColors, syncNames, hasOverrides, coursesLoaded)
+
+    @Test
+    fun `a category the sync skipped is not recorded as synced`() {
+        // Names held for their re-enable check, the course list for its own,
+        // and marks left alone: none of their server data was taken.
+        val took = taken(marksTaken = false, courseListSynced = false, syncNames = false)
+
+        prefs.syncedCategories += categoriesSynced(categoriesSwitchedOn(prefs), took, prefs)
+
+        assertEquals(setOf("course_colors"), prefs.syncedCategories)
+    }
+
+    @Test
+    fun `colours and names are taken only over a loaded course list, unless the server has none`() {
+        assertEquals(setOf("assignments", "courses"), taken(coursesLoaded = false))
+        assertEquals(REENABLE_CATEGORIES, taken(coursesLoaded = false, hasOverrides = false))
+        assertEquals(REENABLE_CATEGORIES, taken())
     }
 }

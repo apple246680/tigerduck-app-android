@@ -53,6 +53,7 @@ import org.ntust.app.tigerduck.ui.component.ServerStatus
 import org.ntust.app.tigerduck.ui.component.ServerStatusTracker
 import org.ntust.app.tigerduck.ui.screen.settings.categoriesSwitchedOn
 import org.ntust.app.tigerduck.ui.screen.settings.categoriesSynced
+import org.ntust.app.tigerduck.ui.screen.settings.categoriesTaken
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.logSummary
 import org.ntust.app.tigerduck.widget.WidgetUpdater
@@ -152,9 +153,8 @@ class HomeBackendSync @Inject constructor(
             // Recorded at once, for this account only: a later step that
             // fails must not leave the next sync reading an empty server as
             // this phone's first.
-            if (markStep.pull(state, result, "assignments" in switchedOn, signIn, generation) &&
-                authService.isStillSignedInAs(account)
-            ) {
+            val marksTaken = markStep.pull(state, result, "assignments" in switchedOn, signIn, generation)
+            if (marksTaken && authService.isStillSignedInAs(account)) {
                 prefs.assignmentMarksSyncedOnce = true
             }
             courseIgnoreSync.applySnapshot(result, generation)?.let { state.ignoredCourseKeys.value = it }
@@ -164,8 +164,10 @@ class HomeBackendSync @Inject constructor(
             val pending = prefs.pendingConflictCategories
             val syncColors = CourseSyncReconciler.syncsCourseColors("course_colors" in switchedOn, pending)
             val syncNames = CourseSyncReconciler.syncsCourseNames("course_names" in switchedOn, pending)
-            if (result.courseOverrides.isNotEmpty() && (syncColors || syncNames)) {
+            val coursesLoaded = if (result.courseOverrides.isNotEmpty() && (syncColors || syncNames)) {
                 applyCourseOverrides(state, result.courseOverrides, syncColors, syncNames)
+            } else {
+                state.allCourses.value.isNotEmpty()
             }
             applyCourseReset(result, account)
             // Not gated on any of the per-category sync toggles: a holiday
@@ -174,16 +176,23 @@ class HomeBackendSync @Inject constructor(
             // it. Null means an older backend that does not send the
             // section, so the local set stands.
             result.holidayOverrides?.let(academicCalendar::applySyncedOverrides)
-            syncCourseList(
-                result,
-                syncCourses = CourseSyncReconciler.syncsCourseList(
-                    switchOn = "courses" in switchedOn,
-                    pendingConflictCategories = prefs.pendingConflictCategories,
-                ),
+            val syncCourses = CourseSyncReconciler.syncsCourseList(
+                switchOn = "courses" in switchedOn,
+                pendingConflictCategories = prefs.pendingConflictCategories,
             )
-            // Only for the account this sync was for: recorded after a sign-out,
-            // it would mark the next account's categories before their first sync.
-            if (authService.isStillSignedInAs(account)) prefs.syncedCategories += categoriesSynced(switchedOn, prefs)
+            syncCourseList(result, syncCourses)
+            // Only what this sync took, and only for the account it was for:
+            // recorded after a sign-out, it would mark the next account's
+            // categories before their first sync.
+            val took = categoriesTaken(
+                marksTaken = marksTaken,
+                courseListSynced = syncCourses,
+                syncColors = syncColors,
+                syncNames = syncNames,
+                hasOverrides = result.courseOverrides.isNotEmpty(),
+                coursesLoaded = coursesLoaded,
+            )
+            if (authService.isStillSignedInAs(account)) prefs.syncedCategories += categoriesSynced(switchedOn, took, prefs)
             state.lastKnownRevision = result.currentRevision
             ServerStatusTracker.set(ServerStatus.OK, ServerKind.BACKEND)
             prefs.setLastSyncSource(SyncSource.BACKEND)
@@ -298,6 +307,7 @@ class HomeBackendSync @Inject constructor(
         }
     }
 
+    /** Returns false when it applied nothing, the course list not having loaded. */
     private suspend fun applyCourseOverrides(
         state: HomeSyncState,
         overrides: List<CourseOverrideResult>,
@@ -307,13 +317,13 @@ class HomeBackendSync @Inject constructor(
         syncNames: Boolean = CourseSyncReconciler.syncsCourseNames(
             prefs.syncCourseNames, prefs.pendingConflictCategories,
         ),
-    ) {
+    ): Boolean {
         // The early return on an empty course list also skips the custom-name
         // merge below. That coupling predates this refactor and is preserved
         // deliberately: changing it would make names land on a device whose
         // course list has not loaded yet, which is a behaviour change and not
         // this commit's business.
-        val courses = state.allCourses.value.ifEmpty { return }
+        val courses = state.allCourses.value.ifEmpty { return false }
 
         CourseSyncReconciler.mergeCustomNames(
             existing = dataCache.loadCourseCustomNames(),
@@ -336,6 +346,7 @@ class HomeBackendSync @Inject constructor(
                 pushApiClient.patchCourseOverride(moodleId, colorHex = hex)
             }
         }
+        return true
     }
 
     /**
