@@ -299,11 +299,14 @@ class MoodleCourseStore(
         val target = File(slot, safeFileName(file.name))
         val trusted = file.checkableMimeType() != null
         val kept = withContext(Dispatchers.IO) {
-            // Dated now, before anything is fetched, so a prune from another opening keeps it.
-            slot.mkdirs()
-            slot.setLastModified(System.currentTimeMillis())
-            pruneOpened(dir, keep = slot)
-            trusted && target.isFile
+            // Dated now, before anything is fetched, so a prune from another opening keeps it;
+            // under the lock every store holds, so no prune decides on it while it is dated.
+            synchronized(OPENED_FILES_LOCK) {
+                slot.mkdirs()
+                slot.setLastModified(System.currentTimeMillis())
+                pruneOpened(dir, keep = slot)
+                trusted && target.isFile
+            }
         }
         if (kept) return MoodleAttachment.Local(target)
         _downloading.update { it + file.url }
@@ -320,7 +323,9 @@ class MoodleCourseStore(
                 MoodleAttachment.Local(target)
             } else {
                 // Landed after a sign-out: the next account must not find it.
-                withContext(NonCancellable + Dispatchers.IO) { slot.deleteRecursively() }
+                withContext(NonCancellable + Dispatchers.IO) {
+                    synchronized(OPENED_FILES_LOCK) { slot.deleteRecursively() }
+                }
                 MoodleAttachment.Dropped
             }
         } catch (e: CancellationException) {
@@ -331,7 +336,7 @@ class MoodleCourseStore(
         } finally {
             withContext(NonCancellable + Dispatchers.IO) {
                 partial?.delete()
-                if (slot.list().isNullOrEmpty()) slot.delete()
+                synchronized(OPENED_FILES_LOCK) { if (slot.list().isNullOrEmpty()) slot.delete() }
             }
             _downloading.update { it - file.url }
         }
@@ -447,6 +452,12 @@ class MoodleCourseStore(
         const val MAX_DOWNLOAD_BYTES = 100L * 1024 * 1024
 
         private const val DAY_MS = 24 * 60 * 60 * 1000L
+
+        /**
+         * Held by every store while it makes, dates or prunes a slot in the opened files' folder,
+         * which all of an account's course stores share.
+         */
+        internal val OPENED_FILES_LOCK = Any()
 
         /** Under the 255 bytes most file systems allow a name, with room for the partial file's. */
         private const val MAX_NAME_BYTES = 200

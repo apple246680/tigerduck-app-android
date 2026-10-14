@@ -545,4 +545,18 @@ class MoodleCourseStoreTest {
         assertTrue(file.name.toByteArray().size <= 200)
         assertTrue("got ${file.name}", !file.name.contains('.'))
     }
+
+    @Test
+    fun `every store dates and prunes the opened files under one lock`() = runTest(UnconfinedTestDispatcher()) {
+        val opening: kotlinx.coroutines.Deferred<MoodleAttachment>
+        synchronized(MoodleCourseStore.OPENED_FILES_LOCK) {
+            // Another store, sharing the folder, pruning: this one waits rather than date a slot
+            // that prune is deciding on.
+            opening = async(kotlinx.coroutines.Dispatchers.IO) { store().openAttachment(attachment) }
+            Thread.sleep(300)
+            assertTrue("no slot made while the lock is held", tmp.root.listFiles().isNullOrEmpty())
+        }
+
+        assertTrue(opening.await() is MoodleAttachment.Local)
+    }
 }
