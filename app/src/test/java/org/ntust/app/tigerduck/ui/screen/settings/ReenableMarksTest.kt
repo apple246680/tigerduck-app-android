@@ -92,16 +92,26 @@ class ReenableMarksTest {
 
     @Test
     fun `an install signed in at the update keeps its re-enable checks`() {
-        // Left by an older build, its check not run yet.
-        prefs.pendingConflictCategories = setOf("assignments")
         // Off at the update, with whatever this phone changed since.
         prefs.syncCourses = false
 
         DataMigration.settleReenableCheck(prefs, signedIn = true)
-        assertEquals(setOf("assignments"), prefs.pendingConflictCategories)
 
         turnTigerSyncOn()
         assertEquals(REENABLE_CATEGORIES, prefs.pendingConflictCategories)
+    }
+
+    @Test
+    fun `an assignments check left by a build that never held the marks is dropped at the update`() {
+        // v2.3.1 went on applying the server's marks while its check waited,
+        // so there is nothing of this phone's left to ask about; kept, it
+        // would hold the marks until TigerSync was next opened.
+        prefs.pendingConflictCategories = setOf("assignments", "course_names")
+
+        DataMigration.settleReenableCheck(prefs, signedIn = true)
+
+        assertEquals(setOf("course_names"), prefs.pendingConflictCategories)
+        assertFalse(AssignmentOverrideReconciler.isHeldForReenable(prefs.pendingConflictCategories))
     }
 
     @Test

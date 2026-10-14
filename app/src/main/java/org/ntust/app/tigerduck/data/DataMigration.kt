@@ -169,7 +169,8 @@ class DataMigration @Inject constructor(
      * as synced in every category, so switching one back on still asks the
      * question rather than let the first sync take the server's data over
      * changes made here while it was off. Signed out, a check an older build
-     * left pending would wait for whoever signs in next, so it is dropped.
+     * left pending would wait for whoever signs in next, so it is dropped;
+     * signed in, its assignments check is (see [settleReenableCheck]).
      */
     private fun migrate3to4() {
         settleReenableCheck(prefs, signedIn = credentials.ntustStudentId != null)
@@ -227,10 +228,6 @@ class DataMigration @Inject constructor(
         }
 
         /**
-         * [migrate3to4]'s work, here so a test can run it: this class needs a
-         * [CredentialManager], which needs the Android Keystore.
-         */
-        /**
          * Drops a courses re-enable check an older build left pending. Those
          * builds went on reconciling the course list while it waited, so the
          * server's courses were applied here long ago and there is no copy
@@ -244,9 +241,19 @@ class DataMigration @Inject constructor(
             if ("courses" in pending) prefs.pendingConflictCategories = pending - "courses"
         }
 
+        /**
+         * [migrate3to4]'s work, here so a test can run it: this class needs a
+         * [CredentialManager], which needs the Android Keystore. An
+         * assignments check left pending by a build before it (v2.3.1) is
+         * dropped too: those builds went on applying the server's marks while
+         * it waited, so nothing of this phone's is left to ask about, and kept
+         * it would hold the marks, and the marks still waiting to go up, until
+         * TigerSync was next opened.
+         */
         internal fun settleReenableCheck(prefs: AppPreferences, signedIn: Boolean) {
             if (signedIn) {
                 prefs.syncedCategories = REENABLE_CATEGORIES
+                prefs.pendingConflictCategories = prefs.pendingConflictCategories - "assignments"
             } else {
                 prefs.pendingConflictCategories = emptySet()
             }
