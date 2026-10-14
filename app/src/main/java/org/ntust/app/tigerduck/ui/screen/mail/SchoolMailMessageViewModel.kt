@@ -30,6 +30,8 @@ import org.ntust.app.tigerduck.mail.model.MailSummary
 import org.ntust.app.tigerduck.mail.notify.MailNotifier
 import org.ntust.app.tigerduck.mail.sanitize.HtmlSanitizer
 import org.ntust.app.tigerduck.mail.sanitize.MailLink
+import org.ntust.app.tigerduck.mail.sanitize.PlainTextLink
+import org.ntust.app.tigerduck.mail.sanitize.PlainTextLinks
 import org.ntust.app.tigerduck.mail.sanitize.SanitizedHtml
 import org.ntust.app.tigerduck.mail.store.MailCache
 import org.ntust.app.tigerduck.mail.warning.LinkVerdict
@@ -87,6 +89,8 @@ class SchoolMailMessageViewModel @Inject constructor(
             val document: LinkedHtml?,
             val plain: String,
             val warnings: List<MailWarning>,
+            /** The URLs and addresses in [plain], which the plain view draws as links; see [plainLinkTarget]. */
+            val plainLinks: List<PlainTextLink> = emptyList(),
         ) : Content
     }
 
@@ -261,7 +265,7 @@ class SchoolMailMessageViewModel @Inject constructor(
                 summary.from, summary.subject, plain, html?.links.orEmpty(), body.attachments, summary.returnPath,
                 domain = mailDomain,
             )
-            Content.Ready(summary, body, html, document, plain, warnings)
+            Content.Ready(summary, body, html, document, plain, warnings, PlainTextLinks.find(plain))
         }
 
     private suspend fun markSeen(summary: MailSummary) {
@@ -353,6 +357,17 @@ class SchoolMailMessageViewModel @Inject constructor(
      */
     fun linkTarget(index: Int): LinkTarget? =
         (_state.value.content as? Content.Ready)?.document?.links?.getOrNull(index)?.let { targetOf(it) }
+
+    /**
+     * What the link dialog judges, shows and opens for the plain view's link [index]
+     * ([Content.Ready.plainLinks]): the same [targetOf] an HTML link goes through, with the text
+     * on screen as the link's own text. Null for an index with no link.
+     */
+    fun plainLinkTarget(index: Int): LinkTarget? {
+        val ready = _state.value.content as? Content.Ready ?: return null
+        val link = ready.plainLinks.getOrNull(index) ?: return null
+        return targetOf(MailLink(ready.plain.substring(link.start, link.end), link.href))
+    }
 
     // --- attachments --------------------------------------------------------------------
 

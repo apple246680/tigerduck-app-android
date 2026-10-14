@@ -57,6 +57,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
+import org.ntust.app.tigerduck.mail.sanitize.PlainTextLink
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -117,6 +124,8 @@ fun SchoolMailMessageScreen(
     var menuOpen by remember { mutableStateOf(false) }
     var showMove by remember { mutableStateOf(false) }
     var pendingLink by rememberSaveable { mutableStateOf<Int?>(null) }
+    // A link tapped in the plain view, by its index in Content.Ready.plainLinks.
+    var pendingPlainLink by rememberSaveable { mutableStateOf<Int?>(null) }
     var pendingSavePart by rememberSaveable { mutableStateOf<String?>(null) }
     // "View in light mode". Kept by this screen alone, like the view mode is by its view model --
     // never persisted to preferences (rememberSaveable only carries it across a rotation or a
@@ -330,9 +339,10 @@ fun SchoolMailMessageScreen(
                         }
                         ViewMode.PLAIN -> item(key = "plain") {
                             SelectionContainer {
-                                Text(
-                                    content.plain,
-                                    style = MaterialTheme.typography.bodyMedium,
+                                LinkedPlainText(
+                                    text = content.plain,
+                                    links = content.plainLinks,
+                                    onLink = { pendingPlainLink = it },
                                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                                 )
                             }
@@ -382,21 +392,24 @@ fun SchoolMailMessageScreen(
         }
     }
 
-    pendingLink?.let { index ->
-        // MailWebView only calls onLink with an index it range-checked against the same
-        // document.links it was given, so this is null only if the content changed underneath
-        // since the tap; skip the dialog rather than show one with nothing to open.
-        val target = viewModel.linkTarget(index)
-        if (target != null) {
-            LinkDialog(
-                target = target,
-                onOpen = {
-                    pendingLink = null
-                    openLink(context, target.href, browserPreference)
-                },
-                onDismiss = { pendingLink = null },
-            )
-        }
+    // MailWebView only calls onLink with an index it range-checked against the same
+    // document.links it was given, and the plain view's indices come from the very list it was
+    // drawn from, so a target is null only if the content changed underneath since the tap; skip
+    // the dialog rather than show one with nothing to open.
+    val linkTarget = pendingLink?.let(viewModel::linkTarget) ?: pendingPlainLink?.let(viewModel::plainLinkTarget)
+    if (linkTarget != null) {
+        LinkDialog(
+            target = linkTarget,
+            onOpen = {
+                pendingLink = null
+                pendingPlainLink = null
+                openLink(context, linkTarget.href, browserPreference)
+            },
+            onDismiss = {
+                pendingLink = null
+                pendingPlainLink = null
+            },
+        )
     }
     state.confirmAttachment?.let { pending ->
         // Spec lines 416/653 ("confirm once more before opening or saving"): the same
@@ -615,6 +628,26 @@ private fun MessageHeader(summary: MailSummary, mailDomain: String, selfAddress:
         if (to.isNotEmpty()) MailRecipientRow(toLabel, to, labelWidth = labelWidth)
         if (cc.isNotEmpty()) MailRecipientRow(ccLabel, cc, labelWidth = labelWidth)
     }
+}
+
+/**
+ * A plain-text mail with its URLs and addresses drawn as links. A tap only reports the link's
+ * index: what it opens goes through the same check dialog an HTML link does. Kept selectable --
+ * the caller wraps it in a SelectionContainer, and a long press still selects across links.
+ */
+@Composable
+internal fun LinkedPlainText(text: String, links: List<PlainTextLink>, onLink: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val linkStyle = TextLinkStyles(SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline))
+    val latestOnLink by rememberUpdatedState(onLink)
+    val annotated = remember(text, links, linkStyle) {
+        buildAnnotatedString {
+            append(text)
+            links.forEachIndexed { index, link ->
+                addLink(LinkAnnotation.Clickable(tag = "link-$index", styles = linkStyle) { latestOnLink(index) }, link.start, link.end)
+            }
+        }
+    }
+    Text(annotated, style = MaterialTheme.typography.bodyMedium, modifier = modifier)
 }
 
 /** The warning, with the address it is about on a second line -- unless there isn't one to name. */

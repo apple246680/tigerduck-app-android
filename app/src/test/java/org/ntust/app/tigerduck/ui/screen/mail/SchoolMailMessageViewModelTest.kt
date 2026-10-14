@@ -685,6 +685,31 @@ class SchoolMailMessageViewModelTest {
         assertEquals(0, vm.state.value.savedCount)
     }
 
+    // --- links in a plain-text mail ------------------------------------------------------------
+
+    @Test
+    fun `a plain-text mail's URLs and addresses are links that go through the same check`() {
+        repo.add("INBOX", mailSummary(5))
+        repo.bodies[5] = MailBody(null, "Hours: https://www.lib.ntust.edu.tw/hours\nAsk library@mail.ntust.edu.tw", emptyList(), emptyMap())
+        val vm = vm()
+        vm.load()
+
+        val content = ready(vm)
+        assertEquals(ViewMode.PLAIN, vm.state.value.mode)
+        assertEquals(
+            listOf("https://www.lib.ntust.edu.tw/hours", "library@mail.ntust.edu.tw"),
+            content.plainLinks.map { content.plain.substring(it.start, it.end) },
+        )
+        val web = vm.plainLinkTarget(0)!!
+        assertEquals("https://www.lib.ntust.edu.tw/hours", web.href)
+        assertEquals("www.lib.ntust.edu.tw", web.verdict.host)
+        assertTrue(web.canOpen)
+        val mail = vm.plainLinkTarget(1)!!
+        assertEquals("mailto:library@mail.ntust.edu.tw", mail.href)
+        assertTrue(mail.canOpen)
+        assertNull(vm.plainLinkTarget(2))
+    }
+
     // --- link target: addressed by index into the rewritten document's links -----------------
 
     @Test
