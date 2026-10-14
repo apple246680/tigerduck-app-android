@@ -440,7 +440,7 @@ class AppState @Inject constructor(
     var pendingLibraryEnablePrompt by mutableStateOf(false)
 
     // Transient signal from signed-out empty states (Home, ClassTable,
-    // Calendar, Score): when the user taps the lock icon we navigate to
+    // Calendar, Score): when the user taps "Sign in" we navigate to
     // Settings and flip this so the NTUST account row pulses, drawing the
     // user's attention to the action they need to take. Consumed (cleared)
     // by SettingsScreen after the animation finishes.

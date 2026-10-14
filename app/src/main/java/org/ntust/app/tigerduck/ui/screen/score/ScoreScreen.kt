@@ -107,7 +107,8 @@ fun ScoreScreen(
                         title = stringResource(R.string.common_not_signed_in),
                         message = stringResource(R.string.score_not_signed_in_message),
                         modifier = Modifier.padding(top = 32.dp),
-                        onIconClick = onOpenSignInSettings,
+                        actionLabel = stringResource(R.string.onboarding_sign_in_button),
+                        onAction = onOpenSignInSettings,
                     )
 
                     !viewModel.hasContent && !isRefreshing -> EmptyStateView(

@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -92,6 +93,8 @@ fun TimeSliderSection(
     invertDirection: Boolean,
     isLoggedIn: Boolean = true,
     initialLoadComplete: Boolean = true,
+    /** Signed out: where its "Sign in" button goes. */
+    onSignIn: () -> Unit = {},
     // 翹課 — parked until after add-friend. See HomeViewModel._skippedDates.
     // skippedDates: Map<String, List<String>> = emptyMap(),
     // onSkipCourse: (Course, Date) -> Unit = { _, _ -> },
@@ -185,6 +188,11 @@ fun TimeSliderSection(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY)
                 )
+                if (!isLoggedIn) {
+                    Button(onClick = onSignIn) {
+                        Text(stringResource(R.string.onboarding_sign_in_button))
+                    }
+                }
             }
         }
     }
