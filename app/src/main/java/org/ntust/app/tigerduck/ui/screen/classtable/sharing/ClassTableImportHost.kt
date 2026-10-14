@@ -137,11 +137,7 @@ fun ClassTableImportHost(viewModel: ClassTableImportViewModel, onImported: () ->
                         .padding(padding),
                     contentAlignment = Alignment.Center,
                 ) {
-                    FlavorQrScannerCamera.Area(
-                        onScanned = model::scanned,
-                        onRead = { model.imageRead(listOf(it)) },
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    QrScannerCamera(onScanned = model::scanned, modifier = Modifier.fillMaxSize())
                     // An update has no confirm dialog to wait in, so it waits here, as a picture does.
                     if (state.isReadingImage || (state.isLookingUp && state.pending == null)) {
                         CircularProgressIndicator()

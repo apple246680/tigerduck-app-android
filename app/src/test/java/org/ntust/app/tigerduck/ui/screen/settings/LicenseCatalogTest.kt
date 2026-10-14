@@ -127,11 +127,7 @@ class LicenseCatalogTest {
     fun `every open-source licence either flavour ships carries its full text`() {
         // Google's SDK terms are not open-source licences and publish no text
         // to embed; the page links to them instead.
-        val linkedOnly = setOf(
-            "Android Software Development Kit License",
-            "Play Core Software Development Kit Terms of Service",
-            "ML Kit Terms of Service",
-        )
+        val linkedOnly = setOf("Android Software Development Kit License", "Play Core Software Development Kit Terms of Service")
         for (flavor in listOf("play", "fdroid")) {
             val missing = shipped(flavor)
                 .flatMap { it.texts }
@@ -227,18 +223,9 @@ class LicenseCatalogTest {
         assertEquals(ExtraLicenses(), extras)
     }
 
-    /**
-     * Play Services under the Android SDK licence: the code scanner, in the same group, ships
-     * under ML Kit's terms and is an entry of its own.
-     */
-    private fun playServices() = shipped("play").single { entry ->
-        entry.title == "com.google.android.gms" &&
-            entry.texts.any { it.name == "Android Software Development Kit License" }
-    }
-
     @Test
     fun `the licences inside Google's closed SDKs reach the play page`() {
-        val playServices = playServices()
+        val playServices = shipped("play").single { it.title == "com.google.android.gms" }
         val names = playServices.notices.map { it.name }
         assertTrue(names.toString(), listOf("Guava JDK7", "Kotlin", "Protocol Buffers").any { it in names })
         // fdroid ships no Play Services at all, so it carries none of this.
@@ -261,7 +248,7 @@ class LicenseCatalogTest {
 
     @Test
     fun `the play services page carries each notice once and still names them all`() {
-        val notices = playServices().notices
+        val notices = shipped("play").single { it.title == "com.google.android.gms" }.notices
         val grouped = LicenseCatalog.groupNotices(notices)
         // Attribution is the whole point of the page, so grouping may drop
         // repetition and nothing else. (No notice name has a comma in it,

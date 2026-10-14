@@ -63,8 +63,8 @@ object ClassTableShareQrCode {
 }
 
 /**
- * Reads the QR codes in a picture, such as a screenshot of someone's share sheet. ZXing rather
- * than a Play Services reader, so a photo reads the same on the F-Droid build.
+ * Reads the QR codes in a picture, such as a screenshot of someone's share sheet, with ZXing on
+ * the device alone, as the import page's camera does.
  */
 object QrCodeImageReader {
     /**

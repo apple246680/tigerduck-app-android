@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -58,51 +59,62 @@ import org.ntust.app.tigerduck.util.logSummary
 import java.util.concurrent.Executors
 
 /**
- * The F-Droid build's camera, which has no Play Services to lend it Google's scanner: CameraX's
- * preview fills the page and ZXing reads each frame. It asks for the camera when the page opens,
- * and with access refused says so, with a way to the app's settings, as the iOS page does.
+ * The import page's camera: CameraX's preview fills the area and ZXing reads each frame, on the
+ * device alone, so scanning sends nothing anywhere. A share code it sees goes to [onScanned],
+ * which says whether the import took it; see [RepeatedQrCodeFilter] for a code kept in view. It
+ * asks for the camera when the page opens, and with access refused says so, with a way to the
+ * app's settings, as the iOS page does. Without a camera the area stays empty, as on iOS; a
+ * camera that does not start offers Retry. Reading a code from a picture is `QrCodeImageReader`.
  */
-object FlavorQrScannerCamera : QrScannerCamera {
-    @Composable
-    override fun Area(onScanned: (String) -> Boolean, onRead: (String) -> Unit, modifier: Modifier) {
-        val context = LocalContext.current
-        if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)) return
-        // Saved, so turning the phone does not ask again.
-        var granted by rememberSaveable { mutableStateOf(hasCameraPermission(context)) }
-        var refused by rememberSaveable { mutableStateOf(false) }
-        val request = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-            granted = it
-            refused = !it
+@Composable
+fun QrScannerCamera(onScanned: (String) -> Boolean, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)) return
+    // Saved, so turning the phone does not ask again.
+    var granted by rememberSaveable { mutableStateOf(hasCameraPermission(context)) }
+    var refused by rememberSaveable { mutableStateOf(false) }
+    val request = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        granted = it
+        refused = !it
+    }
+    LaunchedEffect(Unit) { if (!granted && !refused) request.launch(Manifest.permission.CAMERA) }
+    // Back from the app's settings page, access may have been granted.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) granted = hasCameraPermission(context)
         }
-        LaunchedEffect(Unit) { if (!granted && !refused) request.launch(Manifest.permission.CAMERA) }
-        // Back from the app's settings page, access may have been granted.
-        val lifecycleOwner = LocalLifecycleOwner.current
-        DisposableEffect(lifecycleOwner) {
-            val observer = LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_RESUME) granted = hasCameraPermission(context)
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    when {
+        granted -> CameraPreview(onScanned = onScanned, modifier = modifier)
+        refused -> CameraMessage(
+            message = stringResource(R.string.class_table_import_camera_denied),
+            action = stringResource(R.string.action_go_to_settings),
+            onAction = { openAppSettings(context) },
+            modifier = modifier,
+        )
+    }
+}
+
+@Composable
+private fun CameraMessage(message: String?, action: String, onAction: () -> Unit, modifier: Modifier) {
+    Box(modifier, contentAlignment = Alignment.Center) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            if (message != null) {
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                )
             }
-            lifecycleOwner.lifecycle.addObserver(observer)
-            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-        }
-        when {
-            granted -> CameraPreview(onScanned = onScanned, modifier = modifier)
-            refused -> Box(modifier, contentAlignment = Alignment.Center) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.class_table_import_camera_denied),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White,
-                        textAlign = TextAlign.Center,
-                    )
-                    FilledTonalButton(onClick = { openAppSettings(context) }) {
-                        Text(stringResource(R.string.action_go_to_settings))
-                    }
-                }
-            }
+            FilledTonalButton(onClick = onAction) { Text(action) }
         }
     }
 }
@@ -113,16 +125,26 @@ private fun CameraPreview(onScanned: (String) -> Boolean, modifier: Modifier) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val latest by rememberUpdatedState(onScanned)
     var surfaceRequest by remember { mutableStateOf<SurfaceRequest?>(null) }
-    DisposableEffect(lifecycleOwner) {
+    // A camera that did not start, as when another app holds it, offers Retry, which starts over.
+    var failed by remember { mutableStateOf(false) }
+    var attempt by remember { mutableIntStateOf(0) }
+    DisposableEffect(lifecycleOwner, attempt) {
         val executor = Executors.newSingleThreadExecutor()
         val mainExecutor = ContextCompat.getMainExecutor(context)
         val session = CameraSession()
-        val providerFuture = ProcessCameraProvider.getInstance(context)
-        providerFuture.addListener({
+        val providerFuture = try {
+            ProcessCameraProvider.getInstance(context)
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "No camera provider: ${e.logSummary()}")
+            null
+        }
+        if (providerFuture == null) failed = true
+        providerFuture?.addListener({
             val cameraProvider = try {
                 providerFuture.get()
             } catch (e: Exception) {
                 Log.w(TAG, "No camera provider: ${e.logSummary()}")
+                if (session.isActive) failed = true
                 return@addListener
             }
             session.start {
@@ -138,6 +160,7 @@ private fun CameraPreview(onScanned: (String) -> Boolean, modifier: Modifier) {
                     cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector(cameraProvider), preview, analysis)
                 } catch (e: Exception) {
                     Log.w(TAG, "The camera did not start: ${e.logSummary()}")
+                    failed = true
                 }
                 return@start { cameraProvider.unbind(preview, analysis) }
             }
@@ -146,6 +169,19 @@ private fun CameraPreview(onScanned: (String) -> Boolean, modifier: Modifier) {
             session.dispose()
             executor.shutdown()
         }
+    }
+    if (failed) {
+        CameraMessage(
+            message = null,
+            action = stringResource(R.string.action_retry),
+            onAction = {
+                failed = false
+                surfaceRequest = null
+                attempt++
+            },
+            modifier = modifier,
+        )
+        return
     }
     surfaceRequest?.let { request ->
         CameraXViewfinder(surfaceRequest = request, contentScale = ContentScale.Crop, modifier = modifier.fillMaxSize())
