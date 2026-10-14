@@ -331,4 +331,38 @@ class MoodleWebserviceTest {
             MoodleWebservice({ client }, Tokens("t1")).download(fileRequest) { it?.startsWith("image/") == true }
         }
     }
+
+    @Test
+    fun `a JSON reply in place of a picture is read only as far as an error needs`() {
+        var served = 0L
+        val endless = object : okio.Source {
+            override fun read(sink: okio.Buffer, byteCount: Long): Long {
+                if (served > 1_000_000L) throw AssertionError("read past any error's length")
+                val n = minOf(byteCount, 8_192L)
+                sink.write(ByteArray(n.toInt()) { ' '.code.toByte() })
+                served += n
+                return n
+            }
+            override fun timeout() = okio.Timeout.NONE
+            override fun close() = Unit
+        }.buffer()
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("")
+                .body(object : okhttp3.ResponseBody() {
+                    override fun contentType() = "application/json".toMediaType()
+                    override fun contentLength() = -1L
+                    override fun source(): okio.BufferedSource = endless
+                })
+                .build()
+        }.build()
+
+        assertThrows(MoodleWebserviceError.MalformedResponse::class.java) {
+            MoodleWebservice({ client }, Tokens("t1")).download(fileRequest) { it?.startsWith("image/") == true }
+        }
+        assertTrue("read $served", served <= 128 * 1024L)
+    }
 }

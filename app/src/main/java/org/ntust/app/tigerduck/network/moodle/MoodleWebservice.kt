@@ -113,7 +113,8 @@ class MoodleWebservice internal constructor(
             // The bare type: Moodle sends its errors as `application/json; charset=utf-8`.
             val type = baseType(response.body.contentType()?.toString() ?: response.header("Content-Type"))
             if (type == "application/json") {
-                MoodleWebserviceError.fromJsonBody(response.body.string())?.let { throw it }
+                // No further than an error reply runs: a reply that never ends is not read whole.
+                MoodleWebserviceError.fromJsonBody(response.peekBody(ERROR_REPLY_LIMIT).string())?.let { throw it }
                 throw MoodleWebserviceError.MalformedResponse("json in place of a file")
             }
             if (response.code != 200) throw MoodleWebserviceError.HttpStatus(response.code)
