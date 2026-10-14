@@ -53,7 +53,9 @@ class SchoolMailListViewModelTest {
         account = MailAccount(InMemoryCredentialStore(), state, server.factory(), MailCache(tmp.root),
             FakeDemoGate(), schoolMailSite(), RecordingScheduler(), RecordingNotifier(), testApplicationScope())
         runBlocking { account.signIn("b10000001", "pw") }
-        vm = SchoolMailListViewModel(repo, account, MailChecker(account, state, server.factory(), RecordingNotifier(), MailCache(tmp.root)) { 0 }, schoolMailSite())
+        vm = SchoolMailListViewModel(
+            repo, account, MailChecker(account, state, server.factory(), RecordingNotifier(), MailCache(tmp.root)) { 0 }, schoolMailSite(),
+        ) { main.dispatcher.scheduler.currentTime }
     }
 
     @Test
@@ -275,6 +277,64 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
+    fun `coming back to the list checks the inbox at once, not a minute later`() {
+        repo.add("INBOX", mailSummary(1))
+        repo.status = FolderStatus(server.uidValidity, 2, 1, 1)
+        vm.load()
+        vm.startPolling()
+        vm.stopPolling()
+        // Away for ten minutes, and mail arrived meanwhile.
+        main.dispatcher.scheduler.advanceTimeBy(10 * 60_000L)
+        repo.add("INBOX", mailSummary(2))
+        repo.status = FolderStatus(server.uidValidity, 3, 2, 2)
+        vm.startPolling()
+        main.dispatcher.scheduler.advanceTimeBy(SchoolMailListViewModel.RESUME_POLL_GRACE_MS + 1)
+        main.dispatcher.scheduler.runCurrent()
+        assertEquals(listOf(2L, 1L), vm.state.value.displayed.map { it.uid })
+        vm.stopPolling()
+    }
+
+    @Test
+    fun `coming back from a mail, which reloads the list, does not check the inbox as well`() {
+        repo.add("INBOX", mailSummary(1))
+        vm.load()
+        vm.startPolling()
+        vm.stopPolling()
+        main.dispatcher.scheduler.advanceTimeBy(10 * 60_000L)
+        val calls = repo.statusCalls
+        // The list screen is composed again on the way back, and loads as it appears.
+        vm.startPolling()
+        vm.load()
+        main.dispatcher.scheduler.advanceTimeBy(SchoolMailListViewModel.RESUME_POLL_GRACE_MS + 1)
+        main.dispatcher.scheduler.runCurrent()
+        // The load's own status read for the seen marker, and no second look.
+        assertEquals(calls + 1, repo.statusCalls)
+        vm.stopPolling()
+    }
+
+    @Test
+    fun `the screen appearing right after its own load does not check the inbox again at once`() {
+        repo.add("INBOX", mailSummary(1))
+        vm.load()
+        val calls = repo.statusCalls
+        vm.startPolling()
+        main.dispatcher.scheduler.advanceTimeBy(SchoolMailListViewModel.RESUME_POLL_GRACE_MS + 1)
+        main.dispatcher.scheduler.runCurrent()
+        assertEquals(calls, repo.statusCalls)
+        vm.stopPolling()
+    }
+
+    @Test
+    fun `polling does not check at once while the list has not loaded yet`() {
+        repo.add("INBOX", mailSummary(1))
+        vm.startPolling()
+        main.dispatcher.scheduler.advanceTimeBy(SchoolMailListViewModel.RESUME_POLL_GRACE_MS + 1)
+        main.dispatcher.scheduler.runCurrent()
+        assertEquals(0, repo.statusCalls)
+        vm.stopPolling()
+    }
+
+    @Test
     fun `a password the poll finds rejected marks the account, surfaces, and stops the poll`() {
         // Spec §7.4: the page poll must not keep re-sending a rejected LOGIN every minute --
         // repeated failures can lock the school account and the campus Wi-Fi that share the password.
@@ -306,14 +366,15 @@ class SchoolMailListViewModelTest {
         assertEquals(0, repo.acquired)
         assertEquals(statusCallsAfterLoad, repo.statusCalls)
 
-        // Signing in again clears the flag, and polling works from then on.
+        // Signing in again clears the flag, and polling works from then on: a look at once, the
+        // list having loaded minutes ago, then one a minute.
         runBlocking { account.signIn("b10000001", "pw") }
         assertFalse(account.authFailed.value)
         vm.startPolling()
         main.dispatcher.scheduler.advanceTimeBy(SchoolMailListViewModel.POLL_MS + 1)
         main.dispatcher.scheduler.runCurrent()
         assertEquals(1, repo.acquired)
-        assertEquals(statusCallsAfterLoad + 1, repo.statusCalls)
+        assertEquals(statusCallsAfterLoad + 2, repo.statusCalls)
     }
 
     @Test

@@ -25,6 +25,7 @@ import org.ntust.app.tigerduck.mail.model.MailPage
 import org.ntust.app.tigerduck.mail.model.MailRow
 import org.ntust.app.tigerduck.mail.model.MailSummary
 import org.ntust.app.tigerduck.mail.sync.MailChecker
+import org.ntust.app.tigerduck.mail.sync.MailClock
 import java.time.Instant
 import javax.inject.Inject
 import kotlin.coroutines.coroutineContext
@@ -35,6 +36,7 @@ class SchoolMailListViewModel @Inject constructor(
     private val account: MailAccount,
     private val checker: MailChecker,
     private val site: MailSite,
+    private val clock: MailClock,
 ) : ViewModel() {
 
     /** The account's own domain: what the list's External badge measures a sender against. */
@@ -153,6 +155,9 @@ class SchoolMailListViewModel @Inject constructor(
      */
     private var searchGeneration = 0
 
+    /** When the last first page landed, by [clock]: a resume right after it has nothing new to ask. */
+    private var firstPageAt: Long? = null
+
     init {
         // Signing out must not leave the previous account's mail on screen for
         // whoever signs in next (spec §7.5).
@@ -163,6 +168,7 @@ class SchoolMailListViewModel @Inject constructor(
                     prefetchJob = null
                     prefetchDone = false
                     forgetSearch()
+                    firstPageAt = null
                     _state.value = UiState()
                 }
             }
@@ -299,6 +305,14 @@ class SchoolMailListViewModel @Inject constructor(
      * would otherwise re-send the same rejected LOGIN once a minute for as long
      * as the page is open. Signing in again clears the flag, and the screen
      * restarts polling from that.
+     *
+     * The first look is at once, not a minute in: this runs whenever the page comes back, from
+     * the background or from a mail, and mail that arrived meanwhile -- its notification perhaps
+     * already in the shade -- should be on the list when it does. Not while a load is still
+     * running, or has not run yet, and not within [RESUME_POLL_FRESH_MS] of a first page landing:
+     * that page already is the answer. Decided [RESUME_POLL_GRACE_MS] in rather than here, since
+     * coming back from a mail composes the list again, and the load that starts as it appears
+     * lands just after this call.
      */
     fun startPolling() {
         if (account.authFailed.value) return
@@ -312,12 +326,23 @@ class SchoolMailListViewModel @Inject constructor(
         if (!prefetchDone && _state.value.loadState is LoadState.Loaded) startPrefetch()
         pollJob?.cancel()
         pollJob = viewModelScope.launch {
+            launch {
+                delay(RESUME_POLL_GRACE_MS)
+                if (pollsOnResume() && !account.authFailed.value) poll()
+            }
             while (isActive && !account.authFailed.value) {
                 delay(POLL_MS)
                 if (account.authFailed.value) break
                 poll()
             }
         }
+    }
+
+    private fun pollsOnResume(): Boolean {
+        val s = _state.value
+        if (s.loadState is LoadState.Idle || s.loadState is LoadState.Loading) return false
+        val landed = firstPageAt ?: return true
+        return clock.now() - landed >= RESUME_POLL_FRESH_MS
     }
 
     fun stopPolling() {
@@ -351,6 +376,7 @@ class SchoolMailListViewModel @Inject constructor(
             val pages = targets.map { folder -> folder to repository.loadPage(folder, null) }
             if (_state.value.selected != selection) return
             _state.update { it.copy(messages = rowsOf(selection, pages), cursors = cursorsOf(pages), loadState = LoadState.Loaded) }
+            firstPageAt = clock.now()
             // Was "only for Inbox itself"; All mail shows the inbox's own mail too, so it must
             // move the notification seen marker exactly as viewing Inbox always did.
             if (_state.value.inboxInView) {
@@ -693,6 +719,12 @@ class SchoolMailListViewModel @Inject constructor(
 
     companion object {
         const val POLL_MS = 60_000L
+
+        /** How long after a first page lands a resume skips its look at the inbox. */
+        internal const val RESUME_POLL_FRESH_MS = 5_000L
+
+        /** How long a resume waits before deciding its look at the inbox; see [startPolling]. */
+        internal const val RESUME_POLL_GRACE_MS = 500L
 
         /** Enough to fill a screen; the real load that follows a chip tap replaces it. */
         internal const val PREFETCH_LIMIT = 20
