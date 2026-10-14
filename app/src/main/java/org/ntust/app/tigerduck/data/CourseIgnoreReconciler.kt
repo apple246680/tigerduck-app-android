@@ -73,6 +73,15 @@ object CourseIgnoreReconciler {
      * cannot tell this: the re-add's upload deletes the ones it names
      * (`force_keys`). As iOS's `AppState.recreatedCourses`
      * (tigerduck-app/tigerduck-app#367, tigerduck-app-android#182).
+     *
+     * What it cannot tell: a term reset made on another device when the
+     * server holds no other term. Every row is new then, as after the drop,
+     * so this device's settings for that term go up again. The snapshot's
+     * reset tombstones do not settle it either: the resetting device's
+     * upload deletes those its roster names, so a reset of an unchanged
+     * roster leaves none, while older resets leave some that never expire.
+     * Telling the two apart needs the backend to record when it drops the
+     * course data.
      */
     fun recreated(listed: Map<String, Long>, seen: Map<String, Long>): Set<String> {
         if (listed.none { (key, id) -> seen[key] == id }) return emptySet()

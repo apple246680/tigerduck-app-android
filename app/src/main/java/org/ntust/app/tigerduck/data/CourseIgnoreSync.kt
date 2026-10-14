@@ -178,16 +178,6 @@ class CourseIgnoreSync internal constructor(
                 touchedAt.filterValues { it >= result.fetchedAtMs }.keys
             val takes = applies && result.fetchedAtMs >= setChosenAt
             if (takes && server != null) {
-                // The rows this take saw, for the next one to tell a course
-                // re-added since. Not a term this device is resetting or
-                // reset after the fetch: its rows are about to change here,
-                // and a course of it counts as unchanged until seen again.
-                val reset = resetSince(result)
-                dataCache.saveCourseRowsSeen(
-                    CourseIgnoreReconciler.listedRows(result.serverCourses)
-                        .filterKeys { CourseIgnores.semesterOf(it) !in reset },
-                    generation,
-                )
                 val now = clock()
                 val rows = serverRows(result)
                 val lost = CourseIgnoreReconciler.toResend(local, server, protectedKeys)
@@ -196,8 +186,23 @@ class CourseIgnoreSync internal constructor(
                     resend = changes
                 }
             }
-            CourseIgnoreReconciler.afterSync(local, server, protectedKeys, takes)
+            val written = CourseIgnoreReconciler.afterSync(local, server, protectedKeys, takes)
                 ?.takeIf { it != local && dataCache.saveIgnoredCourses(it, generation) }
+            if (takes && server != null) {
+                // The rows this take saw, for the next one to tell a course
+                // re-added since; last, once what it took is written, so a
+                // take cut short is taken again. Not a term this device is
+                // resetting or reset after the fetch: its rows are about to
+                // change here, and a course of it counts as unchanged until
+                // seen again.
+                val reset = resetSince(result)
+                dataCache.saveCourseRowsSeen(
+                    CourseIgnoreReconciler.listedRows(result.serverCourses)
+                        .filterKeys { CourseIgnores.semesterOf(it) !in reset },
+                    generation,
+                )
+            }
+            written
         }
         if (updated != null) effects.changed()
         resend.forEach { send(it, generation) }
