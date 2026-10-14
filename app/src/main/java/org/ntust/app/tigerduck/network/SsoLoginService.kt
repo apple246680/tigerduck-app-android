@@ -19,6 +19,12 @@ sealed class SsoLoginError : Exception() {
     class LoginFailed(val reason: String? = null) : SsoLoginError()
     class InvalidResponse : SsoLoginError()
     data class NetworkError(val cause_: Exception) : SsoLoginError()
+
+    /**
+     * An automatic sign-in's credentials stopped being the stored account's while it ran, as a
+     * sign-in by hand stored another password or the account signed out, so it posted nothing.
+     */
+    class AccountChanged : SsoLoginError()
 }
 
 /**
@@ -175,11 +181,17 @@ class SsoLoginService internal constructor(
         // names as the form's action. As on the iPhone (ssoActionHostAllowlist).
         if (!isSignInHost(actionUrl)) throw SsoLoginError.InvalidResponse()
         if (typed) return@withContext submitLoginForm(actionUrl, fields)
-        // Under the lock every automatic post of the stored password takes, with the latch
-        // checked again right before the password goes out: a refusal another sign-in got,
-        // the Moodle token renewal's included, has landed by then, and none lands while this
-        // one is posting.
-        passwordLatch.postAutomatically({ SsoLoginError.LoginFailed(it.reason) }) {
+        // Under the lock every automatic post of the stored password takes, with the latch and
+        // the stored account checked again right before the password goes out: a refusal
+        // another sign-in got, the Moodle token renewal's included, has landed by then, and
+        // none lands while this one is posting.
+        passwordLatch.postAutomatically(
+            generation = latchGeneration,
+            studentId = studentId,
+            password = password,
+            refused = { SsoLoginError.LoginFailed(it.reason) },
+            stale = { SsoLoginError.AccountChanged() },
+        ) {
             try {
                 submitLoginForm(actionUrl, fields)
             } catch (e: SsoLoginError.LoginFailed) {

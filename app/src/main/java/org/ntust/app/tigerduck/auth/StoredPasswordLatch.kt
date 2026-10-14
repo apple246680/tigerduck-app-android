@@ -55,6 +55,9 @@ interface StoredPasswordLatch {
     /** When a sign-in the user made stores the password the school took, and on sign-out. */
     fun clear()
 
+    /** Whether [studentId] and [password] are the stored account's. */
+    fun isStoredAccount(studentId: String, password: String): Boolean
+
     /**
      * Held by every automatic post of the stored password, the SSO sign-ins' and the Moodle token
      * renewal's alike, from its last look at the latch right before the post until it has read
@@ -73,16 +76,25 @@ interface StoredPasswordLatch {
 
 /**
  * Runs [post], an automatic sign-in's post of the stored password through to reading the school's
- * answer, holding [StoredPasswordLatch.automaticPosts], and not at all while a refusal holds:
- * [refused] makes the error then. The look at the latch that counts is this one, made holding the
- * lock, so no other automatic post's refusal can land between it and this post. [post] latches a
- * refusal it gets before it returns.
+ * answer, holding [StoredPasswordLatch.automaticPosts], and only for credentials still worth
+ * posting. The look that counts is this one, made holding the lock, so no other automatic post's
+ * refusal can land between it and this post. [post] latches a refusal it gets before it returns.
+ *
+ * Not at all while a refusal holds: [refused] makes the error then. Nor once [studentId] and
+ * [password] are no longer the stored account's, or [generation], read before the sign-in began,
+ * has moved: a sign-in by hand stored another password, or the account signed out, while this one
+ * was on its way. [stale] makes the error then.
  */
 internal suspend fun <T> StoredPasswordLatch.postAutomatically(
+    generation: Int,
+    studentId: String,
+    password: String,
     refused: (StoredPasswordLatch.Rejection) -> Exception,
+    stale: () -> Exception,
     post: suspend () -> T,
 ): T = automaticPosts.withLock {
     rejection.value?.let { throw refused(it) }
+    if (this.generation != generation || !isStoredAccount(studentId, password)) throw stale()
     post()
 }
 
@@ -117,7 +129,14 @@ internal suspend fun <T> StoredPasswordLatch.guardAutomaticHarvest(
     val latch = this
     return harvest(object : PasswordPosting {
         override suspend fun <R> post(send: suspend () -> R): R =
-            latch.postAutomatically({ MoodleWebserviceError.SsoLoginRejected(it.reason) }) {
+            latch.postAutomatically(
+                generation = before,
+                studentId = studentId,
+                password = password,
+                refused = { MoodleWebserviceError.SsoLoginRejected(it.reason) },
+                // As a harvest that finds the account signed out once it has the token.
+                stale = { MoodleWebserviceError.MissingStoredCredentials() },
+            ) {
                 try {
                     send()
                 } catch (e: MoodleWebserviceError.SsoLoginRejected) {
@@ -179,8 +198,7 @@ class PersistedStoredPasswordLatch internal constructor(
             // One already holds: a new one would show a banner the user closed again.
             if (_rejection.value != null) return
             if (generation != currentGeneration) return
-            val (storedId, storedPassword) = storedAccount() ?: return
-            if (normalized(storedId) != normalized(studentId) || storedPassword != password) return
+            if (!isStoredAccount(studentId, password)) return
             val message = reason?.trim()?.take(MAX_REASON_LENGTH)?.takeIf { it.isNotEmpty() }
             // Written through before anything reads it: a process the system ends right
             // after must not start the next one unlatched.
@@ -190,6 +208,11 @@ class PersistedStoredPasswordLatch internal constructor(
             }.commit()
             _rejection.value = StoredPasswordLatch.Rejection(message)
         }
+    }
+
+    override fun isStoredAccount(studentId: String, password: String): Boolean {
+        val (storedId, storedPassword) = storedAccount() ?: return false
+        return normalized(storedId) == normalized(studentId) && storedPassword == password
     }
 
     override fun clear() {

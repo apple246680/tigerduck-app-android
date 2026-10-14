@@ -163,6 +163,22 @@ class MoodleTokenServiceLatchTest {
     }
 
     @Test
+    fun `a renewal whose password a sign-in by hand replaced on the way posts nothing`() = runTest(UnconfinedTestDispatcher()) {
+        val (service, latch) = service()
+        // A sign-in by hand stores a new password, and lifts the latch, after the renewal began.
+        onLaunch = {
+            tokens.password = "new-password"
+            latch.clear()
+        }
+
+        val failure = runCatching { service.renewToken(null) }.exceptionOrNull()
+
+        assertTrue("got $failure", failure is MoodleWebserviceError.MissingStoredCredentials)
+        assertEquals(emptyList<String>(), posts)
+        assertNull(latch.rejection.value)
+    }
+
+    @Test
     fun `a sign-in page with no form to post to latches nothing, as no password went out`() = runTest(UnconfinedTestDispatcher()) {
         landing = """<html><body><div class="alert-danger">Too many attempts</div></body></html>"""
         val (service, latch) = service()

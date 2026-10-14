@@ -92,6 +92,36 @@ class SsoLoginLatchTest {
     }
 
     @Test
+    fun `an automatic sign-in whose password a sign-in by hand replaced on the way posts nothing`() = runTest {
+        accepts = true
+        // A sign-in by hand stores a new password, and lifts the latch, after this one began.
+        onVisit = {
+            if (it == 1) {
+                stored = STUDENT to "new-password"
+                latch.clear()
+            }
+        }
+
+        val failure = runCatching { service.ensureServiceLogin(SERVICE, STUDENT, PASSWORD) }.exceptionOrNull()
+
+        assertTrue("got $failure", failure is SsoLoginError.AccountChanged)
+        assertEquals(emptyList<String>(), posts)
+        assertFalse(latch.isRejected)
+    }
+
+    @Test
+    fun `an automatic sign-in with a password no longer stored posts nothing`() = runTest {
+        accepts = true
+        // Read before a sign-in by hand stored a new one.
+        stored = STUDENT to "new-password"
+
+        val failure = runCatching { service.ensureServiceLogin(SERVICE, STUDENT, PASSWORD) }.exceptionOrNull()
+
+        assertTrue("got $failure", failure is SsoLoginError.AccountChanged)
+        assertEquals(emptyList<String>(), posts)
+    }
+
+    @Test
     fun `a sign-in the user types posts despite the latch, which lifts only with the new password's store`() = runTest {
         latch.markRejected(latch.generation, STUDENT, PASSWORD, REASON)
         accepts = true

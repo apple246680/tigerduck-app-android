@@ -19,6 +19,9 @@ internal class InMemoryStoredPasswordLatch : StoredPasswordLatch {
         if (generation == this.generation && state.value == null) state.value = StoredPasswordLatch.Rejection(reason)
     }
 
+    /** It keeps no account, so any one counts as the stored one. */
+    override fun isStoredAccount(studentId: String, password: String) = true
+
     override fun clear() {
         generation++
         state.value = null
