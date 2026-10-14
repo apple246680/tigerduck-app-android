@@ -75,6 +75,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import org.ntust.app.tigerduck.ui.openLink
 import org.ntust.app.tigerduck.util.fileProviderAuthority
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -392,7 +393,7 @@ fun SchoolMailMessageScreen(
                 target = target,
                 onOpen = {
                     pendingLink = null
-                    openLink(context, target.href, browserPreference)
+                    openBodyLink(context, target.href, browserPreference)
                 },
                 onDismiss = { pendingLink = null },
             )
@@ -718,14 +719,14 @@ private fun LinkDialog(target: SchoolMailMessageViewModel.LinkTarget, onOpen: ()
  * button that silently does nothing. Nothing new is launchable: the set is exactly the schemes
  * this already handled.
  */
-private fun openLink(context: Context, href: String, browserPreference: String) {
+private fun openBodyLink(context: Context, href: String, browserPreference: String) {
     val uri = Uri.parse(href)
     val scheme = uri.scheme?.lowercase()
     if (scheme !in SchoolMailMessageViewModel.OPENABLE_SCHEMES) return
     if (scheme == "mailto") {
         runCatching { context.startActivity(Intent(Intent.ACTION_SENDTO, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     } else {
-        openMailLink(context, href, browserPreference)
+        openLink(context, href, browserPreference)
     }
 }
 

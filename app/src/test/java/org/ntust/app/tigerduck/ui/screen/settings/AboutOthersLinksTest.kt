@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -50,5 +51,13 @@ class AboutOthersLinksTest {
     fun `delete account opens the deletion page`() {
         show()
         assertEquals("https://tigerduck.app/delete-account", tap(R.string.settings_delete_account))
+    }
+
+    @Test
+    fun `a link on a phone with no browser does nothing rather than crash`() {
+        // Otherwise Robolectric "starts" any intent, whether or not an activity would handle it.
+        shadowOf(composeRule.activity.application).checkActivities(true)
+        show()
+        assertNull(tap(R.string.settings_privacy_policy))
     }
 }
