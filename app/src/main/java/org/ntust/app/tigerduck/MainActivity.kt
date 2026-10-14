@@ -195,7 +195,7 @@ class MainActivity : AppCompatActivity() {
                                 // route the user already consumed.
                                 intent?.let {
                                     it.data = null
-                                    it.removeExtra("start_route")
+                                    it.removeExtra(StartRoute.EXTRA)
                                     intent = it
                                 }
                             },
@@ -388,15 +388,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Map intent input — widget extras and the `tigerduck://` links of
-     * [AppLink] — onto a NavHost route. `widgetStartRoute` then drives the
-     * LaunchedEffect that navigates once Compose is ready. An assignment link
-     * has no route: [openLinkedAssignment] takes it.
+     * The NavHost route [intent] asks for; see [startRouteOf].
+     * `widgetStartRoute` then drives the LaunchedEffect that navigates once
+     * Compose is ready. An assignment link has no route:
+     * [openLinkedAssignment] takes it.
      */
-    private fun resolveStartRoute(intent: Intent?): String? {
-        intent?.getStringExtra("start_route")?.let { return it }
-        return AppLink.parse(intent?.data)?.let(::startRouteFor)
-    }
+    private fun resolveStartRoute(intent: Intent?): String? = startRouteOf(intent)
 
     /**
      * Opens the assignment a `tigerduck://assignment/<id>` link names — from a
@@ -591,6 +588,17 @@ private fun UpdateRequiredHost() {
 }
 
 private const val TIGERDUCK_WEBSITE_URL = "https://tigerduck.app"
+
+/**
+ * Map intent input — the [StartRoute] extra of the app's own widgets and
+ * notifications, and the `tigerduck://` links of [AppLink] — onto a NavHost
+ * route. An extra naming any other route is dropped, and the intent's link,
+ * if any, opens instead.
+ */
+internal fun startRouteOf(intent: Intent?): String? {
+    StartRoute.accepted(intent?.getStringExtra(StartRoute.EXTRA))?.let { return it }
+    return AppLink.parse(intent?.data)?.let(::startRouteFor)
+}
 
 /**
  * The NavHost route [link] opens, or null for an assignment, which opens in

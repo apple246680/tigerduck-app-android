@@ -35,6 +35,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import org.ntust.app.tigerduck.MainActivity
+import org.ntust.app.tigerduck.StartRoute
 import org.ntust.app.tigerduck.liveactivity.LiveActivityNotifier
 import org.ntust.app.tigerduck.liveactivity.LiveActivityScenario
 import org.ntust.app.tigerduck.liveactivity.LiveActivitySnapshot
@@ -104,7 +105,7 @@ fun NotificationDebugScreen(onBack: () -> Unit) {
             context,
             id,
             Intent(context, MainActivity::class.java)
-                .putExtra("start_route", MailRoutes.LIST)
+                .putExtra(StartRoute.EXTRA, MailRoutes.LIST)
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )

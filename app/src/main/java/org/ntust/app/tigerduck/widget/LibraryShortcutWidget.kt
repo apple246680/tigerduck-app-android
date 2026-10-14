@@ -35,6 +35,7 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import dagger.hilt.android.EntryPointAccessors
 import org.ntust.app.tigerduck.MainActivity
+import org.ntust.app.tigerduck.StartRoute
 import org.ntust.app.tigerduck.R
 
 /**
@@ -53,7 +54,7 @@ class LibraryShortcutWidget : GlanceAppWidget() {
             .fromApplication(context.applicationContext, WidgetThemeEntryPoint::class.java)
             .appPreferences()
         val tapIntent = Intent(context, MainActivity::class.java)
-            .putExtra("start_route", ROUTE_SENTINEL)
+            .putExtra(StartRoute.EXTRA, ROUTE_SENTINEL)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         val tapAction = actionStartActivity(tapIntent)
         provideContent {

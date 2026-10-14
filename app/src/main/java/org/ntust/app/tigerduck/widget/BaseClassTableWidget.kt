@@ -23,6 +23,8 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import org.ntust.app.tigerduck.MainActivity
+import org.ntust.app.tigerduck.StartRoute
+import org.ntust.app.tigerduck.ui.navigation.Screen
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.widget.content.NextClassContent
 import org.ntust.app.tigerduck.widget.content.TodayListContent
@@ -49,7 +51,7 @@ abstract class BaseClassTableWidget(
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val prefs = prefs(context)
         val tapIntent = Intent(context, MainActivity::class.java)
-            .putExtra("start_route", "classTable")
+            .putExtra(StartRoute.EXTRA, Screen.ClassTable.route)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         val tapAction = actionStartActivity(tapIntent)
         provideContent {
