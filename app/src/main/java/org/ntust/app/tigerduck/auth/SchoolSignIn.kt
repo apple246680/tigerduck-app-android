@@ -8,7 +8,8 @@ import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * The SSO sign-in to the school, and the library sign-in a typed one makes with
- * the same credentials while no library token is valid. Apart from
+ * the same credentials while no library token is valid and no library account
+ * of another student can sign in by itself. Apart from
  * [AuthService] so a test can run it; [AuthService] holds its lock around each
  * call.
  *
@@ -46,7 +47,13 @@ internal class SchoolSignIn(
         val school = schoolAccount()
         val libraryAccount = libraryStore.libraryAccountGeneration
         val success = signInToSchool(studentId, password, true)
-        if (success && !libraryStore.isLibraryTokenValid) signInToLibrary(studentId, password, libraryAccount, school)
+        // A library account of another student ID that can still sign in by
+        // itself stays, as a school sign-out keeps it (as on the iPhone,
+        // tigerduck-app/tigerduck-app#542). With none, a refused one, or this
+        // student's own with its token run out, the school credentials sign in.
+        if (success && !libraryStore.isLibraryTokenValid && !libraryService.hasAccountOtherThan(studentId)) {
+            signInToLibrary(studentId, password, libraryAccount, school)
+        }
         return success
     }
 

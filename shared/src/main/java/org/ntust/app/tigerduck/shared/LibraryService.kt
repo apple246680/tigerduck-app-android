@@ -104,6 +104,17 @@ class LibraryService(
         get() = credentials.isLibraryTokenValid || canSignInWithStoredCredentials
 
     /**
+     * Whether [hasAccount] holds for a library account of another student ID
+     * than [studentId], compared without case. A school sign-in keeps such an
+     * account, as a school sign-out does.
+     */
+    fun hasAccountOtherThan(studentId: String): Boolean {
+        if (!hasAccount) return false
+        val username = credentials.libraryUsername ?: return false
+        return !username.equals(studentId, ignoreCase = true)
+    }
+
+    /**
      * Signs in with the stored credentials when there is no live token, so the
      * Library page shows its code at once: at launch and on each return to the
      * app. Not after a refusal, not within [SIGN_IN_PAUSE_MS] of another

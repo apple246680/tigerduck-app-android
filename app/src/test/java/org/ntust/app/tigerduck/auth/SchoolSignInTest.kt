@@ -33,6 +33,7 @@ class SchoolSignInTest {
         override var libraryPassword: String? = null
         override var libraryToken: String? = null
         override var libraryTokenExpiry: Long = 0L
+        override var libraryPasswordRefused: Boolean = false
         override val isLibraryTokenValid: Boolean
             get() = libraryToken != null && System.currentTimeMillis() < libraryTokenExpiry
         /** Runs as the library account generation is read. */
@@ -216,18 +217,43 @@ class SchoolSignInTest {
     }
 
     /**
-     * As on the iPhone (`AuthService.loginToLibraryIfNeeded`), only a live library token skips
-     * the step: an account whose day-long token has run out, another student's included, gives
-     * way to the school account's when the library takes its password.
+     * As on the iPhone (tigerduck-app/tigerduck-app#542): a library account of another student
+     * ID that can still sign in by itself stays, as a school sign-out keeps it, though its
+     * day-long token has run out.
      */
     @Test
-    fun `a library account whose token has run out gives way to the school account's`() = runTest {
+    fun `another student's library account that can still sign in is kept`() = runTest {
         library.saveLibrarySignIn(library.libraryAccountGeneration, "B10000009", "theirs", "expired", 1L, byUser = true)
+
+        assertTrue(signIn.typed("b10000001", "pw"))
+
+        assertEquals(0, librarySignIns)
+        assertEquals("B10000009", library.libraryUsername)
+        assertEquals("theirs", library.libraryPassword)
+    }
+
+    @Test
+    fun `another student's library account the library refused gives way to the school account's`() = runTest {
+        library.saveLibrarySignIn(library.libraryAccountGeneration, "B10000009", "theirs", "expired", 1L, byUser = true)
+        library.libraryPasswordRefused = true
 
         assertTrue(signIn.typed("B10000001", "pw"))
 
         assertEquals(1, librarySignIns)
         assertEquals("B10000001", library.libraryUsername)
+        assertEquals("token", library.libraryToken)
+    }
+
+    /** The student's own library account takes the school credentials once its token has run out, as before. */
+    @Test
+    fun `the same student's library account whose token has run out signs in with the school credentials`() = runTest {
+        library.saveLibrarySignIn(library.libraryAccountGeneration, "b10000001", "library", "expired", 1L, byUser = true)
+
+        assertTrue(signIn.typed("B10000001", "pw"))
+
+        assertEquals(1, librarySignIns)
+        assertEquals("B10000001", library.libraryUsername)
+        assertEquals("pw", library.libraryPassword)
         assertEquals("token", library.libraryToken)
     }
 
