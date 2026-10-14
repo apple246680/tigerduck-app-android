@@ -42,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -64,6 +65,7 @@ import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.moodle.MoodleAttachment
 import org.ntust.app.tigerduck.data.moodle.MoodleCourseStore
+import org.ntust.app.tigerduck.data.moodle.MoodleLookup
 import org.ntust.app.tigerduck.mail.resolveAttachmentMimeType
 import org.ntust.app.tigerduck.data.moodle.MoodlePersonName
 import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussion
@@ -92,8 +94,16 @@ fun MoodleAnnouncementScreen(
     val list = pages?.list?.collectAsStateWithLifecycle()?.value
     val discussion = list?.discussions?.firstOrNull { it.id == discussionId }
 
-    // Opened with nothing cached to show it from, as after the system ended the app.
-    LaunchedEffect(store) { store?.ensureAnnouncement(discussionId) }
+    // Opened with nothing cached to show it from, as after the system ended the app: fetched, or
+    // its failure shown with Retry; one that is gone closes the page.
+    var lookup by remember { mutableStateOf<MoodleLookup?>(null) }
+    var attempt by remember { mutableIntStateOf(0) }
+    LaunchedEffect(store, attempt) {
+        val current = store ?: return@LaunchedEffect
+        lookup = null
+        lookup = current.ensureAnnouncement(discussionId)
+    }
+    if (lookup == MoodleLookup.Missing) LaunchedEffect(Unit) { onBack() }
 
     // Coming back from a screen pushed over this one is not another opening.
     var opened by rememberSaveable { mutableStateOf(false) }
@@ -123,7 +133,7 @@ fun MoodleAnnouncementScreen(
         ) {
             val current = store
             if (discussion == null || current == null) {
-                MoodleFirstLoad(failure = null, onRetry = {})
+                MoodleFirstLoad(failure = (lookup as? MoodleLookup.Failed)?.error, onRetry = { attempt++ })
             } else {
                 AnnouncementBody(current, discussion, browserPreference, onOpenRoute)
             }

@@ -348,4 +348,37 @@ class MoodleCourseStoreTest {
         assertEquals(1, decoded)
         assertTrue(background.used > 0)
     }
+
+    @Test
+    fun `an announcement older than the first page is found on the pages after it`() = runTest(UnconfinedTestDispatcher()) {
+        api.forumList = listOf(testForum(1, courseId = 5, type = "news", count = 25))
+        api.pages = mapOf(
+            0 to (1..20).map { testDiscussion(it, created = 1_000L - it) },
+            1 to (21..25).map { testDiscussion(it, created = 1_000L - it) },
+        )
+
+        assertEquals(MoodleLookup.Found, store().ensureAnnouncement(24))
+    }
+
+    @Test
+    fun `an announcement that is gone, or a fetch that failed, says so rather than waiting`() = runTest(UnconfinedTestDispatcher()) {
+        api.forumList = listOf(testForum(1, courseId = 5, type = "news", count = 1))
+        api.pages = mapOf(0 to listOf(testDiscussion(10)))
+        assertEquals(MoodleLookup.Missing, store().ensureAnnouncement(99))
+
+        cache.files.clear()
+        api.failNextPage = true
+        val failed = store().ensureAnnouncement(10)
+        assertTrue((failed as MoodleLookup.Failed).error is IOException)
+    }
+
+    @Test
+    fun `a member page says when its member is gone or the fetch failed`() = runTest(UnconfinedTestDispatcher()) {
+        api.membersAnswer = { MoodleMemberList(1, emptyList()) }
+        assertEquals(MoodleLookup.Missing, store().ensureMember(7))
+
+        cache.files.clear()
+        api.membersAnswer = { throw IOException("offline") }
+        assertTrue((store().ensureMember(7) as MoodleLookup.Failed).error is IOException)
+    }
 }

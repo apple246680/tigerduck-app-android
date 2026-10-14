@@ -153,15 +153,27 @@ class MoodleCourseStore(
 
     /**
      * What an announcement opened with nothing cached needs, as after the system ended the app:
-     * the course's forums, then its announcements, each fetched only when the cache lacks it.
+     * the course's forums, then its announcements, each fetched only when the cache lacks it, and
+     * further pages while the announcement is older than those listed.
      */
-    suspend fun ensureAnnouncement(discussionId: Int) {
+    suspend fun ensureAnnouncement(discussionId: Int): MoodleLookup {
         awaitCache()
         if (currentNewsForum() == null) refreshForums()
-        val pages = announcementPages() ?: return
+        val pages = announcementPages()
+            ?: return forums.state.value.failure?.let(MoodleLookup::Failed) ?: MoodleLookup.Missing
         pages.feed.awaitCache()
-        val listed = pages.feed.value?.takeIf { it.forumId == pages.forumId }?.discussions.orEmpty()
-        if (listed.none { it.id == discussionId }) pages.refresh()
+        fun listed(): Boolean = pages.feed.value?.takeIf { it.forumId == pages.forumId }
+            ?.discussions.orEmpty().any { it.id == discussionId }
+        if (listed()) return MoodleLookup.Found
+        pages.refresh()
+        if (!listed()) pages.feed.state.value.failure?.let { return MoodleLookup.Failed(it) }
+        var loaded = 0
+        while (!listed() && loaded++ < MAX_LOOKUP_PAGES) {
+            val list = pages.feed.value?.takeIf { it.forumId == pages.forumId && it.hasMore } ?: break
+            pages.loadMore(MoodleDiscussions.sorted(list, pages.byModified).lastOrNull()?.id)
+            pages.pageFailure.value?.let { return MoodleLookup.Failed(it) }
+        }
+        return if (listed()) MoodleLookup.Found else MoodleLookup.Missing
     }
 
     /**
@@ -205,9 +217,12 @@ class MoodleCourseStore(
     }
 
     /** What a member's page opened with nothing cached needs: the members, when the cache lacks them. */
-    suspend fun ensureMember(memberId: Int) {
+    suspend fun ensureMember(memberId: Int): MoodleLookup {
         awaitCache()
-        if (member(memberId) == null) refreshMembers()
+        if (member(memberId) != null) return MoodleLookup.Found
+        refreshMembers()
+        if (member(memberId) != null) return MoodleLookup.Found
+        return members.state.value.failure?.let(MoodleLookup::Failed) ?: MoodleLookup.Missing
     }
 
     /**
@@ -350,6 +365,9 @@ class MoodleCourseStore(
     companion object {
         private const val TAG = "MoodleCourseStore"
 
+        /** How many pages an announcement opened cold is looked for in. */
+        private const val MAX_LOOKUP_PAGES = 10
+
         val FORUM_FUNCTIONS = setOf(MoodleCourseApi.FORUMS_FUNCTION, MoodleCourseApi.DISCUSSIONS_FUNCTION)
 
         /**
@@ -379,4 +397,11 @@ sealed interface MoodleAttachment {
     data class Local(val file: File) : MoodleAttachment
     data class Link(val url: String) : MoodleAttachment
     data class Failed(val error: Throwable) : MoodleAttachment
+}
+
+/** What a page opened with nothing cached found: what it shows, nothing (it is gone), or why not. */
+sealed interface MoodleLookup {
+    data object Found : MoodleLookup
+    data object Missing : MoodleLookup
+    data class Failed(val error: Throwable) : MoodleLookup
 }

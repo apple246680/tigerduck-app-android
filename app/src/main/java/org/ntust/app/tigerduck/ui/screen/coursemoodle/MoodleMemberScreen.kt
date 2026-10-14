@@ -30,6 +30,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -44,6 +48,7 @@ import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.ntust.app.tigerduck.R
+import org.ntust.app.tigerduck.data.moodle.MoodleLookup
 import org.ntust.app.tigerduck.data.moodle.MoodleMemberPlacement
 import org.ntust.app.tigerduck.data.moodle.name
 import org.ntust.app.tigerduck.data.moodle.studentId
@@ -72,8 +77,16 @@ fun MoodleMemberScreen(
     val pictures = current?.pictures?.collectAsStateWithLifecycle()?.value.orEmpty()
     val member = members?.members?.firstOrNull { it.id == memberId }
     LaunchedEffect(member?.pictureUrl) { if (member != null && current != null) current.loadPicture(member) }
-    // Opened with no members cached, as after the system ended the app.
-    LaunchedEffect(current) { current?.ensureMember(memberId) }
+    // Opened with no members cached, as after the system ended the app: fetched, or its failure
+    // shown with Retry; a member no longer in the course closes the page.
+    var lookup by remember { mutableStateOf<MoodleLookup?>(null) }
+    var attempt by remember { mutableIntStateOf(0) }
+    LaunchedEffect(current, attempt) {
+        val store = current ?: return@LaunchedEffect
+        lookup = null
+        lookup = store.ensureMember(memberId)
+    }
+    if (lookup == MoodleLookup.Missing) LaunchedEffect(Unit) { onBack() }
 
     Scaffold(
         topBar = {
@@ -91,7 +104,7 @@ fun MoodleMemberScreen(
                 .padding(padding),
         ) {
             if (member == null) {
-                MoodleFirstLoad(failure = null, onRetry = {})
+                MoodleFirstLoad(failure = (lookup as? MoodleLookup.Failed)?.error, onRetry = { attempt++ })
             } else {
                 MemberProfile(
                     member = member,
