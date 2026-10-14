@@ -224,17 +224,60 @@ class MoodleWebserviceTest {
     }
 
     @Test
-    fun `cancelling a download cancels its request`() = kotlinx.coroutines.runBlocking {
+    fun `a length over the limit stops before the body is read`() = runTest {
+        var reads = 0
+        val body = object : okio.Source {
+            override fun read(sink: okio.Buffer, byteCount: Long): Long {
+                reads++
+                sink.write(ByteArray(10))
+                return 10
+            }
+            override fun timeout() = okio.Timeout.NONE
+            override fun close() = Unit
+        }.buffer()
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("")
+                .body(object : okhttp3.ResponseBody() {
+                    override fun contentType() = "application/pdf".toMediaType()
+                    override fun contentLength() = 5_000L
+                    override fun source(): okio.BufferedSource = body
+                })
+                .build()
+        }.build()
+        val target = tmp.newFile()
+
+        val error = runCatching {
+            MoodleWebservice({ client }, Tokens("t1")).downloadTo(fileRequest, target, "application/pdf", maxBytes = 1_000)
+        }.exceptionOrNull()
+
+        assertTrue("got $error", error is MoodleWebserviceError.MalformedResponse)
+        assertEquals("not a byte read", 0, reads)
+        assertEquals(0L, target.length())
+    }
+
+    @Test
+    fun `cancelling a download cancels its request, even with a read stuck on the network`() = kotlinx.coroutines.runBlocking {
         var call: okhttp3.Call? = null
+        val stuck = java.util.concurrent.CountDownLatch(1)
         val client = OkHttpClient.Builder().addInterceptor { chain ->
             call = chain.call()
-            val endless = object : okio.Source {
+            var sent = false
+            val stalled = object : okio.Source {
                 override fun read(sink: okio.Buffer, byteCount: Long): Long {
-                    // A slow network: a byte at a time until the call is cancelled.
-                    if (chain.call().isCanceled()) throw java.io.IOException("Canceled")
-                    Thread.sleep(5)
-                    sink.writeByte(0)
-                    return 1
+                    if (!sent) {
+                        sent = true
+                        sink.write(ByteArray(10))
+                        return 10
+                    }
+                    // A network that went quiet: the read returns only once the call is cancelled.
+                    stuck.countDown()
+                    val giveUp = System.nanoTime() + 10_000_000_000L
+                    while (!chain.call().isCanceled() && System.nanoTime() < giveUp) Thread.sleep(5)
+                    throw java.io.IOException("Canceled")
                 }
                 override fun timeout() = okio.Timeout.NONE
                 override fun close() = Unit
@@ -247,20 +290,28 @@ class MoodleWebserviceTest {
                 .body(object : okhttp3.ResponseBody() {
                     override fun contentType() = "application/pdf".toMediaType()
                     override fun contentLength() = -1L
-                    override fun source(): okio.BufferedSource = endless.buffer()
+                    override fun source(): okio.BufferedSource = stalled.buffer()
                 })
                 .build()
         }.build()
         val target = tmp.newFile()
+        var failure: Throwable? = null
 
         val job = launch(kotlinx.coroutines.Dispatchers.Default) {
-            MoodleWebservice({ client }, Tokens("t1")).downloadTo(fileRequest, target, "application/pdf", maxBytes = Long.MAX_VALUE)
+            try {
+                MoodleWebservice({ client }, Tokens("t1")).downloadTo(fileRequest, target, "application/pdf", maxBytes = Long.MAX_VALUE)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                failure = e
+            }
         }
-        while (call == null) kotlinx.coroutines.delay(10)
-        kotlinx.coroutines.delay(50)
+        assertTrue("the read got stuck", stuck.await(5, java.util.concurrent.TimeUnit.SECONDS))
         kotlinx.coroutines.withTimeout(2_000) { job.cancelAndJoin() }
 
         assertTrue(call!!.isCanceled())
+        assertTrue(job.isCancelled)
+        assertEquals("a cancellation, not a network failure", null, failure)
     }
 
     @Test
