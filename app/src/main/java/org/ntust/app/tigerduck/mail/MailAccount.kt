@@ -134,6 +134,16 @@ class MailAccount @Inject constructor(
         }
     }
 
+    /**
+     * Signs out when the mail account is [studentId]'s, as a school sign-out takes the library
+     * account; another student's mail account stays signed in.
+     */
+    fun signOutIfSchoolAccount(studentId: String): Boolean {
+        if (credentials.mailStudentId?.equals(studentId, ignoreCase = true) != true) return false
+        signOut()
+        return true
+    }
+
     /** The server rejected the stored password: stop everything, never retry (spec §7.4). */
     fun onAuthFailure() {
         state.authFailed = true

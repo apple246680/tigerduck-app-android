@@ -48,6 +48,21 @@ class MailAccountTest {
     }
 
     @Test
+    fun `a school sign-out signs out only the same student's mail`() = runTest {
+        // As the library goes with the school account (tigerduck-app/tigerduck-app#454).
+        val account = account()
+        account.signIn("b10000001", "pw")
+
+        assertFalse(account.signOutIfSchoolAccount("B10000002"))
+        assertTrue(account.signedIn.value)
+
+        assertTrue(account.signOutIfSchoolAccount("B10000001"))
+        assertFalse(account.signedIn.value)
+        assertNull(credentials.mailPassword)
+        assertEquals(1, scheduler.cancelled)
+    }
+
+    @Test
     fun `failures store nothing`() = runTest {
         val account = account()
         assertTrue(account.signIn("b10000001", "wrong") is MailError.AuthFailed)
