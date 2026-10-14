@@ -74,20 +74,35 @@ class MoodleTokenService @Inject constructor(
 
     fun currentToken(): String? = credentialManager.moodleToken
 
-    private val coordinator = MoodleTokenCoordinator(
-        tokens = object : MoodleTokenCoordinator.Tokens {
+    /** The private token is kept beside the wstoken it came with; see [MoodleTokenPairs]. */
+    private val tokens = MoodleTokenPairs(
+        object : MoodleTokenPairStore {
             override var token: String?
                 get() = credentialManager.moodleToken
                 set(value) {
                     credentialManager.moodleToken = value
                 }
+            override var privateToken: String?
+                get() = credentialManager.moodlePrivateToken
+                set(value) {
+                    credentialManager.moodlePrivateToken = value
+                }
             override val studentId: String? get() = credentialManager.ntustStudentId
             override val password: String? get() = credentialManager.ntustPassword
-            override fun storeIfSignedIn(studentId: String, token: String): Boolean =
-                credentialManager.storeMoodleTokenIfSignedIn(studentId, token)
+            override fun storeIfSignedIn(studentId: String, token: String, privateToken: String?): Boolean =
+                credentialManager.storeMoodleTokenIfSignedIn(studentId, token, privateToken)
         },
+    )
+
+    /** The stored private token, which only asks Moodle for an autologin key. Never logged. */
+    fun currentPrivateToken(): String? = credentialManager.moodlePrivateToken
+
+    private val coordinator = MoodleTokenCoordinator(
+        tokens = tokens,
         login = { studentId, password ->
-            performOidcLogin(studentId, password).wstoken.also {
+            val triple = performOidcLogin(studentId, password)
+            tokens.harvested(triple.wstoken, triple.privatetoken)
+            triple.wstoken.also {
                 Log.i("MoodleTokenService", "harvested wstoken (len=${it.length})")
             }
         },
