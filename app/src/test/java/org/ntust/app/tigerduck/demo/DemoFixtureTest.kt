@@ -42,6 +42,11 @@ class DemoFixtureTest {
           "calendar": [
             { "title": "開學日", "date": "2026-09-14" },
             { "title": "no date", "date": "" }
+          ],
+          "classmates": [
+            { "studentId": " b11308965 ", "nickname": { "zh": "小鴨", "en": "Duckling" },
+              "courses": [ { "courseNo": "MA2012301", "name": "Probability", "schedule": { "2": ["3"] } } ] },
+            { "nickname": "no student ID", "courses": [] }
           ]
         }
     """.trimIndent()
@@ -77,6 +82,12 @@ class DemoFixtureTest {
 
         assertEquals("https://example.com", fixture.libraryQrContent)
         assertTrue(fixture.libraryFakeSignedIn)
+
+        val classmate = fixture.classmates!!.single()
+        assertEquals("B11308965", classmate.studentId)
+        assertEquals("Duckling", classmate.nickname)
+        assertEquals(listOf("MA2012301"), classmate.courses.map { it.courseNo })
+        assertEquals("小鴨", DemoFixture.parse(sample, DemoFixture.LANG_ZH).classmates!!.single().nickname)
     }
 
     @Test
@@ -93,6 +104,7 @@ class DemoFixtureTest {
         assertNull(fixture.assignments)
         assertNull(fixture.bulletins)
         assertNull(fixture.calendar)
+        assertNull(fixture.classmates)
         assertFalse(fixture.libraryFakeSignedIn)
     }
 
@@ -123,6 +135,8 @@ class DemoFixtureTest {
         assertFalse(DemoFixture.parse("{}", DemoFixture.LANG_EN).matches("", ""))
     }
 
+    private fun root() = com.google.gson.JsonParser.parseString(File("src/main/assets/demo.json").readText()).asJsonObject
+
     @Test
     fun `the shipped demo account parses in full`() {
         val json = File("src/main/assets/demo.json").readText()
@@ -134,6 +148,12 @@ class DemoFixtureTest {
             assertEquals(3, fixture.calendar!!.size)
             assertTrue(fixture.libraryFakeSignedIn)
             assertTrue(fixture.courses!!.all { it.courseName.isNotBlank() })
+            val classmate = fixture.classmates!!.single()
+            assertEquals(5, classmate.courses.size)
+            // A share code names the classmate and carries each course, so the import is real.
+            assertTrue(org.ntust.app.tigerduck.data.sharing.ClassTableShare.canName(classmate.studentId))
+            assertTrue(classmate.courses.all { it.courseNo.matches(Regex("3?[A-Z]{2}[A-Z0-9]{6,7}")) })
+            assertTrue(classmate.studentId != root().get("studentId").asString.uppercase())
         }
         // Read back from the file rather than repeated here, so a new
         // password there needs no edit to this test.

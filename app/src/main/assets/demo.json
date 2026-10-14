@@ -187,6 +187,56 @@
     }
   ],
 
+  "classmates": [
+    {
+      "studentId": "B11308965",
+      "nickname": { "zh": "小鴨", "en": "Duckling" },
+      "courses": [
+        {
+          "courseNo": "CS3005301",
+          "name": { "zh": "資料結構", "en": "Data Structures" },
+          "instructor": { "zh": "王小明", "en": "Wang Hsiao-Ming" },
+          "credits": 3,
+          "classroom": "TR-513",
+          "schedule": { "1": ["2", "3", "4"], "3": ["6", "7"] },
+          "classroomMap": { "3-6": "TR-215", "3-7": "TR-215" }
+        },
+        {
+          "courseNo": "MA2012301",
+          "name": { "zh": "機率", "en": "Probability" },
+          "instructor": { "zh": "陳美玲", "en": "Chen Mei-Ling" },
+          "credits": 3,
+          "classroom": "TR-411",
+          "schedule": { "2": ["3", "4"], "4": ["3", "4"] }
+        },
+        {
+          "courseNo": "CS3011301",
+          "name": { "zh": "計算機網路", "en": "Computer Networks" },
+          "instructor": { "zh": "林志豪", "en": "Lin Chih-Hao" },
+          "credits": 3,
+          "classroom": "RB-105",
+          "schedule": { "3": ["3", "4"], "5": ["8"] }
+        },
+        {
+          "courseNo": "PE1018301",
+          "name": { "zh": "羽球", "en": "Badminton" },
+          "instructor": { "zh": "張育成", "en": "Chang Yu-Cheng" },
+          "credits": 0,
+          "classroom": "Gym",
+          "schedule": { "5": ["3", "4"] }
+        },
+        {
+          "courseNo": "EE2004301",
+          "name": { "zh": "線性代數", "en": "Linear Algebra" },
+          "instructor": { "zh": "張志豪", "en": "Chang Chih-Hao" },
+          "credits": 3,
+          "classroom": "EE-201",
+          "schedule": { "2": ["6", "7"], "4": ["8"] }
+        }
+      ]
+    }
+  ],
+
   "assignments": [
     {
       "id": "900001",
