@@ -214,17 +214,19 @@ object AssignmentOverrideReconciler {
      * Whether a full sync leaves this device's overrides as they are: from
      * turning the Assignments sync back on until the re-enable check finds
      * no difference or the user's answer to it has been applied. Taking the
-     * server's set in that window would answer for the user.
+     * server's set in that window would answer for the user. The account's
+     * one-time first-sync upload ([isFirstUpload]) does not wait for it, on
+     * either app: Home's sync sends it whatever the check says.
      */
     fun isHeldForReenable(pendingConflictCategories: Set<String>): Boolean =
         REENABLE_CATEGORY in pendingConflictCategories
 
     /**
-     * Why a full sync leaves this device's marks as they are — neither taking
-     * the server's nor sending its own up as a first sync — or null to sync
+     * Why a full sync leaves this device's marks as they are, or null to sync
      * them. [syncsMarks] is the Assignments sync switch: with it off, the
-     * done and ignored marks are this device's own, as on iOS. The re-enable
-     * check holds them too; see [isHeldForReenable].
+     * done and ignored marks are this device's own, as on iOS, and not even
+     * the first-sync upload goes. The re-enable check holds them too, except
+     * from that upload; see [isHeldForReenable].
      */
     fun reasonToLeaveMarks(syncsMarks: Boolean, pendingConflictCategories: Set<String>): String? = when {
         !syncsMarks -> "Assignments sync is off"

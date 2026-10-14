@@ -47,8 +47,8 @@ internal class AssignmentMarkStep(
      * upload is pinned to.
      */
     suspend fun pull(state: HomeSyncState, result: BackendSyncResult, syncsMarks: Boolean, signIn: Int): Boolean {
-        AssignmentOverrideReconciler.reasonToLeaveMarks(syncsMarks, pendingConflicts())?.let { reason ->
-            Log.i(TAG, "[Sync] leaving assignment marks alone: $reason")
+        if (!syncsMarks) {
+            Log.i(TAG, "[Sync] leaving assignment marks alone: Assignments sync is off")
             return false
         }
         val localIgnored = store.ignored()
@@ -67,6 +67,14 @@ internal class AssignmentMarkStep(
             val allSent = sendFirstSyncMarks(localIgnored, localCompleted) { id, status -> send(id, status, signIn) }
             // Switched off meanwhile, the rest were never sent.
             return allSent && switchOn()
+        }
+
+        // After the first-sync upload, which does not wait for the re-enable
+        // check (decided for both apps, as on iOS): only taking the server's
+        // marks over this phone's waits for the user's answer.
+        AssignmentOverrideReconciler.reasonToLeaveMarks(syncsMarks, pendingConflicts())?.let { reason ->
+            Log.i(TAG, "[Sync] leaving assignment marks alone: $reason")
+            return false
         }
 
         val byId = state.allAssignments.value.associateBy { it.assignmentId }

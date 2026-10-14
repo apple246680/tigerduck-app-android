@@ -116,6 +116,29 @@ class AssignmentMarkStepTest {
     }
 
     @Test
+    fun `the first-sync upload goes up while the re-enable check waits for an answer`() = runTest {
+        // Decided for both apps (tigerduck-app-android#188): the one-time
+        // upload does not wait for the check, as on iOS.
+        pending = setOf("assignments")
+        ignored = setOf("1")
+
+        val synced = step.pull(state, server(), syncsMarks = true, signIn = SIGN_IN)
+
+        assertTrue(synced)
+        assertEquals(listOf(1 to STATUS_IGNORED), sent)
+    }
+
+    @Test
+    fun `with the switch off the first-sync upload does not go up while the check waits either`() = runTest {
+        switchOn = false
+        pending = setOf("assignments")
+        ignored = setOf("1")
+
+        assertFalse(step.pull(state, server(), syncsMarks = false, signIn = SIGN_IN))
+        assertEquals(emptyList<Pair<Int, String>>(), sent)
+    }
+
+    @Test
     fun `the account's first sync here sends this phone's marks up instead of taking the empty server`() = runTest {
         ignored = setOf("1")
 
