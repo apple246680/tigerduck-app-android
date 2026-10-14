@@ -28,11 +28,11 @@ class MoodleHtmlTextTest {
     @Test
     fun `links resolve against the site and only safe schemes stay links`() {
         assertEquals(
-            "[Notes](<https://moodle2.ntust.edu.tw/mod/page/view.php?id=1>) and run",
+            "[Notes](https://moodle2.ntust.edu.tw/mod/page/view.php?id=1) and run",
             MoodleHtmlText.markdown("""<p><a href="/mod/page/view.php?id=1">Notes</a> and <a href="javascript:alert(1)">run</a></p>"""),
         )
         assertEquals(
-            "[a@b.tw](<mailto:a@b.tw>)",
+            "[a@b.tw](mailto:a@b.tw)",
             MoodleHtmlText.markdown("""<a href="mailto:a@b.tw">a@b.tw</a>"""),
         )
     }
@@ -40,8 +40,16 @@ class MoodleHtmlTextTest {
     @Test
     fun `an image becomes a link to it`() {
         assertEquals(
-            "[chart](<https://moodle2.ntust.edu.tw/pluginfile.php/1/chart.png>)",
+            "[chart](https://moodle2.ntust.edu.tw/pluginfile.php/1/chart.png)",
             MoodleHtmlText.markdown("""<img src="https://moodle2.ntust.edu.tw/pluginfile.php/1/chart.png" alt="chart">"""),
+        )
+    }
+
+    @Test
+    fun `a destination with brackets or spaces stays one link`() {
+        assertEquals(
+            "[Week 1](https://moodle2.ntust.edu.tw/pluginfile.php/1/Week%201%28a%29.pdf)",
+            MoodleHtmlText.markdown("""<a href="https://moodle2.ntust.edu.tw/pluginfile.php/1/Week 1(a).pdf">Week 1</a>"""),
         )
     }
 

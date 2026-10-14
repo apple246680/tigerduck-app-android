@@ -208,7 +208,7 @@ private class MarkdownWriter(private val baseUrl: String) {
         val url = linkUrl(href, baseUrl) ?: return content
         val text = content.trim(' ')
         val label = text.ifEmpty { MoodleHtmlText.escaped(url) }
-        return "[$label](<$url>)"
+        return "[$label](${destination(url)})"
     }
 
     private fun image(element: Element): String {
@@ -219,7 +219,24 @@ private class MarkdownWriter(private val baseUrl: String) {
             val last = url.substringBefore('?').substringAfterLast('/')
             runCatching { java.net.URLDecoder.decode(last, "UTF-8") }.getOrDefault(last)
         }
-        return "[${MoodleHtmlText.escaped(name.ifEmpty { url })}](<$url>)"
+        return "[${MoodleHtmlText.escaped(name.ifEmpty { url })}](${destination(url)})"
+    }
+
+    /**
+     * [url] as a bare link destination, with what would end or break one percent-encoded. The
+     * angle-bracket form, which needs none of this, is not one the app's Markdown renderer reads.
+     */
+    private fun destination(url: String): String = buildString {
+        for (c in url) {
+            when (c) {
+                ' ' -> append("%20")
+                '(' -> append("%28")
+                ')' -> append("%29")
+                '<' -> append("%3C")
+                '>' -> append("%3E")
+                else -> append(c)
+            }
+        }
     }
 
     private fun list(element: Element, ordered: Boolean): String {
