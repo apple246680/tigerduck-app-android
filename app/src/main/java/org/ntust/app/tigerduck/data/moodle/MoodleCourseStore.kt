@@ -117,6 +117,12 @@ class MoodleCourseStore(
         scope.launch { refreshSummary() }
     }
 
+    /** Fetches every kind again, the announcements opened included, as for another language. */
+    fun reloadAll() {
+        retrySection()
+        synchronized(this) { discussionPages.values.toList() }.forEach { pages -> scope.launch { pages.refresh() } }
+    }
+
     /** What the foot of the section shows; null while the course has no summary worth showing. */
     val shownSummary: StateFlow<MoodleCourseSummary?> = summary.state
         .map { state -> state.value?.takeIf { MoodleSections.isWorthShowing(it, courseCodes) } }

@@ -40,7 +40,9 @@ class MoodleCourseRepositoryTest {
     private var account: String? = "B11300001"
     private var demo = false
     private val live = Api("live")
-    private val demoApi = Api("demo")
+    private var demoGrade = "demo"
+    private val languageChanges = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    private val cachedFor = mutableListOf<String>()
 
     private val noCache = object : MoodleCachePort {
         override suspend fun <T> load(type: Type, name: String): Pair<T, Long>? = null
@@ -52,15 +54,16 @@ class MoodleCourseRepositoryTest {
         account = { account },
         isDemo = { demo },
         liveApi = live,
-        demoApi = { demoApi },
+        demoApi = { Api(demoGrade) },
         idMap = { mapOf("1151CS3005301" to 5) },
-        cachePort = { noCache },
+        cachePort = { account -> cachedFor += account; noCache },
         picturesDir = { null },
         openedFilesDir = { null },
         decode = { null },
         authState = authState,
         appScope = backgroundScope,
         newScope = { kotlinx.coroutines.CoroutineScope(backgroundScope.coroutineContext + kotlinx.coroutines.SupervisorJob()) },
+        languageChanges = languageChanges,
     )
 
     @Test
@@ -120,5 +123,33 @@ class MoodleCourseRepositoryTest {
 
         assertFalse("its fetches were stopped with the sign-out", before.isCurrent())
         assertTrue(repository.store(5)!!.isCurrent())
+    }
+
+    @Test
+    fun `the demo account's Moodle follows a change of language, in stores already built`() = runTest(UnconfinedTestDispatcher()) {
+        demo = true
+        val repository = repository()
+        val store = repository.store(5)!!
+        store.refreshGrades()
+        assertEquals("demo", store.grades.value!!.items.single().grade)
+
+        demoGrade = "示範"
+        languageChanges.emit(Unit)
+
+        assertEquals("示範", store.grades.value!!.items.single().grade)
+        store.refreshGrades()
+        assertEquals("and stays so", "示範", store.grades.value!!.items.single().grade)
+    }
+
+    @Test
+    fun `the demo account's copies stay in memory, so a restart shows the language the app has then`() = runTest(UnconfinedTestDispatcher()) {
+        demo = true
+        repository().store(5)
+
+        assertTrue("nothing kept on disk for the demo account", cachedFor.isEmpty())
+
+        demo = false
+        repository().store(5)
+        assertEquals(listOf("B11300001"), cachedFor)
     }
 }
