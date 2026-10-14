@@ -98,6 +98,10 @@ class EmptyClassroomViewModel internal constructor(
     private var isStarted = false
     private var loadJob: Job? = null
     private var tickerJob: Job? = null
+    private var coursesJob: Job? = null
+
+    /** Moved by each account change, so a course read started for the account before shows nothing. */
+    private var accountEpoch = 0
 
     /** The day the load in flight reads, and which load it is. */
     private var running: Pair<LocalDate, Int>? = null
@@ -144,18 +148,35 @@ class EmptyClassroomViewModel internal constructor(
      */
     fun accountChanged() {
         stopLoading()
+        accountEpoch++
+        coursesJob?.cancel()
+        coursesJob = null
+        courses = emptyList()
         _state.update {
-            it.copy(content = FinderContent.Loading, pickedBuilding = env.pickedBuilding, isRefreshing = false)
+            it.copy(
+                content = FinderContent.Loading,
+                classes = emptyList(),
+                pickedBuilding = env.pickedBuilding,
+                isRefreshing = false,
+            )
         }
         if (!isStarted) return
         reloadCourses()
         load(force = false)
     }
 
-    /** The user's classes come from the class table, which a sync can change while the screen is open. */
+    /**
+     * The user's classes come from the class table, which a sync can change while the screen is
+     * open. The cache read suspends, so a read the account has changed under shows nothing.
+     */
     fun reloadCourses() {
-        viewModelScope.launch {
-            courses = runCatching { env.courses() }.getOrElse { if (it is CancellationException) throw it else emptyList() }
+        coursesJob?.cancel()
+        val epoch = accountEpoch
+        val account = env.account()
+        coursesJob = viewModelScope.launch {
+            val read = runCatching { env.courses() }.getOrElse { if (it is CancellationException) throw it else emptyList() }
+            if (epoch != accountEpoch || env.account() != account) return@launch
+            courses = read
             refreshClasses()
         }
     }

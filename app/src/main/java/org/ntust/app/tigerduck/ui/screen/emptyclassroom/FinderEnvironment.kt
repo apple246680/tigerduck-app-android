@@ -33,6 +33,9 @@ interface FinderEnvironment {
     /** The class table's courses for the term in session, without the ones the user deleted. */
     suspend fun courses(): List<Course>
 
+    /** The account signed in now, which a course read is checked against before it is shown. */
+    fun account(): String?
+
     /** Null while no one is signed in. */
     fun credentials(): ClassroomUsageService.Credentials?
 
@@ -66,6 +69,8 @@ class AppFinderEnvironment @Inject constructor(
     override fun now(): LocalDateTime = AppClock.localDateTime(AppConstants.TAIPEI_ZONE)
 
     override fun calendar(): AcademicCalendar = finderCalendar(demoAccount.isActive, academicCalendar::current)
+
+    override fun account(): String? = authService.storedStudentId
 
     override suspend fun courses(): List<Course> {
         val hidden = CourseTombstoneKeys.hiddenIn(courseService.currentSemesterCode(), dataCache.loadDeletedCourseNos())

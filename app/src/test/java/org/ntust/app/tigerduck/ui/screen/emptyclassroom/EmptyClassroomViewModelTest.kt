@@ -39,10 +39,19 @@ class EmptyClassroomViewModelTest {
         var offline = false
         override var pickedBuilding: String? = null
         override val signedIn = MutableStateFlow(true)
+        var account: String? = "B00000000"
+
+        /** Holds the next course read, which then returns the class table as it was asked for. */
+        var courseReadGate: CompletableDeferred<Unit>? = null
 
         override fun now() = now
         override fun calendar() = calendar
-        override suspend fun courses() = classTable
+        override fun account() = account
+        override suspend fun courses(): List<Course> {
+            val asked = classTable
+            courseReadGate?.let { courseReadGate = null; it.await() }
+            return asked
+        }
         override fun credentials() = ClassroomUsageService.Credentials("B00000000", "not-a-password")
         override fun isCurrent(credentials: ClassroomUsageService.Credentials) = current
         override fun isOffline(error: Throwable) = offline || error is IOException
@@ -211,6 +220,56 @@ class EmptyClassroomViewModelTest {
         harness.model.disappear()
         harness.env.signedIn.value = false
         assertEquals(3, harness.requests)
+    }
+
+    private fun networking(room: String) = Course.fromSchedule(
+        courseNo = "CS1001301",
+        courseName = "計算機網路",
+        schedule = mapOf(3 to listOf("1", "2")),
+        classroomMap = mapOf("3-1" to room, "3-2" to room),
+    )
+
+    @Test
+    fun `an account change drops the classes at once`() {
+        val harness = Harness(time(14, 10, 5))
+        harness.serveDay(listOf(Pages.row("IB-508", "..............")))
+        harness.env.classTable = listOf(networking("TR-214"))
+        harness.model.appear()
+        assertEquals(listOf("TR-214"), harness.state.classes.map { it.room })
+
+        // The new account's course read is held up; the old classes must not wait for it.
+        harness.env.courseReadGate = CompletableDeferred()
+        harness.env.account = null
+        harness.env.signedIn.value = false
+
+        assertTrue(harness.state.classes.isEmpty())
+    }
+
+    @Test
+    fun `a course read started for the account before shows nothing after the account changes`() {
+        val harness = Harness(time(14, 10, 5))
+        harness.serveDay(listOf(Pages.row("IB-508", "..............")))
+        harness.env.classTable = listOf(networking("TR-214"))
+        harness.model.appear()
+
+        // A read of the departing account's courses, which the cache read holds up.
+        val departing = CompletableDeferred<Unit>()
+        harness.env.courseReadGate = departing
+        harness.model.reloadCourses()
+        harness.model.disappear()
+
+        // The account signs out and another signs in while the finder is away.
+        harness.env.account = null
+        harness.env.signedIn.value = false
+        harness.env.account = "B11111111"
+        harness.env.classTable = listOf(networking("IB-305"))
+        harness.env.signedIn.value = true
+        departing.complete(Unit)
+
+        assertTrue(harness.state.classes.isEmpty())
+        harness.serveDay(listOf(Pages.row("IB-508", "..............")))
+        harness.model.appear()
+        assertEquals(listOf("IB-305"), harness.state.classes.map { it.room })
     }
 
     @Test
