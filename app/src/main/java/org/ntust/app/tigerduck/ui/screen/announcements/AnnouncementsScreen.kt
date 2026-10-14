@@ -1,5 +1,7 @@
 package org.ntust.app.tigerduck.ui.screen.announcements
 
+import android.os.SystemClock
+import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -43,6 +45,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -66,6 +69,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -78,6 +82,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -101,6 +108,7 @@ import org.ntust.app.tigerduck.ui.component.rememberAppBarState
 import org.ntust.app.tigerduck.ui.component.rememberChromeContentPadding
 import org.ntust.app.tigerduck.ui.component.rememberSearchRevealState
 import org.ntust.app.tigerduck.ui.component.scrollbar
+import org.ntust.app.tigerduck.ui.component.searchClearIcon
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -160,6 +168,31 @@ fun AnnouncementsScreen(
     // for a search the view model was still carrying when this screen composed -- coming back from
     // a bulletin -- and for a field that takes focus without a gesture having opened anything.
     searchReveal.pinned = searchFocused || state.searchText.isNotEmpty()
+
+    // A search left behind for more than five minutes in the background is cleared, so coming back
+    // later does not open on a stale filtered list; a quick switch to another app keeps it. The
+    // activity's own lifecycle, not this screen's: opening a bulletin stops the screen too.
+    val activityLifecycle = (LocalActivity.current as? LifecycleOwner)?.lifecycle
+    val focusManager = LocalFocusManager.current
+    val currentViewModel by rememberUpdatedState(viewModel)
+    DisposableEffect(activityLifecycle) {
+        var backgroundedAt: Long? = null
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> backgroundedAt = SystemClock.elapsedRealtime()
+                Lifecycle.Event.ON_START -> {
+                    if (bulletinSearchResets(backgroundedAt, SystemClock.elapsedRealtime())) {
+                        focusManager.clearFocus()
+                        currentViewModel.setSearch("")
+                    }
+                    backgroundedAt = null
+                }
+                else -> Unit
+            }
+        }
+        activityLifecycle?.addObserver(observer)
+        onDispose { activityLifecycle?.removeObserver(observer) }
+    }
 
     // Plain Box (not BoxWithConstraints) avoids SubcomposeLayout: the latter
     // re-subcomposes its content lambda whenever incoming constraints change
@@ -395,6 +428,7 @@ private fun SearchBar(
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .onFocusChanged { onFocusChanged(it.isFocused) },
         leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+        trailingIcon = searchClearIcon(value) { onValueChange("") },
         placeholder = { Text(stringResource(R.string.bulletin_search_prompt)) },
         singleLine = true,
         shape = RoundedCornerShape(12.dp),

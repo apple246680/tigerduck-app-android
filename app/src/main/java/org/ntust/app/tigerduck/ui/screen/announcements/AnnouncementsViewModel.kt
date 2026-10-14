@@ -66,6 +66,22 @@ internal fun bulletinPlaceholder(hasItems: Boolean, hasDisplayed: Boolean, loadS
 }
 
 /**
+ * Whether a bulletin answers the search [text]: its title as shown, its original title -- the
+ * shown one may have been cleaned up past the wording someone remembers -- or its summary.
+ */
+internal fun BulletinSummary.matchesSearch(text: String): Boolean =
+    displayTitle.contains(text, ignoreCase = true) ||
+        title.contains(text, ignoreCase = true) ||
+        summary?.contains(text, ignoreCase = true) == true
+
+/** How long the app may sit in the background before the bulletin search is cleared on return. */
+internal const val BULLETIN_SEARCH_RESET_MS = 5 * 60_000L
+
+/** Whether coming back at [now] from the background entered at [backgroundedAt] clears the search. */
+internal fun bulletinSearchResets(backgroundedAt: Long?, now: Long): Boolean =
+    backgroundedAt != null && now - backgroundedAt > BULLETIN_SEARCH_RESET_MS
+
+/**
  * Drives AnnouncementsScreen. Ports BulletinsViewModel.swift faithfully:
  * disk-cache seed → network refresh → background prefetch chain → filter
  * intersection. Sort key is `(postedAt DESC, id DESC)` so server pages and
@@ -398,11 +414,7 @@ class AnnouncementsViewModel @Inject constructor(
             .filter {
                 s.selectedTags.isEmpty() || it.contentTags.any { tag -> tag in s.selectedTags }
             }
-            .filter {
-                if (text.isEmpty()) true
-                else it.displayTitle.contains(text, ignoreCase = true) ||
-                        it.summary?.contains(text, ignoreCase = true) == true
-            }
+            .filter { text.isEmpty() || it.matchesSearch(text) }
             .toList()
         return withDisplayed(s.copy(filtered = filtered))
     }
