@@ -479,7 +479,7 @@ private fun isSameMonth(a: Date, b: Date): Boolean {
 
 
 @Composable
-private fun EventRow(
+internal fun EventRow(
     event: CalendarEvent,
     notifyOnHoliday: Boolean? = null,
     onNotifyOnHolidayChange: ((Boolean) -> Unit)? = null,
