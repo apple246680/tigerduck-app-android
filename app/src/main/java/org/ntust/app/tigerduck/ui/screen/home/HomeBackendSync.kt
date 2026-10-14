@@ -51,6 +51,7 @@ import org.ntust.app.tigerduck.ui.component.ServerFailureSimulator
 import org.ntust.app.tigerduck.ui.component.ServerKind
 import org.ntust.app.tigerduck.ui.component.ServerStatus
 import org.ntust.app.tigerduck.ui.component.ServerStatusTracker
+import org.ntust.app.tigerduck.ui.screen.settings.ReenableCheck
 import org.ntust.app.tigerduck.ui.screen.settings.categoriesSwitchedOn
 import org.ntust.app.tigerduck.ui.screen.settings.categoriesSynced
 import org.ntust.app.tigerduck.ui.screen.settings.categoriesTaken
@@ -109,6 +110,7 @@ class HomeBackendSync @Inject constructor(
     private val academicCalendar: org.ntust.app.tigerduck.academic.AcademicCalendarStore,
     private val courseIgnoreSync: CourseIgnoreSync,
     private val unsentMarks: UnsentMarks,
+    private val reenableCheck: ReenableCheck,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) {
 
@@ -197,6 +199,9 @@ class HomeBackendSync @Inject constructor(
             ServerStatusTracker.set(ServerStatus.OK, ServerKind.BACKEND)
             prefs.setLastSyncSource(SyncSource.BACKEND)
             widgetUpdater.requestUpdate()
+            // A re-enable check that failed runs again here rather than at
+            // the next Settings visit, so what it holds is not held for days.
+            reenableCheck.runIfOwed()
             // A full sync that just succeeded proves a session and a network,
             // so this is where a notification-settings edit (Live Update or
             // assignment reminders) whose push never landed — made while sync

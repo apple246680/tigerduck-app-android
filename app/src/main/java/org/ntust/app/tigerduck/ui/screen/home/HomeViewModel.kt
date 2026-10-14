@@ -100,6 +100,7 @@ class HomeViewModel @Inject constructor(
     private val backendSync: HomeBackendSync,
     private val unsentMarks: UnsentMarks,
     private val localEdits: LocalEdits,
+    private val reenableCheck: org.ntust.app.tigerduck.ui.screen.settings.ReenableCheck,
 ) : ViewModel() {
 
 
@@ -618,7 +619,11 @@ class HomeViewModel @Inject constructor(
         lastKnownRevision = { syncState.lastKnownRevision },
         fullSyncsInFlight = backendPullsInFlight::get,
         fullSync = ::syncAndRepublish,
-    )
+    ).also { outcome ->
+        // Reached the server with nothing new: a re-enable check that failed
+        // runs again here, as after a full sync (which a change starts).
+        if (outcome == RevisionPollOutcome.UNCHANGED) reenableCheck.runIfOwed()
+    }
 
     /**
      * Pull from the backend, then re-publish whatever landed in the cache.

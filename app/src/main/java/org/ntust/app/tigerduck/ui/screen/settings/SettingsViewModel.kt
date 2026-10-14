@@ -74,6 +74,7 @@ class SettingsViewModel @Inject constructor(
     private val demoAccount: DemoAccount,
     private val courseIgnoreSync: CourseIgnoreSync,
     private val unsentMarks: UnsentMarks,
+    private val reenableCheck: ReenableCheck,
     @param:ApplicationScope private val appScope: CoroutineScope,
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
@@ -81,9 +82,6 @@ class SettingsViewModel @Inject constructor(
     private companion object {
         const val TAG = "SyncReenable"
 
-        // Each Settings screen has its own view model, and an answer given
-        // on one is still being applied when the next one checks.
-        val resolutions = ReenableResolutions()
     }
 
     private val _syncDiagnostic = MutableStateFlow(PushDiagnostic(false, false, null))
@@ -205,125 +203,9 @@ class SettingsViewModel @Inject constructor(
         markForReenableCheck(prefs, category, signedIn = authService.authState.value)
     }
 
+    /** See [ReenableCheck.check]; a difference is asked about on this screen. */
     fun checkPendingConflicts() {
-        val pending = prefs.pendingConflictCategories
-        if (pending.isEmpty()) {
-            Log.d(TAG, "[reenable] checkPendingConflicts skip: pending is empty")
-            return
-        }
-        val token = resolutions.checkStarting(::checkPendingConflicts) ?: return
-        Log.i(TAG, "[reenable] checkPendingConflicts start: pending=$pending")
-        val account = authService.storedStudentId
-        val generation = dataCache.userDataGeneration
-        // On the application scope: a check cut short by leaving Settings
-        // would keep "assignments" pending, and the marks held, until
-        // TigerSync is opened again. On Main, like this view model's work.
-        appScope.launch(Dispatchers.Main) {
-            try {
-                val result = syncApiClient.fetchFullSync()
-                val diffs = mutableListOf<String>()
-
-                if ("courses" in pending) {
-                    // Every term Use Local acts on: the server's and the
-                    // catalogue's — see courseListDifference.
-                    val terms = (result.serverCourses.map { it.semester } + semesterCatalog.availableSemesters())
-                        .filterTo(sortedSetOf()) { it.isNotBlank() }
-                    val cached = terms.associateWith { term -> dataCache.loadCourses(term).map { it.courseNo } }
-                    val diff = courseListDifference(result.serverCourses, cached, dataCache.loadDeletedCourseNos())
-                    val localOnly = diff.localOnly
-                    val serverOnly = diff.serverOnly
-                    Log.i(TAG, "[reenable] courses: terms=${terms.size} localOnly=$localOnly serverOnly=$serverOnly")
-                    if (diff.differs) {
-                        diffs.add(when {
-                            localOnly > 0 && serverOnly > 0 -> context.getString(R.string.sync_conflict_reenable_courses, localOnly.toString(), serverOnly.toString())
-                            localOnly > 0 -> context.getString(R.string.sync_conflict_reenable_courses_local_only, localOnly.toString())
-                            else -> context.getString(R.string.sync_conflict_reenable_courses_server_only, serverOnly.toString())
-                        })
-                    } else {
-                        Log.i(TAG, "[reenable] courses MATCH — no conflict")
-                    }
-                }
-
-                if ("course_colors" in pending) {
-                    val courses = dataCache.loadCourses()
-                    val localColors = courses.associate { it.courseNo to it.customColorHex }
-                    var colorMismatches = 0
-                    for (override in result.courseOverrides) {
-                        val courseNo = override.courseNo ?: continue
-                        val serverHex = override.colorHex ?: continue
-                        val localHex = localColors[courseNo]
-                        if (localHex != serverHex) {
-                            colorMismatches++
-                            Log.d(TAG, "[reenable] color mismatch: $courseNo local=$localHex server=$serverHex")
-                        }
-                    }
-                    Log.i(TAG, "[reenable] colors: ${if (colorMismatches == 0) "MATCH" else "DIFFER ($colorMismatches)"}")
-                    if (colorMismatches > 0) {
-                        diffs.add(context.getString(R.string.sync_conflict_reenable_colors_differ))
-                    }
-                }
-
-                if ("course_names" in pending) {
-                    val localNames = dataCache.loadCourseCustomNames()
-                    var nameMismatches = 0
-                    val serverNosWithNames = mutableSetOf<String>()
-                    for (override in result.courseOverrides) {
-                        val courseNo = override.courseNo ?: continue
-                        if (override.customNames.isEmpty()) continue
-                        serverNosWithNames.add(courseNo)
-                        if ((localNames[courseNo] ?: emptyMap()) != override.customNames) {
-                            nameMismatches++
-                            Log.d(TAG, "[reenable] name mismatch: $courseNo local=${localNames[courseNo]} server=${override.customNames}")
-                        }
-                    }
-                    for ((courseNo, locales) in localNames) {
-                        if (locales.isNotEmpty() && courseNo !in serverNosWithNames) {
-                            nameMismatches++
-                            Log.d(TAG, "[reenable] name mismatch: $courseNo local=$locales server=default")
-                        }
-                    }
-                    Log.i(TAG, "[reenable] names: ${if (nameMismatches == 0) "MATCH" else "DIFFER ($nameMismatches)"}")
-                    if (nameMismatches > 0) {
-                        diffs.add(context.getString(R.string.sync_conflict_reenable_names_differ))
-                    }
-                }
-
-                if ("assignments" in pending) {
-                    val localIgnored = dataCache.loadIgnoredAssignments()
-                    val localCompleted = dataCache.loadMarkedCompletedAssignments()
-                    val ignoredMatch = localIgnored == result.ignoredIds
-                    val completedMatch = localCompleted == result.completedIds
-                    // Course ignores follow course sync too, so with it off there is nothing to compare.
-                    val coursesMatch = !prefs.syncCourses || courseIgnoreSync.agreesWith(result)
-                    Log.i(TAG, "[reenable] assignments: localIgnored=${localIgnored.size} serverIgnored=${result.ignoredIds.size} match=$ignoredMatch | localCompleted=${localCompleted.size} serverCompleted=${result.completedIds.size} match=$completedMatch | ignoredCourses match=$coursesMatch")
-                    if (!ignoredMatch || !completedMatch || !coursesMatch) {
-                        diffs.add(context.getString(R.string.sync_conflict_reenable_assignments_differ))
-                    }
-                }
-
-                Log.i(TAG, "[reenable] result: ${diffs.size} diffs → ${if (diffs.isEmpty()) "no conflict" else "SHOW POPUP"}")
-                // An answer given since this check began changed what it
-                // compared, and settles the pending set itself. After a
-                // sign-out the result is the departed account's.
-                val stillApplies = resolutions.isCurrent(token) &&
-                    authService.isStillSignedInAs(account) &&
-                    dataCache.userDataGeneration == generation
-                if (!stillApplies) return@launch
-                if (diffs.isNotEmpty()) {
-                    _reenableConflict.value = ReenableConflict(
-                        categories = pending.toList(),
-                        description = diffs.joinToString("\n"),
-                        checked = result,
-                    )
-                } else {
-                    // Only what this check compared: one started later may
-                    // still hold "assignments" for its own dialog.
-                    prefs.pendingConflictCategories = prefs.pendingConflictCategories - pending
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "[reenable] checkPendingConflicts FAILED — pending kept for retry: ${e.logSummary()}")
-            }
-        }
+        reenableCheck.check { _reenableConflict.value = it }
     }
 
     fun resolveReenableConflict(keepLocal: Boolean) {
@@ -348,7 +230,7 @@ class SettingsViewModel @Inject constructor(
             prefs.pendingConflictCategories = if (holdsCourseIgnores) setOf("assignments") else emptySet()
         }
         val generation = dataCache.userDataGeneration
-        resolutions.start()
+        reenableCheck.resolutions.start()
         appScope.launch(DataCache.Generation(generation)) {
             try {
                 coroutineScope {
@@ -362,7 +244,9 @@ class SettingsViewModel @Inject constructor(
             } finally {
                 // Already let go when Use Local ran; this covers a sign-out before it.
                 latch?.release()
-                if (resolutions.finish()) {
+                // Each Settings screen has its own view model, and an answer
+                // given on one is still being applied when the next one checks.
+                if (reenableCheck.resolutions.finish()) {
                     prefs.pendingConflictCategories = prefs.pendingConflictCategories - "assignments"
                 }
             }
