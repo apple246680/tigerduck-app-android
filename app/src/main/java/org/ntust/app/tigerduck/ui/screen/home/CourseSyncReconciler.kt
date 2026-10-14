@@ -318,6 +318,21 @@ object CourseSyncReconciler {
     private const val REENABLE_CATEGORY = "courses"
 
     /**
+     * Whether a full sync applies the server's course colours: with their
+     * switch on ([switchOn]), and not from switching colour sync back on
+     * until the re-enable check finds no difference or the user has answered
+     * it. Applied in that window, the server's colours would answer for the
+     * user, and Use Local could no longer keep this phone's. iOS holds the
+     * course overrides the same way.
+     */
+    fun syncsCourseColors(switchOn: Boolean, pendingConflictCategories: Set<String>): Boolean =
+        switchOn && "course_colors" !in pendingConflictCategories
+
+    /** [syncsCourseColors] for the custom names and their re-enable check. */
+    fun syncsCourseNames(switchOn: Boolean, pendingConflictCategories: Set<String>): Boolean =
+        switchOn && "course_names" !in pendingConflictCategories
+
+    /**
      * The terms to reconcile: everything the server knows plus the picker's,
      * less [excluding] — see [termsResetAfter].
      */

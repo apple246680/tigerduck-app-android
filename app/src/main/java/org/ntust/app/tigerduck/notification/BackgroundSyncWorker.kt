@@ -180,7 +180,11 @@ class BackgroundSyncWorker @AssistedInject constructor(
             val marksChanged = marks.changed
             courseIgnoreSync.applySnapshot(result, generation)
 
-            if (prefs.syncCourseColors && result.courseOverrides.isNotEmpty()) {
+            // Not over a colours re-enable check still waiting for the user.
+            val syncColors = CourseSyncReconciler.syncsCourseColors(
+                prefs.syncCourseColors, prefs.pendingConflictCategories,
+            )
+            if (syncColors && result.courseOverrides.isNotEmpty()) {
                 applyCourseOverridesBackground(result.courseOverrides)
             }
             if (CourseSyncReconciler.syncsCourseList(prefs.syncCourses, prefs.pendingConflictCategories)) {

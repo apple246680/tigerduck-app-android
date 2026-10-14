@@ -164,9 +164,11 @@ class HomeBackendSync @Inject constructor(
             }
             courseIgnoreSync.applySnapshot(result, generation)?.let { state.ignoredCourseKeys.value = it }
             // Course overrides and deletion detection always run regardless
-            // of whether this was a first-time migration.
-            val syncColors = "course_colors" in switchedOn
-            val syncNames = "course_names" in switchedOn
+            // of whether this was a first-time migration, but not over a
+            // re-enable check still waiting for the user's answer.
+            val pending = prefs.pendingConflictCategories
+            val syncColors = CourseSyncReconciler.syncsCourseColors("course_colors" in switchedOn, pending)
+            val syncNames = CourseSyncReconciler.syncsCourseNames("course_names" in switchedOn, pending)
             if (result.courseOverrides.isNotEmpty() && (syncColors || syncNames)) {
                 applyCourseOverrides(state, result.courseOverrides, syncColors, syncNames)
             }
@@ -305,8 +307,12 @@ class HomeBackendSync @Inject constructor(
     private suspend fun applyCourseOverrides(
         state: HomeSyncState,
         overrides: List<CourseOverrideResult>,
-        syncColors: Boolean = prefs.syncCourseColors,
-        syncNames: Boolean = prefs.syncCourseNames,
+        syncColors: Boolean = CourseSyncReconciler.syncsCourseColors(
+            prefs.syncCourseColors, prefs.pendingConflictCategories,
+        ),
+        syncNames: Boolean = CourseSyncReconciler.syncsCourseNames(
+            prefs.syncCourseNames, prefs.pendingConflictCategories,
+        ),
     ) {
         // The early return on an empty course list also skips the custom-name
         // merge below. That coupling predates this refactor and is preserved

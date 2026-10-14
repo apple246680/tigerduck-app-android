@@ -534,4 +534,33 @@ class CourseSyncReconcilerTest {
     fun `the course list does not sync with its switch off`() {
         assertFalse(CourseSyncReconciler.syncsCourseList(switchOn = false, pendingConflictCategories = emptySet()))
     }
+
+    // ---- the colour and name re-enable checks ----
+
+    @Test
+    fun `the server's colours are held while the colours re-enable check waits for the user`() {
+        // Applied meanwhile, they would answer the check for the user, and
+        // Use Local could no longer keep this phone's colours
+        // (tigerduck-app-android#296).
+        assertFalse(CourseSyncReconciler.syncsCourseColors(switchOn = true, pendingConflictCategories = setOf("course_colors")))
+        assertTrue(
+            CourseSyncReconciler.syncsCourseColors(
+                switchOn = true,
+                pendingConflictCategories = setOf("courses", "course_names", "assignments"),
+            )
+        )
+        assertFalse(CourseSyncReconciler.syncsCourseColors(switchOn = false, pendingConflictCategories = emptySet()))
+    }
+
+    @Test
+    fun `the server's names are held while the names re-enable check waits for the user`() {
+        assertFalse(CourseSyncReconciler.syncsCourseNames(switchOn = true, pendingConflictCategories = setOf("course_names")))
+        assertTrue(
+            CourseSyncReconciler.syncsCourseNames(
+                switchOn = true,
+                pendingConflictCategories = setOf("courses", "course_colors", "assignments"),
+            )
+        )
+        assertFalse(CourseSyncReconciler.syncsCourseNames(switchOn = false, pendingConflictCategories = emptySet()))
+    }
 }
