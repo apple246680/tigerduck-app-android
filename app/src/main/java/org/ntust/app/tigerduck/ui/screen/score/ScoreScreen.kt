@@ -28,6 +28,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -70,6 +73,15 @@ fun ScoreScreen(
     val collapsedTerms by viewModel.collapsedTerms.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { viewModel.load() }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val resources = LocalResources.current
+    // Keyed on the view model, as Home's is, so a remount collects afresh.
+    LaunchedEffect(viewModel) {
+        viewModel.noNetworkEvent.collect {
+            snackbarHostState.showSnackbar(resources.getString(R.string.error_network_unavailable))
+        }
+    }
 
     // Published rankings plus a computed point for any term the school has
     // not posted yet. Derived here rather than in the view model so it is
@@ -149,6 +161,7 @@ fun ScoreScreen(
                 }
             }
         }
+        SnackbarHost(snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter))
     }
 
     selectedCourse?.let { course ->
