@@ -27,6 +27,7 @@ import kotlinx.coroutines.coroutineScope
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
+import org.ntust.app.tigerduck.auth.StoredPasswordLatch
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.push.BackendSyncResult
 import org.ntust.app.tigerduck.ui.screen.home.AssignmentOverrideReconciler
@@ -66,7 +67,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
     private val fcmBootstrap: org.ntust.app.tigerduck.push.FcmBootstrap,
     private val notificationSettingsSync: org.ntust.app.tigerduck.push.NotificationSettingsSync,
     private val courseIgnoreSync: CourseIgnoreSync,
-    private val storedPasswordLatch: org.ntust.app.tigerduck.auth.StoredPasswordLatch,
+    private val storedPasswordLatch: StoredPasswordLatch,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) : CoroutineWorker(context, params) {
 

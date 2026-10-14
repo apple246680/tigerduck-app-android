@@ -72,14 +72,17 @@ class NtustSignInViewModel @Inject constructor(
     val sheetRequested: Boolean get() = appState.ntustSignInSheetRequested
 
     /** Snapshot state, so a composable reading it follows a close on another page. */
-    val dismissedRejection: StoredPasswordLatch.Rejection? get() = appState.dismissedPasswordRejection
+    val dismissedRejection: StoredPasswordLatch.Rejection?
+        get() = appState.dismissedPasswordRejection
 
     /** [asksToSignInAgain] for this device now, after [lastSignInFailed]. */
-    fun asksToSignInAgain(syncEnabled: Boolean, lastSignInFailed: Boolean): Boolean = asksToSignInAgain(
-        syncEnabled = syncEnabled,
-        credentialsReadable = authService.storedStudentId != null && authService.storedPassword != null,
-        hasBackendSession = authTokenManager.isLoggedIn,
-        lastSignInFailed = lastSignInFailed,
+    fun asksToSignInAgain(syncEnabled: Boolean, lastSignInFailed: Boolean): Boolean =
+        asksToSignInAgain(
+            syncEnabled = syncEnabled,
+            credentialsReadable = authService.storedStudentId != null &&
+                authService.storedPassword != null,
+            hasBackendSession = authTokenManager.isLoggedIn,
+            lastSignInFailed = lastSignInFailed,
     )
 
     fun requestSignIn() {

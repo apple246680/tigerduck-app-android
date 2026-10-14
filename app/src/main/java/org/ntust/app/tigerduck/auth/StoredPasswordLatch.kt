@@ -125,7 +125,12 @@ class PersistedStoredPasswordLatch internal constructor(
 
     override val generation: Int get() = synchronized(lock) { currentGeneration }
 
-    override fun markRejected(generation: Int, studentId: String, password: String, reason: String?) {
+    override fun markRejected(
+        generation: Int,
+        studentId: String,
+        password: String,
+        reason: String?,
+    ) {
         synchronized(lock) {
             // One already holds: a new one would show a banner the user closed again.
             if (_rejection.value != null) return

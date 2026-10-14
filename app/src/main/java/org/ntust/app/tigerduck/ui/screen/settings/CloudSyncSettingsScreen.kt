@@ -60,6 +60,7 @@ import org.ntust.app.tigerduck.ui.component.ContentCard
 import org.ntust.app.tigerduck.ui.component.NoTopBarInsets
 import org.ntust.app.tigerduck.ui.component.SectionHeader
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
+import org.ntust.app.tigerduck.ui.screen.signin.NtustSignInViewModel
 
 /**
  * F-Droid ships without Google Play Services and so cannot run TigerSync's
@@ -133,7 +134,7 @@ fun CloudSyncSettingsScreen(
     val reenableConflict by viewModel.reenableConflict.collectAsState()
     val serverPushOn by viewModel.serverPushOn.collectAsState()
     val isTogglingServerPush by viewModel.isTogglingServerPush.collectAsState()
-    val signInViewModel: org.ntust.app.tigerduck.ui.screen.signin.NtustSignInViewModel = hiltViewModel()
+    val signInViewModel: NtustSignInViewModel = hiltViewModel()
     val lastSignInFailed by signInViewModel.lastSignInFailed.collectAsState()
     val asksToSignInAgain = signInViewModel.asksToSignInAgain(syncEnabled, lastSignInFailed)
 

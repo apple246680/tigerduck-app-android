@@ -23,7 +23,11 @@ import org.ntust.app.tigerduck.auth.guardAutomaticHarvest
  */
 internal class MoodleTokenCoordinator(
     private val tokens: Tokens,
-    private val login: suspend (studentId: String, password: String, beforePosting: () -> Unit) -> String,
+    private val login: suspend (
+        studentId: String,
+        password: String,
+        beforePosting: () -> Unit,
+    ) -> String,
     scope: CoroutineScope,
     now: () -> Long,
     pauseMs: Long,

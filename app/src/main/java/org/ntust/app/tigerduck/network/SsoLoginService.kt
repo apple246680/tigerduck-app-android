@@ -53,11 +53,6 @@ internal suspend fun <T> fetchWithSsoSession(
     return fetch() ?: bounced()
 }
 
-/** Where the sign-in form may post the credentials: the school's sign-in host, over HTTPS. */
-internal fun isSignInHost(url: HttpUrl): Boolean = url.isHttps && url.host == SIGN_IN_HOST
-
-private const val SIGN_IN_HOST = "ssoam2.ntust.edu.tw"
-
 @Singleton
 class SsoLoginService internal constructor(
     private val sessionManager: NtustSessionManager,
@@ -274,3 +269,8 @@ class SsoLoginService internal constructor(
         else add(name to value)
     }
 }
+
+/** Where the sign-in form may post the credentials: the school's sign-in host, over HTTPS. */
+internal fun isSignInHost(url: HttpUrl): Boolean = url.isHttps && url.host == SIGN_IN_HOST
+
+private const val SIGN_IN_HOST = "ssoam2.ntust.edu.tw"
