@@ -543,4 +543,56 @@ class CourseIgnoreSyncTest {
 
         assertEquals(listOf(Sent("1141AAA", true, null)), sent)
     }
+
+    // ---- Use Local's clears in the terms it reset (tigerduck-app-android#307) ----
+
+    private suspend fun cacheTerm(vararg courseNos: String) =
+        cache.saveCourses(courseNos.map { Course(courseNo = it, courseName = it, moodleIdNumber = "1141$it") }, "1141")
+
+    @Test
+    fun `Use Local clears a course only the check's snapshot ignored in a term it reset`() = runTest {
+        // The check saw BBB ignored on the server. Use Local reset 1141, which
+        // took that override with it, and the server read after it has none:
+        // without a clear, another device's resend would bring it back.
+        cacheTerm("AAA", "BBB")
+        cache.saveSemesterResetAt("1141", 2_000L)
+
+        sync.pushLocal(
+            snapshot(fetchedAtMs = 3_000L),
+            sync.currentGeneration(),
+            resetTerms = setOf("1141"),
+            checked = snapshot(fetchedAtMs = 1_000L, "BBB" to true),
+        )
+
+        assertEquals(listOf(Sent("1141BBB", false, null)), sent)
+    }
+
+    @Test
+    fun `the clear goes out too when Use Local falls back to the check's snapshot`() = runTest {
+        cacheTerm("AAA", "BBB")
+        cache.saveSemesterResetAt("1141", 2_000L)
+        val checked = snapshot(fetchedAtMs = 1_000L, "BBB" to true)
+
+        sync.pushLocal(checked, sync.currentGeneration(), resetTerms = setOf("1141"), checked = checked)
+
+        assertEquals(listOf(Sent("1141BBB", false, null)), sent)
+    }
+
+    @Test
+    fun `no clear for a course the reset term no longer has on the server, or that this phone ignores`() = runTest {
+        // AAA is ignored here and goes up as ignored; BBB was not put back by
+        // the upload, so there is no row to clear.
+        cacheTerm("AAA")
+        cache.saveIgnoredCourses(setOf("1141:AAA"))
+        cache.saveSemesterResetAt("1141", 2_000L)
+
+        sync.pushLocal(
+            snapshot(fetchedAtMs = 3_000L),
+            sync.currentGeneration(),
+            resetTerms = setOf("1141"),
+            checked = snapshot(fetchedAtMs = 1_000L, "AAA" to true, "BBB" to true),
+        )
+
+        assertEquals(listOf(Sent("1141AAA", true, null)), sent)
+    }
 }

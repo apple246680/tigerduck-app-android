@@ -372,7 +372,7 @@ class SettingsViewModel @Inject constructor(
         latch: UseLocalLatch?,
     ) {
         if (keepLocal) {
-            if (latch != null) sendLocalCourses(generation, latch)
+            val resetTerms = if (latch != null) sendLocalCourses(generation, latch) else emptySet()
             if ("course_colors" in conflict.categories) {
                 val courses = dataCache.loadCourses()
                 for (course in courses) {
@@ -409,7 +409,9 @@ class SettingsViewModel @Inject constructor(
                     send = pushApiClient::patchAssignmentOverride,
                     keep = { id, status -> unsentMarks.keep(id, status, generation) },
                     pushCourseIgnores = { server ->
-                        if (prefs.syncCourses) courseIgnoreSync.pushLocal(server, generation)
+                        if (prefs.syncCourses) {
+                            courseIgnoreSync.pushLocal(server, generation, resetTerms, conflict.checked)
+                        }
                     },
                 )
             }
@@ -496,12 +498,15 @@ class SettingsViewModel @Inject constructor(
         override fun askAgain() = markCategoryReenabled("courses")
     }
 
-    /** Use Local for courses, every term this phone knows — see [useLocalCourses]. */
-    private suspend fun sendLocalCourses(generation: Int, latch: UseLocalLatch) {
+    /**
+     * Use Local for courses, every term this phone knows — see
+     * [useLocalCourses]. Returns the terms it reset.
+     */
+    private suspend fun sendLocalCourses(generation: Int, latch: UseLocalLatch): Set<String> {
         // The terms latched on the tap; the catalogue may have moved since.
         val semesters = latch.semesters
         val portalCached = semesters.filterTo(mutableSetOf()) { dataCache.hasPortalCourses(it) }
-        useLocalCourses(
+        return useLocalCourses(
             terms = semesters.map { it to dataCache.loadCourses(it) },
             hiding = dataCache.loadDeletedCourseNos(),
             backend = PushCourseSyncBackend(pushApiClient, prefs),

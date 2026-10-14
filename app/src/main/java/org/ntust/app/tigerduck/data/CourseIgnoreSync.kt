@@ -205,14 +205,29 @@ class CourseIgnoreSync internal constructor(
      * Sends this device's set over [result]'s: what is ignored here, and an
      * end to what only the backend ignores. With no [result] to go by, only
      * the first half.
+     *
+     * [resetTerms] are the terms Use Local reset and uploaded again before
+     * this, whose overrides the reset took off the server. A course [checked]
+     * (the re-enable check's snapshot, from before the reset) shows ignored
+     * there, and which the upload put back, is sent an end too: left without
+     * a setting, another device that ignores it sends its own again
+     * ([CourseIgnoreReconciler.toResend]), and this one would then take that
+     * up, undoing Use Local. iOS sends these from the check's snapshot as
+     * well (tigerduck-app-android#307).
      */
-    suspend fun pushLocal(result: BackendSyncResult?, generation: Int) {
+    suspend fun pushLocal(
+        result: BackendSyncResult?,
+        generation: Int,
+        resetTerms: Set<String> = emptySet(),
+        checked: BackendSyncResult? = null,
+    ) {
         val server = result?.let { serverView(it) }
         val serverRows = serverRows(result)
         // A term reset after [result] was fetched, as Use Local's own course
         // reset when it fell back to the re-enable check's snapshot, is left
         // out of [server], but its courses are back on the server now.
         val reset = result?.let { resetSince(it) }.orEmpty()
+        val clearedInReset = clearsInResetTerms(checked, resetTerms)
         mutex.withLock {
             val local = dataCache.loadIgnoredCourses()
             val ignored = if (server == null) {
@@ -228,9 +243,32 @@ class CourseIgnoreSync internal constructor(
             var pending = dataCache.loadPendingCourseIgnores()
             for (key in ignored) pending = pending.with(changeFor(key, true, serverRows[key], now))
             for (key in cleared) pending = pending.with(changeFor(key, false, serverRows[key], now))
+            // By the course the upload put back, not the old row: the reset
+            // replaced it.
+            for (key in clearedInReset - local - cleared) pending = pending.with(changeFor(key, false, null, now))
             if (dataCache.savePendingCourseIgnores(pending, generation)) setChosenAt = now
         }
         retryPending()
+    }
+
+    /**
+     * The courses [checked] shows ignored in [resetTerms] that this device
+     * caches there, visible: the ones Use Local's upload put back on the
+     * server. A course it left out has no row to send an end to.
+     */
+    private suspend fun clearsInResetTerms(checked: BackendSyncResult?, resetTerms: Set<String>): Set<String> {
+        if (checked == null || resetTerms.isEmpty()) return emptySet()
+        val ignored = CourseIgnoreReconciler.serverIgnores(checked.courseOverrides, checked.serverCourses)
+            ?.keys.orEmpty()
+        val hiding = dataCache.loadDeletedCourseNos()
+        return resetTerms.flatMapTo(mutableSetOf()) { term ->
+            val hidden = CourseTombstoneKeys.hiddenIn(term, hiding)
+            dataCache.loadCourses(term)
+                .map { it.courseNo }
+                .filter { it !in hidden }
+                .map { CourseIgnores.key(term, it) }
+                .filter { it in ignored }
+        }
     }
 
     /**
