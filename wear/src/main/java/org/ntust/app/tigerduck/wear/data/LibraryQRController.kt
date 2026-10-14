@@ -94,9 +94,7 @@ class LibraryQRController(
             // rather than a generic string — diagnosing a watch-only failure
             // from logcat alone is painful and the screen has room for it.
             android.util.Log.w("LibraryQRController", "QR refresh failed: ${e.javaClass.simpleName}")
-            _error.value = e.message?.takeUnless { it.isBlank() }
-                ?: e::class.simpleName
-                        ?: "QR fetch failed"
+            _error.value = qrErrorDetail(e)
             _qrBitmap.value = null
             _qrPatternBounds.value = null
         } finally {
@@ -118,3 +116,11 @@ class LibraryQRController(
         }
     }
 }
+
+/**
+ * The reason under the page's generic "Failed to generate QR code": the
+ * failure's own message (a network error, the library server's reply), or
+ * nothing. Never the exception's class name, which a release build shortens.
+ */
+internal fun qrErrorDetail(e: Throwable): String =
+    e.message?.takeUnless { it.isBlank() }.orEmpty()

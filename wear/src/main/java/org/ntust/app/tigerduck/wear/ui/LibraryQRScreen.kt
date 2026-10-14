@@ -265,14 +265,17 @@ private fun NormalQR(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = error,
-                    textAlign = TextAlign.Center,
-                    color = Color.Gray,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                // Empty when the failure gave no reason; the line above says enough.
+                if (error.isNotEmpty()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = error,
+                        textAlign = TextAlign.Center,
+                        color = Color.Gray,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
 
             else -> Text(
