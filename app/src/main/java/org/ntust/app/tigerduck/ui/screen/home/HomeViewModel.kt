@@ -99,6 +99,7 @@ class HomeViewModel @Inject constructor(
     private val authTokenManager: AuthTokenManager,
     private val backendSync: HomeBackendSync,
     private val unsentMarks: UnsentMarks,
+    private val localEdits: LocalEdits,
 ) : ViewModel() {
 
 
@@ -571,6 +572,13 @@ class HomeViewModel @Inject constructor(
 
     // The first start is the launch, whose own sync has just pulled.
     private var revisionPollingStarted = false
+
+    init {
+        // After the poller above, which the edits reach.
+        viewModelScope.launch {
+            localEdits.edits.collect { revisionPoller.noteActivity() }
+        }
+    }
 
     /** The app is in the foreground again; see [RevisionPoller.start]. */
     fun startRevisionPolling() {
