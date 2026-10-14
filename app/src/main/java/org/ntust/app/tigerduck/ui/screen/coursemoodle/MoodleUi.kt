@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
@@ -63,6 +64,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.AppConstants
 import org.ntust.app.tigerduck.R
+import org.ntust.app.tigerduck.data.moodle.MoodleCourseStore
 import org.ntust.app.tigerduck.data.moodle.MoodleRefreshSchedule
 import org.ntust.app.tigerduck.network.MoodleWebserviceError
 import org.ntust.app.tigerduck.ui.component.NoTopBarInsets
@@ -83,11 +85,24 @@ internal fun cardDividerColor(): Color = MaterialTheme.colorScheme.outline
 /** The pin and warning orange of iOS's Moodle screens. */
 internal val MoodleOrange = Color(0xFFFF9500)
 
-/** Closes a pushed Moodle screen once the account signs out: it holds the store of the account that left. */
+/** Whether a Moodle page holds the store of an account that signed out, or of one another replaced. */
+internal fun moodleScreenShouldClose(signedIn: Boolean, store: MoodleCourseStore?): Boolean =
+    !signedIn || store?.isCurrent() == false
+
+/**
+ * Closes a pushed Moodle screen once its account has gone: at a sign-out while it shows, and when
+ * it comes back into view under another account, as a page left in the back stack would.
+ */
 @Composable
 internal fun MoodleSignedOutEffect(viewModel: MoodleCourseViewModel, onClose: () -> Unit) {
     val signedIn by viewModel.signedIn.collectAsStateWithLifecycle()
-    if (!signedIn) LaunchedEffect(Unit) { onClose() }
+    val store by viewModel.store.collectAsStateWithLifecycle()
+    val latestClose by rememberUpdatedState(onClose)
+    if (moodleScreenShouldClose(signedIn, store)) LaunchedEffect(Unit) { latestClose() }
+    LifecycleResumeEffect(store) {
+        if (moodleScreenShouldClose(viewModel.signedIn.value, store)) latestClose()
+        onPauseOrDispose { }
+    }
 }
 
 /**
