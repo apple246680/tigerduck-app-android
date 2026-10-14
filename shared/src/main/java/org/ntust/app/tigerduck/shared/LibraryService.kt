@@ -206,10 +206,14 @@ class LibraryService(
         // password is not sent again until a sign-in saves credentials that work.
         if (credentials.libraryPasswordRefused) throw LibraryServiceError.CredentialsNotFound()
 
-        val key = SignInKey(username, credentials.libraryAccountGeneration)
         val attempt = synchronized(pendingSignIns) {
             dropAbandonedSignIns()
-            (pendingSignIns[key] ?: startSignIn(key)).also { it.waiting++ }
+            // Read under the lock, so no attempt is cancelled for an older
+            // generation after this read it and before this joins.
+            val key = SignInKey(username, credentials.libraryAccountGeneration)
+            // One cancelled but not yet done is not joined: its caller would
+            // get a cancellation it did not ask for.
+            (pendingSignIns[key]?.takeUnless { it.job.isCancelled } ?: startSignIn(key)).also { it.waiting++ }
         }
         try {
             return attempt.job.await()
@@ -224,9 +228,21 @@ class LibraryService(
     /** The account a sign-in with the stored credentials is for, as it stood when asked. */
     private data class SignInKey(val username: String, val generation: Int)
 
-    private class SignInAttempt(val key: SignInKey, val job: Deferred<String>) {
+    private class SignInAttempt(val key: SignInKey) {
+        lateinit var job: Deferred<String>
+
         /** The callers waiting for it; guarded by [pendingSignIns]. */
         var waiting = 0
+
+        /**
+         * The generation it signs in at, once it has the lock: the account
+         * stored by then, which can be one stored after it was asked for.
+         */
+        @Volatile
+        var signingInAt: Int? = null
+
+        /** The generation its answer is for. */
+        val generation: Int get() = signingInAt ?: key.generation
     }
 
     /**
@@ -239,7 +255,10 @@ class LibraryService(
 
     /** Under the [pendingSignIns] lock. */
     private fun startSignIn(key: SignInKey): SignInAttempt {
-        val attempt = SignInAttempt(key, signInScope.async(start = CoroutineStart.LAZY) { storedSignIn() })
+        val attempt = SignInAttempt(key)
+        attempt.job = signInScope.async(start = CoroutineStart.LAZY) {
+            storedSignIn { attempt.signingInAt = it }
+        }
         pendingSignIns[key] = attempt
         attempt.job.invokeOnCompletion {
             synchronized(pendingSignIns) {
@@ -252,22 +271,24 @@ class LibraryService(
 
     /**
      * Cancels each sign-in no caller waits for whose account has signed out or
-     * been replaced since it was asked for: its answer would store nothing, and
-     * it would hold the next account's sign-in behind it until the library
-     * answered or timed out, as on the watch when the phone hands over another
-     * account. One still waited for runs on. Under the [pendingSignIns] lock.
+     * been replaced since: its answer would store nothing, and it would hold
+     * the next account's sign-in behind it until the library answered or timed
+     * out, as on the watch when the phone hands over another account. One
+     * still waited for runs on, and so does one signing in the account stored
+     * now. Under the [pendingSignIns] lock.
      */
     private fun dropAbandonedSignIns() {
         val generation = credentials.libraryAccountGeneration
         pendingSignIns.values
-            .filter { it.waiting == 0 && it.key.generation != generation }
+            .filter { it.waiting == 0 && it.generation != generation }
             .forEach { it.job.cancel() }
     }
 
-    private suspend fun storedSignIn(): String = tokenMutex.withLock {
+    private suspend fun storedSignIn(signingInAt: (Int) -> Unit): String = tokenMutex.withLock {
         // Before the account it signs in with, so a sign-out after this keeps
         // the answer from being stored.
         val accountGeneration = credentials.libraryAccountGeneration
+        signingInAt(accountGeneration)
         // A sign-in that landed while this waited for the lock, typed or not.
         val token = credentials.libraryToken
         if (token != null && credentials.isLibraryTokenValid) return@withLock token

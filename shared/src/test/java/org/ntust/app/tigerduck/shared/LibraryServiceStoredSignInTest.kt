@@ -77,6 +77,9 @@ class LibraryServiceStoredSignInTest {
             libraryToken = "expired"
             libraryTokenExpiry = 1L
         }
+
+        /** Another account handed over, as the phone hands one to the watch, its token run out. */
+        fun handOver(username: String, password: String) = account.replaceAccount { storeExpired(username, password) }
     }
 
     private val store = MemoryStore().apply { storeExpired() }
@@ -315,5 +318,50 @@ class LibraryServiceStoredSignInTest {
         assertTrue(store.libraryPasswordRefused)
         assertTrue(runCatching { service.ensureToken() }.exceptionOrNull() is LibraryServiceError.CredentialsNotFound)
         assertEquals(1, signIns)
+    }
+
+    /**
+     * A sign-in asked for one account can, once it has the lock, sign in the account stored by
+     * then. That one is current, so it runs on when its caller stops waiting.
+     */
+    @Test
+    fun `a sign-in for the account stored now runs on though it was asked for the one before`() = runBlocking {
+        val typing = CountDownLatch(1)
+        val typed = CountDownLatch(1)
+        val signingIn = CountDownLatch(1)
+        val answer = CountDownLatch(1)
+        answers += serverError
+        whileSigningIn = {
+            when (signIns) {
+                1 -> {
+                    typing.countDown()
+                    typed.await(10, TimeUnit.SECONDS)
+                }
+                2 -> {
+                    signingIn.countDown()
+                    answer.await(10, TimeUnit.SECONDS)
+                }
+            }
+        }
+        // A sign-in typed on the form holds the lock and fails.
+        val form = launch(Dispatchers.IO) {
+            runCatching { service.login("B10000001", "pw", store.libraryAccountGeneration, byUser = true) }
+        }
+        assertTrue(typing.await(5, TimeUnit.SECONDS))
+        val page = launch(Dispatchers.IO) { runCatching { service.ensureToken() } }
+        delay(500)
+        store.handOver("B10000002", "theirs")
+        typed.countDown()
+        assertTrue(signingIn.await(5, TimeUnit.SECONDS))
+
+        page.cancel()
+        page.join()
+        answer.countDown()
+        form.join()
+
+        waitFor { store.libraryToken == "token-2" }
+        assertEquals("B10000002", store.libraryUsername)
+        assertEquals("token-2", store.libraryToken)
+        assertEquals(2, signIns)
     }
 }
