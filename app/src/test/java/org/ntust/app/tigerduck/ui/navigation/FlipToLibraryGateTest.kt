@@ -49,4 +49,15 @@ class FlipToLibraryGateTest {
         assertFalse(FlipToLibraryGate.offersGesture(signedInToLibrary = true, enabled = false, asked = false, onLibraryPage = true))
         assertTrue(FlipToLibraryGate.offersGesture(signedInToLibrary = true, enabled = false, asked = false, onLibraryPage = false))
     }
+
+    /**
+     * A cold start composes the effect before the back stack has a page, and the first page can
+     * be Library, as the first tab or from the library shortcut: the offer waits for it.
+     */
+    @Test
+    fun `the offer waits while no page is shown yet, and on the Library page`() {
+        assertTrue(FlipToLibraryGate.offerWaitsForPage(currentRoute = null))
+        assertTrue(FlipToLibraryGate.offerWaitsForPage(currentRoute = Screen.Library.route))
+        assertFalse(FlipToLibraryGate.offerWaitsForPage(currentRoute = Screen.Home.route))
+    }
 }

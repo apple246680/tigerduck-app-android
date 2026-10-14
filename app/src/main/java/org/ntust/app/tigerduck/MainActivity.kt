@@ -120,6 +120,9 @@ class MainActivity : AppCompatActivity() {
     @Inject
     lateinit var libraryReturnSignIn: org.ntust.app.tigerduck.library.LibraryReturnSignIn
 
+    @Inject
+    lateinit var libraryPagePresence: org.ntust.app.tigerduck.library.LibraryPagePresence
+
     private val widgetStartRoute = mutableStateOf<String?>(null)
     private val whatsNewFlow = mutableStateOf<WhatsNewFlow?>(null)
 
@@ -239,11 +242,16 @@ class MainActivity : AppCompatActivity() {
                         // root-level so the prompt can surface over any tab,
                         // independent of the nav back stack. A pending one
                         // waits for What's New and the update prompt to close,
-                        // as on the iPhone, rather than stacking on them.
+                        // as on the iPhone, rather than stacking on them, and
+                        // the flip one for the Library page to be left.
                         val updatePending by updateChecker.pendingUpdate.collectAsStateWithLifecycle()
+                        val pendingPrompt by firstTriggerPromptController.pending.collectAsStateWithLifecycle()
+                        val libraryPageShown by libraryPagePresence.shown.collectAsStateWithLifecycle()
                         if (firstTriggerPromptMayShow(
                                 whatsNewShowing = whatsNewFlow.value != null,
                                 updatePromptShowing = updatePending != null,
+                                pending = pendingPrompt?.key,
+                                libraryPageShown = libraryPageShown,
                             )
                         ) {
                             FirstTriggerPromptHost(firstTriggerPromptController)

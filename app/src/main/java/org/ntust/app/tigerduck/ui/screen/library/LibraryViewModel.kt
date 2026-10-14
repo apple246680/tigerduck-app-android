@@ -17,6 +17,7 @@ import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.debug.DebugFixtureStore
 import org.ntust.app.tigerduck.demo.DemoAccount
+import org.ntust.app.tigerduck.library.LibraryPagePresence
 import org.ntust.app.tigerduck.library.LibraryQRBitmapCache
 import org.ntust.app.tigerduck.library.LibrarySession
 import org.ntust.app.tigerduck.library.libraryErrorMessage
@@ -33,6 +34,7 @@ class LibraryViewModel @Inject constructor(
     private val debugFixtures: DebugFixtureStore,
     private val demoAccount: DemoAccount,
     private val librarySession: LibrarySession,
+    private val pagePresence: LibraryPagePresence,
     qrCache: LibraryQRBitmapCache,
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
@@ -166,6 +168,15 @@ class LibraryViewModel @Inject constructor(
 
     fun onPause() {
         qrCycle.stop()
+    }
+
+    /** The page is on screen; the flip-to-library offer waits until it is left. */
+    fun onPageShown() = pagePresence.appear(this)
+
+    fun onPageHidden() = pagePresence.disappear(this)
+
+    override fun onCleared() {
+        pagePresence.disappear(this)
     }
 
     private fun generateQRBitmap(content: String, size: Int = 512): Bitmap =

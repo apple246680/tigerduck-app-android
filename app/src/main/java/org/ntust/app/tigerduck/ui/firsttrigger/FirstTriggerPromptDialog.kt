@@ -43,12 +43,21 @@ fun FirstTriggerPromptHost(controller: FirstTriggerPromptController) {
 }
 
 /**
- * Whether a pending first-trigger prompt may show now: not over What's New or
- * the update prompt, which it waits for rather than stacking on, as on the
- * iPhone.
+ * Whether the [pending] first-trigger prompt may show now: not over What's New
+ * or the update prompt, which it waits for rather than stacking on, as on the
+ * iPhone. The flip-to-library one also waits while the Library page shows,
+ * where it would cover the code someone just signed in to show, however it
+ * got there: the library shortcut can open the page right after the offer.
+ * Held, it stays pending, and shows once the page is left.
  */
-internal fun firstTriggerPromptMayShow(whatsNewShowing: Boolean, updatePromptShowing: Boolean): Boolean =
-    !whatsNewShowing && !updatePromptShowing
+internal fun firstTriggerPromptMayShow(
+    whatsNewShowing: Boolean,
+    updatePromptShowing: Boolean,
+    pending: FirstTriggerPromptKey?,
+    libraryPageShown: Boolean,
+): Boolean =
+    !whatsNewShowing && !updatePromptShowing &&
+        !(pending == FirstTriggerPromptKey.FLIP_TO_LIBRARY && libraryPageShown)
 
 /** Per-key string + animation bundle for a first-trigger prompt. */
 internal data class FirstTriggerStrings(

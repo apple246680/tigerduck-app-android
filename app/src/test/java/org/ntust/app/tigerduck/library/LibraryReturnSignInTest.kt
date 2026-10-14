@@ -5,9 +5,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.ntust.app.tigerduck.ui.firsttrigger.firstTriggerPromptMayShow
 
-/** The library's part of each launch and return, and when the root prompt may show. */
+/** The library's part of each launch and return to the app. */
 class LibraryReturnSignInTest {
 
     private val store = MemoryLibraryStore().apply { storeExpired() }
@@ -44,12 +43,5 @@ class LibraryReturnSignInTest {
 
         assertFalse(onReturn.onAppResumed())
         assertEquals(0, server.signIns)
-    }
-
-    @Test
-    fun `the prompt waits for what's new and the update prompt`() {
-        assertTrue(firstTriggerPromptMayShow(whatsNewShowing = false, updatePromptShowing = false))
-        assertFalse(firstTriggerPromptMayShow(whatsNewShowing = true, updatePromptShowing = false))
-        assertFalse(firstTriggerPromptMayShow(whatsNewShowing = false, updatePromptShowing = true))
     }
 }

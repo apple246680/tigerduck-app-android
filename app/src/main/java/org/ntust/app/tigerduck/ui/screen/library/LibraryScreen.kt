@@ -149,6 +149,13 @@ fun LibraryScreen(
 
     LaunchedEffect(viewModel) { viewModel.load() }
 
+    // While this page shows, the flip-to-library offer waits: it would cover
+    // the code. It shows once the page is left.
+    DisposableEffect(viewModel) {
+        viewModel.onPageShown()
+        onDispose { viewModel.onPageHidden() }
+    }
+
     // Key on `storedUsername` (a real StateFlow) instead of the plain
     // suggestedUsername getter — Compose can't observe a non-State property,
     // so keying on it doesn't re-init the field after a logout + sign-in
