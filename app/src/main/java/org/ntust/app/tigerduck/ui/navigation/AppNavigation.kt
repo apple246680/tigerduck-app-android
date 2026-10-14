@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -233,6 +234,7 @@ fun MainNavigation(
     val classTableViewModel: ClassTableViewModel = hiltViewModel()
     val calendarViewModel: CalendarViewModel = hiltViewModel()
     val classTableImportViewModel: ClassTableImportViewModel = hiltViewModel()
+    ShowOwnClassTableFromWidget(widgetStartRoute) { classTableViewModel.showTable(null) }
     LaunchedEffect(Unit) {
         homeViewModel.load()
         classTableViewModel.load()
@@ -751,6 +753,18 @@ internal fun NavController.navigateToTab(route: String, firstTab: String, tabTap
         restoreState = route != Screen.More.route
     }
     tabTap.record(fromId, currentBackStackEntry?.id)
+}
+
+/**
+ * The class table widget draws the user's own class table, so each start from it, a
+ * [startRoute] that opens the class table, shows that one with [showOwnClassTable].
+ */
+@Composable
+internal fun ShowOwnClassTableFromWidget(startRoute: String?, showOwnClassTable: () -> Unit) {
+    val latest by rememberUpdatedState(showOwnClassTable)
+    LaunchedEffect(startRoute) {
+        if (startRoute == Screen.ClassTable.route) latest()
+    }
 }
 
 fun AppFeature.toRoute(): String = when (this) {
