@@ -115,9 +115,15 @@ internal suspend fun keepLocalCourses(
         }
         ensureCurrent()
         backend.uploadCourses(courses + stubs, semester)
+        for (courseNo in hiddenNos.sorted()) {
+            ensureCurrent()
+            backend.deleteCourse("client:$semester:$courseNo")
+        }
         if (reset) {
             // The reset took the term's override rows, names included, with
-            // its course rows; colours ride the upload, names do not.
+            // its course rows; colours ride the upload, names do not. After
+            // the deletes, so a name that fails to go up leaves no hidden
+            // course on the server.
             for (course in courses.filter { it.courseNo !in hiddenNos }.sortedBy { it.courseNo }) {
                 val names = customNames[course.courseNo] ?: continue
                 // The id the upload stored the row under, as the backend
@@ -129,10 +135,6 @@ internal suspend fun keepLocalCourses(
                     backend.patchCustomName(moodleId, name, locale)
                 }
             }
-        }
-        for (courseNo in hiddenNos.sorted()) {
-            ensureCurrent()
-            backend.deleteCourse("client:$semester:$courseNo")
         }
     }
 }

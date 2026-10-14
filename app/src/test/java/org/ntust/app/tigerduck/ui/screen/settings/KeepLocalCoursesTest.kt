@@ -176,6 +176,25 @@ class KeepLocalCoursesTest {
     }
 
     @Test
+    fun `a name that fails to go up still leaves the hidden courses deleted`() = runTest {
+        val server = FakeCourseServer(rows = setOf("client:1151:CS1", "client:1151:CS2"))
+        server.failingNames = true
+
+        val thrown = runCatching {
+            keepLocalCourses(
+                listOf("1151" to roster("CS1", "CS2")),
+                hiding = setOf("1151:CS2"),
+                backend = server,
+                customNames = mapOf("CS1" to mapOf("en" to "Calc")),
+            )
+        }.exceptionOrNull()
+
+        assertTrue("got $thrown", thrown is IOException)
+        server.uploadRoster("1151", "CS1", "CS2")
+        assertEquals(setOf("client:1151:CS1"), server.rows)
+    }
+
+    @Test
     fun `a hidden course's name is not sent`() = runTest {
         val server = FakeCourseServer(rows = setOf("client:1151:CS1", "client:1151:CS2"))
 
@@ -411,7 +430,11 @@ private class FakeCourseServer(
         tombstones.putIfAbsent(courseKey, false)
     }
 
+    /** Whether every name PATCH fails before reaching the server. */
+    var failingNames = false
+
     override suspend fun patchCustomName(moodleId: String, name: String, locale: String) {
+        if (failingNames) throw IOException("connection lost")
         val key = rows.firstOrNull { moodleIds[it] == moodleId } ?: throw IOException("HTTP 404")
         names.getOrPut(key) { mutableMapOf() }[locale] = name
     }
