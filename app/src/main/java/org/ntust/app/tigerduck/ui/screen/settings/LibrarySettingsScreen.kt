@@ -80,6 +80,11 @@ fun LibrarySettingsScreen(
                         } else {
                             stringResource(R.string.settings_flip_to_library_unsupported)
                         },
+                        disabledStateDescription = if (flipSensorSupported) {
+                            stringResource(R.string.library_status_not_signed_in)
+                        } else {
+                            null
+                        },
                         onCheckedChange = { viewModel.appState.setFlipToLibraryFromSettings(it) },
                     )
                 }
