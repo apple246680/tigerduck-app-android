@@ -13,6 +13,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.MainActivity
+import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.notification.BackgroundSyncWorker
 import org.ntust.app.tigerduck.notification.NotificationChannelRegistrar
@@ -35,6 +36,8 @@ class FcmService : FirebaseMessagingService() {
     lateinit var intentToken: ServerPushIntentToken
     @Inject
     lateinit var notificationChannels: NotificationChannelRegistrar
+    @Inject
+    lateinit var authService: AuthService
 
     // Deprecated in firebase-messaging 25.1.2 with no replacement callback —
     // see the note in FcmBootstrap.start(). Suppressed rather than marked
@@ -63,6 +66,10 @@ class FcmService : FirebaseMessagingService() {
             )
         }
         val data = message.data
+        if (!handlesPush(data["kind"], signedIn = authService.authState.value)) {
+            Log.d(TAG, "Account push received while signed out — ignored")
+            return
+        }
         // Accept any case-variant the backend might emit ("true"/"True"/"TRUE")
         // plus "1"; anything else (including null) defaults to silent.
         val forceRing = data["force_ring"]?.lowercase() in setOf("true", "1")
