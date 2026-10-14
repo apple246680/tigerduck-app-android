@@ -29,8 +29,8 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * What answers the sign-in form's POST, for the school sign-in and the Moodle token's: a 307 or a
- * 308 has the form sent nowhere else, a 302 or a 303 is followed as a GET that carries no form,
- * and only over HTTPS. Hand-made pages throughout.
+ * 308 has the form sent again only to the school's sign-in host itself, a 301, 302 or 303 is
+ * followed as a GET that carries no form, and only over HTTPS. Hand-made pages throughout.
  *
  * The school stands in as an application interceptor, which answers ahead of OkHttp's own
  * redirect handling, so it follows a redirect itself the way OkHttp does whenever the client it
@@ -72,6 +72,7 @@ class SignInFormRedirectTest {
         val url = request.url.toString()
         return when {
             request.method == "POST" && url == POST_URL -> afterPost(request)
+            request.method == "POST" && url == SECOND_POST_URL -> redirect(request, 302, CALLBACK_URL)
             url == SERVICE -> redirect(request, 302, LOGIN_URL)
             url.startsWith(LOGIN_URL) -> page(request, if (moodle) MOODLE_LOGIN_PAGE else SSO_LOGIN_PAGE)
             url == CALLBACK_URL -> redirect(request, 302, if (moodle) MOODLE_CONFIRMED else SERVICE_SIGNED_IN)
@@ -130,6 +131,48 @@ class SignInFormRedirectTest {
         assertTrue("got $failure", failure is SsoLoginError.InvalidResponse)
         assertEquals(listOf("POST $POST_URL +password"), posts)
         assertTrue(requests.none { it.contains("elsewhere.example") })
+    }
+
+    @Test
+    fun `a 307 after the school sign-in form to the sign-in host itself sends it there again`() = runTest {
+        // Relative, as a load balancer in front of the sign-in host may send it.
+        afterPost = { redirect(it, 307, "/account/login?node=2") }
+
+        assertTrue(ssoLogin().ensureServiceLogin(SERVICE, STUDENT, PASSWORD))
+
+        assertEquals(listOf("POST $POST_URL +password", "POST $SECOND_POST_URL +password"), posts)
+        assertTrue(requests.contains("GET $SERVICE_SIGNED_IN"))
+    }
+
+    @Test
+    fun `a 308 after the school sign-in form to the sign-in host over plain HTTP sends it nowhere`() = runTest {
+        afterPost = { redirect(it, 308, "http://ssoam2.ntust.edu.tw/account/login?node=2") }
+
+        val failure = runCatching { ssoLogin().ensureServiceLogin(SERVICE, STUDENT, PASSWORD) }.exceptionOrNull()
+
+        assertTrue("got $failure", failure is SsoLoginError.InvalidResponse)
+        assertEquals(listOf("POST $POST_URL +password"), posts)
+        assertTrue(requests.none { it.contains("http://") })
+    }
+
+    @Test
+    fun `a 301 after the school sign-in form is followed as a GET`() = runTest {
+        afterPost = { redirect(it, 301, CALLBACK_URL) }
+
+        assertTrue(ssoLogin().ensureServiceLogin(SERVICE, STUDENT, PASSWORD))
+
+        assertEquals(listOf("POST $POST_URL +password"), posts)
+        assertTrue(requests.contains("GET $CALLBACK_URL"))
+    }
+
+    @Test
+    fun `a redirect after the school sign-in form to a relative address is followed on the sign-in host`() = runTest {
+        afterPost = { redirect(it, 302, "/connect/authorize/callback") }
+
+        assertTrue(ssoLogin().ensureServiceLogin(SERVICE, STUDENT, PASSWORD))
+
+        assertEquals(listOf("POST $POST_URL +password"), posts)
+        assertTrue(requests.contains("GET $CALLBACK_URL"))
     }
 
     @Test
@@ -203,6 +246,7 @@ class SignInFormRedirectTest {
         const val SERVICE_SIGNED_IN = "https://courseselection.ntust.edu.tw/signin-oidc"
         const val LOGIN_URL = "https://ssoam2.ntust.edu.tw/account/login?ReturnUrl=%2Fconnect"
         const val POST_URL = "https://ssoam2.ntust.edu.tw/account/login"
+        const val SECOND_POST_URL = "https://ssoam2.ntust.edu.tw/account/login?node=2"
         const val CALLBACK_URL = "https://ssoam2.ntust.edu.tw/connect/authorize/callback"
         const val ELSEWHERE = "https://elsewhere.example/collect"
         const val MOODLE_LAUNCH = "https://moodle2.ntust.edu.tw/admin/tool/mobile/launch.php"

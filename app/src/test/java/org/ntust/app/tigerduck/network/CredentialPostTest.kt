@@ -8,6 +8,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
@@ -70,6 +71,18 @@ class CredentialPostTest {
 
         assertTrue("got $failure", failure is IOException)
         assertEquals("each post counts toward the account's lockout", 1, posts)
+    }
+
+    @Test
+    fun `a sign-in host that keeps sending the form back to itself ends the sign-in`() {
+        var posts = 0
+        val school = client { chain ->
+            posts++
+            redirect(chain.request(), 307, SIGN_IN_URL)
+        }
+
+        assertNull(school.executeCredentialPost(post()))
+        assertEquals(4, posts)
     }
 
     private fun redirect(request: Request, code: Int, location: String): Response = Response.Builder()
