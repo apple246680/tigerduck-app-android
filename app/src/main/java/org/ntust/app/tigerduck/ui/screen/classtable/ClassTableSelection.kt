@@ -15,6 +15,22 @@ import java.util.Calendar
 
 object ClassTableSelection {
 
+    /**
+     * The course the detail shows for [selected]: the copy in [courses] or, for a course of the
+     * live term picked from the today strip, in [liveCourses], so a rename made from the detail
+     * shows at once. A course no longer listed keeps the copy that was picked.
+     */
+    fun detailCourse(selected: Course?, courses: List<Course>, liveCourses: List<Course>): Course? {
+        selected ?: return null
+        return courses.firstOrNull { it.courseNo == selected.courseNo }
+            ?: liveCourses.firstOrNull { it.courseNo == selected.courseNo }
+            ?: selected
+    }
+
+    /** The detail's title: the user's own name for the course, else its [fullName], else its name. */
+    fun detailTitle(course: Course, fullName: String?): String =
+        course.customCourseName ?: fullName ?: course.displayName
+
     /** Weekday (Mon=1 … Sun=7) paired with minutes since midnight. */
     data class DayTime(val weekday: Int, val minuteOfDay: Int)
 

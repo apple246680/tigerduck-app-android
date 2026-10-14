@@ -1,0 +1,497 @@
+// The course detail a course cell opens: a page of its own, so the Moodle
+// screens it leads to push over it and back returns to it. Its row and card
+// primitives, and the Moodle hand-off, live here too.
+
+package org.ntust.app.tigerduck.ui.screen.classtable
+
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
+import org.ntust.app.tigerduck.R
+import org.ntust.app.tigerduck.data.model.Assignment
+import org.ntust.app.tigerduck.shared.Course
+import org.ntust.app.tigerduck.ui.component.NoTopBarInsets
+import org.ntust.app.tigerduck.ui.haptics.HapticScenario
+import org.ntust.app.tigerduck.ui.haptics.Haptics
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleCourseSection
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleCourseViewModel
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodlePage
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.cardDividerColor
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.openMoodlePage
+import org.ntust.app.tigerduck.ui.screen.home.openAssignmentInMoodle
+import org.ntust.app.tigerduck.ui.screen.settings.SubSettingsBarHeight
+import org.ntust.app.tigerduck.ui.theme.ContentAlpha
+import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
+import org.ntust.app.tigerduck.util.formatCredits
+import java.text.SimpleDateFormat
+import java.util.Locale
+
+/**
+ * The class table's selected course, in full:
+ *   1. Title, rename and "Open in Moodle" in the bar, with the course colour under the title
+ *   2. Two emphasis cards side by side: classroom | time
+ *   3. The info rows: instructor, code (tap to copy), dimension, duration, credits, enrollment
+ *   4. Incomplete assignments, each opening in Moodle, then the course's Moodle section, whose
+ *      rows open the Moodle screens over this page
+ *
+ * [showsMoodle] is off for a course on someone else's class table: the Moodle course is the
+ * signed-in student's. The page closes itself when there is no selected course to show, as after
+ * the process was restored or the account signed out.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun CourseDetailScreen(
+    viewModel: ClassTableViewModel,
+    browserPreference: String,
+    onBack: () -> Unit,
+    onOpenRoute: (String) -> Unit,
+    showsMoodle: Boolean = true,
+    moodleViewModel: MoodleCourseViewModel = hiltViewModel(),
+) {
+    val selected by viewModel.selectedCourse.collectAsStateWithLifecycle()
+    val courses by viewModel.courses.collectAsStateWithLifecycle()
+    val liveCourses by viewModel.liveSemesterCourses.collectAsStateWithLifecycle()
+    val outstanding by viewModel.outstandingAssignments.collectAsStateWithLifecycle()
+    val moodleIds by viewModel.moodleCourseIdMap.collectAsStateWithLifecycle()
+
+    // The course as it is now, so a rename made here shows at once.
+    val course = ClassTableSelection.detailCourse(selected, courses, liveCourses)
+    if (course == null) {
+        LaunchedEffect(Unit) { onBack() }
+        return
+    }
+
+    val context = LocalContext.current
+    val title = viewModel.detailTitle(course)
+    val classroom = viewModel.selectedCourseClassroom
+    val timeRange = viewModel.selectedCourseTimeRange
+    val assignments = remember(outstanding, course.courseNo) { outstanding.filter { it.courseNo == course.courseNo } }
+    val moodleCourseId = remember(course.courseNo, moodleIds) { viewModel.moodleCourseIdFor(course) }
+    LaunchedEffect(moodleCourseId, showsMoodle) {
+        moodleViewModel.bind(moodleCourseId.takeIf { showsMoodle }, course.courseNo)
+    }
+    val store by moodleViewModel.store.collectAsStateWithLifecycle()
+    var renaming by rememberSaveable { mutableStateOf(false) }
+
+    val scroll = rememberScrollState()
+    val headerPx = with(LocalDensity.current) { 56.dp.toPx() }
+    // The title moves up into the bar once the page's own heading scrolls under it.
+    val titleInBar by remember { derivedStateOf { scroll.value > headerPx } }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                windowInsets = NoTopBarInsets,
+                title = {
+                    if (titleInBar) Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { renaming = true }) {
+                        Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.class_table_rename_title))
+                    }
+                    if (showsMoodle && moodleCourseId != null) {
+                        IconButton(onClick = { openCourseInMoodle(context, moodleCourseId) }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.OpenInNew,
+                                contentDescription = stringResource(R.string.a11y_course_detail_open_moodle),
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                },
+                expandedHeight = SubSettingsBarHeight,
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(scroll)
+                .padding(horizontal = 16.dp)
+                .padding(top = 4.dp, bottom = 32.dp)
+                .widthIn(max = 720.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            CourseDetailContent(
+                course = course,
+                title = title,
+                classroom = classroom,
+                timeRange = timeRange,
+                assignments = assignments,
+            )
+            val current = store
+            if (showsMoodle && moodleCourseId != null && current != null && current.courseId == moodleCourseId) {
+                MoodleCourseSection(current, browserPreference, onOpenRoute)
+            }
+        }
+    }
+
+    if (renaming) {
+        CourseRenameDialog(viewModel = viewModel, course = course, onDismiss = { renaming = false })
+    }
+}
+
+/** Everything above the Moodle section. */
+@Composable
+private fun CourseDetailContent(
+    course: Course,
+    title: String,
+    classroom: String,
+    timeRange: String?,
+    assignments: List<Assignment>,
+) {
+    val courseColor = TigerDuckTheme.courseColor(course.courseNo)
+    val dash = "—"
+    val classroomValue = classroom.trim().ifEmpty { dash }
+    val timeValue = timeRange?.takeIf { it.isNotBlank() } ?: dash
+
+    // The course code is what students paste into 加退選, the portal search
+    // and group chats, so the row that shows it also hands it over.
+    val context = LocalContext.current
+    val view = LocalView.current
+    val codeCopiedMessage = stringResource(R.string.course_detail_code_copied)
+    var copyCount by remember { mutableIntStateOf(0) }
+    var codeCopied by remember { mutableStateOf(false) }
+    // Keyed on the count, so a second copy inside the window restarts the
+    // timer instead of having the first one clear its checkmark early.
+    LaunchedEffect(copyCount) {
+        if (copyCount == 0) return@LaunchedEffect
+        codeCopied = true
+        delay(1_500)
+        codeCopied = false
+    }
+    val copyCourseCode: () -> Unit = {
+        context.getSystemService(ClipboardManager::class.java)
+            ?.setPrimaryClip(ClipData.newPlainText("course_no", course.courseNo))
+        // Through the app's own scenario, like every other haptic here, so
+        // the Settings → Vibration sliders govern it too.
+        Haptics.perform(context, HapticScenario.CourseCodeCopy)
+        // The checkmark and the haptic are both invisible to TalkBack.
+        @Suppress("DEPRECATION")
+        view.announceForAccessibility(codeCopiedMessage)
+        copyCount++
+    }
+
+    // Title with a course-coloured accent bar under it, so the cards below
+    // read as belonging to *this* course at a glance.
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.semantics { heading() },
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(courseColor),
+        )
+    }
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.height(IntrinsicSize.Min),
+    ) {
+        EmphasisCard(
+            label = stringResource(R.string.course_detail_classroom_label),
+            value = classroomValue,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight(),
+        )
+        EmphasisCard(
+            label = stringResource(R.string.course_detail_time_label),
+            value = timeValue,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight(),
+        )
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        InfoRow(
+            label = stringResource(R.string.course_detail_instructor_label),
+            value = course.instructor.ifBlank { dash },
+        )
+        InfoRow(
+            label = stringResource(R.string.course_detail_code_label),
+            value = course.courseNo,
+            copied = codeCopied,
+            onCopy = copyCourseCode,
+        )
+        CourseDetailMetadata.dimension(course.dimension)?.let {
+            InfoRow(
+                label = stringResource(R.string.course_detail_dimension_label),
+                value = it,
+            )
+        }
+        CourseDetailMetadata.durationLabel(course.allYear)?.let {
+            InfoRow(
+                label = stringResource(R.string.course_detail_duration_label),
+                value = stringResource(it),
+            )
+        }
+        InfoRow(
+            label = stringResource(R.string.course_detail_credits_label),
+            value = course.credits.formatCredits(),
+        )
+        InfoRow(
+            label = stringResource(R.string.course_detail_enrollment_label),
+            value = "${course.enrolledCount} / ${course.maxCount}",
+        )
+    }
+
+    if (assignments.isNotEmpty()) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Text(
+                text = stringResource(R.string.course_detail_incomplete_assignments),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.semantics { heading() },
+            )
+            Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
+                Column {
+                    assignments.forEachIndexed { index, assignment ->
+                        if (index > 0) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(start = 56.dp),
+                                color = cardDividerColor(),
+                            )
+                        }
+                        AssignmentRow(assignment) { openAssignmentInMoodle(context, assignment) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** An outstanding assignment: its title and due time, opening it in Moodle. */
+@Composable
+private fun AssignmentRow(assignment: Assignment, onClick: () -> Unit) {
+    val due = remember(assignment.dueDate) {
+        SimpleDateFormat("M/d HH:mm", Locale.getDefault()).apply { timeZone = org.ntust.app.tigerduck.AppConstants.TAIPEI_TZ }
+            .format(assignment.dueDate)
+    }
+    ListItem(
+        modifier = Modifier.clickable(role = Role.Button, onClick = onClick),
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+        leadingContent = {
+            Icon(Icons.Outlined.Description, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        },
+        headlineContent = { Text(assignment.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+        supportingContent = {
+            Text(
+                text = stringResource(R.string.course_detail_due_prefix, due),
+                color = if (assignment.isOverdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        trailingContent = {
+            Icon(
+                Icons.AutoMirrored.Filled.OpenInNew,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY),
+                modifier = Modifier.size(18.dp),
+            )
+        },
+    )
+}
+
+/**
+ * Big-text card used for the two fields that earn visual emphasis
+ * (classroom and time). Label sits small at the top-start; the value
+ * renders large and centered so paired cards read as a single
+ * at-a-glance unit. On the page's background in the cards' `surface`,
+ * as every grouped card in the app is drawn.
+ */
+@Composable
+private fun EmphasisCard(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    // titleMedium (not titleLarge) so longer time strings like
+    // "09:10 - 12:00" fit on one line without auto-shrinking, and both
+    // cards in the pair use the same size for visual symmetry.
+    val valueStyle = MaterialTheme.typography.titleMedium.copy(
+        fontWeight = FontWeight.SemiBold,
+    )
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            // weight(1f) on the value Box lets sibling cards in an
+            // IntrinsicSize.Min row equalize on the taller card's
+            // intrinsic height by letting this Box absorb the extra
+            // vertical space, vertically centering the value inside it.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(vertical = 4.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = value,
+                    style = valueStyle,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Open course id [moodleCourseId] in the Moodle Mobile app via the
+ * `moodlemobile://` deep link envelope, falling back to the browser if
+ * Moodle Mobile isn't installed or the OS refuses to route the intent.
+ * Mirrors the assignment-row pattern in [HomeScreen.openAssignmentInMoodle]
+ * so the two surfaces behave identically.
+ */
+internal fun openCourseInMoodle(context: Context, moodleCourseId: Int) {
+    openMoodlePage(context, MoodlePage.course(moodleCourseId))
+}
+
+/**
+ * A label/value row. A non-null [onCopy] makes the whole row a copy button,
+ * marked by a glyph in front of the value — the value is what gets copied, so
+ * the glyph reads as a marker on it rather than as a separate control. It
+ * turns into a checkmark while [copied].
+ */
+@Composable
+private fun InfoRow(
+    label: String,
+    value: String,
+    copied: Boolean = false,
+    onCopy: (() -> Unit)? = null,
+) {
+    val rowModifier = if (onCopy != null) {
+        Modifier
+            .fillMaxWidth()
+            .clickable(
+                onClickLabel = stringResource(R.string.course_detail_copy_code),
+                role = Role.Button,
+                onClick = onCopy,
+            )
+    } else {
+        Modifier.fillMaxWidth()
+    }
+    Row(
+        modifier = rowModifier,
+        verticalAlignment = if (onCopy != null) Alignment.CenterVertically else Alignment.Top,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.weight(1f))
+        if (onCopy != null) {
+            Icon(
+                imageVector = if (copied) Icons.Filled.Check else Icons.Filled.ContentCopy,
+                contentDescription = null,
+                tint = if (copied) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier
+                    .padding(end = 6.dp)
+                    .size(16.dp),
+            )
+        }
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.End,
+        )
+    }
+}

@@ -42,6 +42,31 @@ class ClassTableSelectionTest {
             set(Calendar.MINUTE, minute)
         }
 
+    // --- the course detail -------------------------------------------------
+
+    @Test
+    fun `the course detail shows the course as it is now, renamed from the detail included`() {
+        val picked = course("CS1", emptyMap())
+        val renamed = picked.copy(customCourseName = "Algorithms I")
+
+        assertEquals("Algorithms I", ClassTableSelection.detailCourse(picked, listOf(renamed), emptyList())?.customCourseName)
+        assertEquals(
+            "a carousel course of the live term is found there",
+            "Algorithms I",
+            ClassTableSelection.detailCourse(picked, emptyList(), listOf(renamed))?.customCourseName,
+        )
+        assertEquals("one no longer listed keeps what was picked", picked, ClassTableSelection.detailCourse(picked, emptyList(), emptyList()))
+        assertNull("nothing selected, nothing to show", ClassTableSelection.detailCourse(null, listOf(renamed), emptyList()))
+    }
+
+    @Test
+    fun `the detail's title is the custom name, else the full name, else the course name`() {
+        val plain = course("CS1", emptyMap())
+        assertEquals("Mine", ClassTableSelection.detailTitle(plain.copy(customCourseName = "Mine"), fullName = "Full"))
+        assertEquals("Full", ClassTableSelection.detailTitle(plain, fullName = "Full"))
+        assertEquals(plain.displayName, ClassTableSelection.detailTitle(plain, fullName = null))
+    }
+
     // --- dayTimeFrom -------------------------------------------------------
 
     @Test

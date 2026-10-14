@@ -174,6 +174,12 @@ class ClassTableViewModel @Inject constructor(
     // it on logout so a stale map can't survive an account switch.
     private val _moodleCourseIdByIdnumber = MutableStateFlow<Map<String, Int>>(emptyMap())
 
+    /**
+     * The id map as it changes, so the course detail finds a course's Moodle id the moment a
+     * sync brings it (see [moodleCourseIdFor]), as iOS retries after the first sync.
+     */
+    val moodleCourseIdMap: StateFlow<Map<String, Int>> = _moodleCourseIdByIdnumber
+
     // Per-locale custom course names: courseNo → locale ("zh"/"en") → display name.
     // Loaded from DataCache.courseCustomNames on init; written on every rename.
     // The resolved value for the current locale is stamped onto
@@ -258,6 +264,13 @@ class ClassTableViewModel @Inject constructor(
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val noNetworkEvent: SharedFlow<Unit> = _noNetworkEvent.asSharedFlow()
+
+    /** A course was selected: the screen opens its course detail. */
+    private val _courseDetailRequests = MutableSharedFlow<Unit>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val courseDetailRequests: SharedFlow<Unit> = _courseDetailRequests.asSharedFlow()
 
     private val _syncCompleteEvent = MutableSharedFlow<Unit>(
         extraBufferCapacity = 1,
@@ -625,7 +638,15 @@ class ClassTableViewModel @Inject constructor(
         _selectedPeriodId.value = periodId
         selectedCourseSemester = if (fromLiveTerm) liveCoursesTerm else _currentSemester.value
         _selectedCourse.value = course
+        _courseDetailRequests.tryEmit(Unit)
     }
+
+    /**
+     * The course detail's title for [course], as it is now: a rename made from the detail shows
+     * at once, which [selectedCourseFullName], read off the course as it was selected, would not.
+     */
+    fun detailTitle(course: Course): String =
+        ClassTableSelection.detailTitle(course, courseService.cachedFullCourseName(_currentSemester.value, course.courseNo))
 
     /**
      * Numeric Moodle course id for [course], or null when we have no entry

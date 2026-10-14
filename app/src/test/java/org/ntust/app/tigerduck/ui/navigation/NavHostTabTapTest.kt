@@ -96,3 +96,40 @@ class NavHostTabTapTest {
         assertEquals(true, lastPopSlides)
     }
 }
+
+/** A page that closes itself must close only itself, however many times it asks. */
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class)
+class PopIfTopTest {
+
+    @get:Rule
+    val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+    private lateinit var navController: NavHostController
+
+    @Test
+    fun `a second pop for the same page leaves the page under it`() {
+        composeRule.setContent {
+            navController = rememberNavController()
+            NavHost(navController = navController, startDestination = "classTable") {
+                composable("classTable") {}
+                composable("classTable/course") {}
+                composable("courseMoodle/announcements") {}
+            }
+        }
+        composeRule.runOnIdle {
+            navController.navigate("classTable/course")
+            navController.navigate("courseMoodle/announcements")
+        }
+        composeRule.waitForIdle()
+        val top = composeRule.runOnIdle { navController.currentBackStackEntry!! }
+
+        composeRule.runOnIdle {
+            navController.popIfTop(top)
+            navController.popIfTop(top)
+        }
+        composeRule.waitForIdle()
+
+        assertEquals("classTable/course", navController.currentBackStackEntry?.destination?.route)
+    }
+}

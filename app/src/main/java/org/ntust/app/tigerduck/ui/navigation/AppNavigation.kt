@@ -71,6 +71,7 @@ import org.ntust.app.tigerduck.ui.screen.calendar.CalendarScreen
 import org.ntust.app.tigerduck.ui.screen.calendar.CalendarViewModel
 import org.ntust.app.tigerduck.ui.screen.classtable.ClassTableScreen
 import org.ntust.app.tigerduck.ui.screen.classtable.ClassTableViewModel
+import org.ntust.app.tigerduck.ui.screen.classtable.CourseDetailScreen
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleAnnouncementScreen
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleAnnouncementsScreen
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleCourseViewModel
@@ -426,6 +427,17 @@ fun MainNavigation(
                 ClassTableScreen(
                     viewModel = classTableViewModel,
                     onOpenSignInSettings = openSignInSettings,
+                    onOpenCourseDetail = {
+                        navController.navigate(MoodleRoutes.COURSE_DETAIL) { launchSingleTop = true }
+                    },
+                )
+            }
+            page(MoodleRoutes.COURSE_DETAIL) { entry ->
+                CourseDetailScreen(
+                    viewModel = classTableViewModel,
+                    browserPreference = appState.browserPreference,
+                    onBack = { navController.popIfTop(entry) },
+                    onOpenRoute = { navController.navigate(it) },
                 )
             }
             val moodleCourseArg = navArgument(MoodleCourseViewModel.ARG_COURSE_ID) { type = NavType.IntType }
