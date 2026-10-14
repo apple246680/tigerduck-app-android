@@ -242,13 +242,13 @@ class PushRegistrationService @Inject constructor(
         }
         val deviceId = identity.uuid()
         scope.launch {
-            // Clear fcmToken and latch isUnregistering in the same critical
-            // section that cancels the debounce so a token rotation or
-            // scheduleRegister fired during the API round-trip can't resurrect
-            // the row we're deleting under anon-$deviceId.
+            // Latch isUnregistering in the same critical section that cancels
+            // the debounce so a token rotation or scheduleRegister fired during
+            // the API round-trip can't resurrect the row we're deleting under
+            // anon-$deviceId. The token is kept: the next sign-in registers
+            // with it at once, and nothing else in this process fetches one.
             mutex.withLock {
                 debounceJob?.cancel()
-                fcmToken = null
                 isUnregistering = true
                 // A sign-out owes no registration: the row is being deleted on
                 // purpose, and the next sign-in or token asks for a new one.
@@ -272,13 +272,17 @@ class PushRegistrationService @Inject constructor(
                     mutex.withLock { isUnregistering = false }
                 }
             }
+            val hasToken = mutex.withLock { fcmToken != null }
             updateDiagnostic {
                 PushDiagnostic(
-                    hasFcmToken = false,
+                    hasFcmToken = hasToken,
                     isRegistered = false,
                     lastError = null,
                 )
             }
+            // A sign-in while the DELETE was out asked for a registration,
+            // which the latch held back until now.
+            mutex.withLock { if (registrationOwed) requestRegistration() }
         }
     }
 

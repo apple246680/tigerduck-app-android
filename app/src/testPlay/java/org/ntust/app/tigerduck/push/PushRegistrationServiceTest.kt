@@ -384,6 +384,57 @@ class PushRegistrationServiceTest {
         assertEquals(listOf(WorkInfo.State.ENQUEUED), unregisterWork())
     }
 
+    // Signing in again after a sign-out, in the same process
+
+    private fun registrations() = backend.received(REGISTER)
+
+    @Test
+    fun `signing in again after a sign-out registers the device at once`() = runTest {
+        val service = service()
+        service.update("fcm-1")
+        service.awaitRegistrations()
+        assertEquals(1, registrations().size)
+
+        // The sign-out: the session goes, then the unregister.
+        tokens.clear()
+        service.unregister(departing())
+        awaitUntil { deletes().isNotEmpty() && owed.pending == null }
+        testScheduler.advanceUntilIdle()
+        // The next sign-in: AuthService stores the session, then asks for a registration.
+        signIn()
+        service.onSignedIn()
+        service.awaitRegistrations()
+
+        assertEquals(2, registrations().size)
+        assertEquals("fcm-1", JSONObject(registrations().last().body).getJSONObject("push_token").getString("token_value"))
+        assertTrue(service.diagnostic.value.isRegistered)
+    }
+
+    @Test
+    fun `a sign-in during the sign-out's unregister registers the device once the DELETE is done`() = runTest {
+        val service = service()
+        service.update("fcm-1")
+        service.awaitRegistrations()
+        tokens.clear()
+        val held = backend.hold(deleteEndpoint())
+
+        service.unregister(departing())
+        held.arrived.await()
+        signIn()
+        service.onSignedIn()
+        testScheduler.advanceUntilIdle()
+        // Not while the DELETE is out: it would delete the row the registration adds.
+        assertEquals(1, registrations().size)
+
+        held.release(204)
+        awaitUntil { owed.pending == null }
+        testScheduler.advanceUntilIdle()
+        service.awaitRegistrations()
+
+        assertEquals(2, registrations().size)
+        assertTrue(service.diagnostic.value.isRegistered)
+    }
+
     @Test
     fun `a sign-out with no session owes nothing`() = runTest {
         val service = service(signedIn = false)
