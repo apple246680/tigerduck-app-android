@@ -107,7 +107,7 @@ class SyncApiClient @Inject constructor(
             .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                throw PushApiException("sync/revision failed: HTTP ${response.code}")
+                throw PushApiException("sync/revision failed: HTTP ${response.code}", response.code)
             }
             val json = JSONObject(response.body.string())
             json.optLong("revision", 0)
