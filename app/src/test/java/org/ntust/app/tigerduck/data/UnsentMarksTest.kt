@@ -334,4 +334,16 @@ class UnsentMarksTest {
         assertEquals(listOf(7 to "none"), sent)
         assertEquals(emptySet<String>(), marks.ids())
     }
+
+    @Test
+    fun `Use Local's older reading does not replace a tap made during the hold`() = runTest {
+        sends = false
+        // Tapped on Home while Use Local's requests were going out.
+        marks.send("7", "none")
+
+        // Use Local read the mark before that tap, and its PATCH failed.
+        marks.keep("7", "ignored", cache.userDataGeneration)
+
+        assertEquals(mapOf("7" to "none"), waiting())
+    }
 }

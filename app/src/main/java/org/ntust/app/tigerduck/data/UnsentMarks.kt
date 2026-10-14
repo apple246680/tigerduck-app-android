@@ -98,11 +98,15 @@ class UnsentMarks internal constructor(
      * Keeps a mark Use Local could not send, whatever [sends] says: while the
      * answer is applied the re-enable check still holds marks, and dropped,
      * the mark would be lost to the next sync. Written only while the data is
-     * still [generation]'s.
+     * still [generation]'s, and never over a mark already waiting for the
+     * assignment: that is a tap made during the hold, newer than what Use
+     * Local read.
      */
     suspend fun keep(assignmentId: String, status: String, generation: Int) {
         mutex.withLock {
-            save(waiting() + (assignmentId to UnsentMark(assignmentId, status)), generation)
+            val waiting = waiting()
+            if (assignmentId in waiting) return@withLock
+            save(waiting + (assignmentId to UnsentMark(assignmentId, status)), generation)
         }
     }
 
