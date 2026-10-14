@@ -663,20 +663,35 @@ class DataCache @Inject constructor(
 
     /**
      * A random key made once per install and kept in private preferences, so the account folder's
-     * name cannot be worked back to a student ID by hashing every ID there is. Reads from disk.
+     * name cannot be worked back to a student ID by hashing every ID there is. Read from disk
+     * once, then held for the process: one that could not be written still names the folder the
+     * same way until the app restarts. A full reset makes a new one.
      */
     @Synchronized
     private fun installSalt(): ByteArray {
-        moodleSaltPrefs.getString(MOODLE_SALT_KEY, null)
+        salt?.let { return it }
+        val kept = moodleSaltPrefs.getString(MOODLE_SALT_KEY, null)
             ?.let { runCatching { android.util.Base64.decode(it, android.util.Base64.NO_WRAP) }.getOrNull() }
             ?.takeIf { it.size >= 16 }
-            ?.let { return it }
-        val salt = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
-        moodleSaltPrefs.edit()
-            .putString(MOODLE_SALT_KEY, android.util.Base64.encodeToString(salt, android.util.Base64.NO_WRAP))
-            .commit()
-        return salt
+        val made = kept ?: ByteArray(32).also {
+            java.security.SecureRandom().nextBytes(it)
+            val written = moodleSaltPrefs.edit()
+                .putString(MOODLE_SALT_KEY, android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP))
+                .commit()
+            if (!written) android.util.Log.w(TAG, "Moodle folder salt not saved")
+        }
+        salt = made
+        return made
     }
+
+    /** Drops the folder salt, on disk and held, for a full reset. */
+    @Synchronized
+    private fun forgetInstallSalt() {
+        salt = null
+        moodleSaltPrefs.edit().clear().commit()
+    }
+
+    private var salt: ByteArray? = null
 
     private val moodleSaltPrefs = context.getSharedPreferences(MOODLE_SALT_PREFS, Context.MODE_PRIVATE)
 
@@ -727,6 +742,8 @@ class DataCache @Inject constructor(
                     listOf(cacheDir, userDataDir).forEach { dir ->
                         dir.listFiles()?.forEach { runCatching { it.deleteRecursively() } }
                     }
+                    // It names the opened files' folders, which are gone, and a fresh install has none.
+                    forgetInstallSalt()
                 }
             }
         }

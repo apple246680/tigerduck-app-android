@@ -100,4 +100,28 @@ class DataCacheMoodleTest {
         )
         assertFalse(dir == cache.moodleOpenedFilesDir("B11300002"))
     }
+
+    @Test
+    fun `the folder salt is kept for the process, even when it never reached the disk`() {
+        val dir = cache.moodleOpenedFilesDir("B11300001")
+        // As if the write had failed: nothing on disk.
+        context.getSharedPreferences("moodle_files", android.content.Context.MODE_PRIVATE).edit().clear().commit()
+
+        assertEquals(dir, cache.moodleOpenedFilesDir("B11300001"))
+    }
+
+    @Test
+    fun `a full reset makes a new folder salt`() = runTest {
+        val before = cache.moodleOpenedFilesDir("B11300001")
+
+        cache.clearEverything()
+
+        val after = cache.moodleOpenedFilesDir("B11300001")
+        assertFalse("a new salt names the folder anew", before == after)
+        assertEquals(
+            "and the new one is the one kept",
+            after,
+            DataCache(context, AcademicCalendarStore(context, OkHttpClient(), AppPreferences(context))).moodleOpenedFilesDir("B11300001"),
+        )
+    }
 }
