@@ -34,7 +34,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -96,10 +95,6 @@ internal fun SoloCourseCell(
             .padding(1.dp)
             .clip(RoundedCornerShape(6.dp))
             .background(cellBg)
-            .semantics(mergeDescendants = true) {
-                contentDescription = cellLabel
-                role = Role.Button
-            }
             .combinedClickable(
                 onClick = onTap,
                 // The app vibrates for this long press itself, through the Vibration setting;
@@ -109,7 +104,15 @@ internal fun SoloCourseCell(
                     onLongPress()
                     showMenu = true
                 },
-            ),
+            )
+            // The label stands for the name, room hint and badge drawn inside.
+            // Cleared here, after the clickable, rather than on a child: a child
+            // that clears its own semantics leaves this node unclickable to
+            // TalkBack, and a clear before the clickable would drop its actions.
+            .clearAndSetSemantics {
+                contentDescription = cellLabel
+                role = Role.Button
+            },
     ) {
         ClassTableCourseNameText(
             text = course.displayName,
@@ -140,9 +143,7 @@ internal fun SoloCourseCell(
                         start = 3.dp,
                         bottom = 2.dp,
                         end = if (hasAssignment || assignmentsIgnored) 18.dp else 3.dp,
-                    )
-                    // Already in the cell's own label, which reads the room.
-                    .clearAndSetSemantics {},
+                    ),
             )
         }
         CourseCellBadge(
