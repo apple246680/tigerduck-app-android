@@ -1,5 +1,6 @@
 package org.ntust.app.tigerduck.ui.navigation
 
+import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -16,6 +17,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import org.ntust.app.tigerduck.sensor.FlipDetector
+import org.ntust.app.tigerduck.sensor.FlipSensor
 import org.ntust.app.tigerduck.ui.AppState
 import org.ntust.app.tigerduck.ui.firsttrigger.FirstTriggerPromptController
 import org.ntust.app.tigerduck.ui.firsttrigger.FirstTriggerPromptKey
@@ -71,6 +73,8 @@ fun FlipToLibraryEffect(
  * [FlipToLibraryEffect] with its app-wide state read through lambdas, so a
  * test can drive a real detector, window and back stack without Hilt.
  * [onNavigated] runs after a flip has opened Library (the haptic).
+ * [newSensor] builds the detector, or returns null where the phone has no
+ * sensor for it; an instrumented test passes one it can fire by hand.
  *
  * [flipToLibraryEnabled] and [libraryFeatureEnabled] are also read during
  * composition: they must read snapshot state, so a change re-registers the
@@ -85,15 +89,9 @@ internal fun FlipToLibraryEffect(
     hasSeenFirstTrigger: () -> Boolean,
     requestFirstTrigger: () -> Unit,
     onNavigated: () -> Unit,
+    newSensor: (Context, onFaceDown: () -> Unit) -> FlipSensor? = ::flipDetectorIfSupported,
 ) {
     val context = LocalContext.current
-    val supported = remember(context) { FlipDetector.isSupported(context) }
-    if (!supported) return
-
-    // Reading the Compose-state-backed properties here makes the enclosing
-    // composition observe changes, so the DisposableEffect below restarts
-    // when the user toggles either setting.
-    val enabled = flipToLibraryEnabled() && libraryFeatureEnabled()
 
     val currentFlipEnabled by rememberUpdatedState(flipToLibraryEnabled)
     val currentLibraryEnabled by rememberUpdatedState(libraryFeatureEnabled)
@@ -106,21 +104,21 @@ internal fun FlipToLibraryEffect(
 
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val detector = remember(navController) {
-        FlipDetector(context) {
+        newSensor(context) onFaceDown@{
             // Fire-time guards. All checks are synchronous and main-thread —
             // sensor callbacks deliver on the main thread by default. Re-checking
             // both gates (not just libraryFeatureEnabled) closes the brief window
             // where the user toggles flipToLibrary off and a sensor event lands
             // before DisposableEffect restarts and unregisters the detector.
-            if (!currentLibraryEnabled()) return@FlipDetector
-            if (!currentFlipEnabled()) return@FlipDetector
+            if (!currentLibraryEnabled()) return@onFaceDown
+            if (!currentFlipEnabled()) return@onFaceDown
             // Gate the prompt behind the library session. The first-trigger
             // prompt explains the gesture in lieu of navigating, so it must
             // only be consumed on a flip that could actually navigate —
             // otherwise a signed-out user who flips by accident taps Keep,
             // burns the one-time prompt, and their first *working* flip after
             // signing in jumps straight to Library with no explanation.
-            if (!currentLoggedIn()) return@FlipDetector
+            if (!currentLoggedIn()) return@onFaceDown
             // Not over a dialog, a sheet or a mail draft: leaving the page
             // drops what the user was in the middle of, and the first-trigger
             // prompt would land on top of it. Nothing is consumed, so the
@@ -129,7 +127,7 @@ internal fun FlipToLibraryEffect(
                     windowFocused = windowInfo.isWindowFocused,
                     currentRoute = navController.currentDestination?.route,
                 )
-            ) return@FlipDetector
+            ) return@onFaceDown
             // First-trigger UX: the first successful flip surfaces a root-level
             // keep/turn-off prompt instead of jumping tabs, so the user isn't
             // dropped into an unfamiliar screen before agreeing to the gesture.
@@ -137,7 +135,7 @@ internal fun FlipToLibraryEffect(
             // back-stack guard below.
             if (!currentHasSeenFirstTrigger()) {
                 currentRequestFirstTrigger()
-                return@FlipDetector
+                return@onFaceDown
             }
             // No graph yet: dropped like any other ignored flip. This used to
             // queue the flip for the graph to appear, but no flip can get here
@@ -147,10 +145,15 @@ internal fun FlipToLibraryEffect(
             // MainNavigation's NavHost, which sets the graph; the window
             // focus the gate above requires also arrives only after that
             // first frame.
-            if (navController.currentBackStackEntry == null) return@FlipDetector
+            if (navController.currentBackStackEntry == null) return@onFaceDown
             if (navigateToLibrary(navController)) currentOnNavigated()
         }
-    }
+    } ?: return // No rotation-vector sensor on this phone.
+
+    // Reading the Compose-state-backed properties here makes the enclosing
+    // composition observe changes, so the DisposableEffect below restarts
+    // when the user toggles either setting.
+    val enabled = flipToLibraryEnabled() && libraryFeatureEnabled()
 
     DisposableEffect(enabled, lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
@@ -170,6 +173,10 @@ internal fun FlipToLibraryEffect(
         }
     }
 }
+
+/** A [FlipDetector] where the phone has the sensor it reads, else nothing to register. */
+private fun flipDetectorIfSupported(context: Context, onFaceDown: () -> Unit): FlipSensor? =
+    if (FlipDetector.isSupported(context)) FlipDetector(context, onFaceDown) else null
 
 /** Whether it navigated: a flip on Library itself stays put, without the haptic. */
 private fun navigateToLibrary(navController: NavController): Boolean {
