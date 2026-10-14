@@ -968,9 +968,3 @@ class HomeViewModel @Inject constructor(
         prefs.homeSections = sections
     }
 }
-
-/**
- * Selection context for the Home detail dialog. Carries the slot-resolved
- * classroom so the popup renders the room for the tapped period only, not
- * the union across the whole day's split rooms.
- */
