@@ -15,6 +15,36 @@ object HtmlParser {
                 (html.contains("name=\"Username\"") && html.contains("name=\"Password\""))
     }
 
+    /**
+     * The message an SSO sign-in page shows under its form after a refused
+     * sign-in ("wrong account or password", a lockout notice), or null when it
+     * shows none. Mirrors iOS's `HTMLParser.loginErrorMessage(in:)`.
+     */
+    fun loginErrorMessage(html: String): String? {
+        for (cls in LOGIN_ERROR_CLASSES) {
+            val re = Regex(
+                """<[^>]*class=["'][^"']*\b$cls\b[^"']*["'][^>]*>([\s\S]*?)</[^>]+>""",
+                RegexOption.IGNORE_CASE,
+            )
+            for (match in re.findAll(html)) {
+                val text = match.groupValues[1]
+                    .replace(Regex("<[^>]+>"), " ")
+                    .decodeHtmlEntities()
+                    .replace(Regex("\\s+"), " ")
+                    .trim()
+                if (text.isNotEmpty()) return text
+            }
+        }
+        return null
+    }
+
+    private val LOGIN_ERROR_CLASSES = listOf(
+        "field-validation-error",
+        "validation-summary-errors",
+        "alert-danger",
+        "text-danger",
+    )
+
     fun findFormById(html: String, id: String): FormData? {
         val escapedId = Regex.escape(id)
         // Accept either quote style around the id, like extractAttribute /

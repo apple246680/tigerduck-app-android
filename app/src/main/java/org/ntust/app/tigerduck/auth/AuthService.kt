@@ -42,6 +42,7 @@ class AuthService @Inject constructor(
     private val notificationSettingsSync: NotificationSettingsSync,
     private val authTokenManager: AuthTokenManager,
     private val moodleTokenService: MoodleTokenService,
+    private val storedPasswordLatch: StoredPasswordLatch,
     private val courseService: CourseService,
     private val moodleService: MoodleService,
     private val dataCache: DataCache,
@@ -332,6 +333,10 @@ class AuthService @Inject constructor(
         // Left pending, it would hold the next session's assignment marks and
         // then offer Use Local, sending that emptied data over the server's.
         prefs.pendingConflictCategories = emptySet()
+        // A refusal belongs to the password leaving with the account; and an
+        // automatic sign-in of that account still waiting for its answer
+        // latches nothing for the next one.
+        storedPasswordLatch.clear()
         _loginError.value = null
         _authState.value = false
         pushRegistration.unregister(authHeader)

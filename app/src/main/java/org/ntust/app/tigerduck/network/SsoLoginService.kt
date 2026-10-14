@@ -7,12 +7,15 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.ntust.app.tigerduck.auth.StoredPasswordLatch
 import javax.inject.Inject
 import javax.inject.Singleton
 
 sealed class SsoLoginError : Exception() {
     class LoginFormNotFound : SsoLoginError()
-    class LoginFailed : SsoLoginError()
+
+    /** The school kept the sign-in on its form. [reason] is its message, when the page had one. */
+    class LoginFailed(val reason: String? = null) : SsoLoginError()
     class InvalidResponse : SsoLoginError()
     data class NetworkError(val cause_: Exception) : SsoLoginError()
 }
@@ -51,10 +54,16 @@ internal suspend fun <T> fetchWithSsoSession(
 }
 
 @Singleton
-class SsoLoginService @Inject constructor(
-    private val sessionManager: NtustSessionManager
+class SsoLoginService internal constructor(
+    private val sessionManager: NtustSessionManager,
+    private val passwordLatch: StoredPasswordLatch,
+    private val clientFor: () -> OkHttpClient,
 ) {
-    private val client: OkHttpClient get() = sessionManager.client
+    @Inject
+    constructor(sessionManager: NtustSessionManager, passwordLatch: StoredPasswordLatch) :
+        this(sessionManager, passwordLatch, { sessionManager.client })
+
+    private val client: OkHttpClient get() = clientFor()
 
     // One login at a time. A login that meets the SSO wall clears the whole
     // cookie jar (step 4) before it signs in, which pulled the session out
@@ -63,8 +72,10 @@ class SsoLoginService @Inject constructor(
     private val loginMutex = Mutex()
 
     /**
-     * Ensures the user is logged in to the given service via NTUST SSO.
-     * Returns true on success, throws SsoLoginError on failure.
+     * Ensures the user is logged in to the given service via NTUST SSO, with
+     * the stored account. Returns true on success, throws SsoLoginError on
+     * failure. Once the school has refused the stored password, it posts it
+     * no more and throws [SsoLoginError.LoginFailed] — see [StoredPasswordLatch].
      */
     suspend fun ensureServiceLogin(
         serviceUrl: String,
@@ -87,14 +98,27 @@ class SsoLoginService @Inject constructor(
         password: String
     ): Boolean = loginMutex.withLock {
         sessionManager.invalidateSession()
-        logIn(serviceUrl, studentId, password)
+        logIn(serviceUrl, studentId, password, typed = true).also { signedIn ->
+            // The way in for a changed password: automatic sign-ins may post
+            // the stored one again.
+            if (signedIn) passwordLatch.clear()
+        }
     }
 
+    /**
+     * [typed] for credentials the user just entered. Any other login is one
+     * the user did not start, and posts no password the school refused.
+     */
     private suspend fun logIn(
         serviceUrl: String,
         studentId: String,
-        password: String
+        password: String,
+        typed: Boolean = false,
     ): Boolean = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        // Before anything that could be refused, so a refusal that lands after
+        // the user signed in again or signed out latches nothing.
+        val latchGeneration = passwordLatch.generation
+
         // Step 1: Visit service URL
         var (html, url) = fetchPage(serviceUrl)
 
@@ -108,6 +132,11 @@ class SsoLoginService @Inject constructor(
             sessionManager.markLoginSuccess()
             return@withContext true
         }
+
+        // The session needs the password now, and each refusal of it counts
+        // toward the account's lockout. Before step 4, which would empty the
+        // jar for a sign-in that is not going to happen.
+        if (!typed) passwordLatch.rejection.value?.let { throw SsoLoginError.LoginFailed(it.reason) }
 
         // Step 4: Clear cookies and retry
         sessionManager.invalidateSession()
@@ -151,7 +180,11 @@ class SsoLoginService @Inject constructor(
         url = afterLogin.second
 
         // Step 7: Check if still on SSO page
-        if (HtmlParser.isSSOLoginPage(html, url)) throw SsoLoginError.LoginFailed()
+        if (HtmlParser.isSSOLoginPage(html, url)) {
+            val reason = HtmlParser.loginErrorMessage(html)
+            if (!typed) passwordLatch.markRejected(latchGeneration, studentId, password, reason)
+            throw SsoLoginError.LoginFailed(reason)
+        }
 
         sessionManager.markLoginSuccess()
         true

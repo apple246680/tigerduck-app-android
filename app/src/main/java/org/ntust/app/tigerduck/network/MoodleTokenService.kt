@@ -11,6 +11,8 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.ntust.app.tigerduck.auth.StoredPasswordLatch
+import org.ntust.app.tigerduck.auth.guardAutomaticHarvest
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import java.net.SocketTimeoutException
 import java.security.SecureRandom
@@ -40,6 +42,7 @@ import javax.inject.Singleton
 class MoodleTokenService @Inject constructor(
     private val sessionManager: NtustSessionManager,
     private val credentialManager: CredentialManager,
+    private val passwordLatch: StoredPasswordLatch,
 ) {
     private val mutex = Mutex()
     private val moodleBaseUrl = "https://moodle2.ntust.edu.tw".toHttpUrl()
@@ -83,7 +86,9 @@ class MoodleTokenService @Inject constructor(
             ?: throw MoodleWebserviceError.MissingStoredCredentials()
         val pwd = credentialManager.ntustPassword
             ?: throw MoodleWebserviceError.MissingStoredCredentials()
-        val triple = performOidcLogin(sid.trim().uppercase(), pwd)
+        val triple = passwordLatch.guardAutomaticHarvest(sid, pwd) {
+            performOidcLogin(sid.trim().uppercase(), pwd)
+        }
         // Signed out while it ran: the token is the departing account's, and
         // stored it would answer for whoever signs in next.
         if (credentialManager.ntustStudentId != sid) {
@@ -396,29 +401,7 @@ class MoodleTokenService @Inject constructor(
         )
     }
 
-    private fun extractLoginError(html: String): String? {
-        val classes = listOf(
-            "field-validation-error",
-            "validation-summary-errors",
-            "alert-danger",
-            "text-danger",
-        )
-        for (cls in classes) {
-            val re = Regex(
-                """<[^>]*class=["'][^"']*\b$cls\b[^"']*["'][^>]*>([\s\S]*?)</[^>]+>""",
-                RegexOption.IGNORE_CASE,
-            )
-            val match = re.find(html) ?: continue
-            val fragment = match.groupValues[1]
-            val text = fragment
-                .replace(Regex("<[^>]+>"), " ")
-                .let(::decodeHtmlEntities)
-                .replace(Regex("\\s+"), " ")
-                .trim()
-            if (text.isNotEmpty()) return text
-        }
-        return null
-    }
+    private fun extractLoginError(html: String): String? = HtmlParser.loginErrorMessage(html)
 
     // Named `redactForLog` so it doesn't shadow OkHttp's HttpUrl.redact() member.
     private fun HttpUrl.redactForLog(): String {
