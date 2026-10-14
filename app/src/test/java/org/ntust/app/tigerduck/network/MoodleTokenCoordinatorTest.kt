@@ -164,6 +164,28 @@ class MoodleTokenCoordinatorTest {
     }
 
     @Test
+    fun `a refresh that reads the token a sign-in is storing takes it`() = runTest(UnconfinedTestDispatcher()) {
+        lateinit var coordinator: MoodleTokenCoordinator
+        var refresh: kotlinx.coroutines.Deferred<String>? = null
+        val storing = object : MoodleTokenCoordinator.Tokens {
+            override var token: String? = "old"
+                set(value) {
+                    field = value
+                    // The backend sign-in starts the moment the token lands, before obtain returns.
+                    if (refresh == null) refresh = backgroundScope.async { coordinator.refresh() }
+                }
+            override val studentId: String? = "B11300001"
+            override val password: String? = "pw"
+        }
+        coordinator = MoodleTokenCoordinator(storing, { id, _ -> logins += id; "token-${logins.size}" }, backgroundScope, { now }, 300_000L)
+
+        val obtained = coordinator.obtain("B11300001", "pw")
+
+        assertEquals(obtained, refresh!!.await())
+        assertEquals(listOf("B11300001"), logins)
+    }
+
+    @Test
     fun `refusals are kept where the coordinator is told to keep them`() = runTest(UnconfinedTestDispatcher()) {
         tokens.token = "dead"
         val refusal = object : StoredPasswordRefusal {

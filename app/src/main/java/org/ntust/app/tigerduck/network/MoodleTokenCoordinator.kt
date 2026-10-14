@@ -60,12 +60,12 @@ internal class MoodleTokenCoordinator(
     suspend fun renew(rejected: String?): String = renewal.renew(rejected)
 
     /** A token with credentials the user just entered, which clears what held renewals back. */
-    suspend fun obtain(studentId: String, password: String): String {
-        val token = mutex.withLock {
-            login(studentId.trim().uppercase(), password).also { tokens.token = it }
+    suspend fun obtain(studentId: String, password: String): String = mutex.withLock {
+        login(studentId.trim().uppercase(), password).also {
+            // Known as just got before it is stored, so a refresh that reads it takes it.
+            renewal.reset(harvested = it)
+            tokens.token = it
         }
-        renewal.reset(harvested = token)
-        return token
     }
 
     private suspend fun refreshUnlocked(): String {
