@@ -30,12 +30,12 @@ import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.data.preferences.LibraryTabAddMigration
 import org.ntust.app.tigerduck.data.preferences.effectiveCloudSyncEnabled
 import org.ntust.app.tigerduck.library.FlipToLibraryDefaultOffMigration
+import org.ntust.app.tigerduck.library.FlipToLibrarySetting
 import org.ntust.app.tigerduck.library.LibrarySession
 import org.ntust.app.tigerduck.network.CalendarService
 import org.ntust.app.tigerduck.network.NtustSessionManager
 import org.ntust.app.tigerduck.notification.AssignmentReminderOffset
 import org.ntust.app.tigerduck.notification.SystemPermissions
-import org.ntust.app.tigerduck.ui.firsttrigger.FirstTriggerPromptKey
 import org.ntust.app.tigerduck.ui.haptics.HapticScenario
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.logSummary
@@ -400,28 +400,17 @@ class AppState @Inject constructor(
     fun setNotifyAssignmentOffsetEnabled(offset: AssignmentReminderOffset, enabled: Boolean) =
         assignmentReminderSettings.setOffsetEnabled(offset, enabled)
 
-    private var flipToLibraryEnabledState by mutableStateOf(prefs.flipToLibraryEnabled)
+    /** The flip-to-library switch; read after the migrations above. */
+    val flipToLibrary = FlipToLibrarySetting(prefs)
 
-    /**
-     * Written even when it reads the same, the first time: a stored off is an
-     * answer, which the default off is not (see FlipToLibraryDefaultOffMigration).
-     */
     var flipToLibraryEnabled: Boolean
-        get() = flipToLibraryEnabledState
+        get() = flipToLibrary.enabled
         set(value) {
-            if (flipToLibraryEnabledState == value && prefs.hasStoredFlipToLibrary) return
-            flipToLibraryEnabledState = value
-            prefs.flipToLibraryEnabled = value
+            flipToLibrary.enabled = value
         }
 
-    /**
-     * The flip switch in Settings. A change there answers the question the app
-     * asks after a library sign-in, which then is not asked.
-     */
-    fun setFlipToLibraryFromSettings(enabled: Boolean) {
-        prefs.setFirstTriggerPromptSeen(FirstTriggerPromptKey.FLIP_TO_LIBRARY.storageKey, true)
-        flipToLibraryEnabled = enabled
-    }
+    /** The flip switch in Settings; see [FlipToLibrarySetting.setFromSettings]. */
+    fun setFlipToLibraryFromSettings(enabled: Boolean) = flipToLibrary.setFromSettings(enabled)
 
     private var cloudSyncEnabledState by mutableStateOf(prefs.cloudSyncEnabled)
 
@@ -581,7 +570,7 @@ class AppState @Inject constructor(
             }
             rotationModeState = prefs.rotationMode
             assignmentReminderSettings.reload()
-            flipToLibraryEnabledState = prefs.flipToLibraryEnabled
+            flipToLibrary.reload()
             cloudSyncEnabledState = prefs.cloudSyncEnabled
             disableScreenCaptureProtectionState = prefs.disableScreenCaptureProtection
             configuredTabsState = prefs.configuredTabs

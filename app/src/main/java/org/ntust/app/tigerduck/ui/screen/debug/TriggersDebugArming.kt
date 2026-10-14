@@ -45,7 +45,7 @@ class TriggersDebugArming @Inject constructor(
         _isFlipArmed.value = true
         job = scope.launch(Dispatchers.Main) {
             delay(ARM_DELAY_MS)
-            FlipToLibraryPrompt.request(controller, appState)
+            FlipToLibraryPrompt.request(controller, appState.flipToLibrary)
             _isFlipArmed.value = false
             job = null
         }

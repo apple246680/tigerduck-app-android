@@ -23,6 +23,7 @@ import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import org.ntust.app.tigerduck.library.FlipToLibrarySetting
 import org.ntust.app.tigerduck.sensor.FlipDetector
 import org.ntust.app.tigerduck.ui.AppState
 import org.ntust.app.tigerduck.ui.firsttrigger.FirstTriggerPromptController
@@ -93,7 +94,7 @@ fun FlipToLibraryEffect(
                     onLibraryPage = onLibraryPage,
                 )
             ) {
-                FlipToLibraryPrompt.request(firstTriggerController, appState)
+                FlipToLibraryPrompt.request(firstTriggerController, appState.flipToLibrary)
             }
         }
     }
@@ -202,11 +203,11 @@ private fun navigateToLibrary(navController: NavController, context: Context) {
  * off: an answer, which the default off is not.
  */
 object FlipToLibraryPrompt {
-    fun request(controller: FirstTriggerPromptController, appState: AppState) {
+    fun request(controller: FirstTriggerPromptController, setting: FlipToLibrarySetting) {
         controller.requestIfFirstTime(
             key = FirstTriggerPromptKey.FLIP_TO_LIBRARY,
-            onAccept = { appState.flipToLibraryEnabled = true },
-            onDecline = { appState.flipToLibraryEnabled = false },
+            onAccept = { setting.enabled = true },
+            onDecline = { setting.enabled = false },
         )
     }
 }
