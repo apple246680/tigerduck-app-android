@@ -245,7 +245,7 @@ class PushApiClient @Inject constructor(
             .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                throw PushApiException("patchAssignmentOverride failed: HTTP ${response.code}")
+                throw PushApiException("patchAssignmentOverride failed: HTTP ${response.code}", response.code)
             }
         }
     }

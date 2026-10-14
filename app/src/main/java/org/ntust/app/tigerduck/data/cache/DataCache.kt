@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.model.CalendarEvent
 import org.ntust.app.tigerduck.data.model.PendingCourseIgnore
+import org.ntust.app.tigerduck.data.model.UnsentMark
 import org.ntust.app.tigerduck.data.model.SyncConflict
 import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.data.model.ScoreReport
@@ -541,16 +542,16 @@ class DataCache @Inject constructor(
     // UnsentMarks, the only writer. In filesDir with the marks themselves.
 
     /** False, and nothing written, when the data was wiped since [generation]. */
-    suspend fun saveUnsentMarks(marks: Map<String, String>, generation: Int? = null): Boolean =
+    suspend fun saveUnsentMarks(marks: List<UnsentMark>, generation: Int? = null): Boolean =
         saveToUserDataIf(marks, "unsent_marks.json", generation ?: writeGeneration())
 
-    /** Entries without an id or a status are left out. */
-    suspend fun loadUnsentMarks(): Map<String, String> {
-        val type = object : TypeToken<Map<String?, String?>>() {}.type
-        val stored = loadFromUserData<Map<String?, String?>>(type, "unsent_marks.json") ?: return emptyMap()
-        return buildMap {
-            for ((id, status) in stored) if (id != null && status != null) put(id, status)
-        }
+    /** Rows without an id or a status are left out. */
+    suspend fun loadUnsentMarks(): List<UnsentMark> {
+        val type = object : TypeToken<List<UnsentMark?>>() {}.type
+        return loadFromUserData<List<UnsentMark?>>(type, "unsent_marks.json")
+            ?.filterNotNull()
+            ?.filter { it.assignmentId != null && it.status != null }
+            ?: emptyList()
     }
 
     // --- Score Report (per studentId) ---

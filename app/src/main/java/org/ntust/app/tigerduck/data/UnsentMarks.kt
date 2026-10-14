@@ -6,9 +6,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.ntust.app.tigerduck.auth.AuthTokenManager
 import org.ntust.app.tigerduck.data.cache.DataCache
+import org.ntust.app.tigerduck.data.model.UnsentMark
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.push.PushApiClient
 import org.ntust.app.tigerduck.util.logSummary
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -59,12 +61,15 @@ class UnsentMarks internal constructor(
 
     private val mutex = Mutex()
 
+    // Whether this process has given the parked marks their one more try.
+    private val parkedRequeued = AtomicBoolean(false)
+
     // One PATCH at a time, so marks reach the backend in the order they were
     // made: the backend keeps whichever request lands last.
     private val sendMutex = Mutex()
 
     /** The ids whose last tap has not reached the server; a sync keeps this phone's value for them. */
-    suspend fun ids(): Set<String> = dataCache.loadUnsentMarks().keys
+    suspend fun ids(): Set<String> = waiting().keys
 
     /**
      * A tap that set [assignmentId] to [status]: kept until the server has
@@ -78,13 +83,13 @@ class UnsentMarks internal constructor(
         val signIn = signInGeneration()
         if (!records()) {
             mutex.withLock {
-                val waiting = dataCache.loadUnsentMarks()
-                if (assignmentId in waiting) dataCache.saveUnsentMarks(waiting - assignmentId, generation)
+                val waiting = waiting()
+                if (assignmentId in waiting) save(waiting - assignmentId, generation)
             }
             return
         }
         val kept = mutex.withLock {
-            dataCache.saveUnsentMarks(dataCache.loadUnsentMarks() + (assignmentId to status), generation)
+            save(waiting() + (assignmentId to UnsentMark(assignmentId, status)), generation)
         }
         if (kept && sends()) trySend(assignmentId, status, generation, signIn)
     }
@@ -97,7 +102,7 @@ class UnsentMarks internal constructor(
      */
     suspend fun keep(assignmentId: String, status: String, generation: Int) {
         mutex.withLock {
-            dataCache.saveUnsentMarks(dataCache.loadUnsentMarks() + (assignmentId to status), generation)
+            save(waiting() + (assignmentId to UnsentMark(assignmentId, status)), generation)
         }
     }
 
@@ -106,12 +111,16 @@ class UnsentMarks internal constructor(
         if (!sends()) return
         val generation = dataCache.userDataGeneration
         val signIn = signInGeneration()
-        for ((id, status) in dataCache.loadUnsentMarks()) trySend(id, status, generation, signIn)
+        if (parkedRequeued.compareAndSet(false, true)) requeueParked(generation)
+        for ((id, mark) in waiting()) {
+            if (mark.attempts >= MAX_ATTEMPTS) continue
+            trySend(id, mark.status ?: continue, generation, signIn)
+        }
     }
 
     /** The server's marks were taken over this phone's, so what waited is no longer wanted. */
     suspend fun forget() {
-        mutex.withLock { dataCache.saveUnsentMarks(emptyMap()) }
+        mutex.withLock { save(emptyMap(), null) }
     }
 
     /**
@@ -128,7 +137,7 @@ class UnsentMarks internal constructor(
         val intId = id.toIntOrNull()
         val sent = sendMutex.withLock {
             val current = sends() && mutex.withLock {
-                generation == dataCache.userDataGeneration && dataCache.loadUnsentMarks()[id] == status
+                generation == dataCache.userDataGeneration && waiting()[id]?.status == status
             }
             if (!current) return
             if (intId == null) return@withLock true
@@ -139,19 +148,54 @@ class UnsentMarks internal constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "mark PATCH failed, kept for the next sync: ${e.logSummary()}")
+                if (CourseIgnoreSync.refuses(e)) countRefusal(id, status, generation)
                 false
             }
         }
         if (!sent) return
         // Only if no newer tap of the id replaced it meanwhile.
         mutex.withLock {
-            val waiting = dataCache.loadUnsentMarks()
-            if (waiting[id] == status) dataCache.saveUnsentMarks(waiting - id, generation)
+            val waiting = waiting()
+            if (waiting[id]?.status == status) save(waiting - id, generation)
         }
     }
 
+    // A mark the backend refused, as a 404 for an assignment it has no row
+    // for, is parked after MAX_ATTEMPTS: still kept at this phone's value,
+    // but no longer sent on every sync.
+    private suspend fun countRefusal(id: String, status: String, generation: Int) = mutex.withLock {
+        val waiting = waiting()
+        val mark = waiting[id]?.takeIf { it.status == status } ?: return@withLock
+        val counted = mark.copy(attempts = mark.attempts + 1)
+        if (counted.attempts >= MAX_ATTEMPTS) Log.w(TAG, "mark parked after $MAX_ATTEMPTS refusals")
+        save(waiting + (id to counted), generation)
+    }
+
+    // A parked mark gets one more try per process: the backend may have the
+    // assignment's row by now.
+    private suspend fun requeueParked(generation: Int) = mutex.withLock {
+        val waiting = waiting()
+        if (waiting.values.none { it.attempts >= MAX_ATTEMPTS }) return@withLock
+        save(
+            waiting.mapValues { (_, mark) ->
+                if (mark.attempts >= MAX_ATTEMPTS) mark.copy(attempts = MAX_ATTEMPTS - 1) else mark
+            },
+            generation,
+        )
+    }
+
+    // By assignment id, in the order the marks were made.
+    private suspend fun waiting(): Map<String, UnsentMark> =
+        dataCache.loadUnsentMarks().associateByTo(LinkedHashMap()) { it.assignmentId.orEmpty() }
+
+    private suspend fun save(waiting: Map<String, UnsentMark>, generation: Int?): Boolean =
+        dataCache.saveUnsentMarks(waiting.values.toList(), generation)
+
     companion object {
         private const val TAG = "UnsentMarks"
+
+        /** Refusals before a mark is parked, as on the iOS outbox. */
+        const val MAX_ATTEMPTS = 5
 
         /** The re-enable conflict category the marks belong to. */
         private const val REENABLE_CATEGORY = "assignments"

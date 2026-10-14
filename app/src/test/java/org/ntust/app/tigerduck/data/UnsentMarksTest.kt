@@ -12,6 +12,7 @@ import org.junit.runner.RunWith
 import org.ntust.app.tigerduck.academic.AcademicCalendarStore
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
+import org.ntust.app.tigerduck.push.PushApiException
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
@@ -62,6 +63,8 @@ class UnsentMarksTest {
     private val signIns = mutableListOf<Int>()
     private var signInGeneration = 1
 
+    private suspend fun waiting() = cache.loadUnsentMarks().associate { it.assignmentId to it.status }
+
     @Test
     fun `a tap whose PATCH fails is kept, and the next sync sends it and lets it go`() = runTest {
         answer = { _, _ -> throw IOException("offline") }
@@ -104,7 +107,7 @@ class UnsentMarksTest {
         older.join()
         newer.join()
 
-        assertEquals(mapOf("7" to "none"), cache.loadUnsentMarks())
+        assertEquals(mapOf("7" to "none"), waiting())
     }
 
     @Test
@@ -156,7 +159,7 @@ class UnsentMarksTest {
 
         marks.keep("7", "locally_completed", cache.userDataGeneration)
 
-        assertEquals(mapOf("7" to "locally_completed"), cache.loadUnsentMarks())
+        assertEquals(mapOf("7" to "locally_completed"), waiting())
         assertEquals(emptyList<Pair<Int, String>>(), sent)
     }
 
@@ -279,6 +282,56 @@ class UnsentMarksTest {
         marks.retry()
 
         assertEquals(listOf(7 to "ignored"), sent)
+        assertEquals(emptySet<String>(), marks.ids())
+    }
+
+    @Test
+    fun `a mark the backend keeps refusing is parked and left out of later syncs`() = runTest {
+        // A 404: the backend has no such assignment for this account.
+        answer = { _, _ -> throw PushApiException("HTTP 404", 404) }
+        marks.send("7", "ignored")
+        repeat(UnsentMarks.MAX_ATTEMPTS + 2) { marks.retry() }
+
+        assertEquals(UnsentMarks.MAX_ATTEMPTS, sent.size)
+        assertEquals("still kept at this phone's value", setOf("7"), marks.ids())
+    }
+
+    @Test
+    fun `a parked mark gets one more try in a new process`() = runTest {
+        answer = { _, _ -> throw PushApiException("HTTP 404", 404) }
+        marks.send("7", "ignored")
+        repeat(UnsentMarks.MAX_ATTEMPTS) { marks.retry() }
+        sent.clear()
+
+        val next = newProcess()
+        next.retry()
+        next.retry()
+
+        assertEquals(listOf(7 to "ignored"), sent)
+    }
+
+    @Test
+    fun `a server error or no network is not counted as a refusal`() = runTest {
+        answer = { _, _ -> throw PushApiException("HTTP 503", 503) }
+        marks.send("7", "ignored")
+        repeat(UnsentMarks.MAX_ATTEMPTS) { marks.retry() }
+        answer = { _, _ -> throw IOException("offline") }
+        repeat(UnsentMarks.MAX_ATTEMPTS) { marks.retry() }
+
+        assertEquals(1 + 2 * UnsentMarks.MAX_ATTEMPTS, sent.size)
+    }
+
+    @Test
+    fun `a new tap of a parked mark goes up at once`() = runTest {
+        answer = { _, _ -> throw PushApiException("HTTP 404", 404) }
+        marks.send("7", "ignored")
+        repeat(UnsentMarks.MAX_ATTEMPTS) { marks.retry() }
+        answer = { _, _ -> }
+        sent.clear()
+
+        marks.send("7", "none")
+
+        assertEquals(listOf(7 to "none"), sent)
         assertEquals(emptySet<String>(), marks.ids())
     }
 }
