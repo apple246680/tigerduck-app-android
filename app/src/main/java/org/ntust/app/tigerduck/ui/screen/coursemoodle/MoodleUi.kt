@@ -124,6 +124,7 @@ internal fun MoodleTopBar(
     onBack: () -> Unit,
     moodlePath: String?,
     actions: @Composable () -> Unit = {},
+    willOpenPage: () -> Unit = {},
 ) {
     val context = LocalContext.current
     TopAppBar(
@@ -137,7 +138,10 @@ internal fun MoodleTopBar(
         actions = {
             actions()
             if (moodlePath != null) {
-                IconButton(onClick = { openMoodlePage(context, moodlePath) }) {
+                IconButton(onClick = {
+                    willOpenPage()
+                    openMoodlePage(context, moodlePath)
+                }) {
                     Icon(
                         Icons.AutoMirrored.Filled.OpenInNew,
                         contentDescription = stringResource(R.string.action_open_in_moodle),
@@ -396,4 +400,15 @@ internal object MoodleDates {
 
     /** `yyyy/MM/dd HH:mm`, for the masthead of a post. */
     fun dateTime(epochSeconds: Long): String = format("yyyy/MM/dd HH:mm").format(Date(epochSeconds * 1000))
+
+    /** A file's date: `MM/dd` this year, `yyyy/MM/dd` before. */
+    fun date(epochSeconds: Long, nowMs: Long): String =
+        format(if (sameYear(epochSeconds, nowMs)) "MM/dd" else "yyyy/MM/dd").format(Date(epochSeconds * 1000))
+
+    /** A reply's date: `MM/dd HH:mm` this year, `yyyy/MM/dd HH:mm` before. */
+    fun postDate(epochSeconds: Long, nowMs: Long): String =
+        format(if (sameYear(epochSeconds, nowMs)) "MM/dd HH:mm" else "yyyy/MM/dd HH:mm").format(Date(epochSeconds * 1000))
+
+    private fun sameYear(epochSeconds: Long, nowMs: Long): Boolean =
+        calendar(epochSeconds * 1000).get(Calendar.YEAR) == calendar(nowMs).get(Calendar.YEAR)
 }

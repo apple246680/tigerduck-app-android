@@ -18,6 +18,7 @@ import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.mail.resolveAttachmentMimeType
 import org.ntust.app.tigerduck.network.moodle.MoodleAutologin
+import org.ntust.app.tigerduck.network.moodle.SHARED_NOT_VIEWED_EXTENSIONS
 import org.ntust.app.tigerduck.network.moodle.MoodleWebservice
 import org.ntust.app.tigerduck.ui.screen.mail.openMailLink
 import org.ntust.app.tigerduck.util.fileProviderAuthority
@@ -32,6 +33,10 @@ import java.net.URLEncoder
 object MoodlePage {
     fun course(courseId: Int) = "/course/view.php?id=$courseId"
     fun forum(cmid: Int) = "/mod/forum/view.php?id=$cmid"
+    fun forums(courseId: Int) = "/mod/forum/index.php?id=$courseId"
+
+    /** A module's page, such as `/mod/resource/view.php?id=5` for the module `resource`. */
+    fun module(module: String, cmid: Int) = "/mod/$module/view.php?id=$cmid"
     fun discussion(discussionId: Int) = "/mod/forum/discuss.php?d=$discussionId"
     fun gradeReport(courseId: Int) = "/grade/report/user/index.php?id=$courseId"
     fun participants(courseId: Int) = "/user/index.php?id=$courseId"
@@ -117,7 +122,8 @@ fun openMoodleContentLink(context: Context, url: String, browserPreference: Stri
  * Opens a downloaded Moodle [file] in another app: a content URI to the app's own copy, readable
  * once by the app picked, so no link with the account's key ever leaves the app. A web page, an
  * SVG or any other XML, which a browser renders and may run scripts in, goes to the share sheet
- * as iOS sends it, not to a viewer, by the type listed or the one the copy's name gives. Through
+ * as iOS sends it, not to a viewer, by the type listed, the one the copy's name gives or the
+ * name's extension; with [share] every file does. Through
  * the system's chooser, which says so itself when no app takes the file; the read grant rides the
  * wrapped intent's clip, which the chooser passes on.
  */
@@ -125,12 +131,15 @@ fun moodleFileIntent(
     context: Context,
     file: File,
     mimeType: String,
+    share: Boolean = false,
     extensionLookup: (String) -> String? = { MimeTypeMap.getSingleton().getMimeTypeFromExtension(it) },
 ): Intent {
     val uri = FileProvider.getUriForFile(context, fileProviderAuthority(context), file)
     // The app picked asks the FileProvider for the type, which reads it from the copy's name.
-    val nameType = file.extension.takeIf { it.isNotEmpty() }?.lowercase()?.let(extensionLookup)
+    val extension = file.extension.lowercase()
+    val nameType = extension.takeIf { it.isNotEmpty() }?.let(extensionLookup)
     val sharedType = listOfNotNull(mimeType, nameType).firstOrNull(::isSharedNotViewed)
+        ?: mimeType.takeIf { share || extension in SHARED_NOT_VIEWED_EXTENSIONS }
     val intent = if (sharedType != null) {
         Intent(Intent.ACTION_SEND).setTypeAndNormalize(sharedType).putExtra(Intent.EXTRA_STREAM, uri)
     } else {
@@ -142,15 +151,26 @@ fun moodleFileIntent(
 }
 
 /**
- * Opens [file] as [moodleFileIntent] says; whether it went. A file the app cannot hand out, or a
- * system with no chooser to take it, leaves a warning in the log naming only the failure's class.
+ * Opens [file] as [moodleFileIntent] says, or with [share] in the share sheet whatever it is;
+ * whether it went. A file the app cannot hand out, or a system with no chooser to take it, leaves
+ * a warning in the log naming only the failure's class.
  */
-fun launchMoodleFile(context: Context, file: File, mimeType: String): Boolean = try {
-    context.startActivity(moodleFileIntent(context, file, mimeType))
+fun launchMoodleFile(context: Context, file: File, mimeType: String, share: Boolean = false): Boolean = try {
+    context.startActivity(moodleFileIntent(context, file, mimeType, share = share))
     true
 } catch (e: RuntimeException) {
     Log.w(TAG, "attachment not opened: ${e.logSummary()}")
     false
+}
+
+/** A link from a course's materials in the share sheet, as text. It never carries a key. */
+fun shareMoodleLink(context: Context, title: String, url: String) {
+    val send = Intent(Intent.ACTION_SEND)
+        .setType("text/plain")
+        .putExtra(Intent.EXTRA_TEXT, url)
+        .putExtra(Intent.EXTRA_TITLE, title)
+    runCatching { context.startActivity(Intent.createChooser(send, null)) }
+        .onFailure { Log.w(TAG, "link not shared: ${it.logSummary()}") }
 }
 
 private const val TAG = "MoodleLinks"

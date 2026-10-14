@@ -4,14 +4,18 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import org.ntust.app.tigerduck.network.MoodleWebserviceError
+import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseMaterials
 import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseSummary
 import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussion
 import org.ntust.app.tigerduck.network.model.moodle.MoodleFile
 import org.ntust.app.tigerduck.network.model.moodle.MoodleForum
 import org.ntust.app.tigerduck.network.model.moodle.MoodleGradeItem
+import org.ntust.app.tigerduck.network.model.moodle.MoodleMaterial
+import org.ntust.app.tigerduck.network.model.moodle.MoodleMaterialSection
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMember
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberField
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberRole
+import org.ntust.app.tigerduck.network.model.moodle.MoodlePost
 
 /**
  * Moodle's answers read into the app's models. Gson's tree API rather than reflection, so R8 has
@@ -76,6 +80,83 @@ object MoodleJson {
                 attachments = o.array("attachments")?.mapNotNull(::file).orEmpty(),
             )
         }
+    }
+
+    /**
+     * `mod_forum_get_discussion_posts`. Moodle writes no parent as `parentid` 0 beside
+     * `hasparent` false, and a deleted post's message as its own note.
+     */
+    fun posts(json: JsonElement): List<MoodlePost> {
+        val list = json.objOrNull()?.array("posts")
+            ?: throw MoodleWebserviceError.MalformedResponse("posts missing")
+        return list.mapNotNull { el ->
+            val o = el.objOrNull() ?: return@mapNotNull null
+            val author = o.get("author")?.objOrNull()
+            MoodlePost(
+                id = o.int("id") ?: return@mapNotNull null,
+                parentId = if (o.bool("hasparent") == false) null else o.int("parentid")?.takeIf { it > 0 },
+                subject = MoodleHtmlText.plainText(o.str("subject").orEmpty()),
+                message = o.str("message").orEmpty(),
+                created = o.long("timecreated")?.takeIf { it > 0 },
+                authorName = author?.str("fullname"),
+                authorId = author?.int("id"),
+                attachments = o.array("attachments")?.mapNotNull(::file).orEmpty(),
+                isUnread = o.bool("unread") ?: false,
+                isDeleted = o.bool("isdeleted") ?: false,
+            )
+        }
+    }
+
+    /**
+     * `core_course_get_contents`: the sections the account can open that hold a file, a folder
+     * or a link, in Moodle's order.
+     */
+    fun materials(json: JsonElement): MoodleCourseMaterials =
+        MoodleCourseMaterials(json.arrayOrThrow("sections").mapNotNull(::materialSection))
+
+    private fun materialSection(json: JsonElement): MoodleMaterialSection? {
+        val o = json.objOrNull() ?: return null
+        if (o.bool("uservisible") == false) return null
+        val materials = o.array("modules").orEmpty().mapNotNull(::material)
+        if (materials.isEmpty()) return null
+        return MoodleMaterialSection(
+            id = o.int("id") ?: return null,
+            name = MoodleHtmlText.plainText(o.str("name").orEmpty()),
+            materials = materials,
+        )
+    }
+
+    /**
+     * A file, folder or link the account can open, else null. A resource shows its first file,
+     * which Moodle lists as the main one; a link only an http or https address.
+     */
+    private fun material(json: JsonElement): MoodleMaterial? {
+        val o = json.objOrNull() ?: return null
+        if (o.bool("uservisible") == false) return null
+        val contents = o.array("contents").orEmpty().mapNotNull { it.objOrNull() }
+        val files = contents.filter { it.str("type") == "file" }.mapNotNull(::file)
+        val module = o.str("modname") ?: return null
+        var link: String? = null
+        val shown = when (module) {
+            MoodleMaterial.RESOURCE -> listOf(files.firstOrNull() ?: return null)
+            MoodleMaterial.FOLDER -> files.ifEmpty { return null }
+            MoodleMaterial.URL -> {
+                val address = contents.firstOrNull { it.str("type") == "url" }?.str("fileurl") ?: return null
+                val scheme = runCatching { java.net.URI(address).scheme }.getOrNull()?.lowercase()
+                if (scheme != "http" && scheme != "https") return null
+                link = address
+                emptyList()
+            }
+            else -> return null
+        }
+        return MoodleMaterial(
+            id = o.int("id") ?: return null,
+            instance = o.int("instance") ?: return null,
+            module = module,
+            name = MoodleHtmlText.plainText(o.str("name").orEmpty()),
+            files = shown,
+            link = link,
+        )
     }
 
     /**

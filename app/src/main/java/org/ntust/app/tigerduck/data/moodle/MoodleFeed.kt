@@ -153,6 +153,7 @@ class MoodleFeed<T : Any>(
 object MoodleRefreshInterval {
     const val FORUMS_MS = 5 * 60_000L
     const val ANNOUNCEMENTS_MS = 5 * 60_000L
+    const val MATERIALS_MS = 5 * 60_000L
     const val GRADES_MS = 5 * 60_000L
     const val SUMMARY_MS = 5 * 60_000L
     const val MEMBERS_MS = 30 * 60_000L

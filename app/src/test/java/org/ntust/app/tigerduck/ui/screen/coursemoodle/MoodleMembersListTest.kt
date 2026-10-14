@@ -62,7 +62,7 @@ class MoodleMembersListTest {
         }
         override suspend fun gradeItems(courseId: Int) = emptyList<MoodleGradeItem>()
         override suspend fun summary(courseId: Int) = MoodleCourseSummary.EMPTY
-        override suspend fun download(file: MoodleFile, target: java.io.File, maxBytes: Long) = Unit
+        override suspend fun download(file: MoodleFile, target: java.io.File, maxBytes: Long, progress: (Float) -> Unit) = Unit
     }
 
     private val cache = object : MoodleCachePort {
