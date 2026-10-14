@@ -727,7 +727,7 @@ class HomeViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                ServerStatusTracker.set(ServerStatus.FAILED, ServerKind.MOODLE)
+                ServerStatusTracker.moodleFailed(e)
                 Log.e("HomeViewModel", "Failed to fetch Moodle enrolled courses: ${e.logSummary()}")
                 null
             }
@@ -787,7 +787,7 @@ class HomeViewModel @Inject constructor(
                 // account.
                 throw e
             } catch (e: Exception) {
-                ServerStatusTracker.set(ServerStatus.FAILED, ServerKind.MOODLE)
+                ServerStatusTracker.moodleFailed(e)
                 Log.e("HomeViewModel", "Failed to fetch assignments: ${e.logSummary()}")
                 null
             }
