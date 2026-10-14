@@ -1,5 +1,6 @@
 package org.ntust.app.tigerduck.ui.screen.mail
 
+import android.content.Context
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +35,19 @@ fun MailError.messageRes(): Int = when (this) {
     is MailError.DemoMode,
     is MailError.FolderChanged,
     -> R.string.school_mail_error_generic
+}
+
+/**
+ * The mail screens' old name for [openLink], kept only so tigerduck-app-android#308 (the Moodle
+ * course pages), whose `MoodleLinks.kt` still calls it, builds whichever of the two merges first.
+ * Remove it once #308 is merged and switched to [openLink].
+ */
+@Deprecated(
+    "Use openLink, the one guarded opener.",
+    ReplaceWith("openLink(context, url, browserPreference)", "org.ntust.app.tigerduck.ui.openLink"),
+)
+fun openMailLink(context: Context, url: String, browserPreference: String) {
+    openLink(context, url, browserPreference)
 }
 
 @Composable

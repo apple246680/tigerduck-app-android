@@ -16,6 +16,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.ntust.app.tigerduck.ui.screen.mail.openMailLink
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
@@ -142,5 +143,20 @@ class OpenLinkTest {
         listOf(BrowserPreference.SYSTEM, BrowserPreference.IN_APP).forEach { preference ->
             assertFalse(preference, openLink(refusing, url, preference))
         }
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `the mail screens' old opener goes through the guarded one`() {
+        // An open branch still calls openMailLink; it must follow the setting and refuse what
+        // openLink refuses, not keep its own copy of the old unguarded code.
+        installBrowser()
+        openMailLink(context, url, BrowserPreference.IN_APP)
+        assertTrue("a Custom Tab", started()!!.hasExtra(CustomTabsIntent.EXTRA_SESSION))
+
+        val file = "file:///sdcard/Download/notes.pdf"
+        installHandler(Intent(Intent.ACTION_VIEW, Uri.parse(file)))
+        openMailLink(context, file, BrowserPreference.SYSTEM)
+        assertNull(started())
     }
 }
