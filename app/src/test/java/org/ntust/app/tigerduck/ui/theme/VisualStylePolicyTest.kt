@@ -1,6 +1,7 @@
 package org.ntust.app.tigerduck.ui.theme
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -126,6 +127,86 @@ class VisualStylePolicyTest {
             val hint = contrast(tat.classTableCourseSecondaryTextColor(isDark = true), fill)
             assertTrue("text on the pastel of $colour: $text", text >= 7.0)
             assertTrue("hint on the pastel of $colour: $hint", hint >= 4.5)
+        }
+    }
+
+    // ---- course cards ----
+
+    @Test
+    fun `TigerDuck cards keep the tint each card picks, laid over the surface in dark mode`() {
+        val colour = Color(0xFFFF6B6B)
+        val surface = Color(0xFF1C1C1E)
+        assertEquals(VisualStylePolicy.CourseCardStyle.Tint, tigerDuck.courseCardStyle)
+        assertEquals(
+            colour.copy(alpha = 0.5f),
+            tigerDuck.courseCardFill(colour, tintAlpha = 0.5f, muted = false, surface = surface, isDark = false),
+        )
+        // Muted changes nothing here: each card already picks a fainter tint for it.
+        assertEquals(
+            colour.copy(alpha = 0.35f),
+            tigerDuck.courseCardFill(colour, tintAlpha = 0.35f, muted = true, surface = surface, isDark = false),
+        )
+        assertEquals(
+            colour.copy(alpha = 0.55f).compositeOver(surface),
+            tigerDuck.courseCardFill(colour, tintAlpha = 0.55f, muted = false, surface = surface, isDark = true),
+        )
+    }
+
+    @Test
+    fun `TigerDuck cards keep the theme's text and the grey mark`() {
+        val onSurface = Color(0xFFF5F5F5)
+        assertEquals(onSurface, tigerDuck.courseCardTextColor(onSurface))
+        assertEquals(onSurface.copy(alpha = ContentAlpha.SECONDARY), tigerDuck.courseCardSecondaryTextColor(onSurface))
+        assertEquals(Color.Gray.copy(alpha = 0.5f), tigerDuck.courseCardMarkColor)
+    }
+
+    @Test
+    fun `TAT cards take the class table's pastel in either theme, whatever tint a card picks`() {
+        assertEquals(VisualStylePolicy.CourseCardStyle.Pastel, tat.courseCardStyle)
+        colours.forEach { colour ->
+            val tile = tat.classTableCourseFill(colour, Color.Magenta, isDark = false)
+            listOf(false, true).forEach { isDark ->
+                listOf(0.35f, 0.5f, 0.7f).forEach { tintAlpha ->
+                    assertEquals(
+                        "$colour at $tintAlpha, dark $isDark",
+                        tile,
+                        tat.courseCardFill(colour, tintAlpha, muted = false, surface = Color.Black, isDark = isDark),
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `TAT mutes a card with a paler opaque pastel of the same hue`() {
+        colours.forEach { colour ->
+            val card = tat.courseCardFill(colour, 0.5f, muted = false, surface = Color.Black, isDark = false)
+            val muted = tat.courseCardFill(colour, 0.5f, muted = true, surface = Color.Black, isDark = false)
+            assertEquals("opacity of $colour", 1f, muted.alpha)
+            assertTrue(
+                "paler than the card for $colour",
+                muted.red >= card.red && muted.green >= card.green && muted.blue >= card.blue,
+            )
+            hue(colour)?.let { assertEquals("hue of $colour", it, hue(muted)!!, 0.01) }
+            // White has no paler pastel; every other colour has one to step back to.
+            if (colour != Color.White) assertTrue("muted card stands apart for $colour", muted != card)
+        }
+    }
+
+    @Test
+    fun `TAT card text reads at 7 to 1 and its details and mark at 4_5 to 1, muted or not`() {
+        val onSurface = Color(0xFFF5F5F5)
+        assertEquals(VisualStylePolicy.TextOnPastel, tat.courseCardTextColor(onSurface))
+        colours.forEach { colour ->
+            listOf(false, true).forEach { muted ->
+                val fill = tat.courseCardFill(colour, 0.5f, muted, surface = Color.Black, isDark = true)
+                val text = contrast(tat.courseCardTextColor(onSurface), fill)
+                val details = contrast(tat.courseCardSecondaryTextColor(onSurface), fill)
+                val mark = contrast(tat.courseCardMarkColor, fill)
+                assertTrue("text on $colour, muted $muted: $text", text >= 7.0)
+                assertTrue("details on $colour, muted $muted: $details", details >= 4.5)
+                assertTrue("mark on $colour, muted $muted: $mark", mark >= 4.5)
+            }
         }
     }
 
