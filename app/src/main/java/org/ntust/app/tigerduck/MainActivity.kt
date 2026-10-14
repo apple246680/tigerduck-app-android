@@ -607,16 +607,18 @@ internal fun linkedAssignment(id: String, cached: List<Assignment>): Assignment?
     cached.firstOrNull { it.assignmentId == id }
 
 /**
- * Map intent input — the [StartRoute] extra of the app's own widgets and
- * notifications, and the `tigerduck://` links of [AppLink] — onto a NavHost
- * route. An intent with a link, or one a browser marks
+ * Map intent input — the [StartRoute] extra of the app's own notifications,
+ * and the `tigerduck://` links of [AppLink] — onto a NavHost route. An intent
+ * with a `tigerduck://` link, or one a browser marks
  * [Intent.CATEGORY_BROWSABLE], opens that link alone: the app's own senders
- * put neither on an intent with the extra. An extra naming any other route is
+ * put neither on an intent with the extra. A URI of any other scheme does not
+ * count as a link, as Glance gives a widget's intent that has no data a
+ * `glance-action:` one of its own. An extra naming any other route is
  * dropped.
  */
 internal fun startRouteOf(intent: Intent?): String? {
     intent ?: return null
-    val fromLink = intent.data != null || intent.hasCategory(Intent.CATEGORY_BROWSABLE)
+    val fromLink = intent.data?.scheme == AppLink.SCHEME || intent.hasCategory(Intent.CATEGORY_BROWSABLE)
     if (!fromLink) StartRoute.accepted(intent.getStringExtra(StartRoute.EXTRA))?.let { return it }
     return AppLink.parse(intent.data)?.let(::startRouteFor)
 }

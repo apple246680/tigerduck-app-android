@@ -93,6 +93,29 @@ class StartRouteTest {
     }
 
     @Test
+    fun `a URI that is not a tigerduck link leaves the extra to open`() {
+        // What Glance puts on a widget intent that has no data of its own.
+        val glance = "glance-action:/CALLBACK?appWidgetId=1&viewId=2&extraData="
+        assertEquals(MailRoutes.LIST, routeFor(MailRoutes.LIST, link = glance))
+        assertNull("the extra is still checked", routeFor(Screen.Settings.route, link = glance))
+    }
+
+    @Test
+    fun `a widget an older build drew still opens its screen`() {
+        val glance = "glance-action:/CALLBACK?appWidgetId=7&viewId=3&extraData="
+        assertEquals(Screen.ClassTable.route, routeFor(Screen.ClassTable.route, link = glance))
+        assertEquals(LibraryShortcutWidget.ROUTE_SENTINEL, routeFor(LibraryShortcutWidget.ROUTE_SENTINEL, link = glance))
+    }
+
+    @Test
+    fun `a browser's intent carries no route, whatever its link`() {
+        val web = Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com/"))
+            .addCategory(Intent.CATEGORY_BROWSABLE)
+            .putExtra("start_route", MailRoutes.LIST)
+        assertNull(startRouteOf(web))
+    }
+
+    @Test
     fun `a dropped route leaves the intent's link to open`() {
         assertEquals(Screen.ClassTable.route, routeFor("debug", link = "tigerduck://classtable"))
         assertNull(routeFor(null, link = "tigerduck://home"))

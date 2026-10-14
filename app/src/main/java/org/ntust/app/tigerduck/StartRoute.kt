@@ -13,10 +13,12 @@ import org.ntust.app.tigerduck.widget.LibraryShortcutWidget
  * Mail's notifications, and the class table and Library widgets as an older
  * build drew them — and drops everything else, so no other screen can be
  * reached this way and a route the NavHost does not have never reaches it.
- * None of those senders puts a link or
+ * None of those senders puts a `tigerduck://` link or
  * [android.content.Intent.CATEGORY_BROWSABLE] on its intent, so
  * `startRouteOf` reads the extra only from an intent with neither: a link
- * from a browser or another app opens the link alone.
+ * from a browser or another app opens the link alone. A URI of another
+ * scheme, such as the `glance-action:` one Glance puts on an older widget's
+ * tap, leaves the extra to be read.
  */
 object StartRoute {
     const val EXTRA = "start_route"
