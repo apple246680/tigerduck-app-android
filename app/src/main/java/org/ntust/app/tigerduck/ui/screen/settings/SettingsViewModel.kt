@@ -517,7 +517,10 @@ class SettingsViewModel @Inject constructor(
             terms = semesters.map { it to dataCache.loadCourses(it) },
             hiding = dataCache.loadDeletedCourseNos(),
             backend = PushCourseSyncBackend(pushApiClient, prefs),
-            // A term's reset takes its courses' names off the server with them.
+            // A term's reset takes its courses' names off the server with
+            // them. With name sync off here nothing can be sent back (the
+            // PATCH honours the switch), so names other devices set on that
+            // term's courses are lost: the price of Use Local resetting a term.
             customNames = if (prefs.syncCourseNames) dataCache.loadCourseCustomNames() else emptyMap(),
             portalCached = { it in portalCached },
             latch = latch,

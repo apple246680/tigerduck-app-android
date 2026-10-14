@@ -135,7 +135,7 @@ data points.
       `_get_course_by_moodle_id`) — there is no fallback lookup by
       `course_key`. The server stores `moodle_id` as the client's uploaded
       `moodleIdNumber`, or the `{semester}{courseNo}` concatenation when
-      that is null (`server/routes/sync.py`, `upload_courses`). The
+      that is null (`server/routes/sync/uploads.py`, `upload_courses`). The
       `"client:{semester}:{courseNo}"` string is the `course_key` column —
       a different column this endpoint never consults — so PATCHing with it
       404s on every course, and the callers swallow the failure silently.
