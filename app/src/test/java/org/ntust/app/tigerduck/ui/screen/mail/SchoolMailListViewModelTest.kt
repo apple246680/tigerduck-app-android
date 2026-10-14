@@ -31,6 +31,7 @@ import org.ntust.app.tigerduck.mail.imap.SpecialFolder
 import org.ntust.app.tigerduck.mail.mailSummary
 import org.ntust.app.tigerduck.mail.model.FolderStatus
 import org.ntust.app.tigerduck.mail.model.MailBody
+import org.ntust.app.tigerduck.mail.model.MailPage
 import org.ntust.app.tigerduck.mail.store.MailCache
 import org.ntust.app.tigerduck.mail.sync.MailChecker
 import org.ntust.app.tigerduck.mail.testApplicationScope
@@ -131,6 +132,34 @@ class SchoolMailListViewModelTest {
         assertEquals(listOf(9L, 8L), vm.state.value.displayed.map { it.uid })
         vm.loadMoreIfNeeded(vm.state.value.displayed.last())
         assertEquals(listOf(9L, 8L, 7L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `an older page updates the rows it covers and drops the ones the server no longer lists`() {
+        repo.pageSize = 2
+        repo.add("INBOX", mailSummary(1), mailSummary(2), mailSummary(3), mailSummary(4))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        assertEquals(listOf(4L, 3L), vm.state.value.displayed.map { it.uid })
+        // Mail below the list's cursor was expunged on webmail, so the next older range reaches
+        // back up over rows already listed: 4 has been read since, and 3 is gone.
+        repo.olderPage = { _, _ -> MailPage(1, 3, listOf(mailSummary(4, seen = true), mailSummary(2)), null) }
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        val rows = vm.state.value.displayed
+        assertEquals(listOf(4L, 2L), rows.map { it.uid })
+        assertTrue(rows.first().summary.flags.seen)
+    }
+
+    @Test
+    fun `an older page's range reaches past the mail it lists when that range ends in deleted mail`() {
+        repo.pageSize = 2
+        repo.add("INBOX", mailSummary(1), mailSummary(2), mailSummary(3), mailSummary(4))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        // The range read 2 and 3, and 3 is flagged deleted: the page lists 2 alone.
+        repo.olderPage = { _, _ -> MailPage(1, 3, listOf(mailSummary(2)), null, windowUids = 2L..3L) }
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertEquals(listOf(4L, 2L), vm.state.value.displayed.map { it.uid })
     }
 
     @Test

@@ -102,6 +102,13 @@ class FakeSchoolMailRepository : SchoolMailRepository {
     var released = 0
     var acquired = 0
 
+    /**
+     * What an older page ([loadPage] with a `beforeSeq`) returns instead of the offset slice, when
+     * set -- for a test that needs the server to answer a window the list already holds part of,
+     * the way an IMAP sequence range does once mail below it has been expunged.
+     */
+    var olderPage: ((folder: String, beforeSeq: Int) -> MailPage?)? = null
+
     fun add(folder: String, vararg summaries: MailSummary) {
         mail.getOrPut(folder) { mutableListOf() } += summaries
     }
@@ -142,6 +149,7 @@ class FakeSchoolMailRepository : SchoolMailRepository {
                 }
             }
             loadError?.let { throw it }
+            if (beforeSeq != null) olderPage?.invoke(folder, beforeSeq)?.let { return it }
             val all = sorted(folder)
             val from = beforeSeq ?: 0
             // `limit` is honoured, not just recorded: the real repository's rule about a warm

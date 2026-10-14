@@ -405,6 +405,11 @@ class SchoolMailListViewModel @Inject constructor(
      * one page further and the result re-merged. So the merged list runs out only once *both*
      * folders genuinely have ([UiState.cursors] empty), never merely because the sparser of the
      * two did -- it never stops short while the server still has mail to give.
+     *
+     * Each page is merged the way [mergeOlderPage] says, not appended: a row the list already
+     * holds takes the server's flags, and one inside the page's range the server no longer lists
+     * goes. Only the newest page is ever written to the cache ([MailRepository.loadPage]), so
+     * what is kept on disk stays one page per folder however far the list is scrolled.
      */
     private suspend fun paginate() {
         val selection = _state.value.selected
@@ -415,11 +420,9 @@ class SchoolMailListViewModel @Inject constructor(
             val pages = cursors.entries.sortedBy { it.key }.map { (folder, before) -> folder to repository.loadPage(folder, before) }
             if (_state.value.selected != selection) return
             _state.update { st ->
-                val known = st.messages.mapTo(mutableSetOf()) { it.key }
-                val added = pages.flatMap { (folder, page) -> page.messages.map { MailRow(folder, it) } }
-                    .filter { it.key !in known }
+                val merged = pages.fold(st.messages) { rows, (folder, page) -> mergeOlderPage(rows, folder, page) }
                 st.copy(
-                    messages = ordered(selection, st.messages + added),
+                    messages = if (selection is FolderSelection.AllMail) merged.sortedWith(NEWEST_FIRST) else merged.sortedByDescending { it.uid },
                     cursors = st.cursors - cursors.keys + cursorsOf(pages),
                 )
             }
@@ -556,6 +559,24 @@ class SchoolMailListViewModel @Inject constructor(
      */
     private fun ordered(selection: FolderSelection, rows: List<MailRow>): List<MailRow> =
         if (selection is FolderSelection.AllMail) rows.sortedWith(NEWEST_FIRST) else rows
+
+    /**
+     * [page], an older page of [folder], merged into [rows]: every row it lists wins, and a row of
+     * [folder] inside the page's UID range that it does not list was read, moved or deleted
+     * elsewhere and goes. Rows outside that range, and every other folder's, stay.
+     *
+     * The range overlaps rows already listed whenever mail below the cursor was expunged, as the
+     * sequence numbers it was taken from have shifted down since. A single folder's order is the
+     * server's, UID descending, which re-sorting keeps.
+     */
+    private fun mergeOlderPage(rows: List<MailRow>, folder: String, page: MailPage): List<MailRow> {
+        val window = page.windowUids
+            ?: page.messages.takeIf { it.isNotEmpty() }?.let { m -> m.minOf { it.uid }..m.maxOf { it.uid } }
+        val kept = if (window == null) rows else rows.filterNot { it.folder == folder && it.uid in window }
+        val fresh = page.messages.map { MailRow(folder, it) }
+        val freshKeys = fresh.mapTo(HashSet()) { it.key }
+        return kept.filterNot { it.key in freshKeys } + fresh
+    }
 
     private fun cursorsOf(pages: List<Pair<String, MailPage>>): Map<String, Int> =
         pages.mapNotNull { (folder, page) -> page.nextBeforeSeq?.let { folder to it } }.toMap()
