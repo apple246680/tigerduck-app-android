@@ -213,12 +213,14 @@ class SettingsViewModel @Inject constructor(
         Log.i(TAG, "[reenable] resolve: keepLocal=$keepLocal categories=${conflict.categories}")
         _reenableConflict.value = null
         // Full syncs leave assignment marks and course ignores alone while
-        // "assignments" is pending, so it is let go only once every answer
-        // has sent, queued or adopted them.
+        // "assignments" is pending, and colours and names while theirs are,
+        // so these are let go only once every answer has sent, queued or
+        // adopted them (heldUntilAnswered).
         // On the application scope, so leaving Settings cannot strand it,
         // and tied to this account: a sign-out ends it, and drops any write
         // still on its way.
-        val holdsCourseIgnores = "assignments" in conflict.categories
+        val held = heldUntilAnswered(conflict.categories)
+        val holdsCourseIgnores = "assignments" in held
         // Use Local's terms are latched before the courses check lets the
         // course list go: a sync in between would un-hide a course deleted
         // here before Use Local sends its delete.
@@ -227,7 +229,7 @@ class SettingsViewModel @Inject constructor(
             semesters = semesterCatalog::availableSemesters,
             host = useLocalHost,
         ) {
-            prefs.pendingConflictCategories = if (holdsCourseIgnores) setOf("assignments") else emptySet()
+            prefs.pendingConflictCategories = held
         }
         val generation = dataCache.userDataGeneration
         reenableCheck.resolutions.start()
@@ -247,7 +249,7 @@ class SettingsViewModel @Inject constructor(
                 // Each Settings screen has its own view model, and an answer
                 // given on one is still being applied when the next one checks.
                 if (reenableCheck.resolutions.finish()) {
-                    prefs.pendingConflictCategories = prefs.pendingConflictCategories - "assignments"
+                    prefs.pendingConflictCategories = prefs.pendingConflictCategories - held
                 }
             }
             if (holdsCourseIgnores) courseIgnoreSync.retryPending()

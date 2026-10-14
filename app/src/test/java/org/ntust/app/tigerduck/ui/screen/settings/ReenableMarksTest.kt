@@ -188,4 +188,17 @@ class ReenableMarksTest {
         assertEquals(REENABLE_CATEGORIES, taken(coursesLoaded = false, hasOverrides = false))
         assertEquals(REENABLE_CATEGORIES, taken())
     }
+
+    @Test
+    fun `colours and names stay held until Use Local has sent them`() {
+        // Let go on the tap, a sync during Use Local's course upload wrote the
+        // server's colours and names into the cache, and Use Local then sent
+        // those back as this phone's.
+        assertEquals(
+            setOf("assignments", "course_colors", "course_names"),
+            heldUntilAnswered(listOf("courses", "course_colors", "course_names", "assignments")),
+        )
+        assertEquals(setOf("course_names"), heldUntilAnswered(listOf("courses", "course_names")))
+        assertEquals(emptySet<String>(), heldUntilAnswered(listOf("courses")))
+    }
 }

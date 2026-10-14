@@ -80,3 +80,16 @@ internal fun markForReenableCheck(prefs: AppPreferences, category: String, signe
     prefs.pendingConflictCategories = prefs.pendingConflictCategories + category
     Log.i(TAG, "[reenable] marked category=$category pending=${prefs.pendingConflictCategories}")
 }
+
+/**
+ * The categories of an answered re-enable dialog still held once the user
+ * taps: the ones whose answer sends or takes data after the tap, so a full
+ * sync in between cannot write the server's over what Use Local is about to
+ * send, or take it in Use Server's stead. "courses" is not among them: Use
+ * Local latches its terms instead (`handOverCourseHold`). Let go once the
+ * answer has been applied.
+ */
+internal fun heldUntilAnswered(categories: Collection<String>): Set<String> =
+    categories.filterTo(mutableSetOf()) { it in HELD_UNTIL_ANSWERED }
+
+private val HELD_UNTIL_ANSWERED = setOf("assignments", "course_colors", "course_names")
