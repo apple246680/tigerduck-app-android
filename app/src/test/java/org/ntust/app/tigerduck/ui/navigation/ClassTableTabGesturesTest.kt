@@ -109,4 +109,23 @@ class ClassTableTabGesturesTest {
         assertEquals(1, longPresses)
         assertEquals(0, taps)
     }
+
+    @Test
+    fun `after a double tap a single tap only taps, and the next double tap switches again, as on iOS`() {
+        // iOS steps on with each further double tap within three seconds (#215), not with one tap.
+        showTab()
+        val tab = composeRule.onNodeWithTag("tab")
+
+        tab.performTouchInput { doubleClick() }
+        composeRule.mainClock.advanceTimeBy(400)
+        tab.performTouchInput { click() }
+        composeRule.mainClock.advanceTimeBy(400)
+        assertEquals(1, doubleTaps)
+
+        tab.performTouchInput { doubleClick() }
+        composeRule.waitForIdle()
+        assertEquals(2, doubleTaps)
+        assertEquals(5, taps)
+    }
 }
+
