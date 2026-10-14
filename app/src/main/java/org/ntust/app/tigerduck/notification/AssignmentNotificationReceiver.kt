@@ -72,7 +72,7 @@ class AssignmentNotificationReceiver : BroadcastReceiver() {
                     verdict = { reminderCheck.verdict(assignmentId, armedDueAtMs) },
                 ) {
                     notificationChannels.ensureRegistered()
-                    postInAppLanguage(context, appPreferences.appLanguage, title, courseName, assignmentId, offset)
+                    post(context, appPreferences.appLanguage, title, courseName, assignmentId, offset)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -143,42 +143,29 @@ class AssignmentNotificationReceiver : BroadcastReceiver() {
                     PackageManager.PERMISSION_GRANTED)
 
         /**
-         * [post], in the language chosen in the app. A receiver's context
-         * carries the phone's language, not the app's: below API 33 the
-         * in-app choice never reaches it, so the reminder came out in the
-         * phone's language under an otherwise translated app.
-         */
-        internal fun postInAppLanguage(
-            context: Context,
-            appLanguage: String,
-            title: String,
-            courseName: String,
-            assignmentId: String,
-            offset: AssignmentReminderOffset?,
-        ) = post(
-            AppLanguageManager.localizedContext(context, appLanguage),
-            title,
-            courseName,
-            assignmentId,
-            offset,
-        )
-
-        /**
          * Post the reminder, past every check onReceive makes first; the
-         * developer menu's preview posts through here too. [context] must
-         * already carry the app's language, and the channels must exist.
+         * developer menu's preview posts through here too. The channels must
+         * exist.
+         *
+         * In [appLanguage], the language chosen in the app: a receiver's
+         * context carries the phone's, and below API 33 the in-app choice
+         * never reaches it, so the reminder came out in the phone's language
+         * under an otherwise translated app. Taken here rather than left to
+         * the caller, so no path can post without it.
          *
          * A tap opens the assignment, through `tigerduck://assignment/<id>`,
          * in the Moodle app or the browser, as on iOS. An id no link can
          * carry, such as the preview's, opens the app.
          */
         fun post(
-            context: Context,
+            baseContext: Context,
+            appLanguage: String,
             title: String,
             courseName: String,
             assignmentId: String,
             offset: AssignmentReminderOffset?,
         ) {
+            val context = AppLanguageManager.localizedContext(baseContext, appLanguage)
             val notificationManager =
                 context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 

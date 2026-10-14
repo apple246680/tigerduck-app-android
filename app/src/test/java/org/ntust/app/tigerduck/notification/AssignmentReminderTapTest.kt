@@ -34,7 +34,7 @@ class AssignmentReminderTapTest {
 
     @Test
     fun `tapping a reminder opens its assignment`() {
-        AssignmentNotificationReceiver.post(context, "Homework 3", "Data Structures", "900001", AssignmentReminderOffset.HR1)
+        AssignmentNotificationReceiver.post(context, "system", "Homework 3", "Data Structures", "900001", AssignmentReminderOffset.HR1)
 
         val tap = shadowOf(postedReminder().contentIntent)
         assertTrue(tap.isActivity)
@@ -47,8 +47,8 @@ class AssignmentReminderTapTest {
 
     @Test
     fun `two assignments' reminders open two assignments`() {
-        AssignmentNotificationReceiver.post(context, "A", "Course", "11", AssignmentReminderOffset.HR1)
-        AssignmentNotificationReceiver.post(context, "B", "Course", "22", AssignmentReminderOffset.HR1)
+        AssignmentNotificationReceiver.post(context, "system", "A", "Course", "11", AssignmentReminderOffset.HR1)
+        AssignmentNotificationReceiver.post(context, "system", "B", "Course", "22", AssignmentReminderOffset.HR1)
 
         val links = shadowOf(manager).allNotifications
             .filter { it.group == NotificationGroup.ASSIGNMENT.key && !isSummary(it) }
@@ -59,7 +59,7 @@ class AssignmentReminderTapTest {
 
     @Test
     fun `an id no link can carry still opens the app`() {
-        AssignmentNotificationReceiver.post(context, "Preview", "Course", "debug-1", AssignmentReminderOffset.HR1)
+        AssignmentNotificationReceiver.post(context, "system", "Preview", "Course", "debug-1", AssignmentReminderOffset.HR1)
 
         val intent = shadowOf(postedReminder().contentIntent).savedIntent
         assertEquals(MainActivity::class.java.name, intent.component?.className)

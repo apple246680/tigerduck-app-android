@@ -68,18 +68,12 @@ class ClassPreparingNotificationReceiver : BroadcastReceiver() {
 
         if (!mayPost(rawContext, deps.appPreferences())) return
 
-        // Receiver contexts carry the SYSTEM locale, not the user's in-app
-        // language choice (AppCompat per-app locales don't reach broadcast
-        // contexts when the alarm wakes a dead process). Resolve the chosen
-        // language explicitly so the notification text matches the rest of the
-        // app.
-        val context = AppLanguageManager.localizedContext(
-            rawContext,
-            deps.appPreferences().appLanguage,
-        )
         // One shot: if the channel is missing, the reminder is dropped for good.
         deps.notificationChannels().ensureRegistered()
-        post(context, notificationId, courseName, classroom, instructor, startMs, endMs, leadTimeMs)
+        post(
+            rawContext, deps.appPreferences().appLanguage,
+            notificationId, courseName, classroom, instructor, startMs, endMs, leadTimeMs,
+        )
     }
 
     companion object {
@@ -107,13 +101,19 @@ class ClassPreparingNotificationReceiver : BroadcastReceiver() {
 
         /**
          * Post the reminder, past every check onReceive makes first; the
-         * developer menu's preview posts through here too. [context] must
-         * already carry the app's language, and the channels must exist.
+         * developer menu's preview posts through here too. The channels must
+         * exist.
+         *
+         * In [appLanguage]: receiver contexts carry the system locale, not
+         * the in-app choice (AppCompat per-app locales don't reach broadcast
+         * contexts when the alarm wakes a dead process), so the chosen
+         * language is resolved here, where no caller can skip it.
          *
          * A tap opens the class table, through `tigerduck://classtable`.
          */
         fun post(
-            context: Context,
+            baseContext: Context,
+            appLanguage: String,
             notificationId: Int,
             courseName: String,
             classroom: String,
@@ -122,6 +122,7 @@ class ClassPreparingNotificationReceiver : BroadcastReceiver() {
             endMs: Long,
             leadTimeMs: Long,
         ) {
+            val context = AppLanguageManager.localizedContext(baseContext, appLanguage)
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
             val timeRange = formatTimeRange(startMs, endMs)

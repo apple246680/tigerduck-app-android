@@ -33,7 +33,7 @@ class AssignmentReminderLanguageTest {
 
     @Test
     fun `a reminder is in the app's language, not the phone's`() {
-        AssignmentNotificationReceiver.postInAppLanguage(
+        AssignmentNotificationReceiver.post(
             context,
             appLanguage = "en",
             title = "Homework 3",
@@ -50,7 +50,7 @@ class AssignmentReminderLanguageTest {
 
     @Test
     fun `following the system keeps the phone's language`() {
-        AssignmentNotificationReceiver.postInAppLanguage(
+        AssignmentNotificationReceiver.post(
             context,
             appLanguage = "system",
             title = "Homework 3",

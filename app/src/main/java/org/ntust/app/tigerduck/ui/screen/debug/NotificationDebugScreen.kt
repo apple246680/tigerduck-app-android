@@ -36,6 +36,7 @@ import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import org.ntust.app.tigerduck.MainActivity
 import org.ntust.app.tigerduck.StartRoute
+import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.liveactivity.LiveActivityNotifier
 import org.ntust.app.tigerduck.liveactivity.LiveActivityScenario
 import org.ntust.app.tigerduck.liveactivity.LiveActivitySnapshot
@@ -76,6 +77,7 @@ fun NotificationDebugScreen(onBack: () -> Unit) {
         val now = System.currentTimeMillis()
         ClassPreparingNotificationReceiver.post(
             context,
+            deps.appPreferences().appLanguage,
             notificationId = DEBUG_CLASS_ID_BASE + sent.incrementAndGet(),
             courseName = "Preview Course",
             classroom = "TR-412",
@@ -89,6 +91,7 @@ fun NotificationDebugScreen(onBack: () -> Unit) {
         deps.notificationChannels().ensureRegistered()
         AssignmentNotificationReceiver.post(
             context,
+            deps.appPreferences().appLanguage,
             title = "Preview Assignment",
             courseName = "Preview Course",
             assignmentId = "debug-${sent.incrementAndGet()}",
@@ -227,6 +230,7 @@ private fun previewInClassSnapshot(): LiveActivitySnapshot {
 internal interface NotificationDebugEntryPoint {
     fun liveActivityNotifier(): LiveActivityNotifier
     fun notificationChannels(): NotificationChannelRegistrar
+    fun appPreferences(): AppPreferences
 }
 
 // A new notification on every press rather than a replacement, so pressing
