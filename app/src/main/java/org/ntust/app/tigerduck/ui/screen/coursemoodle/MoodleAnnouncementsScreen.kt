@@ -39,11 +39,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -128,7 +130,7 @@ private fun ForumsFirstLoad(store: MoodleCourseStore) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DiscussionList(
+internal fun DiscussionList(
     pages: MoodleDiscussionPages,
     onOpen: (MoodleDiscussion) -> Unit,
 ) {
@@ -144,15 +146,14 @@ private fun DiscussionList(
     val listState = rememberLazyListState()
     val discussions = remember(list) { list?.let { MoodleDiscussions.sorted(it, pages.byModified) }.orEmpty() }
 
-    // The next page once the list's end comes on screen.
+    // The next page once the list's end comes on screen. Read through the latest list: the
+    // effect outlives the page it started with.
+    val latestLastId by rememberUpdatedState(discussions.lastOrNull()?.id)
     LaunchedEffect(listState, pages) {
-        snapshotFlow {
-            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.key
-            last
-        }
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.key to latestLastId }
             .distinctUntilChanged()
-            .filter { it != null && it == discussions.lastOrNull()?.id }
-            .collect { pages.loadMore(it as Int) }
+            .filter { (visible, last) -> visible != null && visible == last }
+            .collect { (visible, _) -> pages.loadMore(visible as Int) }
     }
 
     PullToRefreshBox(
@@ -162,7 +163,9 @@ private fun DiscussionList(
     ) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag(DISCUSSION_LIST_TAG),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -196,6 +199,8 @@ private fun DiscussionList(
         }
     }
 }
+
+internal const val DISCUSSION_LIST_TAG = "moodle_discussions"
 
 /** The list's end when its next page failed, so a partial list does not pass for the whole. */
 @Composable
