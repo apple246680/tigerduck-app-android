@@ -61,10 +61,11 @@ class LibraryViewModel @Inject constructor(
         account = { page.codeAccount },
         sessionValid = { page.hasAccount },
         // The account is gone (refused, or signed out): back to the sign-in
-        // form instead of looping on it.
+        // form instead of looping on it. Before the session is read again,
+        // so the drop that follows it keeps this failure's message.
         onSessionEnded = {
-            librarySession.refresh()
             _isLoggedIn.value = false
+            librarySession.refresh()
         },
         describe = { e -> libraryErrorMessage(e, R.string.library_qr_generate_failed, context::getString) },
         errors = _errorMessage,
@@ -102,6 +103,20 @@ class LibraryViewModel @Inject constructor(
 
     private val _storedUsername = MutableStateFlow(credentials.libraryUsername)
     val storedUsername: StateFlow<String?> = _storedUsername
+
+    init {
+        // Signed out elsewhere, such as a refusal the sign-in at a return to
+        // the app found: back to the sign-in form at once, also while a code
+        // request backs off, rather than at its next try. That failure's
+        // message is no longer what happened.
+        viewModelScope.followSignOuts(librarySession.signedIn, ::resolveSignedIn) {
+            if (_isLoggedIn.value) {
+                qrCycle.clear()
+                _errorMessage.value = null
+                _isLoggedIn.value = false
+            }
+        }
+    }
 
     /** Suggested pre-fill for the login form — stored library user, or NTUST student ID. */
     val suggestedUsername: String

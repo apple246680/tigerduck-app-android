@@ -295,4 +295,48 @@ class LibraryQRCycleTest {
 
         assertNull(cache.reusable(account, testScheduler.currentTime))
     }
+
+    /**
+     * A refusal another caller found, such as the sign-in at a return to the app, signs Settings
+     * and the flip out at once; the page drops to the sign-in form then too, not at its next try
+     * after a backoff of up to five minutes (tigerduck-app/tigerduck-app#556).
+     */
+    @Test
+    fun `a sign-out found elsewhere drops the page while its code request backs off`() = runTest {
+        answers += fail()
+        val cycle = cycle()
+        val signedIn = MutableStateFlow(true)
+        var signedOut = 0
+        backgroundScope.followSignOuts(signedIn, stillSignedIn = { sessionValid }) {
+            signedOut++
+            cycle.clear()
+        }
+        cycle.start()
+        runCurrent()
+        assertEquals("HTTP 503", errors.value)
+
+        sessionValid = false
+        signedIn.value = false
+        runCurrent()
+
+        assertEquals(1, signedOut)
+        assertNull(cycle.image.value)
+        advanceTimeBy(600_000)
+        runCurrent()
+        assertEquals(listOf(0L), fetchedAt)
+    }
+
+    /** The stores are read again, so a signed-out read before an account was stored drops nothing. */
+    @Test
+    fun `a signed-out that the stores no longer say drops nothing`() = runTest {
+        val signedIn = MutableStateFlow(true)
+        var signedOut = 0
+        backgroundScope.followSignOuts(signedIn, stillSignedIn = { sessionValid }) { signedOut++ }
+        runCurrent()
+
+        signedIn.value = false
+        runCurrent()
+
+        assertEquals(0, signedOut)
+    }
 }
