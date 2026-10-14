@@ -313,4 +313,37 @@ class LibraryServiceAccountTest {
         assertEquals("token-2", next.await())
         assertEquals(2, signIns)
     }
+
+    /**
+     * A sign-in typed after a library sign-out does not wait behind a sign-in with the stored
+     * credentials of the account that left, which no one waits for any more.
+     */
+    @Test
+    fun `a sign-in typed after a sign-out does not wait for a stored sign-in no one waits for`() = runBlocking {
+        store.storeExpired("B10000001", "pw")
+        val release = CountDownLatch(1)
+        val asked = CountDownLatch(1)
+        whileSigningIn = {
+            if (signIns == 1) {
+                asked.countDown()
+                release.await(15, TimeUnit.SECONDS)
+            }
+        }
+        try {
+            val page = launch(Dispatchers.Default) { runCatching { service.ensureToken() } }
+            assertTrue(asked.await(5, TimeUnit.SECONDS))
+            page.cancel()
+            page.join()
+
+            store.signOut()
+
+            assertEquals(
+                "token-2",
+                withTimeout(5_000) { service.login("B10000002", "theirs", store.libraryAccountGeneration, byUser = true) },
+            )
+            assertEquals("B10000002", store.libraryUsername)
+        } finally {
+            release.countDown()
+        }
+    }
 }

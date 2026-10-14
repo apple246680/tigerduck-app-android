@@ -140,8 +140,13 @@ class LibraryService(
         accountGeneration: Int,
         byUser: Boolean,
         stillCurrent: () -> Boolean = { true },
-    ): String = tokenMutex.withLock {
-        loginInternal(username, password, accountGeneration, byUser, stillCurrent)
+    ): String {
+        // A sign-in with the stored credentials of an account that has gone
+        // since, which no one waits for, would hold this one behind it.
+        synchronized(pendingSignIns) { dropAbandonedSignIns() }
+        return tokenMutex.withLock {
+            loginInternal(username, password, accountGeneration, byUser, stillCurrent)
+        }
     }
 
     private suspend fun loginInternal(
