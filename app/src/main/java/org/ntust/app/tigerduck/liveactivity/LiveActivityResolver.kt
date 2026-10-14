@@ -1,7 +1,8 @@
 package org.ntust.app.tigerduck.liveactivity
 
 import org.ntust.app.tigerduck.AppConstants
-import org.ntust.app.tigerduck.shared.collapseContiguousPeriods
+import org.ntust.app.tigerduck.shared.blockClassroom
+import org.ntust.app.tigerduck.shared.contiguousPeriodRuns
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.shared.Course
 import java.time.LocalTime
@@ -85,6 +86,7 @@ class LiveActivityResolver {
 
     data class Slot(
         val course: Course,
+        /** This block's periods, not every period of the course that day. */
         val periods: List<String>,
         val start: Date,
         val end: Date,
@@ -98,7 +100,8 @@ class LiveActivityResolver {
             return skippedDates[course.courseNo]?.contains(key) == true
         }
 
-        val classroom: String get() = course.classroom(weekday)
+        /** This block's room: a course meeting twice a day can switch rooms in between. */
+        val classroom: String get() = course.blockClassroom(weekday, periods)
     }
 
     private fun buildTodaySlots(courses: List<Course>, now: Date): List<Slot> {
@@ -119,15 +122,14 @@ class LiveActivityResolver {
         for (course in courses) {
             val periods = course.schedule[weekdayIdx] ?: continue
             if (periods.isEmpty()) continue
-            val ranges = collapseContiguousPeriods(periods)
-            for ((first, last) in ranges) {
-                val startTime = periodStart(first) ?: continue
-                val endTime = periodEnd(last) ?: continue
+            for (block in contiguousPeriodRuns(periods)) {
+                val startTime = periodStart(block.first()) ?: continue
+                val endTime = periodEnd(block.last()) ?: continue
                 val startZdt = ZonedDateTime.of(today, startTime, AppConstants.TAIPEI_ZONE)
                 val endZdt = ZonedDateTime.of(today, endTime, AppConstants.TAIPEI_ZONE)
                 results += Slot(
                     course = course,
-                    periods = periods,
+                    periods = block,
                     start = Date.from(startZdt.toInstant()),
                     end = Date.from(endZdt.toInstant()),
                     weekday = weekdayIdx,
