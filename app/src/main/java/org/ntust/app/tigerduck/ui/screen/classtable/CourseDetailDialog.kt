@@ -153,7 +153,7 @@ internal fun CourseDetailDialog(
                             IconButton(onClick = { onOpenInMoodle(moodleCourseId) }) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                                    contentDescription = null,
+                                    contentDescription = stringResource(R.string.a11y_course_detail_open_moodle),
                                     tint = MaterialTheme.colorScheme.primary,
                                 )
                             }
