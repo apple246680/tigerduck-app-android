@@ -1,0 +1,177 @@
+package org.ntust.app.tigerduck.ui.screen.library
+
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import org.ntust.app.tigerduck.shared.LibraryApi
+
+/**
+ * The Library page's rotating QR code: fetches one, shows it with its
+ * 30-second countdown and fetches the next when that runs out, for as long as
+ * it runs ([start] on the page's resume, [stop] on its pause).
+ *
+ * A fetch that fails while the session is still valid (a server error, a
+ * timeout, a short network drop) is tried again after 60, 120, then every 300
+ * seconds, as on the iPhone, so a flapping server is not asked every 30
+ * seconds and the page recovers on its own. An expired code is never left on
+ * screen to be scanned: it goes as soon as a fetch fails. A failure with the
+ * session gone hands back to [onSessionEnded].
+ *
+ * [Image] is the rendered code, a Bitmap in the app.
+ */
+internal class LibraryQRCycle<Image : Any>(
+    private val scope: CoroutineScope,
+    /** The library's answer: a new code's payload. */
+    private val fetch: suspend () -> String,
+    /** Renders a payload; the caller picks the thread. */
+    private val render: suspend (String) -> Image,
+    /** The library account a code is for; a code fetched for another is dropped. */
+    private val account: () -> Int,
+    /** Whether the session can still fetch codes; checked after a failure. */
+    private val sessionValid: () -> Boolean,
+    private val onSessionEnded: () -> Unit,
+    private val describe: (Exception) -> String,
+    /** Where a failure's message goes; cleared when a fetch starts. */
+    private val errors: MutableStateFlow<String?>,
+    /** A monotonic clock in ms, for how long the code on screen has left. */
+    private val now: () -> Long,
+) {
+    private val _image = MutableStateFlow<Image?>(null)
+    val image: StateFlow<Image?> = _image.asStateFlow()
+
+    private val _countdown = MutableStateFlow(0)
+    val countdown: StateFlow<Int> = _countdown.asStateFlow()
+
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    private var job: Job? = null
+
+    /** Transient failures since the last code that landed; drives [retryDelaySeconds]. */
+    private var consecutiveErrors = 0
+
+    /** When the code on screen was issued, on [now]'s clock, and for which account. */
+    private var shownIssuedAt: Long? = null
+    private var shownAccount: Int? = null
+
+    /** Starts the cycle, unless it is already running. */
+    fun start() {
+        if (job?.isActive == true) return
+        job = scope.launch { run() }
+    }
+
+    fun stop() {
+        job?.cancel()
+        job = null
+    }
+
+    fun restart() {
+        stop()
+        start()
+    }
+
+    /** Stops, and takes the code off the screen: the account it belongs to has gone. */
+    fun clear() {
+        stop()
+        clearCode()
+        _isLoading.value = false
+        consecutiveErrors = 0
+    }
+
+    private suspend fun run() {
+        // A code from before a pause that has run out, or that is another
+        // account's, would scan as a valid pass until the new one lands.
+        if (shownAccount != account() || codeExpired()) clearCode()
+        _countdown.value = 0
+        while (true) {
+            when (fetchOnce()) {
+                Outcome.SHOWN -> countDown(LibraryApi.QR_VALID_SECONDS)
+                Outcome.FAILED -> waitToRetry(retryDelaySeconds(consecutiveErrors) * 1000L)
+                Outcome.ENDED -> return
+            }
+        }
+    }
+
+    private enum class Outcome { SHOWN, FAILED, ENDED }
+
+    private suspend fun fetchOnce(): Outcome {
+        val forAccount = account()
+        _isLoading.value = _image.value == null
+        errors.value = null
+        try {
+            val payload = fetch()
+            val rendered = render(payload)
+            // Signed out, or another account signed in, while the request was
+            // out: this code is the previous account's.
+            if (account() != forAccount) return Outcome.ENDED
+            _image.value = rendered
+            shownIssuedAt = now()
+            shownAccount = forAccount
+            consecutiveErrors = 0
+            return Outcome.SHOWN
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (account() != forAccount) return Outcome.ENDED
+            errors.value = describe(e)
+            if (!sessionValid()) {
+                clearCode()
+                consecutiveErrors = 0
+                onSessionEnded()
+                return Outcome.ENDED
+            }
+            consecutiveErrors++
+            if (codeExpired()) clearCode()
+            return Outcome.FAILED
+        } finally {
+            _isLoading.value = false
+        }
+    }
+
+    /** Waits [ms], taking a code still on screen off it the moment it runs out. */
+    private suspend fun waitToRetry(ms: Long) {
+        val retryAt = now() + ms
+        val issuedAt = shownIssuedAt
+        if (issuedAt != null) {
+            val expiresIn = issuedAt + LibraryApi.QR_VALID_SECONDS * 1000L - now()
+            if (expiresIn < ms) {
+                delay(expiresIn.coerceAtLeast(0))
+                clearCode()
+            }
+        }
+        delay((retryAt - now()).coerceAtLeast(0))
+    }
+
+    private suspend fun countDown(seconds: Int) {
+        _countdown.value = seconds
+        while (_countdown.value > 0) {
+            delay(1000)
+            _countdown.value--
+        }
+    }
+
+    private fun codeExpired(): Boolean {
+        val issuedAt = shownIssuedAt ?: return true
+        return now() - issuedAt >= LibraryApi.QR_VALID_SECONDS * 1000L
+    }
+
+    private fun clearCode() {
+        _image.value = null
+        shownIssuedAt = null
+        shownAccount = null
+        _countdown.value = 0
+    }
+
+    companion object {
+        private val BACKOFF_SECONDS = listOf(60, 120, 300)
+
+        /** Seconds before the next try after [failures] transient failures in a row; holds at the last. */
+        fun retryDelaySeconds(failures: Int): Int =
+            BACKOFF_SECONDS[(failures - 1).coerceIn(0, BACKOFF_SECONDS.lastIndex)]
+    }
+}
