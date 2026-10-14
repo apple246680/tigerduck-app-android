@@ -94,7 +94,11 @@ class MoodleTokenService @Inject constructor(
         pauseMs = SIGN_IN_PAUSE_MS,
     )
 
-    /** Fetch a fresh token using stored NTUST credentials. */
+    /**
+     * A fresh token with the stored NTUST credentials, for the backend to check with Moodle: the
+     * stored one when a sign-in got it moments ago, else a new one. It shares the renewals'
+     * sign-in, pause and stop at a refused password; see [MoodleTokenRenewal].
+     */
     suspend fun refreshToken(): String = coordinator.refresh()
 
     /**

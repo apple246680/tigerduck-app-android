@@ -10,8 +10,9 @@ import kotlinx.coroutines.sync.withLock
  * wstoken out.
  *
  * One sign-in at a time: the sign-in a user makes, a refresh and a renewal all take [mutex]. A
- * renewal checks the stored token again once it holds the lock, so one that waited behind a
- * sign-in takes the token that sign-in got rather than signing in a second time.
+ * refresh and a renewal both go through [MoodleTokenRenewal], so both keep its pause and its stop
+ * at a refused password, and check the stored token again once they hold the lock: one that
+ * waited behind a sign-in takes the token that sign-in got rather than signing in a second time.
  */
 internal class MoodleTokenCoordinator(
     private val tokens: Tokens,
@@ -19,6 +20,7 @@ internal class MoodleTokenCoordinator(
     scope: CoroutineScope,
     now: () -> Long,
     pauseMs: Long,
+    refusal: StoredPasswordRefusal = StoredPasswordRefusal.InMemory(),
 ) {
     /** Where the token and the account it is harvested with are stored. */
     interface Tokens {
@@ -45,10 +47,14 @@ internal class MoodleTokenCoordinator(
         now = now,
         scope = scope,
         pauseMs = pauseMs,
+        refusal = refusal,
     )
 
-    /** A fresh token with the stored account, whatever is stored now. */
-    suspend fun refresh(): String = mutex.withLock { refreshUnlocked() }
+    /**
+     * A fresh token with the stored account: the stored one when a sign-in got it moments ago,
+     * else a new one; see [MoodleTokenRenewal.refresh].
+     */
+    suspend fun refresh(): String = renewal.refresh()
 
     /** A token in place of [rejected]; see [MoodleTokenRenewal]. */
     suspend fun renew(rejected: String?): String = renewal.renew(rejected)
@@ -58,7 +64,7 @@ internal class MoodleTokenCoordinator(
         val token = mutex.withLock {
             login(studentId.trim().uppercase(), password).also { tokens.token = it }
         }
-        renewal.reset()
+        renewal.reset(harvested = token)
         return token
     }
 

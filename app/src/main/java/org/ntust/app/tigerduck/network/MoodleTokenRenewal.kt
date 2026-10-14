@@ -19,7 +19,7 @@ import java.security.MessageDigest
  *   what locks an NTUST account.
  *
  * [harvest] signs in and stores the token it gets. It runs in [scope], so a caller that goes away
- * does not cancel a sign-in others wait on.
+ * does not cancel a sign-in others wait on. Which credentials SSO refused is kept in [refusal].
  */
 internal class MoodleTokenRenewal(
     private val storedToken: () -> String?,
@@ -30,6 +30,7 @@ internal class MoodleTokenRenewal(
     private val now: () -> Long,
     private val scope: CoroutineScope,
     private val pauseMs: Long,
+    private val refusal: StoredPasswordRefusal = StoredPasswordRefusal.InMemory(),
 ) {
     private val lock = Mutex()
     /**
@@ -41,10 +42,29 @@ internal class MoodleTokenRenewal(
     /** The last failure that was not the network's, with when and for which credentials. */
     private var lastFailure: Failure? = null
 
-    /** The credentials SSO refused, as a fingerprint; never the password itself. */
-    private var refusedCredentials: String? = null
+    /** The last token a sign-in got, with when. */
+    private var lastHarvest: Harvest? = null
 
     private class Failure(val atMs: Long, val error: Throwable, val credentials: String)
+
+    private class Harvest(val token: String, val atMs: Long)
+
+    /**
+     * A token fresh enough for another service to check with Moodle: the stored one when a
+     * sign-in got it less than [pauseMs] ago, else one in its place by the rules [renew] keeps.
+     */
+    suspend fun refresh(): String {
+        val stored = storedToken()
+        lock.withLock {
+            val harvest = lastHarvest
+            if (harvest != null && !stored.isNullOrEmpty() && harvest.token == stored &&
+                now() - harvest.atMs in 0 until pauseMs
+            ) {
+                return stored
+            }
+        }
+        return renew(rejected = stored)
+    }
 
     /** A token in place of [rejected], which is null when none was stored. */
     suspend fun renew(rejected: String?): String {
@@ -54,7 +74,7 @@ internal class MoodleTokenRenewal(
                 if (!stored.isNullOrEmpty() && stored != rejected) return stored
                 val key = credentials()?.let(::fingerprint)
                     ?: throw MoodleWebserviceError.MissingStoredCredentials()
-                if (key == refusedCredentials) throw MoodleWebserviceError.SsoLoginRejected(null)
+                if (refusal.isRefused(key)) throw MoodleWebserviceError.SsoLoginRejected(null)
                 lastFailure?.let { failure ->
                     // Measured from the failure, so a clock set back does not stretch the pause.
                     val age = now() - failure.atMs
@@ -74,19 +94,25 @@ internal class MoodleTokenRenewal(
         return pending.await().getOrThrow()
     }
 
-    /** Forgets what failed, for a sign-in the user made by hand. */
-    suspend fun reset() = lock.withLock {
+    /** Forgets what failed, for a sign-in the user made by hand, which got [harvested]. */
+    suspend fun reset(harvested: String? = null) = lock.withLock {
         lastFailure = null
-        refusedCredentials = null
+        refusal.clear()
+        lastHarvest = harvested?.let { Harvest(it, now()) }
     }
 
     private suspend fun signIn(key: String, rejected: String?): String = try {
-        harvest(rejected).also { lock.withLock { lastFailure = null } }
+        harvest(rejected).also { token ->
+            lock.withLock {
+                lastFailure = null
+                lastHarvest = Harvest(token, now())
+            }
+        }
     } catch (e: CancellationException) {
         throw e
     } catch (e: MoodleWebserviceError.SsoLoginRejected) {
         // A sign-in with a new password can finish while this one runs on the old.
-        lock.withLock { if (credentials()?.let(::fingerprint) == key) refusedCredentials = key }
+        lock.withLock { if (credentials()?.let(::fingerprint) == key) refusal.markRefused(key) }
         throw e
     } catch (e: Exception) {
         // Offline the sign-in mostly stops before the password goes out, and a pause would
@@ -103,5 +129,28 @@ internal class MoodleTokenRenewal(
         val digest = MessageDigest.getInstance("SHA-256")
             .digest("${credentials.first.trim().uppercase()}\u0000${credentials.second}".toByteArray())
         return digest.joinToString("") { "%02x".format(it) }
+    }
+}
+
+/**
+ * Which stored credentials NTUST's SSO refused, so they are not sent again until they change.
+ * Each is named by a fingerprint of the student ID and password, never the password itself.
+ */
+internal interface StoredPasswordRefusal {
+    fun isRefused(fingerprint: String): Boolean
+    fun markRefused(fingerprint: String)
+    /** For a sign-in the user made by hand. */
+    fun clear()
+
+    /** Kept for as long as the process lives. */
+    class InMemory : StoredPasswordRefusal {
+        @Volatile private var refused: String? = null
+        override fun isRefused(fingerprint: String) = refused == fingerprint
+        override fun markRefused(fingerprint: String) {
+            refused = fingerprint
+        }
+        override fun clear() {
+            refused = null
+        }
     }
 }
