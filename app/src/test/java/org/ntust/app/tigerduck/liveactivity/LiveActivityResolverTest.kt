@@ -19,8 +19,8 @@ import org.robolectric.annotation.Config
 
 /**
  * The "assignment due soon" Live Update over what LiveActivityManager hands
- * the resolver: the outstanding assignments, not every cached one; and what
- * a tap on each opens.
+ * the resolver: the outstanding assignments, not every cached one; which
+ * scenario wins when several apply; and what a tap on each opens.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
@@ -99,8 +99,45 @@ class LiveActivityResolverTest {
     )
 
     @Test
+    fun `a due-soon assignment shows during class, as on the iPhone`() {
+        val at = taipei(10, 30)
+
+        val snapshot = resolveAt(at, listOf(dueAt("900002", taipei(14, 0))))
+
+        assertEquals(LiveActivityScenario.ASSIGNMENT_URGENT, snapshot?.scenario)
+        assertEquals("assignment-900002", snapshot?.sourceId)
+    }
+
+    @Test
+    fun `a due-soon assignment shows while a class is about to start`() {
+        val at = taipei(10, 10)
+
+        val snapshot = resolveAt(at, listOf(dueAt("900002", taipei(14, 0))))
+
+        assertEquals(LiveActivityScenario.ASSIGNMENT_URGENT, snapshot?.scenario)
+    }
+
+    @Test
+    fun `with the assignment scenario off, the class shows`() {
+        preferences.showAssignment = false
+
+        val inClass = resolveAt(taipei(10, 30), listOf(dueAt("900002", taipei(14, 0))))
+        val preparing = resolveAt(taipei(10, 10), listOf(dueAt("900002", taipei(14, 0))))
+
+        assertEquals(LiveActivityScenario.IN_CLASS, inClass?.scenario)
+        assertEquals(LiveActivityScenario.CLASS_PREPARING, preparing?.scenario)
+    }
+
+    @Test
+    fun `an assignment due beyond the lead time leaves the class showing`() {
+        val snapshot = resolveAt(taipei(10, 30), listOf(dueAt("900002", taipei(23, 59))))
+
+        assertEquals(LiveActivityScenario.IN_CLASS, snapshot?.scenario)
+    }
+
+    @Test
     fun `the due-soon Live Update opens its assignment, and a class the class table`() {
-        val assignment = resolveAt(taipei(8, 0), listOf(dueAt("900002", taipei(14, 0))))
+        val assignment = resolveAt(taipei(10, 30), listOf(dueAt("900002", taipei(14, 0))))
         preferences.showAssignment = false
         val inClass = resolveAt(taipei(10, 30), emptyList())
         val preparing = resolveAt(taipei(10, 10), emptyList())

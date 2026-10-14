@@ -14,12 +14,14 @@ import java.util.Date
  * Picks the single scenario that should drive the Live Update right now, or
  * null if nothing qualifies under current preferences.
  *
- * Priority mirrors the iOS spec:
- * 1. inClass         — current course for today
- * 2. classPreparing  — next course within `classPreparingLeadTime`
- * 3. assignmentUrgent — earliest uncompleted assignment due within
+ * Priority mirrors iOS's `LiveActivityScenarioResolver`. The assignment
+ * comes first, a product decision, so a due-soon warning still shows during
+ * class; turning the assignment scenario off gives class-first behaviour.
+ * 1. assignmentUrgent — earliest uncompleted assignment due within
  *    `assignmentLeadTime`. Ignored and marked-done ones are the caller's to
  *    leave out; see [org.ntust.app.tigerduck.data.OutstandingAssignments].
+ * 2. inClass         — current course for today
+ * 3. classPreparing  — next course within `classPreparingLeadTime`
  */
 class LiveActivityResolver {
 
@@ -32,6 +34,15 @@ class LiveActivityResolver {
         now: Date = Date(),
     ): LiveActivitySnapshot? {
         if (!preferences.isEnabled) return null
+
+        if (preferences.showAssignment) {
+            val urgent = assignments
+                .asSequence()
+                .filter { !it.isCompleted && it.dueDate.after(now) }
+                .filter { (it.dueDate.time - now.time) / 1000 <= preferences.assignmentLeadTimeSec }
+                .minByOrNull { it.dueDate }
+            if (urgent != null) return assignmentSnapshot(urgent, accentHex)
+        }
 
         val todaySlots = buildTodaySlots(courses, now)
             .filter { !it.isSkipped(skippedDates) }
@@ -53,15 +64,6 @@ class LiveActivityResolver {
                     return classPreparingSnapshot(upcoming, accentHex)
                 }
             }
-        }
-
-        if (preferences.showAssignment) {
-            val urgent = assignments
-                .asSequence()
-                .filter { !it.isCompleted && it.dueDate.after(now) }
-                .filter { (it.dueDate.time - now.time) / 1000 <= preferences.assignmentLeadTimeSec }
-                .minByOrNull { it.dueDate }
-            if (urgent != null) return assignmentSnapshot(urgent, accentHex)
         }
 
         return null
