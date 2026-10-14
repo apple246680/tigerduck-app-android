@@ -744,6 +744,9 @@ internal fun selectedTabRoute(route: String?): String? = when {
  * it, so a page pushed over it is cleared rather than covered by a second copy of the tab.
  */
 internal fun NavController.openStartRoute(target: String, tabRoutes: Set<String>, firstTab: String, tabTap: TabTap) {
+    // As the bottom bar does: navigating to the page on screen pops it before singleTop applies,
+    // which rebuilds the tab, or closes a mail being written without offering to save it.
+    if (currentBackStackEntry?.destination?.route == target) return
     if (target in tabRoutes) {
         navigateToTab(target, firstTab, tabTap)
     } else {

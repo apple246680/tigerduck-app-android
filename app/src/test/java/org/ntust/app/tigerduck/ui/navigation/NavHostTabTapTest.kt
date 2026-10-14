@@ -170,6 +170,27 @@ class StartRouteTest {
     }
 
     @Test
+    fun `opening the tab already on screen leaves it as it is`() {
+        composeRule.setContent {
+            navController = rememberNavController()
+            NavHost(navController = navController, startDestination = "home") {
+                composable("home") {}
+                composable("classTable") {}
+            }
+        }
+        composeRule.runOnIdle { navController.navigate("classTable") }
+        composeRule.waitForIdle()
+        val before = composeRule.runOnIdle { navController.currentBackStackEntry!!.id }
+
+        composeRule.runOnIdle {
+            navController.openStartRoute("classTable", tabRoutes = setOf("home", "classTable"), firstTab = "home", TabTap())
+        }
+        composeRule.waitForIdle()
+
+        assertEquals("not rebuilt, so nothing on it is lost", before, navController.currentBackStackEntry!!.id)
+    }
+
+    @Test
     fun `a course page and its Moodle pages keep the class table tab selected`() {
         assertEquals("classTable", selectedTabRoute("classTable/course"))
         assertEquals("classTable", selectedTabRoute("courseMoodle/{courseId}/members/{memberId}"))
