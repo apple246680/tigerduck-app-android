@@ -70,19 +70,6 @@ internal fun effectiveCloudSyncWrite(requested: Boolean, flavor: String = BuildC
 internal fun keepsPreviousDefaultTabs(hasCompletedOnboarding: Boolean, hasStoredTabs: Boolean): Boolean =
     hasCompletedOnboarding && !hasStoredTabs
 
-/**
- * A full reset's credential step: every credential goes, and then the watch is
- * told, so a library account of another student, which the school sign-out
- * before it keeps, does not stay on the watch.
- */
-internal suspend fun clearAllCredentials(
-    credentials: CredentialManager,
-    publishLibraryCredentialsToWatch: suspend () -> Unit,
-) {
-    credentials.clearAll()
-    publishLibraryCredentialsToWatch()
-}
-
 @Singleton
 class AppState @Inject constructor(
     val authService: AuthService,
@@ -529,39 +516,29 @@ class AppState @Inject constructor(
     }
 
     /**
+     * The steps of a full reset, in [FullReset]. [DataCache.clearEverything],
+     * not `clearAllUserData`: a logout keeps device-wide caches on purpose,
+     * but this is a factory reset and a leftover cache is precisely what makes
+     * the "fresh start" it promises not one.
+     */
+    private val fullReset = FullReset(
+        // Its password, caches, alarms and posted notifications.
+        signOutMail = { mailAccount.signOut() },
+        signOutSchool = { authService.logout() },
+        clearCaches = { dataCache.clearEverything() },
+        credentials = credentials,
+        prefs = prefs,
+        publishLibraryCredentialsToWatch = wearBridge::publishLibraryCredentials,
+    )
+
+    /**
      * Wipe every piece of on-device user state (prefs, credentials, JSON
      * cache) and return the user to onboarding. Called from the reset
      * dialog after migration returns [DataMigration.Outcome.NeedsUserReset].
-     *
-     * [DataCache.clearEverything], not `clearAllUserData`: a logout keeps
-     * device-wide caches on purpose, but this is a factory reset and a
-     * leftover cache is precisely what makes the "fresh start" it promises
-     * not one. [CredentialManager.clearAll] and [AppPreferences.clearAllPrefs]
-     * both clear their whole store, so the library account and every library
-     * preference (flip-to-open consent) go with them —
-     * neither needs naming here, and neither should be, since a named list
-     * silently stops being complete.
+     * The steps are [FullReset]'s.
      */
     fun performFullReset() {
-        // The mail account is separate from the NTUST sign-in (spec §7.5), but a full reset wipes
-        // everything: its password, caches, alarms and posted notifications.
-        mailAccount.signOut()
-        authService.logout()
-        scope.launch {
-            runCatching { dataCache.clearEverything() }
-            clearAllCredentials(credentials, wearBridge::publishLibraryCredentials)
-            prefs.clearAllPrefs()
-            // Re-stamp the schema so the dialog doesn't re-fire on next launch.
-            prefs.dataSchemaVersion = DataMigration.CURRENT_SCHEMA
-            // Same for the pre-2.3.0 bottom-bar check: once the user onboards
-            // again, the next launch would otherwise pin the old Calendar bar
-            // on what is now a fresh start. And for the Library one, which
-            // would add Library back to a bar the user has set up since.
-            prefs.previousDefaultTabsChecked = true
-            prefs.libraryTabAddChecked = true
-            // Nothing from before the reset is left for it to read.
-            prefs.flipToLibraryDefaultOffChecked = true
-
+        fullReset.start(scope) {
             // The mutableState caches above were seeded from prefs at init
             // time. Re-read so the UI shows defaults instead of ghost values
             // from the wiped store.
