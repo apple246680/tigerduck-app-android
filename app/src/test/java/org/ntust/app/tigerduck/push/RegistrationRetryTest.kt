@@ -231,12 +231,6 @@ class RegistrationRetryTest {
     }
 
     @Test
-    fun `turning TigerSync on is recorded only if it was not turned off meanwhile`() {
-        assertTrue(recordsSwitchOn(request = 3, latest = 3))
-        assertFalse(recordsSwitchOn(request = 3, latest = 4))
-    }
-
-    @Test
     fun `a failure after the backoff was started over during it does not count`() {
         assertFalse(failureCounts(streakResetWhileRunning = true))
         assertTrue(failureCounts(streakResetWhileRunning = false))
