@@ -201,4 +201,44 @@ class ClassTableCellLayoutTest {
             ClassTableCellLayout.findTripleConflict(existing, course("C", mapOf(1 to listOf("3"))))
         )
     }
+
+    // ---- contentKey: which cells fade on a switch ----
+
+    @Test
+    fun `a course both class tables have at the same place keeps its key, whatever its colour`() {
+        val mine = course("CS1", mapOf(1 to listOf("2", "3")))
+        val theirs = mine.copy(customColorHex = "#E57373")
+
+        val a = ClassTableCellLayout.contentKey(roleAt(listOf(mine), 1, "2"), "TR-313")
+        val b = ClassTableCellLayout.contentKey(roleAt(listOf(theirs), 1, "2"), "TR-313")
+
+        assertEquals(a, b)
+    }
+
+    @Test
+    fun `another course, name, room or span makes a new key`() {
+        val base = course("CS1", mapOf(1 to listOf("2", "3")))
+        fun key(c: Course, room: String? = null) = ClassTableCellLayout.contentKey(roleAt(listOf(c), 1, "2"), room)
+
+        val keys = listOf(
+            key(base),
+            key(course("CS2", mapOf(1 to listOf("2", "3")))),
+            key(base.copy(customCourseName = "Renamed")),
+            key(base, room = "TR-313"),
+            key(course("CS1", mapOf(1 to listOf("2", "3", "4")))),
+        )
+
+        assertEquals(keys.size, keys.toSet().size)
+    }
+
+    @Test
+    fun `slots with no course of their own have no key, and conflicts have one`() {
+        val a = course("A", mapOf(1 to listOf("2", "3")))
+        val b = course("B", mapOf(1 to listOf("3", "4")))
+
+        assertNull(ClassTableCellLayout.contentKey(CellRole.Empty, null))
+        assertNull(ClassTableCellLayout.contentKey(CellRole.Skip, null))
+        assertNotNull(ClassTableCellLayout.contentKey(roleAt(listOf(a, b), 1, "2"), null))
+    }
 }
+

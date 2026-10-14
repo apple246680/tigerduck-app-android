@@ -71,6 +71,24 @@ data class TripleConflictError(
 
 object ClassTableCellLayout {
 
+    /**
+     * What a cell's courses show, as the identity of its block: a change in name, room or rows
+     * makes a new block, which fades in where the old one fades out. The colour follows the
+     * course number and a mark changes in place, so neither is part of it. Null for a cell with
+     * no course of its own, an empty slot or one a course above reaches over.
+     */
+    fun contentKey(role: CellRole, roomHint: String?): String? {
+        fun shown(course: Course) = "${course.courseNo}|${course.displayName}"
+        return when (role) {
+            CellRole.Empty, CellRole.Skip -> null
+            is CellRole.SoloStart -> "solo ${role.spanCount} ${shown(role.course)}|${roomHint.orEmpty()}"
+            is CellRole.ConflictStart -> "pair ${role.combinedSpan} " +
+                "${role.spanA} ${role.offsetA} ${shown(role.courseA)} ${role.spanB} ${role.offsetB} ${shown(role.courseB)}"
+            is CellRole.MultiConflictStart -> "lanes ${role.combinedSpan} ${role.laneCount} " +
+                role.members.joinToString(" ") { "${it.span} ${it.offset} ${it.lane} ${shown(it.course)}" }
+        }
+    }
+
     /** Weekdays worth showing: Mon-Fri always, plus any weekend day in use. */
     fun activeWeekdays(courses: List<Course>): List<Int> {
         val days = courses.flatMap { it.schedule.keys }.toMutableSet()

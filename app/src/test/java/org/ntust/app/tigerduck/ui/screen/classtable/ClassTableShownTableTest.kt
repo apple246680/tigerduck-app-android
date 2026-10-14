@@ -119,4 +119,25 @@ class ClassTableShownTableTest {
             ClassTableSwitcherEntry.sections(ImportedClassTables(), "B11300000"),
         )
     }
+
+    @Test
+    fun `a switch scrolls by how far the first visible row moved`() {
+        val before = ClassTableRowTops(1, mapOf("1" to 400f, "2" to 500f, "3" to 600f, "4" to 700f))
+        // Today's courses left the top of the page, so every row moved up 150.
+        val after = ClassTableRowTops(2, mapOf("1" to 250f, "2" to 350f, "3" to 450f, "4" to 550f))
+
+        assertEquals(-150f, ClassTableRowTops.shift(before, after, visibleTop = 450f), 0f)
+    }
+
+    @Test
+    fun `only rows both class tables have count, and with all above the window the last one does`() {
+        // The other class table has a row above the first one both have.
+        val before = ClassTableRowTops(1, mapOf("1" to 100f, "2" to 200f))
+        val after = ClassTableRowTops(2, mapOf("0" to 100f, "1" to 200f, "2" to 300f))
+
+        assertEquals(100f, ClassTableRowTops.shift(before, after, visibleTop = 150f), 0f)
+        assertEquals(100f, ClassTableRowTops.shift(before, after, visibleTop = 900f), 0f)
+        assertEquals(0f, ClassTableRowTops.shift(before, ClassTableRowTops(2, mapOf("9" to 1f)), 0f), 0f)
+    }
 }
+

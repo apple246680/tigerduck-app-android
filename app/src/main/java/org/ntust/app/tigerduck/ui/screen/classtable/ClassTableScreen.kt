@@ -68,6 +68,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -222,6 +225,11 @@ fun ClassTableScreen(
             null
         )
     }
+    val scrollState = rememberScrollState()
+    // Read as the grid is placed, not drawn from, so neither is snapshot state.
+    val scrolledContent = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    val lastRowTops = remember { arrayOfNulls<ClassTableRowTops>(1) }
+    val lastScroll = remember { intArrayOf(0) }
     var renamingPerson by remember { mutableStateOf<ImportedPerson?>(null) }
     var nicknameDraft by remember { mutableStateOf("") }
     var deletingPerson by remember { mutableStateOf<ImportedPerson?>(null) }
@@ -286,7 +294,9 @@ fun ClassTableScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scrollState)
+                    // The scrolled content, which the grid's rows are measured in.
+                    .onGloballyPositioned { scrolledContent[0] = it }
             ) {
                 PageHeader(title = stringResource(R.string.feature_class_table)) {
                     SyncStatusDot(
@@ -587,6 +597,7 @@ fun ClassTableScreen(
                 }
 
                 // Timetable
+                if (!hasGrid) lastRowTops[0] = null
                 if (hasGrid) {
                     TimetableGrid(
                         viewModel = viewModel,
@@ -600,6 +611,30 @@ fun ClassTableScreen(
                         courseNosIgnoringAssignments =
                             if (shownPerson == null) courseNosIgnoringAssignments else emptySet(),
                         editable = shownPerson == null,
+                        onRowsPlaced = { rows, rowHeightPx ->
+                            val content = scrolledContent[0]
+                            if (content != null && content.isAttached && rows.isAttached) {
+                                val top = content.localPositionOf(rows, Offset.Zero).y
+                                val now = ClassTableRowTops(
+                                    shown.switches,
+                                    activePeriods.withIndex().associate { (i, p) -> p.id to top + i * rowHeightPx },
+                                )
+                                val before = lastRowTops[0]
+                                val scrollBefore = lastScroll[0]
+                                lastRowTops[0] = now
+                                lastScroll[0] = scrollState.value
+                                // Scrolls to where the switch moved the rows, so two people's
+                                // classes line up on screen. From the scroll they were measured
+                                // at: a shorter page has already pulled the scroll back by now.
+                                // A page at its top stays there.
+                                if (before != null && before.switches != now.switches && scrollBefore > 0) {
+                                    val shift = ClassTableRowTops.shift(before, now, scrollBefore.toFloat())
+                                    val target = (scrollBefore + shift).coerceIn(0f, scrollState.maxValue.toFloat())
+                                    scrollState.dispatchRawDelta(target - scrollState.value)
+                                    lastScroll[0] = scrollState.value
+                                }
+                            }
+                        },
                         onRename = { course ->
                             renameText = course.customCourseName ?: viewModel.defaultNameFor(course)
                             courseToRename = course

@@ -54,6 +54,26 @@ internal fun nextDisplayedTable(
     return DisplayedTable(person?.id, person?.semester(keeping = shownSemester), displayed.switches + 1)
 }
 
+/**
+ * Where the grid's period rows start, by period id, in the page's scrolled content, after
+ * [switches] switches between class tables.
+ */
+data class ClassTableRowTops(val switches: Int, val tops: Map<String, Float>) {
+    companion object {
+        /**
+         * How far a switch moved the first row at or below [visibleTop], the top of the page's
+         * window onto its content, among the rows both class tables have; the last of them when
+         * all are above it. Scrolling that far puts the rows back where they were on screen.
+         */
+        fun shift(before: ClassTableRowTops, after: ClassTableRowTops, visibleTop: Float): Float {
+            val moves = before.tops.mapNotNull { (id, top) -> after.tops[id]?.let { top to it } }
+            val row = moves.filter { it.first >= visibleTop }.minByOrNull { it.first }
+                ?: moves.maxByOrNull { it.first }
+            return row?.let { it.second - it.first } ?: 0f
+        }
+    }
+}
+
 /** A lookup or a save for someone else's class table that did not go through. */
 enum class ImportedTableProblem { LOOKUP_FAILED, SAVE_FAILED }
 
