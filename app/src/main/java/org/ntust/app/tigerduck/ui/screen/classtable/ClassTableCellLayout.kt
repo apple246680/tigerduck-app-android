@@ -167,23 +167,22 @@ object ClassTableCellLayout {
         val coursesHere = coursesAt(courses, weekday, period.id)
         if (coursesHere.isEmpty()) return CellRole.Empty
 
-        // Build transitive closure of courses whose blocks overlap with any
-        // course already in the cluster, rooted at the courses present in this
+        // Build transitive closure of blocks that overlap with any block
+        // already in the cluster, rooted at the courses present in this
         // cell. This guarantees we emit a ConflictStart at the earliest row
-        // of the union and Skip thereafter.
+        // of the union and Skip thereafter. A block is keyed by course and
+        // first row, so a course meeting twice joins with each block another
+        // course bridges to.
         val closure =
-            LinkedHashMap<String, Triple<Course, Int, Int>>() // courseNo -> (course, firstIndex, span)
+            LinkedHashMap<Pair<String, Int>, Triple<Course, Int, Int>>() // (courseNo, firstIndex) -> (course, firstIndex, span)
 
         fun addCourse(c: Course, seedIndex: Int) {
-            if (closure.containsKey(c.courseNo)) return
             val (first, span) = blockFor(courses, periods, weekday, seedIndex, c)
-            closure[c.courseNo] = Triple(c, first, span)
-            // Expand: any other course touching any row in [first, first+span)
+            if (closure.putIfAbsent(c.courseNo to first, Triple(c, first, span)) != null) return
+            // Expand: any other block touching any row in [first, first+span)
             for (i in first until first + span) {
                 val pid = periods.getOrNull(i)?.id ?: continue
-                for (other in coursesAt(courses, weekday, pid)) {
-                    if (!closure.containsKey(other.courseNo)) addCourse(other, i)
-                }
+                for (other in coursesAt(courses, weekday, pid)) addCourse(other, i)
             }
         }
         coursesHere.forEach { addCourse(it, periodIndex) }

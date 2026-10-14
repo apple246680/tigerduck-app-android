@@ -100,7 +100,7 @@ enum class AppFeature(val id: String) {
      */
     val isImplemented: Boolean
         get() = when (this) {
-            HOME, CLASS_TABLE, CALENDAR, ANNOUNCEMENTS, LIBRARY, SCORE, SCHOOL_MAIL -> true
+            HOME, CLASS_TABLE, CALENDAR, ANNOUNCEMENTS, LIBRARY, SCORE, SCHOOL_MAIL, EMPTY_CLASSROOM -> true
             else -> false
         }
 

@@ -56,6 +56,28 @@ class ClassTableCellLayoutTest {
         assertEquals(listOf(1, 2, 3, 4, 5, 6), ClassTableCellLayout.activeWeekdays(listOf(sat)))
     }
 
+    // ---- a course meeting twice ----
+
+    @Test
+    fun `a course whose two blocks another course bridges keeps both`() {
+        // A meets on 1-2 and 4-5, B on 2-4: one cluster down to period 5, with A's second block
+        // in it (https://github.com/tigerduck-app/tigerduck-app/issues/470).
+        val courses = listOf(
+            course("A", mapOf(1 to listOf("1", "2", "4", "5"))),
+            course("B", mapOf(1 to listOf("2", "3", "4"))),
+        )
+        val role = roleAt(courses, 1, "1")
+        assertTrue("$role", role is CellRole.MultiConflictStart)
+        role as CellRole.MultiConflictStart
+        assertEquals(5, role.combinedSpan)
+        assertEquals(
+            listOf(Triple("A", 0, 2), Triple("B", 1, 3), Triple("A", 3, 2)),
+            role.members.map { Triple(it.course.courseNo, it.offset, it.span) },
+        )
+        assertEquals(listOf("1", "2", "4"), role.members.map { it.firstPeriodId })
+        assertEquals(CellRole.Skip, roleAt(courses, 1, "5"))
+    }
+
     // ---- solo blocks ----
 
     @Test
