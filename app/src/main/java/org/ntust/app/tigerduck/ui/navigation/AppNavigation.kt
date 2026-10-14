@@ -80,6 +80,7 @@ import org.ntust.app.tigerduck.ui.screen.settings.AboutOthersScreen
 import org.ntust.app.tigerduck.ui.screen.settings.LanguagePickerScreen
 import org.ntust.app.tigerduck.ui.screen.settings.LicenseDetailScreen
 import org.ntust.app.tigerduck.ui.screen.settings.AssignmentReminderSettingsScreen
+import org.ntust.app.tigerduck.ui.screen.settings.ClassReminderSettingsScreen
 import org.ntust.app.tigerduck.ui.screen.settings.CourseNameSizeSettingsScreen
 import org.ntust.app.tigerduck.ui.screen.settings.LibrarySettingsScreen
 import org.ntust.app.tigerduck.ui.screen.settings.LiveActivitySettingsScreen
@@ -114,6 +115,7 @@ sealed class Screen(val route: String) {
     object SchoolMailNotificationSettings : Screen("schoolMailNotificationSettings")
     object NotificationPermissionSettings : Screen("notificationPermissionSettings")
     object AssignmentReminderSettings : Screen("assignmentReminderSettings")
+    object ClassReminderSettings : Screen("classReminderSettings")
     object SourceCodePicker : Screen("sourceCodePicker")
     object OtherSettings : Screen("otherSettings")
     object AboutOthers : Screen("aboutOthers")
@@ -492,6 +494,7 @@ fun MainNavigation(
                     onNavigateToNotificationPermissionSettings = {
                         navController.navigate(Screen.NotificationPermissionSettings.route)
                     },
+                    onNavigateToClassReminders = { navController.navigate(Screen.ClassReminderSettings.route) },
                     onNavigateToAssignmentReminders = { navController.navigate(Screen.AssignmentReminderSettings.route) },
                     onNavigateToCloudSync = { navController.navigate(Screen.CloudSync.route) },
                     onNavigateToLibrarySettings = { navController.navigate(Screen.LibrarySettings.route) },
@@ -637,6 +640,9 @@ fun MainNavigation(
             }
             page(Screen.NotificationPermissionSettings.route) {
                 NotificationPermissionSettingsScreen(onBack = { navController.popBackStack() })
+            }
+            page(Screen.ClassReminderSettings.route) {
+                ClassReminderSettingsScreen(onBack = { navController.popBackStack() })
             }
             page(Screen.AssignmentReminderSettings.route) {
                 AssignmentReminderSettingsScreen(onBack = { navController.popBackStack() })
