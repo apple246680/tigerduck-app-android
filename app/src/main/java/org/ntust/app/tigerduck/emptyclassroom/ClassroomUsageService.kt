@@ -277,7 +277,7 @@ class ClassroomUsageService internal constructor(
 internal class OkHttpCour01Transport(
     private val client: () -> OkHttpClient,
     private val host: String = ClassroomUsageService.HOST,
-    private val log: (String) -> Unit = { Log.w("ClassroomUsage", it) },
+    private val log: (String) -> Unit = { message -> Log.w("ClassroomUsage", message) },
 ) : Cour01Transport {
     override suspend fun get(url: String): String? = load(Request.Builder().url(url).get().build())
 
