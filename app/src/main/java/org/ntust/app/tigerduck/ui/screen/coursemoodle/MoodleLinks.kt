@@ -3,11 +3,13 @@ package org.ntust.app.tigerduck.ui.screen.coursemoodle
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import org.ntust.app.tigerduck.mail.resolveAttachmentMimeType
 import org.ntust.app.tigerduck.util.fileProviderAuthority
+import org.ntust.app.tigerduck.util.logSummary
 import java.io.File
 import org.ntust.app.tigerduck.network.moodle.MoodleWebservice
 import org.ntust.app.tigerduck.ui.screen.mail.openMailLink
@@ -99,6 +101,20 @@ fun moodleFileIntent(context: Context, file: File, mimeType: String): Intent {
     intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     return Intent.createChooser(intent, null)
 }
+
+/**
+ * Opens [file] as [moodleFileIntent] says; whether it went. A file the app cannot hand out, or a
+ * system with no chooser to take it, leaves a warning in the log naming only the failure's class.
+ */
+fun launchMoodleFile(context: Context, file: File, mimeType: String): Boolean = try {
+    context.startActivity(moodleFileIntent(context, file, mimeType))
+    true
+} catch (e: RuntimeException) {
+    Log.w(TAG, "attachment not opened: ${e.logSummary()}")
+    false
+}
+
+private const val TAG = "MoodleLinks"
 
 private fun isSharedNotViewed(mimeType: String): Boolean {
     val base = mimeType.substringBefore(';').trim().lowercase()

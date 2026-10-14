@@ -1,8 +1,11 @@
 package org.ntust.app.tigerduck.ui.screen.coursemoodle
 
 import android.app.Application
+import android.content.ActivityNotFoundException
+import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -12,6 +15,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLog
 import java.io.File
 
 /** What leaves the app when an attachment opens: a content URI to the copy in the app, never a link with a key. */
@@ -66,9 +70,42 @@ class MoodleFileIntentTest {
             assertTrue(shareChooser.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
         }
 
+        ShadowLog.clear()
+        val noApp = object : ContextWrapper(context) {
+            override fun startActivity(intent: Intent) = throw ActivityNotFoundException("week1-s1234567.pdf")
+        }
+        assertFalse(launchMoodleFile(noApp, file("TigerDuckCache/moodle_open/a1/s1/week1-s1234567.pdf"), "application/pdf"))
+        val line = ShadowLog.getLogsForTag("MoodleLinks").single()
+        assertEquals(Log.WARN, line.type)
+        assertEquals("logged by the failure's class alone", "attachment not opened: ActivityNotFoundException", line.msg)
+        assertNull(line.throwable)
+        var launched: Intent? = null
+        val viewer = object : ContextWrapper(context) {
+            override fun startActivity(intent: Intent) { launched = intent }
+        }
+        assertTrue(launchMoodleFile(viewer, file("TigerDuckCache/moodle_open/a1/s1/hw4.pdf"), "application/pdf"))
+        assertEquals(Intent.ACTION_CHOOSER, launched!!.action)
+
         val cached = file("TigerDuckCache/moodle/B1/courses/5/grades.json")
         val refused = runCatching { moodleFileIntent(context, cached, "application/json") }.exceptionOrNull()
         assertTrue("got $refused", refused is IllegalArgumentException)
+    }
+
+    @Test
+    fun `a file the app cannot hand out is logged, not launched`() {
+        ShadowLog.clear()
+        var launched = false
+        val viewer = object : ContextWrapper(RuntimeEnvironment.getApplication()) {
+            override fun startActivity(intent: Intent) { launched = true }
+        }
+
+        // Outside the app's folder for opened files, so the FileProvider refuses it.
+        assertFalse(launchMoodleFile(viewer, File("/data/week1-s1234567.pdf"), "application/pdf"))
+
+        assertFalse(launched)
+        val line = ShadowLog.getLogsForTag("MoodleLinks").single()
+        assertEquals(Log.WARN, line.type)
+        assertEquals("attachment not opened: IllegalArgumentException", line.msg)
     }
 
     @Test
