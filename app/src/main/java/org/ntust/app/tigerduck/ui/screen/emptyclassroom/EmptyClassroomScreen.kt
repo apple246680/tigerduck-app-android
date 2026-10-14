@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.EventBusy
 import androidx.compose.material.icons.filled.Lock
@@ -35,7 +36,9 @@ import org.ntust.app.tigerduck.emptyclassroom.RoomSuggestion
 import org.ntust.app.tigerduck.emptyclassroom.RoomUsage
 import org.ntust.app.tigerduck.ui.component.EmptyStateView
 import org.ntust.app.tigerduck.ui.component.PageHeader
+import org.ntust.app.tigerduck.ui.component.SyncStatusDot
 import org.ntust.app.tigerduck.ui.component.TigerPullToRefresh
+import org.ntust.app.tigerduck.ui.component.statusText
 
 /**
  * More's empty-classroom finder: free rooms on the main campus for a day and period, with a room
@@ -65,7 +68,23 @@ fun EmptyClassroomScreen(
             modifier = Modifier.fillMaxSize(),
         ) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
-                item { PageHeader(title = stringResource(R.string.feature_empty_classroom)) }
+                item {
+                    PageHeader(title = stringResource(R.string.feature_empty_classroom)) {
+                        // The room booking site is a source of its own, which none of the shared
+                        // dot's servers stand for, so the page reports how it last answered.
+                        if (signedIn) {
+                            SyncStatusDot(
+                                status = state.siteStatus,
+                                label = stringResource(R.string.feature_empty_classroom),
+                                icon = Icons.Filled.Business,
+                                text = statusText(state.siteStatus),
+                                isLoading = state.isRefreshing || state.isReloading ||
+                                    state.content == FinderContent.Loading,
+                                syncedAtMs = state.syncedAtMs,
+                            )
+                        }
+                    }
+                }
                 if (!signedIn) {
                     item {
                         EmptyStateView(

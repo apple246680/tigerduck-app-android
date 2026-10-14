@@ -21,6 +21,7 @@ import org.ntust.app.tigerduck.emptyclassroom.RoomSlotUse
 import org.ntust.app.tigerduck.emptyclassroom.RoomUsage
 import org.ntust.app.tigerduck.mail.MainDispatcherRule
 import org.ntust.app.tigerduck.shared.Course
+import org.ntust.app.tigerduck.ui.component.ServerStatus
 import java.io.IOException
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -213,6 +214,52 @@ class EmptyClassroomViewModelTest {
         assertEquals(listOf("IB-508"), harness.rooms)
         assertEquals(fetchedAt, shown.fetchedAtMs)
         assertFalse(harness.state.isRefreshing)
+    }
+
+    @Test
+    fun `the header's dot says how the site last answered, and a failed pull turns it with the rooms still on screen`() {
+        val harness = Harness(time(14, 22, 30))
+        assertEquals(ServerStatus.UNKNOWN, harness.state.siteStatus)
+
+        harness.serveDay(listOf(Pages.row("IB-508", "..............")))
+        harness.model.appear()
+        assertEquals(ServerStatus.OK, harness.state.siteStatus)
+
+        harness.clockMs += 60 * 60_000L
+        repeat(4) { harness.serve(Pages.ERROR_PAGE) }
+        harness.model.refresh()
+        assertEquals(listOf("IB-508"), harness.rooms)
+        assertEquals(ServerStatus.FAILED, harness.state.siteStatus)
+
+        // The answer was the account before's.
+        harness.model.disappear()
+        harness.env.signedIn.value = false
+        assertEquals(ServerStatus.UNKNOWN, harness.state.siteStatus)
+    }
+
+    @Test
+    fun `the dot's last sync is when the day on screen was read, which a failed pull leaves as it was`() {
+        val harness = Harness(time(14, 22, 30))
+        assertNull(harness.state.syncedAtMs)
+
+        harness.serveDay(listOf(Pages.row("IB-508", "..............")))
+        harness.model.appear()
+        assertEquals(1_000_000L, harness.state.syncedAtMs)
+
+        harness.clockMs += 60 * 60_000L
+        repeat(4) { harness.serve(Pages.ERROR_PAGE) }
+        harness.model.refresh()
+        assertEquals(1_000_000L, harness.state.syncedAtMs)
+
+        // A site that answers with no rooms was still read.
+        harness.serveDay(emptyList())
+        harness.model.select(day(19))
+        assertEquals(FinderContent.NoData, harness.state.content)
+        assertEquals(harness.clockMs, harness.state.syncedAtMs)
+
+        // A weekend is never asked about.
+        harness.model.select(day(17))
+        assertNull(harness.state.syncedAtMs)
     }
 
     @Test

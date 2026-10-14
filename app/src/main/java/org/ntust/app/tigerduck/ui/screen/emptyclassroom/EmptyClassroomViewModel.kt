@@ -23,6 +23,7 @@ import org.ntust.app.tigerduck.emptyclassroom.EmptyClassroomSchedule
 import org.ntust.app.tigerduck.emptyclassroom.KeptUsage
 import org.ntust.app.tigerduck.emptyclassroom.RoomUsage
 import org.ntust.app.tigerduck.shared.Course
+import org.ntust.app.tigerduck.ui.component.ServerStatus
 import java.time.LocalDate
 import java.time.LocalDateTime
 import javax.inject.Inject
@@ -54,6 +55,13 @@ data class FinderState(
     val isRefreshing: Boolean = false,
     /** A day on screen is being read again, without a pull. */
     val isReloading: Boolean = false,
+    /**
+     * How the room booking site answered the last read, for the header's dot: a read that fails
+     * keeps the day already on screen, and only the dot then says so.
+     */
+    val siteStatus: ServerStatus = ServerStatus.UNKNOWN,
+    /** When the day on screen was read, for the dot's last sync; null for a day nothing was read for. */
+    val syncedAtMs: Long? = null,
     val nextTeachingDay: LocalDate? = null,
     /**
      * The room whose sheet is open. Only its name is kept, so the sheet shows the room as the
@@ -168,9 +176,11 @@ class EmptyClassroomViewModel internal constructor(
         edit {
             it.copy(
                 content = FinderContent.Loading,
+                syncedAtMs = null,
                 classes = emptyList(),
                 pickedBuilding = env.pickedBuilding,
                 isRefreshing = false,
+                siteStatus = ServerStatus.UNKNOWN,
             )
         }
         if (!isStarted) return
@@ -239,7 +249,7 @@ class EmptyClassroomViewModel internal constructor(
     }
 
     fun retry() {
-        edit { it.copy(content = FinderContent.Loading) }
+        edit { it.copy(content = FinderContent.Loading, syncedAtMs = null) }
         load(force = true)
     }
 
@@ -276,6 +286,7 @@ class EmptyClassroomViewModel internal constructor(
         edit {
             it.copy(
                 content = kept?.let(::contentOf) ?: FinderContent.Loading,
+                syncedAtMs = kept?.fetchedAtMs,
                 isReloading = kept != null && !it.isRefreshing,
             )
         }
@@ -293,7 +304,15 @@ class EmptyClassroomViewModel internal constructor(
             if (running?.second == id) running = null
             if (!isActive || _state.value.selectedDay != day || !env.isCurrent(credentials)) return@launch
             outcome.onSuccess { fresh ->
-                edit { it.copy(content = contentOf(fresh), isRefreshing = false, isReloading = false) }
+                edit {
+                    it.copy(
+                        content = contentOf(fresh),
+                        syncedAtMs = fresh.fetchedAtMs,
+                        isRefreshing = false,
+                        isReloading = false,
+                        siteStatus = ServerStatus.OK,
+                    )
+                }
             }.onFailure { error ->
                 if (error is ClassroomUsageError.SignedOut) return@launch
                 val offline = env.isOffline(error)
@@ -301,14 +320,19 @@ class EmptyClassroomViewModel internal constructor(
                     // A day already on screen stays when reading it again fails; the service
                     // stops offering a day as old as half a day to stand in while it reloads.
                     val content = if (it.content == FinderContent.Loading) FinderContent.Failed(offline) else it.content
-                    it.copy(content = content, isRefreshing = false, isReloading = false)
+                    it.copy(
+                        content = content,
+                        isRefreshing = false,
+                        isReloading = false,
+                        siteStatus = ServerStatus.FAILED,
+                    )
                 }
             }
         }
     }
 
     private fun show(content: FinderContent) {
-        edit { it.copy(content = content, isRefreshing = false, isReloading = false) }
+        edit { it.copy(content = content, syncedAtMs = null, isRefreshing = false, isReloading = false) }
     }
 
     private fun contentOf(off: DayOff): FinderContent = when (off) {
