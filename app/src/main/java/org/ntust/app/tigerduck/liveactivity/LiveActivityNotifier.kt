@@ -135,11 +135,13 @@ class LiveActivityNotifier @Inject constructor(
 
         val scenarioChanged = lastScenario != snapshot.scenario
         // A deadline coming within its lead time during a class takes the
-        // Live Update over quietly: the class goes on, and a chime in it is
-        // the one alert nobody wants. It sounds when it shows outside class.
-        val takenOverInClass = lastScenario == LiveActivityScenario.IN_CLASS &&
-            snapshot.scenario == LiveActivityScenario.ASSIGNMENT_URGENT
-        val alerting = scenarioChanged && !(quiet && lastScenario == null) && !takenOverInClass
+        // Live Update over quietly, and gives it back to the class just as
+        // quietly once it passes or is marked done: the class goes on, and a
+        // chime in it is the one alert nobody wants. The deadline sounds when
+        // it shows outside class.
+        val swappedInClass = setOf(lastScenario, snapshot.scenario) ==
+            setOf(LiveActivityScenario.IN_CLASS, LiveActivityScenario.ASSIGNMENT_URGENT)
+        val alerting = scenarioChanged && !(quiet && lastScenario == null) && !swappedInClass
         val soundWanted = alerting && wantsSoundFor(snapshot.scenario)
 
         // For sound to play on a scenario transition we need to (a) drop the

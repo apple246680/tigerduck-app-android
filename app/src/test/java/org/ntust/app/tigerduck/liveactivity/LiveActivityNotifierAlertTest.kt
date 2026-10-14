@@ -101,6 +101,17 @@ class LiveActivityNotifierAlertTest {
     }
 
     @Test
+    fun `the class taking the Live Update back from a deadline switches quietly`() {
+        notifier.apply(snapshot(LiveActivityScenario.IN_CLASS))
+        notifier.apply(snapshot(LiveActivityScenario.ASSIGNMENT_URGENT))
+
+        // The deadline passed, or was marked done, while the class goes on.
+        notifier.apply(snapshot(LiveActivityScenario.IN_CLASS))
+
+        assertTrue(posted().isSilent)
+    }
+
+    @Test
     fun `a deadline showing first, before any class, still sounds`() {
         notifier.apply(snapshot(LiveActivityScenario.IN_CLASS))
         notifier.cancel()
