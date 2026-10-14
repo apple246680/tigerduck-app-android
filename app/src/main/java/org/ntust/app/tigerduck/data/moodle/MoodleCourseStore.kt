@@ -22,6 +22,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.ntust.app.tigerduck.network.moodle.MoodleCourseApi
 import org.ntust.app.tigerduck.network.moodle.MoodleFileUrls
+import org.ntust.app.tigerduck.network.moodle.checkableMimeType
 import org.ntust.app.tigerduck.network.model.moodle.MoodleFile
 import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseGrades
 import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseSummary
@@ -275,7 +276,7 @@ class MoodleCourseStore(
         val dir = openedFilesDir ?: return MoodleAttachment.Failed(IllegalStateException("no folder for files"))
         val slot = File(dir, slotName(file))
         val target = File(slot, safeFileName(file.name))
-        val trusted = !file.mimeType.isNullOrBlank()
+        val trusted = file.checkableMimeType() != null
         val kept = withContext(Dispatchers.IO) {
             pruneOpened(dir, keep = slot)
             (trusted && target.isFile).also { if (it) slot.setLastModified(System.currentTimeMillis()) }

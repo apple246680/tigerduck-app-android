@@ -186,7 +186,7 @@ class LiveMoodleCourseApi internal constructor(
         webservice.withToken { token ->
             val url = MoodleFileUrls.downloadUrl(file.url, webservice.siteInfo(token).privateAccessKey, token)
                 ?: throw MoodleWebserviceError.MalformedResponse("not a Moodle file")
-            webservice.downloadTo(Request.Builder().url(url).get().build(), target, file.mimeType, maxBytes)
+            webservice.downloadTo(Request.Builder().url(url).get().build(), target, file.checkableMimeType(), maxBytes)
         }
     }
 

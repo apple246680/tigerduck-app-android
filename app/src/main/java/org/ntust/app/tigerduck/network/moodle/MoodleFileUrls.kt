@@ -61,3 +61,13 @@ object MoodleFileUrls {
         return builder.build().toString()
     }
 }
+
+/**
+ * The type a download of this file can be checked against: the one Moodle lists, unless that is
+ * none or its `document/unknown`, which Moodle serves as `application/octet-stream` and so checks
+ * nothing.
+ */
+fun org.ntust.app.tigerduck.network.model.moodle.MoodleFile.checkableMimeType(): String? =
+    mimeType?.trim()?.takeUnless {
+        it.isEmpty() || it.substringBefore(';').trim().equals("document/unknown", ignoreCase = true)
+    }

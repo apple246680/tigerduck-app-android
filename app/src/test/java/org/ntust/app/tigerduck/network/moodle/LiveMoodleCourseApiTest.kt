@@ -54,4 +54,36 @@ class LiveMoodleCourseApiTest {
         assertEquals("News", forums.single().name)
         assertTrue(parse.used > 0)
     }
+
+    @get:org.junit.Rule
+    val tmp = org.junit.rules.TemporaryFolder()
+
+    @Test
+    fun `a file Moodle lists as document unknown downloads, whatever type it is served as`() = runTest {
+        val files = OkHttpClient.Builder().addInterceptor { chain ->
+            val siteInfo = chain.request().url.queryParameter("wsfunction") == "core_webservice_get_site_info"
+            val (body, type) = if (siteInfo) {
+                """{"userid":7,"functions":[],"userprivateaccesskey":"key"}""" to "application/json"
+            } else {
+                "PK zip bytes" to "application/octet-stream"
+            }
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("")
+                .body(body.toResponseBody(type.toMediaType()))
+                .build()
+        }.build()
+        val api = LiveMoodleCourseApi(MoodleWebservice({ files }, tokens), Recording())
+        val file = org.ntust.app.tigerduck.network.model.moodle.MoodleFile(
+            name = "slides.key", size = 12, mimeType = "document/unknown", modified = 1L, path = "/",
+            url = "https://moodle2.ntust.edu.tw/webservice/pluginfile.php/1/mod_forum/attachment/9/slides.key",
+        )
+        val target = tmp.newFile()
+
+        api.download(file, target, maxBytes = 1_000)
+
+        assertEquals("PK zip bytes", target.readText())
+    }
 }

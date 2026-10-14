@@ -407,8 +407,12 @@ class MoodleCourseStoreTest {
 
         store.openAttachment(untyped)
         store.openAttachment(untyped)
-
         assertEquals(2, api.downloads)
+
+        val unknown = attachment.copy(mimeType = "document/unknown")
+        store.openAttachment(unknown)
+        store.openAttachment(unknown)
+        assertEquals("Moodle's unknown type checks nothing either", 4, api.downloads)
     }
 
     @Test
