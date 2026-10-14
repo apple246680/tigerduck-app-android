@@ -559,4 +559,34 @@ class MoodleCourseStoreTest {
 
         assertTrue(opening.await() is MoodleAttachment.Local)
     }
+
+    @Test
+    fun `each term keeps its own copy of the forums`() = runTest(UnconfinedTestDispatcher()) {
+        api.forumList = listOf(
+            testForum(1, courseId = 5, type = "news", count = 2),
+            testForum(7, courseId = 3, type = "news", count = 9),
+        )
+        fun termStore(courseId: Int, term: String) = MoodleCourseStore(
+            courseId = courseId, termCourseIds = emptyList(), courseCodes = emptyList(), api = api,
+            context = MoodleCacheContext("B1", cache, isCurrent = { signedIn }, now = { now }),
+            scope = backgroundScope, term = term,
+        )
+        termStore(5, "1151").refreshForums()
+        // A course of an older term, opened after.
+        termStore(3, "1142").refreshForums()
+
+        // Offline, after a restart: the current course's announcements come from its own term's copy.
+        val reopened = termStore(5, "1151")
+        reopened.awaitCache()
+
+        assertEquals(1, reopened.newsForum.value?.id)
+    }
+
+    @Test
+    fun `a course's term is read off its idnumbers`() {
+        val ids = mapOf("1151CS3005301" to 5, "1151CS3204301" to 6, "1142CS2001301" to 3)
+        assertEquals("1151", MoodleCourseStore.term(5, ids))
+        assertEquals("1142", MoodleCourseStore.term(3, ids))
+        assertNull("none known", MoodleCourseStore.term(99, ids))
+    }
 }

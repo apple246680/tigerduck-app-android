@@ -62,6 +62,8 @@ class MoodleCourseStore(
     private val decodePicture: (ByteArray) -> ImageBitmap? = { null },
     /** Where pictures are decoded, off the main thread. */
     private val background: CoroutineDispatcher = Dispatchers.Default,
+    /** The term the course is of, such as "1151", which its forums copy is kept under; see [term]. */
+    term: String? = null,
 ) {
     /** Every course of the term, which one forums call covers. */
     val termCourseIds: List<Int> = (termCourseIds + courseId).distinct().sorted()
@@ -70,7 +72,14 @@ class MoodleCourseStore(
 
     fun isCurrent(): Boolean = context.isCurrent()
 
-    val forums = feed<MoodleTermForums>("forums", MoodleRefreshInterval.FORUMS_MS)
+    /**
+     * Kept per term: every course of a term shares one copy, and a course of another term, opened
+     * after, does not replace it.
+     */
+    val forums = feed<MoodleTermForums>(
+        term?.let { "terms/$it/forums" } ?: "courses/$courseId/forums",
+        MoodleRefreshInterval.FORUMS_MS,
+    )
     val grades = feed<MoodleCourseGrades>("courses/$courseId/grades", MoodleRefreshInterval.GRADES_MS)
     val members = feed<MoodleMemberList>("courses/$courseId/members", MoodleRefreshInterval.MEMBERS_MS)
     val summary = feed<MoodleCourseSummary>("courses/$courseId/summary", MoodleRefreshInterval.SUMMARY_MS)
@@ -476,6 +485,17 @@ class MoodleCourseStore(
             val idnumbers = idMap.filterValues { it == courseId }.keys.toList()
             return idnumbers + idnumbers.map { it.drop(4) } + listOfNotNull(courseNo)
         }
+
+        /**
+         * The term Moodle course [courseId] is of, by its idnumbers' term prefix, such as "1151";
+         * a course listed under more than one gets them all. Null with none known.
+         */
+        fun term(courseId: Int, idMap: Map<String, Int>): String? =
+            idMap.filterValues { it == courseId }.keys
+                .mapNotNull(org.ntust.app.tigerduck.network.MoodleCourseIds::semesterPrefix)
+                .toSortedSet()
+                .takeIf { it.isNotEmpty() }
+                ?.joinToString("-")
 
         /** Every Moodle course of the term [courseId] belongs to, by the idnumbers' term prefix. */
         fun termCourseIds(courseId: Int, idMap: Map<String, Int>): List<Int> {

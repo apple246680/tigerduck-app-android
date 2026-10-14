@@ -115,6 +115,7 @@ class MoodleCourseRepository internal constructor(
             courseId = courseId,
             termCourseIds = MoodleCourseStore.termCourseIds(courseId, ids),
             courseCodes = MoodleCourseStore.courseCodes(courseId, courseNo, ids),
+            term = MoodleCourseStore.term(courseId, ids),
             api = api,
             context = context,
             scope = scope,
