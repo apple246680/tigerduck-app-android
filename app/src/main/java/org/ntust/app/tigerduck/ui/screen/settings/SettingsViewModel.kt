@@ -28,7 +28,6 @@ import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.liveactivity.LiveActivityManager
 import org.ntust.app.tigerduck.notification.AssignmentNotificationScheduler
-import org.ntust.app.tigerduck.notification.BackgroundSyncWorker
 import org.ntust.app.tigerduck.shared.LibraryService
 import org.ntust.app.tigerduck.analytics.AnalyticsLogger
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
@@ -504,10 +503,8 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun loginNtust(studentId: String, password: String) {
-        viewModelScope.launch {
-            val success = authService.login(studentId, password)
-            if (success) BackgroundSyncWorker.schedule(context)
-        }
+        // The background sync follows the sign-in: AccountSessionEffects.
+        viewModelScope.launch { authService.login(studentId, password) }
     }
 
     fun logoutNtust() {
@@ -518,7 +515,6 @@ class SettingsViewModel @Inject constructor(
         _isLibraryLoggedIn.value = false
         notificationScheduler.cancelAllTracked()
         liveActivityManager.stop()
-        BackgroundSyncWorker.cancel(context)
     }
 
     fun loginLibrary(username: String, password: String) {
