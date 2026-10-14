@@ -23,6 +23,9 @@ class DividerContrastTest {
 
     private val ColorScheme.dividerOnCard get() = contrast(outlineVariant, surface)
 
+    // Bulletin cards, mail rows and rule rows are surfaceVariant fills.
+    private val ColorScheme.dividerOnFill get() = contrast(outlineVariant, surfaceVariant)
+
     @Test
     fun `a divider on a card shows in the dark theme at least as clearly as in the light one`() {
         assertTrue(
@@ -36,5 +39,14 @@ class DividerContrastTest {
         listOf(LightColorScheme, DarkColorScheme).forEach { scheme ->
             assertTrue(scheme.dividerOnCard < contrast(scheme.outline, scheme.surface))
         }
+    }
+
+    @Test
+    fun `a divider on a surfaceVariant fill shows in the dark theme at least as clearly as in the light one`() {
+        // Once the same colour as the dark fill, which hid any divider or chip outline on it.
+        assertTrue(
+            "dark ${DarkColorScheme.dividerOnFill} vs light ${LightColorScheme.dividerOnFill}",
+            DarkColorScheme.dividerOnFill >= LightColorScheme.dividerOnFill,
+        )
     }
 }

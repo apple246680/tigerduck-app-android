@@ -343,7 +343,9 @@ internal val DarkColorScheme = darkColorScheme(
     outline = Color(0xFF5A5A5C),
     // Between surface and outline: HorizontalDivider draws in this on cards,
     // which are surface, and when the two matched every divider vanished.
-    outlineVariant = Color(0xFF48484A),
+    // Lighter than surfaceVariant too, the fill of bulletin cards and mail
+    // rows, so a divider or chip outline on one of those shows as well.
+    outlineVariant = Color(0xFF4E4E50),
 
     error = Color(0xFFEF4444),
     onError = Color.White,
