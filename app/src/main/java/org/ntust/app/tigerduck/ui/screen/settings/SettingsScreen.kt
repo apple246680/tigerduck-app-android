@@ -139,7 +139,7 @@ fun SettingsScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val appVersion = remember { BuildConfig.VERSION_NAME }
+    val appVersion = remember { appVersionLabel(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE) }
 
     // About section dependencies: UpdateChecker for "Check for updates" and
     // WhatsNewRepository for the manual What's New entry point. Pulled via
@@ -772,6 +772,13 @@ fun SettingsScreen(
         )
     }
 }
+/**
+ * The About section's version row: the version and, in brackets, the build
+ * number, which tells test builds of one version apart in a bug report. The
+ * iPhone shows "2.4.0 (Build 123)"; the bare number needs no translation.
+ */
+internal fun appVersionLabel(versionName: String, versionCode: Int): String = "$versionName ($versionCode)"
+
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 internal interface SettingsEntryPoint {
