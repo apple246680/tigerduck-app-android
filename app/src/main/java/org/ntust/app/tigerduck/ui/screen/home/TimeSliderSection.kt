@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,7 +49,6 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.layout.layout
@@ -77,6 +77,7 @@ import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.ui.component.JumpToNowChip
 import org.ntust.app.tigerduck.ui.component.courseNameForDisplay
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
+import org.ntust.app.tigerduck.ui.theme.LocalVisualStylePolicy
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 // import java.text.SimpleDateFormat  // 翹課 (parked) — isSkippedFor's date key
 import java.util.Calendar
@@ -460,15 +461,20 @@ private fun SlotCard(
                 .fillBoundedHeight()
         }
 
-        val slotSurface = MaterialTheme.colorScheme.surface
-        val slotLightAlpha = if (alpha >= 1f) 0.50f else 0.35f
-        val slotDarkAlpha = if (alpha >= 1f) 0.55f else 0.40f
-        val slotContainer = if (TigerDuckTheme.isDarkMode) {
-            color.copy(alpha = slotDarkAlpha)
-                .compositeOver(slotSurface)
-        } else {
-            color.copy(alpha = slotLightAlpha)
-        }
+        val style = LocalVisualStylePolicy.current
+        val isDark = TigerDuckTheme.isDarkMode
+        // Below full alpha the card is beside the class the slider is on.
+        val muted = alpha < 1f
+        val slotContainer = style.courseCardFill(
+            courseColor = color,
+            tintAlpha = when {
+                isDark -> if (muted) 0.40f else 0.55f
+                else -> if (muted) 0.35f else 0.50f
+            },
+            muted = muted,
+            surface = MaterialTheme.colorScheme.surface,
+            isDark = isDark,
+        )
         Card(
             onClick = onClick,
             modifier = cardModifier,
@@ -479,7 +485,7 @@ private fun SlotCard(
                 val metaStyle = MaterialTheme.typography.labelSmall
                 val metaBoldStyle = metaStyle.copy(fontWeight = FontWeight.Bold)
                 val metaColor =
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY)
+                    style.courseCardSecondaryTextColor(MaterialTheme.colorScheme.onSurface)
                 if (isToday) {
                     Text(timeRange, style = metaBoldStyle, color = metaColor)
                 } else {
@@ -495,7 +501,11 @@ private fun SlotCard(
                 Text(
                     courseNameForDisplay(slot.course.displayName, maxChars = 30),
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = if (isSkipped) Color(0xFFFF2D55) else Color.Unspecified,
+                    color = if (isSkipped) {
+                        Color(0xFFFF2D55)
+                    } else {
+                        style.courseCardTextColor(LocalContentColor.current)
+                    },
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
