@@ -250,7 +250,7 @@ class AuthTokenManager(
             .post(body)
             .build()
         httpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw AuthException("login failed: ${response.code}")
+            if (!response.isSuccessful) throw AuthException("login failed: ${response.code}", response.code)
             val result = JSONObject(response.body.string())
             val accessToken = result.getString("access_token")
             val refreshToken = result.getString("refresh_token")
@@ -455,7 +455,8 @@ class AuthTokenManager(
     }
 
     data class LoginResult(val accessToken: String, val deviceId: String)
-    class AuthException(message: String) : Exception(message)
+    /** [status] is the backend's HTTP status, when it answered. */
+    class AuthException(message: String, val status: Int? = null) : Exception(message)
 
     private companion object {
         const val TAG = "AuthTokenManager"

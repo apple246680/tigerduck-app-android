@@ -109,7 +109,7 @@ class AuthService @Inject constructor(
         storedMoodleToken = { credentials.moodleToken },
         // Unlike obtainToken(), stores no token once the account has signed
         // out, so a sign-out during the harvest leaves none for the next one.
-        harvestMoodleToken = { moodleTokenService.refreshToken() },
+        harvestMoodleToken = { _ -> moodleTokenService.refreshToken() },
         afterSignIn = {
             appScope.launch {
                 runCatching { pushRegistration.onSignedIn() }
