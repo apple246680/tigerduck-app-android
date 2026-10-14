@@ -2,6 +2,7 @@ package org.ntust.app.tigerduck.widget
 
 import android.content.Context
 import android.content.Intent
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -9,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.LocalContext
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.actionStartActivity
@@ -23,6 +25,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import org.ntust.app.tigerduck.MainActivity
+import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.widget.content.NextClassContent
 import org.ntust.app.tigerduck.widget.content.TodayListContent
@@ -76,10 +79,14 @@ abstract class BaseClassTableWidget(
                         .background(ColorProvider(colors.background)),
                 ) {}
             } else {
-                when (layout) {
-                    WidgetLayout.Week -> WeekGridContent(s, colors, tapAction)
-                    WidgetLayout.Today -> TodayListContent(s, colors, tapAction)
-                    WidgetLayout.NextClass -> NextClassContent(s, colors, tapAction)
+                // Read per tick, like the theme, so a language switch
+                // redraws in the new language.
+                CompositionLocalProvider(LocalContext provides widgetContext(context, prefs.appLanguage)) {
+                    when (layout) {
+                        WidgetLayout.Week -> WeekGridContent(s, colors, tapAction)
+                        WidgetLayout.Today -> TodayListContent(s, colors, tapAction)
+                        WidgetLayout.NextClass -> NextClassContent(s, colors, tapAction)
+                    }
                 }
             }
         }
@@ -91,3 +98,16 @@ abstract class BaseClassTableWidget(
             WidgetThemeEntryPoint::class.java,
         ).appPreferences()
 }
+
+/**
+ * [context] in the app's own language, for the strings a widget draws.
+ *
+ * Below API 33 an in-app language reaches Activities only, so the context a
+ * widget is drawn from answers in the phone's language: a Chinese phone running
+ * the app in English drew "下一堂課" on the Next class widget. On API 33+ that
+ * context already carries the in-app language and this changes nothing. See
+ * [AppLanguageManager.localizedContext].
+ */
+internal fun widgetContext(context: Context, appLanguage: String): Context =
+    AppLanguageManager.localizedContext(context, appLanguage)
+

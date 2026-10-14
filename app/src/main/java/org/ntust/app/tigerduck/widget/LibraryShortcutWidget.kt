@@ -3,6 +3,7 @@ package org.ntust.app.tigerduck.widget
 import android.content.Context
 import android.content.Intent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,7 +67,11 @@ class LibraryShortcutWidget : GlanceAppWidget() {
             val tick = currentState(WidgetState.TickKey) ?: 0L
             val isDark = resolveWidgetIsDark(prefs, context)
             val accent = resolveWidgetAccentColor(prefs, isDark)
-            LibraryShortcutContent(isDark = isDark, accent = accent, onTap = tapAction)
+            CompositionLocalProvider(
+                androidx.glance.LocalContext provides widgetContext(context, prefs.appLanguage),
+            ) {
+                LibraryShortcutContent(isDark = isDark, accent = accent, onTap = tapAction)
+            }
         }
     }
 
