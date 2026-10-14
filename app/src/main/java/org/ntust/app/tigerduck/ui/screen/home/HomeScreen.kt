@@ -121,6 +121,7 @@ fun HomeScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val signInViewModel: NtustSignInViewModel = hiltViewModel()
     val passwordRejection by signInViewModel.rejection.collectAsStateWithLifecycle()
+    val signedInForBanner by signInViewModel.signedIn.collectAsStateWithLifecycle()
 
     var isEditing by remember { mutableStateOf(false) }
     var showAddSectionDialog by remember { mutableStateOf(false) }
@@ -228,7 +229,7 @@ fun HomeScreen(
 
                 // As its own item only while shown: an empty one would still
                 // take the list's spacing.
-                if (bannerRejection(passwordRejection, signInViewModel.dismissedRejection) != null) {
+                if (bannerRejection(passwordRejection, signInViewModel.dismissedRejection, signedInForBanner) != null) {
                     item(key = "autoSignInFailed") {
                         AutoSignInFailedBanner(viewModel = signInViewModel)
                     }

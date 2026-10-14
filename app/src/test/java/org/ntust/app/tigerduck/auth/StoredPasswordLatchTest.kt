@@ -52,6 +52,17 @@ class StoredPasswordLatchTest {
     }
 
     @Test
+    fun `once the account has signed out, nothing holds`() {
+        val latch = latch()
+        latch.markRejected(latch.generation, "B00000000", "old-password", null)
+
+        stored = null
+
+        assertFalse(latch.isRejected)
+        assertFalse(latch().isRejected)
+    }
+
+    @Test
     fun `nothing is latched on a fresh install`() {
         assertFalse(latch().isRejected)
     }

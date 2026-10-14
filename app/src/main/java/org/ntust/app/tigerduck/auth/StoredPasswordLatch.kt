@@ -31,6 +31,7 @@ interface StoredPasswordLatch {
     /** Null while automatic sign-ins may post the stored password; otherwise the refusal. */
     val rejection: StateFlow<Rejection?>
 
+    /** Whether a refusal holds for the stored account: never with none stored. */
     val isRejected: Boolean get() = rejection.value != null
 
     /**
@@ -117,6 +118,10 @@ class PersistedStoredPasswordLatch internal constructor(
         },
     )
     override val rejection: StateFlow<StoredPasswordLatch.Rejection?> = _rejection.asStateFlow()
+
+    // The refusal was of the stored password; with no account stored, there is none to refuse,
+    // whatever a sign-out that never ran its clear left behind.
+    override val isRejected: Boolean get() = _rejection.value != null && storedAccount() != null
 
     override val generation: Int get() = synchronized(lock) { currentGeneration }
 

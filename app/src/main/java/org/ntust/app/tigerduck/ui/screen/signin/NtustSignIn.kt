@@ -65,9 +65,9 @@ fun NtustSignInSheetHost(viewModel: NtustSignInViewModel = hiltViewModel()) {
 
 /**
  * "Automatic sign-in failed", at the top of Home, the class table and Score, while the school
- * refuses the stored password (StoredPasswordLatch): the school's reason, "Sign in again", and a
- * close button that hides it for the rest of this run. Network failures never show it. Mirrors
- * the iPhone's `NTUSTReauthErrorBanner`.
+ * refuses the stored password (StoredPasswordLatch) and an account is signed in: the school's
+ * reason, "Sign in again", and a close button that hides it for the rest of this run. Network
+ * failures never show it. Mirrors the iPhone's `NTUSTReauthErrorBanner`.
  */
 @Composable
 fun AutoSignInFailedBanner(
@@ -75,7 +75,8 @@ fun AutoSignInFailedBanner(
     viewModel: NtustSignInViewModel = hiltViewModel(),
 ) {
     val rejection by viewModel.rejection.collectAsStateWithLifecycle()
-    val shown = bannerRejection(rejection, viewModel.dismissedRejection) ?: return
+    val signedIn by viewModel.signedIn.collectAsStateWithLifecycle()
+    val shown = bannerRejection(rejection, viewModel.dismissedRejection, signedIn) ?: return
     AutoSignInFailedCard(
         reason = LocalContext.current.schoolRefusalMessage(shown.reason),
         onSignInAgain = viewModel::requestSignIn,

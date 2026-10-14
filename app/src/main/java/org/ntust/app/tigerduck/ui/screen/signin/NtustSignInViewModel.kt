@@ -15,13 +15,14 @@ import org.ntust.app.tigerduck.ui.AppState
 import javax.inject.Inject
 
 /**
- * The refusal the "Automatic sign-in failed" banner shows: [rejection], unless it is the one the
- * user closed this run ([dismissed]).
+ * The refusal the "Automatic sign-in failed" banner shows: [rejection] while [signedIn], unless it
+ * is the one the user closed this run ([dismissed]).
  */
 internal fun bannerRejection(
     rejection: StoredPasswordLatch.Rejection?,
     dismissed: StoredPasswordLatch.Rejection?,
-): StoredPasswordLatch.Rejection? = rejection?.takeIf { it !== dismissed }
+    signedIn: Boolean,
+): StoredPasswordLatch.Rejection? = rejection?.takeIf { signedIn && it !== dismissed }
 
 /**
  * Whether the TigerSync status asks the user to sign in again, in place of the latest error: sync
@@ -53,6 +54,7 @@ class NtustSignInViewModel @Inject constructor(
 ) : ViewModel() {
 
     val rejection: StateFlow<StoredPasswordLatch.Rejection?> = passwordLatch.rejection
+    val signedIn: StateFlow<Boolean> = authService.authState
     val lastSignInFailed: StateFlow<Boolean> = authTokenManager.lastSignInFailed
     val isLoggingIn: StateFlow<Boolean> = authService.isLoggingIn
     val loginError: StateFlow<String?> = authService.loginError

@@ -34,21 +34,26 @@ class AutoSignInFailedBannerTest {
     fun `it shows while the school refuses the stored password`() {
         val rejection = StoredPasswordLatch.Rejection(null)
 
-        assertSame(rejection, bannerRejection(rejection, dismissed = null))
+        assertSame(rejection, bannerRejection(rejection, dismissed = null, signedIn = true))
     }
 
     @Test
     fun `it stays away with nothing refused`() {
-        assertNull(bannerRejection(null, dismissed = null))
+        assertNull(bannerRejection(null, dismissed = null, signedIn = true))
+    }
+
+    @Test
+    fun `it shows only while signed in`() {
+        assertNull(bannerRejection(StoredPasswordLatch.Rejection(null), dismissed = null, signedIn = false))
     }
 
     @Test
     fun `closed, it stays closed for that refusal, and shows again for the next`() {
         val closed = StoredPasswordLatch.Rejection("Locked")
 
-        assertNull(bannerRejection(closed, dismissed = closed))
+        assertNull(bannerRejection(closed, dismissed = closed, signedIn = true))
         val next = StoredPasswordLatch.Rejection("Locked")
-        assertSame(next, bannerRejection(next, dismissed = closed))
+        assertSame(next, bannerRejection(next, dismissed = closed, signedIn = true))
     }
 
     @Test
