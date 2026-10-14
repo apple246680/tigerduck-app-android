@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -123,7 +124,7 @@ fun MoodleMembersScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MembersList(
+internal fun MembersList(
     store: MoodleCourseStore,
     searching: Boolean,
     query: String,
@@ -149,7 +150,6 @@ private fun MembersList(
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (list == null) {
                 item {
@@ -172,9 +172,19 @@ private fun MembersList(
                     )
                 }
             }
+            // One item per row, so a large class draws only the rows on screen, and only they
+            // fetch their pictures.
             sections.forEach { section ->
-                item(key = section.placement.toString()) {
-                    MemberSection(store, section, pictures, onOpen)
+                item(key = "section-${section.placement}") { MemberSectionHeader(section) }
+                itemsIndexed(section.members, key = { _, member -> "member-${member.id}" }) { index, member ->
+                    MemberCardRow(
+                        store = store,
+                        member = member,
+                        picture = member.pictureUrl?.let { pictures[it] },
+                        first = index == 0,
+                        last = index == section.members.lastIndex,
+                        onOpen = onOpen,
+                    )
                 }
             }
         }
@@ -207,50 +217,57 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
 }
 
 @Composable
-private fun MemberSection(
-    store: MoodleCourseStore,
-    section: MoodleMemberSection,
-    pictures: Map<String, androidx.compose.ui.graphics.ImageBitmap>,
-    onOpen: (MoodleMember) -> Unit,
-) {
+private fun MemberSectionHeader(section: MoodleMemberSection) {
     val title = placementTitle(section.placement)
     val count = remember(section.members.size) { NumberFormat.getIntegerInstance().format(section.members.size) }
-    Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp)
-                .clearAndSetSemantics {
-                    heading()
-                    contentDescription = title
-                    stateDescription = count
-                },
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY),
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                text = count,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY),
-            )
-        }
-        Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
-            Column {
-                section.members.forEachIndexed { index, member ->
-                    if (index > 0) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = 72.dp),
-                            color = cardDividerColor(),
-                        )
-                    }
-                    LaunchedEffect(member.pictureUrl) { store.loadPicture(member) }
-                    MemberRow(member, member.pictureUrl?.let { pictures[it] }) { onOpen(member) }
-                }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 4.dp, end = 4.dp, top = 16.dp, bottom = 8.dp)
+            .clearAndSetSemantics {
+                heading()
+                contentDescription = title
+                stateDescription = count
+            },
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY),
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = count,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY),
+        )
+    }
+}
+
+/** A row of a section's card: the card's corners round at its first and last row. */
+@Composable
+private fun MemberCardRow(
+    store: MoodleCourseStore,
+    member: MoodleMember,
+    picture: androidx.compose.ui.graphics.ImageBitmap?,
+    first: Boolean,
+    last: Boolean,
+    onOpen: (MoodleMember) -> Unit,
+) {
+    LaunchedEffect(member.pictureUrl) { store.loadPicture(member) }
+    val corner = 16.dp
+    val shape = RoundedCornerShape(
+        topStart = if (first) corner else 0.dp,
+        topEnd = if (first) corner else 0.dp,
+        bottomStart = if (last) corner else 0.dp,
+        bottomEnd = if (last) corner else 0.dp,
+    )
+    Surface(shape = shape, color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
+        Column {
+            if (!first) {
+                HorizontalDivider(modifier = Modifier.padding(start = 72.dp), color = cardDividerColor())
             }
+            MemberRow(member, picture) { onOpen(member) }
         }
     }
 }
