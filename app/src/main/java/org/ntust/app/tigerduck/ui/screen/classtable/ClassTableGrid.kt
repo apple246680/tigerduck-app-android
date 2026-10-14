@@ -62,8 +62,16 @@ internal fun TimetableGrid(
     /** Null leaves the action out of the long-press menu. */
     onToggleIgnoreAssignments: ((Course) -> Unit)? = null,
     onPickConflict: (Course, Course, Int, String) -> Unit = { _, _, _, _ -> },
+    /** False on someone else's class table, whose courses have no long-press menu. */
+    editable: Boolean = true,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    // The app's own long-press vibration, through the Vibration setting; none without a menu.
+    val onLongPress: (() -> Unit)? = if (editable) {
+        { Haptics.perform(context, HapticScenario.ClassTableLongPress) }
+    } else {
+        null
+    }
     val dayLabels = listOf(
         "",
         stringResource(R.string.weekday_mon_short),
@@ -217,12 +225,7 @@ internal fun TimetableGrid(
                                             period.id
                                         )
                                     },
-                                    onLongPress = {
-                                        Haptics.perform(
-                                            context,
-                                            HapticScenario.ClassTableLongPress,
-                                        )
-                                    },
+                                    onLongPress = onLongPress,
                                     onRename = onRename,
                                     onPickColor = onPickColor,
                                     onToggleIgnoreAssignments = onToggleIgnoreAssignments,
@@ -246,12 +249,7 @@ internal fun TimetableGrid(
                                     assignmentsIgnoredB =
                                         role.courseB.courseNo in courseNosIgnoringAssignments,
                                     onPickConflict = onPickConflict,
-                                    onLongPress = {
-                                        Haptics.perform(
-                                            context,
-                                            HapticScenario.ClassTableLongPress,
-                                        )
-                                    },
+                                    onLongPress = onLongPress,
                                     onRename = onRename,
                                     onPickColor = onPickColor,
                                     onToggleIgnoreAssignments = onToggleIgnoreAssignments,
@@ -274,12 +272,7 @@ internal fun TimetableGrid(
                                     onSelect = { course, firstPeriodId ->
                                         viewModel.selectCourse(course, weekday, firstPeriodId)
                                     },
-                                    onLongPress = {
-                                        Haptics.perform(
-                                            context,
-                                            HapticScenario.ClassTableLongPress,
-                                        )
-                                    },
+                                    onLongPress = onLongPress,
                                     onRename = onRename,
                                     onPickColor = onPickColor,
                                     onToggleIgnoreAssignments = onToggleIgnoreAssignments,

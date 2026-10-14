@@ -38,6 +38,10 @@ import org.ntust.app.tigerduck.data.RefreshPolicy
 import org.ntust.app.tigerduck.data.RefreshTriggers
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.sharing.ClassTableShare
+import org.ntust.app.tigerduck.data.sharing.ImportedClassTableChange
+import org.ntust.app.tigerduck.data.sharing.ImportedClassTableStore
+import org.ntust.app.tigerduck.data.sharing.ImportedClassTables
+import org.ntust.app.tigerduck.data.sharing.ImportedCourseLookup
 import org.ntust.app.tigerduck.debug.DebugFixtureStore
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.shared.computeOngoingCourses
@@ -83,6 +87,8 @@ class ClassTableViewModel @Inject constructor(
     private val notificationScheduler: org.ntust.app.tigerduck.notification.AssignmentNotificationScheduler,
     private val liveActivityManager: org.ntust.app.tigerduck.liveactivity.LiveActivityManager,
     private val courseIgnoreSync: CourseIgnoreSync,
+    private val importedClassTableStore: ImportedClassTableStore,
+    private val importedCourseLookup: ImportedCourseLookup,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
 
@@ -266,6 +272,51 @@ class ClassTableViewModel @Inject constructor(
     )
     val syncCompleteEvent: SharedFlow<Unit> = _syncCompleteEvent.asSharedFlow()
 
+    /** The class tables imported from share codes, and whose the page shows. */
+    val importedTables: StateFlow<ImportedClassTables> = importedClassTableStore.tables
+
+    /**
+     * Whose class table the page shows and on which term, set together when the store switches,
+     * so the page redraws a switch once; see [followShownTable]. The store's copy of the person
+     * carries a rename or a new lookup.
+     */
+    private val _displayed = MutableStateFlow(DisplayedTable(personId = null, semester = null, switches = 0))
+
+    /**
+     * What the page draws: the user's own class table, or someone else's, read-only, on the terms
+     * they shared. Everything of the user's own (the fetch, the cache, the edits) keeps running on
+     * [courses] and [currentSemester] while someone else's shows, and shows again on the way back.
+     */
+    val shownTable: StateFlow<ShownClassTable> = combine(
+        _courses,
+        _currentSemester,
+        _availableSemesters,
+        importedTables,
+        _displayed,
+    ) { courses, semester, semesters, tables, displayed ->
+        shownTableOf(courses, semester, semesters, tables, displayed)
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        ShownClassTable(null, _currentSemester.value, _availableSemesters.value, emptyList(), 0),
+    )
+
+    private val _isRefreshingShownPerson = MutableStateFlow(false)
+
+    /** A pull to refresh on someone else's class table, which looks their term up again. */
+    val isRefreshingShownPerson: StateFlow<Boolean> = _isRefreshingShownPerson
+
+    private val _importedTableProblems = MutableSharedFlow<ImportedTableProblem>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    /** A lookup or a save for someone else's class table that did not go through. */
+    val importedTableProblems: SharedFlow<ImportedTableProblem> = _importedTableProblems.asSharedFlow()
+
+    // Double taps on the Class Table tab, for whether the next one swaps back or steps on.
+    private val tabDoubleTaps = ClassTableTabDoubleTaps(SystemClock::elapsedRealtime)
+
     /** The user's terms the share sheet can offer; see [refreshShareTerms]. */
     private val _shareTerms = MutableStateFlow<List<ClassTableShare.Term>>(emptyList())
     val shareTerms: StateFlow<List<ClassTableShare.Term>> = _shareTerms
@@ -281,6 +332,11 @@ class ClassTableViewModel @Inject constructor(
         RefreshTriggers(ClassTableRefreshPolicy, SystemClock::elapsedRealtime)
 
     init {
+        viewModelScope.launch { importedClassTableStore.load() }
+        viewModelScope.launch {
+            // Another page, the tab's menu or a deletion may switch to someone else's class table.
+            importedTables.collect(::followShownTable)
+        }
         viewModelScope.launch {
             // Tick at 5s so transitions land within at most a few seconds of
             // the wall-clock minute boundary (e.g., the "現在課程" card appears
@@ -400,6 +456,73 @@ class ClassTableViewModel @Inject constructor(
     private fun currentDayTime(): ClassTableSelection.DayTime =
         ClassTableSelection.dayTimeFrom(AppClock.calendar())
 
+    // --- Someone else's class table ---
+
+    /** Someone else's class table is read-only, so every edit of the user's own checks this. */
+    private val isShowingSomeoneElse: Boolean get() = _displayed.value.personId != null
+
+    /** Moves the page to whoever the store shows now; see [nextDisplayedTable]. */
+    private fun followShownTable(tables: ImportedClassTables) {
+        val next = nextDisplayedTable(_displayed.value, tables, shownTable.value.semester) ?: return
+        _displayed.value = next
+        // A course of the class table just left.
+        clearSelection()
+    }
+
+    /** Shows [personId]'s class table, or the user's own for null. */
+    fun showTable(personId: String?) = importedClassTableStore.show(personId)
+
+    /**
+     * A double tap on the Class Table tab while it shows: back to the class table shown before,
+     * or within three seconds of the last double tap, the next one. Returns whether it switched.
+     */
+    fun tabDoubleTapped(): Boolean {
+        val before = importedTables.value.shownPersonId
+        if (tabDoubleTaps.stepsOn()) importedClassTableStore.showNext() else importedClassTableStore.showPrevious()
+        return importedTables.value.shownPersonId != before
+    }
+
+    fun renamePerson(personId: String, nickname: String) {
+        viewModelScope.launch {
+            val change = importedClassTableStore.rename(personId, nickname)
+            if (change == ImportedClassTableChange.FAILED) _importedTableProblems.tryEmit(ImportedTableProblem.SAVE_FAILED)
+        }
+    }
+
+    /** Deleting the shown person shows the user's own class table again, as any switch does. */
+    fun deletePerson(personId: String) {
+        viewModelScope.launch {
+            val change = importedClassTableStore.delete(personId)
+            if (change == ImportedClassTableChange.FAILED) _importedTableProblems.tryEmit(ImportedTableProblem.SAVE_FAILED)
+        }
+    }
+
+    /** Pull to refresh on someone else's class table: looks the term on screen up again. */
+    private fun refreshShownPerson() {
+        if (_isRefreshingShownPerson.value) return
+        val shown = shownTable.value
+        val person = shown.person ?: return
+        val term = person.terms.firstOrNull { it.semester == shown.semester } ?: return
+        _isRefreshingShownPerson.value = true
+        viewModelScope.launch {
+            try {
+                val refreshed = importedCourseLookup.refreshed(term.semester, term.courseNos, term.courses)
+                if (refreshed == null) {
+                    _importedTableProblems.tryEmit(ImportedTableProblem.LOOKUP_FAILED)
+                    return@launch
+                }
+                val change = importedClassTableStore.updateCourses(
+                    person.id, term.semester, term.courseNos, refreshed, person.importedAt,
+                )
+                if (change == ImportedClassTableChange.FAILED) {
+                    _importedTableProblems.tryEmit(ImportedTableProblem.SAVE_FAILED)
+                }
+            } finally {
+                _isRefreshingShownPerson.value = false
+            }
+        }
+    }
+
     private suspend fun loadAssignmentMarks() {
         val account = authService.storedStudentId
         val readAt = dataCache.assignmentMarksVersion.value
@@ -484,6 +607,12 @@ class ClassTableViewModel @Inject constructor(
     }
 
     fun setSemester(code: String) {
+        val displayed = _displayed.value
+        if (displayed.personId != null) {
+            // A term picked on someone else's class table is not the user's pick.
+            _displayed.value = displayed.copy(semester = code)
+            return
+        }
         if (code == _currentSemester.value) return
         appPreferences.classTableSelectedSemester = code
         _currentSemester.value = code
@@ -584,6 +713,8 @@ class ClassTableViewModel @Inject constructor(
         get() {
             val course = _selectedCourse.value ?: return null
             course.customCourseName?.let { return it }
+            // Someone else's course shows the name it was looked up with.
+            if (isShowingSomeoneElse) return null
             return courseService.cachedFullCourseName(_currentSemester.value, course.courseNo)
         }
 
@@ -671,6 +802,8 @@ class ClassTableViewModel @Inject constructor(
      * carousel is the live term even while the grid shows another.
      */
     fun moodleCourseIdFor(course: Course): Int? {
+        // Someone else's class table opens nothing of theirs in the user's Moodle.
+        if (isShowingSomeoneElse) return null
         val semester = selectedCourseSemester ?: _currentSemester.value
         val idnumber = course.moodleIdNumber?.takeIf { it.isNotEmpty() }
             ?: "$semester${course.courseNo}"
@@ -690,6 +823,7 @@ class ClassTableViewModel @Inject constructor(
         get() = _courses.value.map { it.courseNo }.toSet()
 
     fun addCourse(course: Course): Boolean {
+        if (isShowingSomeoneElse) return false
         wouldCauseTripleConflict(course)?.let {
             _tripleConflictEvent.tryEmit(it)
             return false
@@ -721,6 +855,7 @@ class ClassTableViewModel @Inject constructor(
      * — clears the override so the course re-follows the abbreviation toggle.
      */
     fun setCustomCourseName(courseNo: String, newName: String) {
+        if (isShowingSomeoneElse) return
         val trimmed = newName.trim()
         val locale = currentCourseLocale
         val updated = _courses.value.map { course ->
@@ -744,6 +879,7 @@ class ClassTableViewModel @Inject constructor(
 
     /** Clears any user override for [courseNo], restoring the default name. */
     fun revertCourseName(courseNo: String) {
+        if (isShowingSomeoneElse) return
         val locale = currentCourseLocale
         courseCustomNames =
             CourseNameOverrides.withOverride(courseCustomNames, courseNo, locale, null)
@@ -768,6 +904,7 @@ class ClassTableViewModel @Inject constructor(
      * [CourseIgnoreSync] in the order they were made.
      */
     fun toggleIgnoreAssignments(course: Course) {
+        if (isShowingSomeoneElse) return
         val semester = _currentSemester.value
         if (semester != liveSemesterCode) return
         val key = CourseIgnores.key(semester, course.courseNo)
@@ -792,6 +929,7 @@ class ClassTableViewModel @Inject constructor(
     }
 
     fun deleteCourse(courseNo: String) {
+        if (isShowingSomeoneElse) return
         val updated = _courses.value.filter { it.courseNo != courseNo }
         _courses.value = updated
         val semester = _currentSemester.value
@@ -827,6 +965,7 @@ class ClassTableViewModel @Inject constructor(
      * through the palette probe logic.
      */
     fun updateCourseColor(courseNo: String, newHex: String?) {
+        if (isShowingSomeoneElse) return
         val normalized = newHex?.uppercase()
         val updated = _courses.value.map { course ->
             when {
@@ -930,6 +1069,7 @@ class ClassTableViewModel @Inject constructor(
      * to go for this term to actually come back.
      */
     fun resetCourses() {
+        if (isShowingSomeoneElse) return
         val semester = _currentSemester.value
         // One at a time per term, and latched for the syncs that can run
         // in the middle — see DataCache.beginReset.
@@ -1007,6 +1147,10 @@ class ClassTableViewModel @Inject constructor(
 
     /** A pull to refresh: what the schools have now, not an answer kept for sharing. */
     fun refresh() {
+        if (isShowingSomeoneElse) {
+            refreshShownPerson()
+            return
+        }
         moodleService.expireSharedResults()
         courseService.expireSharedResults()
         requestRefresh(rerun = false)

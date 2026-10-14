@@ -66,7 +66,8 @@ internal fun ConflictCourseCell(
     assignmentsIgnoredA: Boolean,
     assignmentsIgnoredB: Boolean,
     onPickConflict: (Course, Course, Int, String) -> Unit,
-    onLongPress: () -> Unit,
+    /** Null on someone else's class table, which is read-only and has no menu. */
+    onLongPress: (() -> Unit)?,
     onRename: (Course) -> Unit,
     onPickColor: (Course) -> Unit,
     onToggleIgnoreAssignments: ((Course) -> Unit)?,
@@ -199,7 +200,7 @@ internal fun ConflictCourseCell(
                         // The app vibrates for this long press itself, through the Vibration setting;
                         // Compose's own buzz would land on top of it and ignore that setting.
                         hapticFeedbackEnabled = false,
-                        onLongClick = { onLongPress(); showMenu = true },
+                        onLongClick = onLongPress?.let { press -> { press(); showMenu = true } },
                     ),
             ) {
                 // Course name uses the full width of the bar rectangle.
@@ -253,7 +254,7 @@ internal fun ConflictCourseCell(
                         // The app vibrates for this long press itself, through the Vibration setting;
                         // Compose's own buzz would land on top of it and ignore that setting.
                         hapticFeedbackEnabled = false,
-                        onLongClick = { onLongPress(); showMenu = true },
+                        onLongClick = onLongPress?.let { press -> { press(); showMenu = true } },
                     ),
             ) {
                 // Course name uses the full width of the bar rectangle.
@@ -331,7 +332,8 @@ internal fun MultiConflictCourseCell(
     hasAssignment: (String) -> Boolean,
     assignmentsIgnored: (String) -> Boolean,
     onSelect: (Course, String) -> Unit,
-    onLongPress: () -> Unit,
+    /** Null on someone else's class table, which is read-only and has no menu. */
+    onLongPress: (() -> Unit)?,
     onRename: (Course) -> Unit,
     onPickColor: (Course) -> Unit,
     onToggleIgnoreAssignments: ((Course) -> Unit)?,
@@ -408,9 +410,11 @@ internal fun MultiConflictCourseCell(
                             // The app vibrates for this long press itself, through the Vibration setting;
                             // Compose's own buzz would land on top of it and ignore that setting.
                             hapticFeedbackEnabled = false,
-                            onLongClick = {
-                                onLongPress()
-                                menuForCourse = member.course
+                            onLongClick = onLongPress?.let { press ->
+                                {
+                                    press()
+                                    menuForCourse = member.course
+                                }
                             },
                         ),
                 ) {
