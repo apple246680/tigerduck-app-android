@@ -42,6 +42,14 @@ fun FirstTriggerPromptHost(controller: FirstTriggerPromptController) {
     }
 }
 
+/**
+ * Whether a pending first-trigger prompt may show now: not over What's New or
+ * the update prompt, which it waits for rather than stacking on, as on the
+ * iPhone.
+ */
+internal fun firstTriggerPromptMayShow(whatsNewShowing: Boolean, updatePromptShowing: Boolean): Boolean =
+    !whatsNewShowing && !updatePromptShowing
+
 /** Per-key string + animation bundle for a first-trigger prompt. */
 internal data class FirstTriggerStrings(
     val titleRes: Int,

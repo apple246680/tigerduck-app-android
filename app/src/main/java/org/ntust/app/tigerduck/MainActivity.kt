@@ -51,6 +51,7 @@ import org.ntust.app.tigerduck.ui.AppState
 import org.ntust.app.tigerduck.ui.component.TigerDuckDialog
 import org.ntust.app.tigerduck.ui.firsttrigger.FirstTriggerPromptController
 import org.ntust.app.tigerduck.ui.firsttrigger.FirstTriggerPromptHost
+import org.ntust.app.tigerduck.ui.firsttrigger.firstTriggerPromptMayShow
 import org.ntust.app.tigerduck.ui.navigation.AppNavigation
 import org.ntust.app.tigerduck.ui.screen.update.UpdatePromptDialog
 import org.ntust.app.tigerduck.ui.screen.whatsnew.WhatsNewCatalog
@@ -117,10 +118,7 @@ class MainActivity : AppCompatActivity() {
     lateinit var mailChecker: org.ntust.app.tigerduck.mail.sync.MailChecker
 
     @Inject
-    lateinit var libraryService: org.ntust.app.tigerduck.shared.LibraryService
-
-    @Inject
-    lateinit var demoAccount: org.ntust.app.tigerduck.demo.DemoAccount
+    lateinit var libraryReturnSignIn: org.ntust.app.tigerduck.library.LibraryReturnSignIn
 
     private val widgetStartRoute = mutableStateOf<String?>(null)
     private val whatsNewFlow = mutableStateOf<WhatsNewFlow?>(null)
@@ -243,7 +241,11 @@ class MainActivity : AppCompatActivity() {
                         // waits for What's New and the update prompt to close,
                         // as on the iPhone, rather than stacking on them.
                         val updatePending by updateChecker.pendingUpdate.collectAsStateWithLifecycle()
-                        if (whatsNewFlow.value == null && updatePending == null) {
+                        if (firstTriggerPromptMayShow(
+                                whatsNewShowing = whatsNewFlow.value != null,
+                                updatePromptShowing = updatePending != null,
+                            )
+                        ) {
                             FirstTriggerPromptHost(firstTriggerPromptController)
                         }
 
@@ -259,14 +261,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Read the library sign-in again: the flip and Settings follow it.
-        appState.librarySession.refresh()
-        // It lasts a day, so a launch or a return after one signs in again with
-        // the stored library credentials, and the Library page opens on a code.
-        // Not in demo mode, which reaches no server.
-        if (!demoAccount.isActive) {
-            lifecycleScope.launch { libraryService.signInIfCredentialed(networkChecker::isAvailable) }
-        }
+        // The library sign-in state read again, and a sign-in with the stored
+        // credentials once the day-long token has run out.
+        lifecycleScope.launch { libraryReturnSignIn.onAppResumed() }
         refreshAcademicCalendar()
         liveActivityManager.refresh()
         updateChecker.resume(this)
