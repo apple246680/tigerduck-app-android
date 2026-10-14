@@ -26,6 +26,7 @@ import org.ntust.app.tigerduck.data.CourseColorStore
 import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
+import org.ntust.app.tigerduck.library.libraryErrorMessage
 import org.ntust.app.tigerduck.liveactivity.LiveActivityManager
 import org.ntust.app.tigerduck.notification.AssignmentNotificationScheduler
 import org.ntust.app.tigerduck.notification.BackgroundSyncWorker
@@ -543,8 +544,7 @@ class SettingsViewModel @Inject constructor(
                 // fresh creds to the watch here.
                 wearBridge.publishLibraryCredentials()
             } catch (e: Exception) {
-                _libLoginError.value = e.message?.takeUnless { it.isBlank() }
-                    ?: context.getString(R.string.error_sign_in_failed)
+                _libLoginError.value = libraryErrorMessage(e, R.string.error_sign_in_failed, context::getString)
             } finally {
                 _libIsLoggingIn.value = false
             }

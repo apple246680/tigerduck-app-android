@@ -19,6 +19,7 @@ import org.ntust.app.tigerduck.debug.DebugFixtureStore
 import org.ntust.app.tigerduck.demo.DemoAccount
 import org.ntust.app.tigerduck.library.LibraryQRBitmapCache
 import org.ntust.app.tigerduck.library.LibrarySession
+import org.ntust.app.tigerduck.library.libraryErrorMessage
 import org.ntust.app.tigerduck.shared.LibraryQRRenderer
 import org.ntust.app.tigerduck.shared.LibraryService
 import org.ntust.app.tigerduck.wear.WearScheduleBridge
@@ -63,10 +64,7 @@ class LibraryViewModel @Inject constructor(
             librarySession.refresh()
             _isLoggedIn.value = false
         },
-        describe = { e ->
-            e.message?.takeUnless { it.isBlank() }
-                ?: context.getString(R.string.library_qr_generate_failed)
-        },
+        describe = { e -> libraryErrorMessage(e, R.string.library_qr_generate_failed, context::getString) },
         errors = _errorMessage,
         cache = qrCache,
         now = SystemClock::elapsedRealtime,
@@ -146,8 +144,7 @@ class LibraryViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _errorMessage.value = e.message?.takeUnless { it.isBlank() }
-                    ?: context.getString(R.string.error_sign_in_failed)
+                _errorMessage.value = libraryErrorMessage(e, R.string.error_sign_in_failed, context::getString)
             } finally {
                 _isLoggingIn.value = false
             }
