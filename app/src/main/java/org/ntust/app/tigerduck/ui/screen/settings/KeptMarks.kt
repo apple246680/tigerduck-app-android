@@ -46,9 +46,11 @@ internal suspend fun sendKeptMarks(
 /**
  * The server's view Use Local decides this phone's marks and course ignores
  * against: read again now, or, when that read fails, the one the re-enable
- * check compared a moment ago ([checked]). With neither, an assignment
- * unmarked here but still marked on the server would get no clear, and once
- * the hold ended the next sync would bring the server's mark back.
+ * check compared when it asked the question ([checked]). That one can be
+ * hours old, as the dialog may stay open that long, so a mark another device
+ * set since gets no clear and stays; still better than none, with which an
+ * assignment unmarked here but marked on the server would get no clear, and
+ * once the hold ended the next sync would bring the server's mark back.
  */
 internal suspend fun serverForUseLocal(
     fetch: suspend () -> BackendSyncResult,
