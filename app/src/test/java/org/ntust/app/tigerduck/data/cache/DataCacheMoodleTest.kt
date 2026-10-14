@@ -86,10 +86,18 @@ class DataCacheMoodleTest {
     }
 
     @Test
-    fun `the opened files' folder does not name the account`() {
+    fun `the opened files' folder does not name the account, nor hash it where anyone could redo it`() {
         val dir = cache.moodleOpenedFilesDir("B11300001")
         assertFalse(dir.path.contains("B11300001", ignoreCase = true))
+        val plainHash = java.security.MessageDigest.getInstance("SHA-256").digest("B11300001".toByteArray())
+            .take(8).joinToString("") { "%02x".format(it) }
+        assertFalse("salted per install", dir.name == plainHash)
         assertEquals(dir, cache.moodleOpenedFilesDir("B11300001"))
+        assertEquals(
+            "the same on this install after a restart",
+            dir,
+            DataCache(context, AcademicCalendarStore(context, OkHttpClient(), AppPreferences(context))).moodleOpenedFilesDir("B11300001"),
+        )
         assertFalse(dir == cache.moodleOpenedFilesDir("B11300002"))
     }
 }

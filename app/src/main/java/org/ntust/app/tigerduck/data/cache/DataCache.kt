@@ -653,11 +653,32 @@ class DataCache @Inject constructor(
      * A folder name for [account] that does not spell it: its path shows in the content URI
      * another app is handed.
      */
-    private fun opaqueFolder(account: String): String =
-        java.security.MessageDigest.getInstance("SHA-256")
-            .digest(account.trim().uppercase().toByteArray())
+    private fun opaqueFolder(account: String): String {
+        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+        mac.init(javax.crypto.spec.SecretKeySpec(installSalt(), "HmacSHA256"))
+        return mac.doFinal(account.trim().uppercase().toByteArray())
             .take(8)
             .joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * A random key made once per install and kept in private preferences, so the account folder's
+     * name cannot be worked back to a student ID by hashing every ID there is. Reads from disk.
+     */
+    @Synchronized
+    private fun installSalt(): ByteArray {
+        moodleSaltPrefs.getString(MOODLE_SALT_KEY, null)
+            ?.let { runCatching { android.util.Base64.decode(it, android.util.Base64.NO_WRAP) }.getOrNull() }
+            ?.takeIf { it.size >= 16 }
+            ?.let { return it }
+        val salt = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+        moodleSaltPrefs.edit()
+            .putString(MOODLE_SALT_KEY, android.util.Base64.encodeToString(salt, android.util.Base64.NO_WRAP))
+            .commit()
+        return salt
+    }
+
+    private val moodleSaltPrefs = context.getSharedPreferences(MOODLE_SALT_PREFS, Context.MODE_PRIVATE)
 
     private fun moodleFile(name: String, account: String): File {
         // A name is the app's own, such as "courses/123/grades"; dot segments never come from it,
@@ -866,6 +887,8 @@ class DataCache @Inject constructor(
 
         private const val MOODLE_DIR = "moodle"
         private const val MOODLE_OPENED_DIR = "moodle_open"
+        private const val MOODLE_SALT_PREFS = "moodle_files"
+        private const val MOODLE_SALT_KEY = "folder_salt"
 
         /** See saveMoodleData: bump with any change to the classes in network/model/moodle. */
         internal const val MOODLE_CACHE_SCHEMA = 1
