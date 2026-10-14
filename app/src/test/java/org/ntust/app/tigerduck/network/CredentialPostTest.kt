@@ -8,7 +8,9 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
 
 /**
  * [executeCredentialPost] against a stand-in school that answers as an application interceptor,
@@ -47,6 +49,27 @@ class CredentialPostTest {
 
         // So the session's guard refuses it, and the departed account's cookies stay out.
         assertEquals(true, getStartedUnderDepartedAccount)
+    }
+
+    @Test
+    fun `a connection that drops after the form went out does not send it again`() {
+        var posts = 0
+        val school = client { chain ->
+            posts++
+            if (posts == 1) {
+                // The connection drops once the form is out. OkHttp sends it again when the client
+                // retries on connection failure (RetryAndFollowUpInterceptor.recover); this
+                // stand-in, answering ahead of it, does the same.
+                if (!chain.retryOnConnectionFailure) throw IOException("connection reset")
+                posts++
+            }
+            page(chain.request())
+        }
+
+        val failure = runCatching { school.executeCredentialPost(post())?.close() }.exceptionOrNull()
+
+        assertTrue("got $failure", failure is IOException)
+        assertEquals("each post counts toward the account's lockout", 1, posts)
     }
 
     private fun redirect(request: Request, code: Int, location: String): Response = Response.Builder()

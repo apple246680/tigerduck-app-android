@@ -6,17 +6,20 @@ import okhttp3.Response
 
 /**
  * Executes [request], the POST of a sign-in form that carries the password, so that the form goes
- * only where it was addressed. OkHttp follows redirects on its own, and for a 307 or a 308 it
- * sends the same form again to wherever the redirect points; this POST follows none itself. A 301,
- * 302 or 303 is then followed by hand as a GET, which carries no form, and only to an HTTPS
- * address; the client follows whatever comes after that GET as it always does. A 307 or a 308,
- * any other redirect, or one with no usable address returns null, the form not sent again. The
- * caller closes the response it gets.
+ * only where it was addressed, and once. OkHttp follows redirects on its own, and for a 307 or a
+ * 308 it sends the same form again to wherever the redirect points; this POST follows none itself,
+ * nor is it sent again after a connection failure. A 301, 302 or 303 is then followed by hand as
+ * a GET, which carries no form, and only to an HTTPS address; the client follows whatever comes
+ * after that GET as it always does. A 307 or a 308, any other redirect, or one with no usable
+ * address returns null, the form not sent again. The caller closes the response it gets.
  */
 internal fun OkHttpClient.executeCredentialPost(request: Request): Response? {
     val response = newBuilder()
         .followRedirects(false)
         .followSslRedirects(false)
+        // A connection that drops once the form is out may have delivered it: sent again, the
+        // password would count twice toward the account's lockout.
+        .retryOnConnectionFailure(false)
         .build()
         .newCall(request)
         .execute()
