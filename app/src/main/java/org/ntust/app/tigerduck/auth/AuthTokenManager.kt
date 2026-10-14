@@ -413,27 +413,44 @@ class AuthTokenManager(
         validTokenIfSignedIn(signIn)?.let { return it }
 
         // With the generation under the lock a sign-out takes, so the token is
-        // the account's that asked.
-        val refreshToken = synchronized(signInLock) {
-            if (generation == signIn) tokens.refreshToken else null
+        // the account's that asked. Marked on its way in the same step, so a
+        // departing refresh of the token waits for this one rather than send it
+        // alongside.
+        val onItsWay = synchronized(signInLock) {
+            val token = if (generation == signIn) tokens.refreshToken else null
+            token?.let { (it to CompletableDeferred<Unit>()).also { mark -> refreshOnItsWay = mark } }
         } ?: return null
-        // No header rather than the access token in its last seconds, which
-        // would draw a 401, and Home answers a 401 with a relogin.
-        if (isRefreshPaused()) return null
-        // Finishes even when the caller is cancelled: stopped between a send
-        // and what follows it, a token the backend may have rotated would stay
-        // on disk for the next refresh.
-        withContext(NonCancellable) { refreshAndSettle(refreshToken, signIn) }
+        try {
+            // No header rather than the access token in its last seconds, which
+            // would draw a 401, and Home answers a 401 with a relogin.
+            if (isRefreshPaused()) return null
+            // Finishes even when the caller is cancelled: stopped between a send
+            // and what follows it, a token the backend may have rotated would stay
+            // on disk for the next refresh.
+            withContext(NonCancellable) { refreshAndSettle(onItsWay, signIn) }
+        } finally {
+            arrived(onItsWay)
+        }
     }
 
-    private suspend fun refreshAndSettle(refreshToken: String, signIn: Int): String? {
+    /** The refresh [onItsWay] marked has its answer, or never went out. */
+    private fun arrived(onItsWay: Pair<String, CompletableDeferred<Unit>>) {
+        synchronized(signInLock) { if (refreshOnItsWay === onItsWay) refreshOnItsWay = null }
+        onItsWay.second.complete(Unit)
+    }
+
+    private suspend fun refreshAndSettle(onItsWay: Pair<String, CompletableDeferred<Unit>>, signIn: Int): String? {
         val outcome = try {
-            withContext(Dispatchers.IO) { sendWithOneResend(refreshToken, signIn) }
+            withContext(Dispatchers.IO) { sendWithOneResend(onItsWay.first, signIn) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "refresh failed: ${e.javaClass.simpleName}")
             RefreshOutcome.Refused
+        } finally {
+            // Before any sign-in below: a departing refresh waiting on this
+            // one wants its answer, not the relogin after it.
+            arrived(onItsWay)
         }
         // Signed out since the refresh began: what came back is the departing
         // account's, and a relogin or a clear would act on whoever signed in since.
@@ -476,16 +493,9 @@ class AuthTokenManager(
      * too is a failed refresh, never a token kept for later.
      */
     private fun sendWithOneResend(refreshToken: String, signIn: Int): RefreshOutcome {
-        val onItsWay = refreshToken to CompletableDeferred<Unit>()
-        synchronized(signInLock) { refreshOnItsWay = onItsWay }
-        try {
-            val first = send(refreshToken, signIn)
-            if (first != RefreshOutcome.NoReply || signIn != signInGeneration) return first
-            return send(refreshToken, signIn) as? RefreshOutcome.Refreshed ?: RefreshOutcome.Refused
-        } finally {
-            synchronized(signInLock) { if (refreshOnItsWay === onItsWay) refreshOnItsWay = null }
-            onItsWay.second.complete(Unit)
-        }
+        val first = send(refreshToken, signIn)
+        if (first != RefreshOutcome.NoReply || signIn != signInGeneration) return first
+        return send(refreshToken, signIn) as? RefreshOutcome.Refreshed ?: RefreshOutcome.Refused
     }
 
     private fun send(refreshToken: String, signIn: Int, base: String = baseUrl): RefreshOutcome {
