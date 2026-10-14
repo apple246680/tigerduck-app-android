@@ -209,6 +209,12 @@ class SchoolMailListViewModel @Inject constructor(
     }
 
     fun refresh() {
+        // A load that failed at the folder list resolved nothing: there is no page to fetch yet,
+        // so Retry and a pull start over from the folder list.
+        if (_state.value.chips.isEmpty()) {
+            load()
+            return
+        }
         // Stops the warm queue before it takes the connection again. SessionHolder serialises
         // every command behind one mutex, so without this a refresh could wait out several
         // folders' pages rather than at most one.

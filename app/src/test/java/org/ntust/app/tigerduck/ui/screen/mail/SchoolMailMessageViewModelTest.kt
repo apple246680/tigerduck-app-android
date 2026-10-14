@@ -194,7 +194,7 @@ class SchoolMailMessageViewModelTest {
     }
 
     @Test
-    fun `a source that fails to load surfaces as an action error rather than a stuck spinner`() {
+    fun `a source that fails to load says so in place, and Retry loads it`() {
         repo.add("INBOX", mailSummary(5))
         repo.bodies[5] = MailBody(null, "hello", emptyList(), emptyMap())
         repo.rawSourceError = MailError.Network()
@@ -203,7 +203,38 @@ class SchoolMailMessageViewModelTest {
         vm.selectMode(ViewMode.SOURCE)
         assertNull(vm.state.value.source)
         assertFalse(vm.state.value.sourceLoading)
-        assertTrue(vm.state.value.actionError is MailError.Network)
+        // Where the source would be, not a toast that leaves a blank view behind it.
+        assertTrue(vm.state.value.sourceError is MailError.Network)
+        assertNull(vm.state.value.actionError)
+
+        repo.rawSourceError = null
+        vm.retrySource()
+        assertEquals(repo.raw, vm.state.value.source)
+        assertNull(vm.state.value.sourceError)
+    }
+
+    @Test
+    fun `a source refused for a rejected password still reaches the account`() {
+        repo.add("INBOX", mailSummary(5))
+        repo.bodies[5] = MailBody(null, "hello", emptyList(), emptyMap())
+        repo.rawSourceError = MailError.AuthFailed()
+        val vm = vm()
+        vm.load()
+        vm.selectMode(ViewMode.SOURCE)
+        assertTrue(account.authFailed.value)
+    }
+
+    @Test
+    fun `a body that fails to load is loaded again by Retry`() {
+        repo.add("INBOX", mailSummary(5))
+        repo.bodyError = MailError.Network()
+        val vm = vm()
+        vm.load()
+        assertTrue(vm.state.value.content is Content.Failed)
+        repo.bodyError = null
+        repo.bodies[5] = MailBody(null, "hello", emptyList(), emptyMap())
+        vm.load()
+        assertEquals("hello", ready(vm).plain)
     }
 
     @Test

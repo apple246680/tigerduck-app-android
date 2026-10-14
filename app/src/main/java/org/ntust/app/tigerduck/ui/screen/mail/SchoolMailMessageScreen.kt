@@ -264,6 +264,8 @@ fun SchoolMailMessageScreen(
                     icon = Icons.Filled.WarningAmber,
                     title = stringResource(R.string.school_mail_load_failed_title),
                     message = stringResource(content.error.messageRes()),
+                    actionLabel = stringResource(R.string.action_retry),
+                    onAction = viewModel::load,
                 )
             }
             is Content.LoadingBody -> Column(Modifier.fillMaxSize().padding(padding)) {
@@ -350,7 +352,18 @@ fun SchoolMailMessageScreen(
                         ViewMode.SOURCE -> {
                             val source = state.source
                             val chunks = sourceChunks
-                            if (source == null || chunks == null) {
+                            val sourceError = state.sourceError
+                            if ((source == null || chunks == null) && sourceError != null && !state.sourceLoading) {
+                                item(key = "source-failed") {
+                                    EmptyStateView(
+                                        icon = Icons.Filled.WarningAmber,
+                                        title = stringResource(R.string.school_mail_source_failed),
+                                        message = stringResource(sourceError.messageRes()),
+                                        actionLabel = stringResource(R.string.action_retry),
+                                        onAction = viewModel::retrySource,
+                                    )
+                                }
+                            } else if (source == null || chunks == null) {
                                 item(key = "source-loading") {
                                     Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
                                         if (state.sourceLoading) CircularProgressIndicator()

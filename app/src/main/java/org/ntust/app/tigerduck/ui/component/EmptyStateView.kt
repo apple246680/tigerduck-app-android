@@ -12,6 +12,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,6 +32,9 @@ fun EmptyStateView(
     message: String?,
     modifier: Modifier = Modifier,
     onIconClick: (() -> Unit)? = null,
+    /** A button under the message, such as Retry on a failed load; shown only with [onAction]. */
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
 ) {
     Column(
         modifier = modifier
@@ -77,6 +81,10 @@ fun EmptyStateView(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY)
             )
+        }
+        if (actionLabel != null && onAction != null) {
+            Spacer(Modifier.height(8.dp))
+            TextButton(onClick = onAction) { Text(actionLabel) }
         }
     }
 }

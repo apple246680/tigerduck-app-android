@@ -107,6 +107,8 @@ class SchoolMailMessageViewModel @Inject constructor(
         val parseFailed: Boolean = false,
         val source: String? = null,
         val sourceLoading: Boolean = false,
+        /** The source view's last load failed: shown in its place with a Retry ([retrySource]). */
+        val sourceError: MailError? = null,
         /** An attachment (open or save) that needs the risky/HTML/SVG confirmation first. */
         val confirmAttachment: PendingAttachment? = null,
         val openRequest: OpenRequest? = null,
@@ -339,14 +341,23 @@ class SchoolMailMessageViewModel @Inject constructor(
         viewModelScope.launch { loadSource() }
     }
 
+    /** The Retry on a failed source load. */
+    fun retrySource() {
+        val s = _state.value
+        if (s.source != null || s.sourceLoading) return
+        viewModelScope.launch { loadSource() }
+    }
+
     private suspend fun loadSource() {
-        update { it.copy(sourceLoading = true) }
+        update { it.copy(sourceLoading = true, sourceError = null) }
         try {
             val raw = repository.rawSource(folder, uid)
             update { it.copy(source = TextCleaning.stripBidi(raw), sourceLoading = false) }
         } catch (e: MailError) {
             if (e is MailError.AuthFailed) account.onAuthFailure()
-            update { it.copy(sourceLoading = false, actionError = e) }
+            // In place of the source, not as a toast: a toast left a blank view behind it, and
+            // the way back was to switch views and back again.
+            update { it.copy(sourceLoading = false, sourceError = e) }
         }
     }
 

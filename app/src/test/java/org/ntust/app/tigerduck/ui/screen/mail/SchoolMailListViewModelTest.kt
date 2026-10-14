@@ -237,6 +237,20 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
+    fun `retrying a load whose folder list failed loads the list`() {
+        repo.add("INBOX", mailSummary(1))
+        repo.foldersError = MailError.Network()
+        vm.load()
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        repo.foldersError = null
+        // What Retry and a pull both call: with no folders resolved yet there is no page to
+        // fetch, so it has to start from the folder list again.
+        vm.refresh()
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Loaded)
+        assertEquals(listOf(1L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
     fun `a rejected password marks the account and shows the failure`() {
         repo.loadError = MailError.AuthFailed()
         vm.load()

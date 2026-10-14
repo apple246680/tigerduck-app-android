@@ -126,7 +126,13 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         if (i >= 0) list[i] = transform(list[i])
     }
 
-    override suspend fun folders() = resolved
+    /** Thrown by [folders] -- the first call a list load makes. */
+    var foldersError: MailError? = null
+
+    override suspend fun folders(): ResolvedFolders {
+        foldersError?.let { throw it }
+        return resolved
+    }
     override suspend fun cachedPage(folder: String): MailPage? = touching(folder) { cachedPages[folder] }
 
     /** Simulates the repository dropping a folder's cache once [MailError.FolderChanged] fires for it. */

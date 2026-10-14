@@ -284,6 +284,8 @@ fun SchoolMailScreen(
                                 icon = Icons.Filled.Mail,
                                 title = stringResource(R.string.school_mail_load_failed_title),
                                 message = stringResource(failed.error.messageRes()),
+                                actionLabel = stringResource(R.string.action_retry),
+                                onAction = viewModel::refresh,
                             )
                         }
                     }
