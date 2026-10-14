@@ -57,6 +57,15 @@ internal class LibraryQRCycle<Image : Any>(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    private val _fetching = MutableStateFlow(false)
+
+    /**
+     * Whether a code request is out. One that fails because its account has
+     * gone ends the session itself, with what failed, such as the library's
+     * refusal.
+     */
+    val fetching: StateFlow<Boolean> = _fetching.asStateFlow()
+
     private var job: Job? = null
 
     /** Transient failures since the last code that landed; drives [retryDelaySeconds]. */
@@ -132,6 +141,7 @@ internal class LibraryQRCycle<Image : Any>(
     private suspend fun fetchOnce(): Outcome {
         val forAccount = account()
         _isLoading.value = _image.value == null
+        _fetching.value = true
         errors.value = null
         try {
             val payload = fetch()
@@ -163,6 +173,7 @@ internal class LibraryQRCycle<Image : Any>(
             return Outcome.FAILED
         } finally {
             _isLoading.value = false
+            _fetching.value = false
         }
     }
 

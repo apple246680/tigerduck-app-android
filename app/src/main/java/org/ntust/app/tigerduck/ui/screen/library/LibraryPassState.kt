@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import org.ntust.app.tigerduck.library.LibraryQRCache
 
 /**
@@ -63,9 +64,12 @@ internal class LibraryPassState<Image : Any>(
         // Signed out elsewhere, such as a refusal the sign-in at a return to
         // the app found: back to the sign-in form at once, also while a code
         // request backs off, rather than at its next try. That failure's
-        // message is no longer what happened.
+        // message is no longer what happened. A code request still out is
+        // waited for first: one whose sign-in the library refused ends the
+        // session itself and says so, and stopping it would lose that.
         scope.followSignOuts(signedIn, hasAccount) {
-            if (_isLoggedIn.value) {
+            cycle.fetching.first { !it }
+            if (_isLoggedIn.value && !hasAccount()) {
                 cycle.clear()
                 errors.value = null
                 _isLoggedIn.value = false

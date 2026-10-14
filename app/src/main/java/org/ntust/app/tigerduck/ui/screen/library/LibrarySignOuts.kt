@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 internal fun CoroutineScope.followSignOuts(
     signedIn: Flow<Boolean>,
     stillSignedIn: () -> Boolean,
-    onSignedOut: () -> Unit,
+    onSignedOut: suspend () -> Unit,
 ): Job = launch {
     signedIn.collect { if (!it && !stillSignedIn()) onSignedOut() }
 }
