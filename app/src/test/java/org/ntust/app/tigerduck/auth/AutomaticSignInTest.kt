@@ -8,6 +8,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -123,7 +124,8 @@ class AutomaticSignInTest {
         accountStored = false
         manager.logout()
 
-        val status = PushApiClient(backend.client, prefs, manager).deleteDevice("device-1", departing!!.accessToken)
+        val status = PushApiClient(backend.client, prefs, manager)
+            .deleteDevice(departing!!.baseUrl, "device-1", departing.accessToken)
 
         assertEquals(200, status)
         assertEquals(listOf(UNREGISTER), backend.endpoints())
@@ -146,7 +148,7 @@ class AutomaticSignInTest {
         accountStored = false
         manager.logout()
 
-        val reply = manager.refreshDeparting(departing.refreshToken)
+        val reply = manager.refreshDeparting(departing)
 
         assertEquals("access-2", (reply as DepartingRefresh.Refreshed).session.accessToken)
         assertEquals("refresh-2", reply.session.refreshToken)
@@ -159,11 +161,30 @@ class AutomaticSignInTest {
     @Test
     fun `a departing refresh the backend turns down is refused, and a busy one left for later`() = runTest {
         val manager = manager()
+        val departing = DepartingSession("access-1", "refresh-1", 0L, resolveAnnouncementEndpoint(prefs).url)
         backend.answer(REFRESH, 401)
-        assertEquals(DepartingRefresh.Refused, manager.refreshDeparting("refresh-1"))
+        assertEquals(DepartingRefresh.Refused, manager.refreshDeparting(departing))
 
         backend.answer(REFRESH, 503)
-        assertEquals(DepartingRefresh.Unavailable, manager.refreshDeparting("refresh-1"))
+        assertEquals(DepartingRefresh.Unavailable, manager.refreshDeparting(departing))
+    }
+
+    @Test
+    fun `the departing tokens go back to the backend that issued them after the endpoint changes`() = runTest {
+        tokens.save("access-1", "refresh-1", expiresAt = 0L)
+        val manager = manager()
+        val departing = manager.departingSession()!!
+        accountStored = false
+        manager.logout()
+        // The next person on the phone points the app at their own backend.
+        prefs.announcementApiBaseUrlOverride = "http://10.0.0.9:9/v3"
+        assertEquals("10.0.0.9", resolveAnnouncementEndpoint(prefs).url.toHttpUrl().host)
+
+        val refreshed = manager.refreshDeparting(departing) as DepartingRefresh.Refreshed
+        PushApiClient(backend.client, prefs, manager)
+            .deleteDevice(refreshed.session.baseUrl, "device-1", refreshed.session.accessToken)
+
+        assertEquals(listOf("127.0.0.1", "127.0.0.1"), backend.received(REFRESH).map { it.host } + backend.received(UNREGISTER).map { it.host })
     }
 
     // Signing in again, and the pause after a failure

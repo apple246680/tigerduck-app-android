@@ -213,7 +213,7 @@ class AuthTokenManager(
     fun departingSession(): DepartingSession? = synchronized(signInLock) {
         val access = tokens.accessToken ?: return null
         val refresh = tokens.refreshToken ?: return null
-        DepartingSession(access, refresh, tokens.expiresAt)
+        DepartingSession(access, refresh, tokens.expiresAt, baseUrl)
     }
 
     /**
@@ -223,11 +223,13 @@ class AuthTokenManager(
      * back, as [sendWithOneResend] does; a second that gets none either is
      * [DepartingRefresh.Unavailable], left for a later try.
      */
-    suspend fun refreshDeparting(refreshToken: String): DepartingRefresh = withContext(Dispatchers.IO) {
-        val first = send(refreshToken, DEPARTING)
-        when (val outcome = if (first == RefreshOutcome.NoReply) send(refreshToken, DEPARTING) else first) {
+    suspend fun refreshDeparting(departing: DepartingSession): DepartingRefresh = withContext(Dispatchers.IO) {
+        // To the backend that issued the session, whatever the endpoint setting says now.
+        val base = departing.baseUrl
+        val first = send(departing.refreshToken, DEPARTING, base)
+        when (val outcome = if (first == RefreshOutcome.NoReply) send(departing.refreshToken, DEPARTING, base) else first) {
             is RefreshOutcome.Refreshed -> DepartingRefresh.Refreshed(
-                DepartingSession(outcome.accessToken, outcome.refreshToken, outcome.expiresAt),
+                DepartingSession(outcome.accessToken, outcome.refreshToken, outcome.expiresAt, base),
             )
             RefreshOutcome.Refused -> DepartingRefresh.Refused
             RefreshOutcome.NoReply, RefreshOutcome.Unavailable -> DepartingRefresh.Unavailable
@@ -403,13 +405,13 @@ class AuthTokenManager(
         return send(refreshToken, signIn) as? RefreshOutcome.Refreshed ?: RefreshOutcome.Refused
     }
 
-    private fun send(refreshToken: String, signIn: Int): RefreshOutcome {
+    private fun send(refreshToken: String, signIn: Int, base: String = baseUrl): RefreshOutcome {
         val json = JSONObject().apply {
             put("refresh_token", refreshToken)
         }
         val body = json.toString().toRequestBody(jsonType)
         val request = Request.Builder()
-            .url("$baseUrl/auth/refresh")
+            .url("$base/auth/refresh")
             .post(body)
             .build()
         return try {

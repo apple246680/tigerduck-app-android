@@ -105,18 +105,20 @@ class PushApiClient @Inject constructor(
 
     /**
      * Deletes this device's row as the account that signed out, with [accessToken] from the
-     * session it left, and gives the HTTP status. The sign-out's unregister runs after the tokens
-     * are wiped, and a session looked up now could be the next account's, or its sign-in, whose
-     * row the DELETE would remove. Throws [java.io.IOException] when no reply came back.
+     * session it left, at [base], the backend that issued it, and gives the HTTP status. The
+     * sign-out's unregister runs after the tokens are wiped, and a session looked up now could be
+     * the next account's, or its sign-in, whose row the DELETE would remove; and the endpoint
+     * setting may name another host by now. Throws [java.io.IOException] when no reply came back.
      */
     suspend fun deleteDevice(
+        base: String,
         deviceId: String,
         accessToken: String,
     ): Int = withContext(Dispatchers.IO) {
         // v3: DELETE /devices/{client_device_id}, scoped to the authed user
         // (matches iOS + the server). `deviceId` is PushIdentity.uuid().
         val request = Request.Builder()
-            .url("$baseUrl/devices/$deviceId")
+            .url("$base/devices/$deviceId")
             .delete()
             .header("Authorization", "Bearer $accessToken")
             .build()

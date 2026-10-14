@@ -18,7 +18,8 @@ class PendingUnregisterPrefs internal constructor(private val prefs: SharedPrefe
         val deviceId = prefs.getString(KEY_DEVICE_ID, null) ?: return null
         val access = prefs.getString(KEY_ACCESS_TOKEN, null) ?: return null
         val refresh = prefs.getString(KEY_REFRESH_TOKEN, null) ?: return null
-        return PendingUnregister(deviceId, DepartingSession(access, refresh, prefs.getLong(KEY_EXPIRES_AT, 0L)))
+        val baseUrl = prefs.getString(KEY_BASE_URL, null) ?: return null
+        return PendingUnregister(deviceId, DepartingSession(access, refresh, prefs.getLong(KEY_EXPIRES_AT, 0L), baseUrl))
     }
 
     /**
@@ -31,6 +32,7 @@ class PendingUnregisterPrefs internal constructor(private val prefs: SharedPrefe
             .putString(KEY_ACCESS_TOKEN, pending.session.accessToken)
             .putString(KEY_REFRESH_TOKEN, pending.session.refreshToken)
             .putLong(KEY_EXPIRES_AT, pending.session.accessExpiresAt)
+            .putString(KEY_BASE_URL, pending.session.baseUrl)
             .commit()
         if (!written) Log.w(TAG, "owed unregister not written to disk")
     }
@@ -41,6 +43,7 @@ class PendingUnregisterPrefs internal constructor(private val prefs: SharedPrefe
             .remove(KEY_ACCESS_TOKEN)
             .remove(KEY_REFRESH_TOKEN)
             .remove(KEY_EXPIRES_AT)
+            .remove(KEY_BASE_URL)
             .commit()
         if (!written) Log.w(TAG, "owed unregister not removed from disk")
     }
@@ -50,7 +53,8 @@ class PendingUnregisterPrefs internal constructor(private val prefs: SharedPrefe
         const val KEY_ACCESS_TOKEN = "departing_access_token"
         const val KEY_REFRESH_TOKEN = "departing_refresh_token"
         const val KEY_EXPIRES_AT = "departing_expires_at"
-        val KEYS = setOf(KEY_DEVICE_ID, KEY_ACCESS_TOKEN, KEY_REFRESH_TOKEN, KEY_EXPIRES_AT)
+        const val KEY_BASE_URL = "departing_base_url"
+        val KEYS = setOf(KEY_DEVICE_ID, KEY_ACCESS_TOKEN, KEY_REFRESH_TOKEN, KEY_EXPIRES_AT, KEY_BASE_URL)
         private const val TAG = "PendingUnregisterPrefs"
     }
 }

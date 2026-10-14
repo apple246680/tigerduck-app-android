@@ -28,7 +28,7 @@ class PendingUnregisterPrefsTest {
 
     @Test
     fun `what is owed reads back after a restart, and is gone once cleared`() {
-        PendingUnregisterPrefs(prefs).save(PendingUnregister("device-1", DepartingSession("access-1", "refresh-1", 42L)))
+        PendingUnregisterPrefs(prefs).save(PendingUnregister("device-1", DepartingSession("access-1", "refresh-1", 42L, "https://backend.example/v3")))
 
         // A new instance over the same file, as the next launch has.
         val read = PendingUnregisterPrefs(prefs).load()
@@ -36,6 +36,7 @@ class PendingUnregisterPrefsTest {
         assertEquals("access-1", read?.session?.accessToken)
         assertEquals("refresh-1", read?.session?.refreshToken)
         assertEquals(42L, read?.session?.accessExpiresAt)
+        assertEquals("https://backend.example/v3", read?.session?.baseUrl)
 
         PendingUnregisterPrefs(prefs).clear()
         assertNull(PendingUnregisterPrefs(prefs).load())
@@ -43,7 +44,7 @@ class PendingUnregisterPrefsTest {
 
     @Test
     fun `a sign-out's clearing of the session leaves what is owed`() {
-        PendingUnregisterPrefs(prefs).save(PendingUnregister("device-1", DepartingSession("access-1", "refresh-1", 42L)))
+        PendingUnregisterPrefs(prefs).save(PendingUnregister("device-1", DepartingSession("access-1", "refresh-1", 42L, "https://backend.example/v3")))
 
         // What CredentialManager.clearNtustCredentials() removes of the session.
         prefs.edit()
@@ -59,7 +60,7 @@ class PendingUnregisterPrefsTest {
     // reset wipes the credentials.
 
     private fun owe() = PendingUnregisterPrefs(prefs)
-        .save(PendingUnregister("device-1", DepartingSession("access-1", "refresh-1", Long.MAX_VALUE)))
+        .save(PendingUnregister("device-1", DepartingSession("access-1", "refresh-1", Long.MAX_VALUE, "https://backend.example/v3")))
 
     @Test
     fun `the full reset's wipe keeps what is owed and takes every credential else`() {
@@ -86,9 +87,10 @@ class PendingUnregisterPrefsTest {
         val deletes = mutableListOf<String>()
         fun unregister() = DepartingDeviceUnregister(
             store = PendingUnregisterPrefs(prefs),
-            deleteDevice = { device, token -> deletes += "$device $token"; 204 },
+            deleteDevice = { _, device, token -> deletes += "$device $token"; 204 },
             refresh = { DepartingRefresh.Refused },
             hasSession = { tokens.refreshToken != null },
+            currentBaseUrl = { "https://backend.example/v3" },
             now = { 0L },
         )
 

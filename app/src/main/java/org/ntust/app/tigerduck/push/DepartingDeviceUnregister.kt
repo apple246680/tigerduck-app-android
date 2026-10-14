@@ -7,7 +7,9 @@ import kotlinx.coroutines.sync.withLock
 import org.ntust.app.tigerduck.auth.AuthTokenManager
 import org.ntust.app.tigerduck.auth.DepartingRefresh
 import org.ntust.app.tigerduck.auth.DepartingSession
+import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
+import org.ntust.app.tigerduck.network.resolveAnnouncementEndpoint
 import org.ntust.app.tigerduck.util.logSummary
 import java.io.IOException
 import javax.inject.Inject
@@ -41,9 +43,11 @@ interface PendingUnregisterStore {
 class DepartingDeviceUnregister internal constructor(
     private val store: PendingUnregisterStore,
     /** The HTTP status; throws [IOException] when no reply came back. */
-    private val deleteDevice: suspend (deviceId: String, accessToken: String) -> Int,
-    private val refresh: suspend (refreshToken: String) -> DepartingRefresh,
+    private val deleteDevice: suspend (base: String, deviceId: String, accessToken: String) -> Int,
+    private val refresh: suspend (DepartingSession) -> DepartingRefresh,
     private val hasSession: () -> Boolean,
+    /** The backend the app talks to now, which the API endpoint setting decides. */
+    private val currentBaseUrl: () -> String,
     private val now: () -> Long,
 ) {
     @Inject
@@ -51,11 +55,13 @@ class DepartingDeviceUnregister internal constructor(
         credentials: CredentialManager,
         api: PushApiClient,
         authTokenManager: AuthTokenManager,
+        prefs: AppPreferences,
     ) : this(
         store = credentials.pendingUnregister,
         deleteDevice = api::deleteDevice,
         refresh = authTokenManager::refreshDeparting,
         hasSession = { authTokenManager.isLoggedIn },
+        currentBaseUrl = { resolveAnnouncementEndpoint(prefs).url.trimEnd('/') },
         now = System::currentTimeMillis,
     )
 
@@ -79,6 +85,7 @@ class DepartingDeviceUnregister internal constructor(
             store.clear()
             return@withLock Outcome.DONE
         }
+        if (movedElsewhere(pending)) return@withLock Outcome.DONE
         val outcome = try {
             sendAs(pending)
         } catch (e: CancellationException) {
@@ -91,6 +98,23 @@ class DepartingDeviceUnregister internal constructor(
         outcome
     }
 
+    /**
+     * The API endpoint setting was changed since the sign-out: the tokens are dropped unsent,
+     * rather than handed to the backend it names now, which did not issue them. For the setting's
+     * own save, which re-registers the device at once.
+     */
+    suspend fun dropIfEndpointMoved() = mutex.withLock {
+        store.load()?.let(::movedElsewhere)
+    }
+
+    // Under the mutex. Clears [pending] when the endpoint is not the one it is owed to.
+    private fun movedElsewhere(pending: PendingUnregister): Boolean {
+        if (pending.session.baseUrl == currentBaseUrl()) return false
+        Log.w(TAG, "the API endpoint changed since the sign-out; the unregister is dropped")
+        store.clear()
+        return true
+    }
+
     private suspend fun sendAs(pending: PendingUnregister): Outcome {
         var current = pending
         var refreshed = false
@@ -98,11 +122,11 @@ class DepartingDeviceUnregister internal constructor(
             current = renew(current) ?: return afterFailedRefresh()
             refreshed = true
         }
-        var status = deleteDevice(current.deviceId, current.session.accessToken)
+        var status = deleteDevice(current.session.baseUrl, current.deviceId, current.session.accessToken)
         if (status == 401 && !refreshed) {
             // Turned down before its time, a revoked token, say: a refreshed one may still go out.
             current = renew(current) ?: return afterFailedRefresh()
-            status = deleteDevice(current.deviceId, current.session.accessToken)
+            status = deleteDevice(current.session.baseUrl, current.deviceId, current.session.accessToken)
         }
         return when {
             // 404: the device is not registered to the account any more.
@@ -121,7 +145,7 @@ class DepartingDeviceUnregister internal constructor(
 
     /** [pending] with a refreshed session, kept before it is used; null when the refresh failed. */
     private suspend fun renew(pending: PendingUnregister): PendingUnregister? {
-        val reply = refresh(pending.session.refreshToken)
+        val reply = refresh(pending.session)
         refreshUnavailable = reply == DepartingRefresh.Unavailable
         if (reply !is DepartingRefresh.Refreshed) return null
         // Kept before the DELETE: the server rotated the refresh token, and would take the one it

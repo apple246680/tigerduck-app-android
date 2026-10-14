@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit
  * "access-2" and "refresh-2".
  */
 internal class ScriptedBackend {
-    class Received(val endpoint: String, val authorization: String?, val body: String)
+    class Received(val endpoint: String, val authorization: String?, val body: String, val host: String = "")
 
     class Held {
         val arrived = CompletableDeferred<Unit>()
@@ -66,7 +66,7 @@ internal class ScriptedBackend {
     private fun answer(request: Request): Response {
         val endpoint = request.method + " " + request.url.encodedPath.removePrefix("/v3")
         val sent = request.body?.let { Buffer().also(it::writeTo).readUtf8() }.orEmpty()
-        received += Received(endpoint, request.header("Authorization"), sent)
+        received += Received(endpoint, request.header("Authorization"), sent, request.url.host)
         if (endpoint == "POST /auth/login") onLogin()
         val code = when (val next = queued[endpoint]?.poll()) {
             is Held -> {

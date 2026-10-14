@@ -40,25 +40,31 @@ class DepartingDeviceUnregisterTest {
     private val refreshReplies = ArrayDeque<DepartingRefresh>()
     private var signedInSince = false
 
+    /** The backend the API endpoint setting names now. */
+    private var endpoint = BACKEND
+
     private fun unregister() = DepartingDeviceUnregister(
         store = store,
-        deleteDevice = { device, token ->
+        deleteDevice = { base, device, token ->
+            assertEquals("the DELETE goes to the backend that issued the token", BACKEND, base)
             deletes += "$device $token"
             when (val reply = deleteReplies.removeFirstOrNull() ?: 204) {
                 is IOException -> throw reply
                 else -> reply as Int
             }
         },
-        refresh = { token ->
-            refreshes += token
+        refresh = { session ->
+            assertEquals("the refresh goes to the backend that issued the token", BACKEND, session.baseUrl)
+            refreshes += session.refreshToken
             refreshReplies.removeFirstOrNull() ?: DepartingRefresh.Refused
         },
         hasSession = { signedInSince },
+        currentBaseUrl = { endpoint },
         now = { now },
     )
 
     private fun session(access: String, refresh: String, expiresAt: Long) =
-        DepartingSession(access, refresh, expiresAt)
+        DepartingSession(access, refresh, expiresAt, BACKEND)
 
     private fun refreshed(access: String, refresh: String) =
         DepartingRefresh.Refreshed(session(access, refresh, now + 900_000))
@@ -166,5 +172,34 @@ class DepartingDeviceUnregisterTest {
         assertEquals(Outcome.DONE, unregister().send())
 
         assertEquals(emptyList<String>(), deletes)
+    }
+
+    // The API endpoint setting, which the next person on the phone can change
+
+    @Test
+    fun `a debt owed to one backend is dropped unsent once the endpoint names another`() = runTest {
+        owe(expiresAt = now - 1)
+        endpoint = "https://elsewhere.example/v3"
+
+        assertEquals(Outcome.DONE, unregister().send())
+
+        assertEquals(emptyList<String>(), refreshes)
+        assertEquals(emptyList<String>(), deletes)
+        assertNull(store.pending)
+    }
+
+    @Test
+    fun `changing the endpoint drops the debt at once, and keeping it does not`() = runTest {
+        owe()
+        unregister().dropIfEndpointMoved()
+        assertEquals("device-1", store.pending?.deviceId)
+
+        endpoint = "https://elsewhere.example/v3"
+        unregister().dropIfEndpointMoved()
+        assertNull(store.pending)
+    }
+
+    private companion object {
+        const val BACKEND = "https://backend.example/v3"
     }
 }

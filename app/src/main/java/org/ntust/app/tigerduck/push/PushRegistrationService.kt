@@ -501,6 +501,9 @@ class PushRegistrationService @Inject constructor(
      * about success once it stops.
      */
     suspend fun syncNow(): Boolean {
+        // Called when the API endpoint setting changes: an unregister owed to
+        // the backend it named before is dropped, not sent to the new one.
+        departingUnregister.dropIfEndpointMoved()
         val ok = performRegister()
         if (!ok) {
             // No "not signed in" case: signed out is a supported outcome now

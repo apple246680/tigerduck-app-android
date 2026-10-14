@@ -11,6 +11,11 @@ class DepartingSession(
     val refreshToken: String,
     /** When [accessToken] expires, epoch ms. */
     val accessExpiresAt: Long,
+    /**
+     * The backend that issued the tokens, as it was resolved at sign-out. They go back to it and
+     * nowhere else: the API endpoint setting can name another host by the time they are sent.
+     */
+    val baseUrl: String,
 )
 
 /** What [AuthTokenManager.refreshDeparting] got back. */

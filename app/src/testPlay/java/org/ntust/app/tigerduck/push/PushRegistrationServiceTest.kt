@@ -38,6 +38,7 @@ import org.ntust.app.tigerduck.data.preferences.clearAllButOwedUnregister
 import org.ntust.app.tigerduck.data.preferences.UiLanguageMonitor
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore
 import org.ntust.app.tigerduck.debug.DebugFixtureStore
+import org.ntust.app.tigerduck.network.resolveAnnouncementEndpoint
 import org.ntust.app.tigerduck.notification.BackgroundSyncWorker
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
@@ -110,6 +111,7 @@ class PushRegistrationServiceTest {
                 deleteDevice = PushApiClient(backend.client, prefs, auth)::deleteDevice,
                 refresh = auth::refreshDeparting,
                 hasSession = { auth.isLoggedIn },
+                currentBaseUrl = { resolveAnnouncementEndpoint(prefs).url.trimEnd('/') },
                 now = System::currentTimeMillis,
             ),
         )
@@ -319,6 +321,13 @@ class PushRegistrationServiceTest {
 
     // The sign-out's unregister
 
+    private fun departing() = DepartingSession(
+        "access-1",
+        "refresh-1",
+        accessExpiresAt = Long.MAX_VALUE,
+        baseUrl = resolveAnnouncementEndpoint(prefs).url.trimEnd('/'),
+    )
+
     private fun deleteEndpoint() = "DELETE /v3/devices/" + PushIdentity(prefs, context).uuid()
 
     private fun deletes() = backend.received(deleteEndpoint())
@@ -337,7 +346,7 @@ class PushRegistrationServiceTest {
         val service = service(signedIn = false)
         backend.answer(deleteEndpoint(), 503)
 
-        service.unregister(DepartingSession("access-1", "refresh-1", accessExpiresAt = Long.MAX_VALUE))
+        service.unregister(departing())
         awaitUntil { deletes().isNotEmpty() }
 
         assertEquals(listOf("Bearer access-1"), deletes().map { it.authorization })
@@ -349,7 +358,7 @@ class PushRegistrationServiceTest {
     fun `a sign-out's unregister the server takes leaves nothing owed`() = runTest {
         val service = service(signedIn = false)
 
-        service.unregister(DepartingSession("access-1", "refresh-1", accessExpiresAt = Long.MAX_VALUE))
+        service.unregister(departing())
         awaitUntil { owed.pending == null && deletes().isNotEmpty() }
 
         assertEquals(1, deletes().size)
@@ -364,7 +373,7 @@ class PushRegistrationServiceTest {
         val service = service(signedIn = false, owedStore = store)
         backend.answer(deleteEndpoint(), 503)
 
-        service.unregister(DepartingSession("access-1", "refresh-1", accessExpiresAt = Long.MAX_VALUE))
+        service.unregister(departing())
         awaitUntil { deletes().isNotEmpty() && unregisterWork().isNotEmpty() }
         // What the full reset runs after the sign-out: the sign-out's effects stop the
         // background sync, and CredentialManager.clearAll() wipes the credentials.
