@@ -99,6 +99,11 @@ class AuthService @Inject constructor(
 
     private val loginMutex = Mutex()
 
+    // Held by a sign-out while it drops the stored account and moves the sign-in generation, and
+    // by a sign-in while it checks that generation and stores what it got: one that started
+    // before a sign-out then keeps nothing.
+    private val accountLock = Any()
+
     // The automatic backend sign-in, after a refused refresh and whenever
     // something finds no session.
     private val storedAccountSignIn = StoredAccountSignIn(
@@ -137,6 +142,8 @@ class AuthService @Inject constructor(
             ssoLoginService.signIn(SSO_SERVICE_URL, studentId, password)
         },
         signInInteractively = { signIn -> authTokenManager.signInInteractively(signIn) },
+        signInGeneration = { authTokenManager.signInGeneration },
+        accountLock = accountLock,
         storedStudentId = { credentials.ntustStudentId },
         writeAccount = { studentId, password ->
             credentials.ntustStudentId = studentId
@@ -147,7 +154,18 @@ class AuthService @Inject constructor(
         demoSignIn = { studentId, password ->
             demoAccount.matches(studentId, password).also { matches -> if (matches) demoAccount.enter() }
         },
-        signInToLibrary = { studentId, password -> signInToLibrary(studentId, password) },
+        signInToLibrary = { studentId, password, generation ->
+            signInToLibrary(studentId, password, generation)
+        },
+        markSignedIn = { _authState.value = true },
+    )
+
+    private val librarySignIn = LibraryAfterSchoolSignIn(
+        tokenValid = { credentials.isLibraryTokenValid },
+        login = { studentId, password -> libraryService.login(studentId, password) },
+        signInGeneration = { authTokenManager.signInGeneration },
+        accountLock = accountLock,
+        dropLibrary = { credentials.clearLibraryCredentials() },
     )
 
     /**
@@ -186,13 +204,10 @@ class AuthService @Inject constructor(
             val outcome = typedSignIn.signIn(
                 normalizedId,
                 password,
-                showSignedIn = {
-                    // Before the class table can show: another account must not inherit what the
-                    // last one imported, whether imported while signed out or left by a wipe that
-                    // never ran.
-                    importedClassTables.accountDidSignIn(normalizedId)
-                    _authState.value = true
-                },
+                // Before the class table can show: another account must not inherit what the
+                // last one imported, whether imported while signed out or left by a wipe that
+                // never ran.
+                prepareSignedIn = { importedClassTables.accountDidSignIn(normalizedId) },
             ) { signIn, sameStudent ->
                 // Best-effort: v3 JWT login failures must not block the SSO
                 // session. The automatic sign-in tries again later; this one
@@ -262,13 +277,15 @@ class AuthService @Inject constructor(
         // No session to build: every caller then reads its cache, which is
         // where the demo data is.
         if (demoAccount.isActive) return@withLock false
+        // Before the credentials: a sign-out from here on keeps the library's sign-in below.
+        val generation = authTokenManager.signInGeneration
         val studentId = credentials.ntustStudentId ?: return@withLock false
         val password = credentials.ntustPassword ?: return@withLock false
 
         if (sessionManager.cookiesValid) return@withLock true
 
         try {
-            performSsoLoginUnlocked(studentId.trim().uppercase(), password)
+            performSsoLoginUnlocked(studentId.trim().uppercase(), password, generation)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -282,20 +299,22 @@ class AuthService @Inject constructor(
      * the lock once and delegate here, avoiding the deadlock that would happen
      * if one path called the other.
      */
-    private suspend fun performSsoLoginUnlocked(normalizedId: String, password: String): Boolean {
+    private suspend fun performSsoLoginUnlocked(normalizedId: String, password: String, generation: Int): Boolean {
         val success = ssoLoginService.ensureServiceLogin(SSO_SERVICE_URL, normalizedId, password)
-        if (success) signInToLibrary(normalizedId, password)
+        if (success) signInToLibrary(normalizedId, password, generation)
         return success
     }
 
-    /** The library sign-in after the school's, unless the library token is still good. */
-    private suspend fun signInToLibrary(normalizedId: String, password: String) {
-        if (credentials.isLibraryTokenValid) return
+    /**
+     * The library sign-in after the school's, unless the library token is still good. [generation]
+     * was read before the sign-in began: a sign-out since leaves none of what it stores.
+     */
+    private suspend fun signInToLibrary(normalizedId: String, password: String, generation: Int) {
         // Best-effort: library credentials may differ from NTUST SSO, so a
         // failure here must not fail the SSO login — but log it, otherwise
         // "library QR never works" is undiagnosable in the field.
         try {
-            libraryService.login(normalizedId, password)
+            librarySignIn.signIn(normalizedId, password, generation)
             // A library-only demo sign-in may still be standing in; see
             // [org.ntust.app.tigerduck.demo.DemoAccount.signOutLibrary].
             demoAccount.signOutLibrary()
@@ -313,9 +332,13 @@ class AuthService @Inject constructor(
         // own scope — so without a captured header the device-unregister call
         // would find no session to go out with, and leak the device row.
         val authHeader = authTokenManager.currentAuthHeader()
-        credentials.clearNtustCredentials()
-        credentials.clearLibraryCredentials()
-        authTokenManager.logout()
+        // One step for a sign-in under way, which checks the generation under the same lock
+        // before it stores anything: it either stores before this clears, or stores nothing.
+        synchronized(accountLock) {
+            credentials.clearNtustCredentials()
+            credentials.clearLibraryCredentials()
+            authTokenManager.logout()
+        }
         // A queued live_activity push, and an edit still waiting to be
         // confirmed, both belong to the account that is leaving. Neither may
         // reach whoever signs in next.

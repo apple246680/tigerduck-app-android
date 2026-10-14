@@ -14,24 +14,38 @@ import org.ntust.app.tigerduck.auth.AuthTokenManager.SignInAttempt
  * without it, never the refused password stored and unlatched: the school's acceptance lifts
  * nothing by itself (SsoLoginService.signIn).
  *
- * [signInToLibrary] comes next, before the account shows as signed in: the paired watch is sent
- * the library credentials the moment it does. The demo account ([demoSignIn]) signs in on the
- * device, stored the same way, with nothing sent anywhere.
+ * [signInToLibrary] comes next, before the account shows as signed in ([markSignedIn]): the
+ * paired watch is sent the library credentials the moment it does. The demo account
+ * ([demoSignIn]) signs in on the device, stored the same way, with nothing sent anywhere.
+ *
+ * A sign-out takes no sign-in lock, so it can land at any point, the moment the school answers
+ * included. The store and the account showing as signed in each happen only while
+ * [signInGeneration] is still the one read before the sign-in began, checked under [accountLock],
+ * which the sign-out holds while it drops the stored account and moves the generation: a sign-in
+ * a sign-out overtook stores nothing and shows nothing, and one it overtakes after the store has
+ * its account dropped by the sign-out itself.
  */
 internal class TypedAccountSignIn(
     private val schoolSignIn: suspend (studentId: String, password: String) -> Boolean,
     private val signInInteractively: suspend (
         signIn: suspend (signInGeneration: Int) -> SignInAttempt,
     ) -> Boolean,
+    /** [AuthTokenManager.signInGeneration], which a sign-out moves while it holds [accountLock]. */
+    private val signInGeneration: () -> Int,
+    /** Held by a sign-out while it drops the stored account and moves [signInGeneration]. */
+    private val accountLock: Any,
     private val storedStudentId: () -> String?,
     private val writeAccount: (studentId: String, password: String) -> Unit,
     private val latch: StoredPasswordLatch,
     /** Signs in on the device when these are the demo account's, and says whether they were. */
     private val demoSignIn: suspend (studentId: String, password: String) -> Boolean,
-    private val signInToLibrary: suspend (studentId: String, password: String) -> Unit,
+    /** The library's sign-in, with the generation read before this sign-in began. */
+    private val signInToLibrary: suspend (studentId: String, password: String, generation: Int) -> Unit,
+    /** Shows the account as signed in. */
+    private val markSignedIn: () -> Unit,
 ) {
     enum class Outcome {
-        /** The school did not take the credentials. */
+        /** The school did not take the credentials, or the account signed out meanwhile. */
         NOT_SIGNED_IN,
 
         /** Signed in with the school. */
@@ -42,36 +56,55 @@ internal class TypedAccountSignIn(
     }
 
     /**
-     * Signs in as [studentId] with [password]. [showSignedIn] makes the account show as signed in;
-     * [afterShown] runs the rest, with the generation read before the store and whether the
-     * account stored before was this one.
+     * Signs in as [studentId] with [password]. [prepareSignedIn] runs what must hold before the
+     * account shows as signed in; [afterShown] runs the rest once it does, with the generation
+     * read before the store and whether the account stored before was this one.
      */
     suspend fun signIn(
         studentId: String,
         password: String,
-        showSignedIn: suspend () -> Unit,
+        prepareSignedIn: suspend () -> Unit,
         afterShown: suspend (signInGeneration: Int, sameStudent: Boolean) -> SignInAttempt,
     ): Outcome {
+        val generation = signInGeneration()
         // Checked before anything goes out, so these credentials never reach NTUST.
         if (demoSignIn(studentId, password)) {
-            storeAccount(studentId, password)
-            showSignedIn()
+            if (!unlessSignedOutSince(generation) { storeAccount(studentId, password) }) {
+                return Outcome.NOT_SIGNED_IN
+            }
+            prepareSignedIn()
+            if (!unlessSignedOutSince(generation, markSignedIn)) return Outcome.NOT_SIGNED_IN
             return Outcome.DEMO
         }
         if (!schoolSignIn(studentId, password)) return Outcome.NOT_SIGNED_IN
+        var outcome = Outcome.NOT_SIGNED_IN
         signInInteractively { signIn ->
             // Read before it is overwritten: a stored Moodle token is this student's only if
             // the account stored was.
             val sameStudent = storedStudentId() == studentId
-            storeAccount(studentId, password)
+            if (!unlessSignedOutSince(generation) { storeAccount(studentId, password) }) {
+                return@signInInteractively SignInAttempt.NOTHING_TO_SEND
+            }
             // Cancelled from here on, the sign-in still leaves the password the school took,
             // with no refusal of the old one held against it.
-            signInToLibrary(studentId, password)
-            showSignedIn()
+            signInToLibrary(studentId, password, generation)
+            prepareSignedIn()
+            if (!unlessSignedOutSince(generation, markSignedIn)) {
+                return@signInInteractively SignInAttempt.NOTHING_TO_SEND
+            }
+            outcome = Outcome.SIGNED_IN
             afterShown(signIn, sameStudent)
         }
-        return Outcome.SIGNED_IN
+        return outcome
     }
+
+    /** Runs [block] under [accountLock] and says so, unless a sign-out has moved [generation]. */
+    private inline fun unlessSignedOutSince(generation: Int, block: () -> Unit): Boolean =
+        synchronized(accountLock) {
+            if (signInGeneration() != generation) return false
+            block()
+            true
+        }
 
     /**
      * Keeps [studentId] and [password] as the stored account and lifts the stored-password latch,

@@ -64,6 +64,24 @@ class TypedAccountSignInTest {
     /** The library's sign-in. */
     private var library: suspend () -> Unit = {}
 
+    /** Runs as the demo account signs in on the device. */
+    private var onDemo: () -> Unit = {}
+
+    /** The sign-in generation a sign-out moves, as AuthTokenManager's. */
+    private var generation = 0
+    private val accountLock = Any()
+    private var signedIn = false
+
+    /** What AuthService.logout does to what the sign-in reads and writes. */
+    private fun signOut() {
+        synchronized(accountLock) {
+            stored = null
+            generation++
+        }
+        latch.clear()
+        signedIn = false
+    }
+
     @Before
     fun setUp() {
         val context = RuntimeEnvironment.getApplication()
@@ -79,6 +97,8 @@ class TypedAccountSignInTest {
     private fun typedSignIn() = TypedAccountSignIn(
         schoolSignIn = { studentId, password -> school.signIn(SERVICE, studentId, password) },
         signInInteractively = { signIn -> signIn(GENERATION) == SignInAttempt.SIGNED_IN },
+        signInGeneration = { generation },
+        accountLock = accountLock,
         storedStudentId = { stored?.first },
         writeAccount = { studentId, password ->
             latchedAtStore = latch.rejection.value != null
@@ -86,17 +106,21 @@ class TypedAccountSignInTest {
             steps += "store"
         },
         latch = latch,
-        demoSignIn = { _, password -> password == DEMO_PASSWORD },
-        signInToLibrary = { _, _ ->
+        demoSignIn = { _, password -> (password == DEMO_PASSWORD).also { if (it) onDemo() } },
+        signInToLibrary = { _, _, _ ->
             steps += "library"
             library()
+        },
+        markSignedIn = {
+            signedIn = true
+            steps += "shown"
         },
     )
 
     private suspend fun signIn(password: String = NEW_PASSWORD) = typedSignIn().signIn(
         STUDENT,
         password,
-        showSignedIn = { steps += "shown" },
+        prepareSignedIn = {},
     ) { _, _ ->
         steps += "rest"
         SignInAttempt.SIGNED_IN
@@ -171,6 +195,42 @@ class TypedAccountSignInTest {
         assertEquals(STUDENT to DEMO_PASSWORD, stored)
         assertFalse(latch.isRejected)
         assertEquals(listOf("store", "shown"), steps)
+    }
+
+    @Test
+    fun `a sign-out as the school answers keeps the sign-in from storing anything`() = runTest {
+        // logout() takes no sign-in lock, so it can land between the school's answer and the store.
+        onPost = { signOut() }
+
+        val outcome = signIn()
+
+        assertEquals(TypedAccountSignIn.Outcome.NOT_SIGNED_IN, outcome)
+        assertEquals(null, stored)
+        assertEquals(emptyList<String>(), steps)
+        assertFalse(signedIn)
+    }
+
+    @Test
+    fun `a sign-out during the library sign-in keeps the account from showing as signed in`() = runTest {
+        library = { signOut() }
+
+        val outcome = signIn()
+
+        assertEquals(TypedAccountSignIn.Outcome.NOT_SIGNED_IN, outcome)
+        assertEquals(null, stored)
+        assertEquals(listOf("store", "library"), steps)
+        assertFalse(signedIn)
+    }
+
+    @Test
+    fun `a sign-out while the demo account signs in stores nothing`() = runTest {
+        onDemo = { signOut() }
+
+        val outcome = signIn(password = DEMO_PASSWORD)
+
+        assertEquals(TypedAccountSignIn.Outcome.NOT_SIGNED_IN, outcome)
+        assertEquals(null, stored)
+        assertFalse(signedIn)
     }
 
     private fun answer(request: Request): Response {
