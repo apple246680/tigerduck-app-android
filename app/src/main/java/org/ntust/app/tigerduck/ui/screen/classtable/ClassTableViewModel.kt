@@ -673,11 +673,6 @@ class ClassTableViewModel @Inject constructor(
     private fun lookupMoodleCourseId(idnumber: String): Int? =
         _moodleCourseIdByIdnumber.value[MoodleCourseIds.normalizedIdnumber(idnumber)]
 
-    fun clearSelection() {
-        _selectedCourse.value = null
-        selectedCourseSemester = null
-    }
-
     val existingCourseNos: Set<String>
         get() = _courses.value.map { it.courseNo }.toSet()
 
