@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -59,8 +60,15 @@ class ClassTableImportViewModel @Inject constructor(
      * this one is read in a new import, under whoever is signed in now.
      */
     fun openLink(text: String) {
-        viewModelScope.launch { _session.value = linkedImport(store, { _session.value }, ::newSession, text) }
+        pendingLink?.cancel()
+        val asOpened = sameSignIn({ authService.authState.value }, { authService.storedStudentId })
+        pendingLink = viewModelScope.launch {
+            linkedImport(store, { _session.value }, ::newSession, text, asOpened)?.let { _session.value = it }
+        }
     }
+
+    // A link still waiting for the store's first read; a sign-out calls it off with the import.
+    private var pendingLink: Job? = null
 
     private fun newSession() = ClassTableImportModel(
         store = store,
@@ -96,14 +104,20 @@ class ClassTableImportViewModel @Inject constructor(
             open: () -> ClassTableImportModel?,
             next: () -> ClassTableImportModel,
             text: String,
-        ): ClassTableImportModel {
+            stillCurrent: () -> Boolean = { true },
+        ): ClassTableImportModel? {
             store.load()
+            // Signed out, or someone else signed in, while the store was read: the link is dropped,
+            // as one that arrives signed out is.
+            if (!stillCurrent()) return null
             open()?.cancel()
             return next().also { it.scanned(text) }
         }
     }
 
     fun end() {
+        pendingLink?.cancel()
+        pendingLink = null
         _session.value?.cancel()
         _session.value = null
     }

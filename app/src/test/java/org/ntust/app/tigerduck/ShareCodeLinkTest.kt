@@ -76,7 +76,7 @@ class ShareCodeLinkTest {
 
     /** The import a link opens over [open], as MainActivity hands it over. */
     private suspend fun TestScope.openLink(link: String, open: ClassTableImportModel? = null, next: ClassTableImportModel = model()) =
-        ClassTableImportViewModel.linkedImport(store, { open }, { next }, take(link)!!)
+        ClassTableImportViewModel.linkedImport(store, { open }, { next }, take(link)!!)!!
 
     @Test
     fun `the code as written, in lower case and from the web page's button reach the decoder as the same code`() {
@@ -90,6 +90,23 @@ class ShareCodeLinkTest {
         // Passed on as it came: the decoder trims and upper-cases it itself.
         assertEquals(code, take(code))
         assertEquals(links[1], take(links[1]))
+    }
+
+    @Test
+    fun `a link whose account signs out while the store is read opens nothing`() = runTest {
+        val open = model()
+        var signedIn = true
+        val next = model()
+        val result = ClassTableImportViewModel.linkedImport(
+            store, { open }, { next }, take(links[0])!!,
+            // Signed out by the time the store's read is done.
+            stillCurrent = { signedIn.also { signedIn = false } && signedIn },
+        )
+        advanceUntilIdle()
+
+        assertEquals(null, result)
+        assertEquals(null, next.state.value.pending)
+        assertTrue(store.tables.value.people.isEmpty())
     }
 
     @Test
