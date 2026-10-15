@@ -19,7 +19,7 @@ import org.ntust.app.tigerduck.mail.store.MailCache
 import org.ntust.app.tigerduck.mail.store.MailStateStore
 import org.ntust.app.tigerduck.mail.sync.ExactAlarmAccess
 import org.ntust.app.tigerduck.mail.sync.MailBackgroundScheduler
-import org.ntust.app.tigerduck.notification.AppPermission
+import org.ntust.app.tigerduck.notification.NotificationChannels
 import org.ntust.app.tigerduck.notification.SystemPermissions
 import java.time.Instant
 import java.time.ZoneId
@@ -72,7 +72,7 @@ class SchoolMailSettingsViewModel @Inject constructor(
         val displayName: String,
         val canExactAlarm: Boolean,
         val diagnostics: List<String>,
-        /** The system blocks this app's notifications, so new mail could not be announced. */
+        /** The system blocks this app's notifications, or School Mail's channel, so new mail could not be announced. */
         val notificationsDenied: Boolean,
     )
 
@@ -128,7 +128,7 @@ class SchoolMailSettingsViewModel @Inject constructor(
         displayName = state.displayName.orEmpty(),
         canExactAlarm = exactAlarms.canScheduleExactAlarms(),
         diagnostics = state.diagnostics.mapNotNull(MailDiagnostics::format),
-        notificationsDenied = systemPermissions.state(AppPermission.NOTIFICATIONS).let { it.applicable && !it.granted },
+        notificationsDenied = systemPermissions.notificationsBlocked(NotificationChannels.SCHOOL_MAIL),
     )
 
     private companion object {

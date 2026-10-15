@@ -3,6 +3,7 @@ package org.ntust.app.tigerduck.notification
 import android.Manifest
 import android.app.ActivityManager
 import android.app.AlarmManager
+import android.app.NotificationManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -241,6 +242,24 @@ class SystemPermissions @Inject constructor(
      * and a tap that only asked would do nothing at all.
      */
     @ChecksSdkIntAtLeast(api = Build.VERSION_CODES.TIRAMISU)
+    /**
+     * Whether the system keeps [channelId]'s notifications from showing: the runtime permission
+     * not granted (Android 13 on), the app's notifications turned off in the system settings (on
+     * every version, which the permission alone does not cover), or that channel, or the group it
+     * is in, set to off. A channel not created yet is not blocked: it is created as it is first used.
+     */
+    fun notificationsBlocked(channelId: String): Boolean {
+        if (!isGranted(AppPermission.NOTIFICATIONS)) return true
+        // The app-wide switch and channels are both Android 8 on.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return true
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return false
+        val channel = manager.getNotificationChannel(channelId) ?: return false
+        if (channel.importance == NotificationManager.IMPORTANCE_NONE) return true
+        val group = channel.group?.let(manager::getNotificationChannelGroup)
+        return group?.isBlocked == true
+    }
+
     fun canPromptForNotifications(): Boolean =
         isApplicable(AppPermission.NOTIFICATIONS) &&
             !isGranted(AppPermission.NOTIFICATIONS) &&
