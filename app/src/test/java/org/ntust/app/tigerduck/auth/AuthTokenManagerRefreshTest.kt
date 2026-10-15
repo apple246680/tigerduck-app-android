@@ -40,6 +40,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import java.io.Closeable
+import java.io.IOException
+import java.net.ConnectException
 import java.net.InetAddress
 import java.net.NoRouteToHostException
 import java.net.ServerSocket
@@ -122,13 +124,28 @@ class AuthTokenManagerRefreshTest {
     fun `a pair whose commit fails is still used`() = runTest {
         // SharedPreferences holds an edit in memory before it writes the file, and a disk
         // that refused this write would refuse a relogin's pair or a clear as well.
-        file.failCommits = true
+        file.failCommitsOf = KEY_ACCESS_TOKEN
         val manager = manager(Reply.Pair("access-2", "refresh-2"))
 
         assertEquals("Bearer access-2", manager.authHeader())
 
         assertEquals(0, relogins)
         assertEquals("refresh-2", tokens.refreshToken)
+    }
+
+    @Test
+    fun `a send whose count the disk refuses does not go out`() = runTest {
+        // Counted in memory only, it would be forgotten by a restart.
+        file.failCommitsOf = KEY_REFRESH_TOKEN_SENDS
+        val manager = manager(Reply.Pair("access-2", "refresh-2"))
+
+        assertNull(manager.authHeader())
+
+        assertEquals(emptyList<String>(), sentRefreshTokens)
+        assertEquals(0, relogins)
+        assertEquals("refresh-1", tokens.refreshToken)
+        // Put back in memory too, so the next refresh does not take it as sent.
+        assertEquals(0, tokens.refreshTokenSends)
     }
 
     @Test
@@ -175,6 +192,24 @@ class AuthTokenManagerRefreshTest {
         assertEquals(listOf("refresh-1", "refresh-1"), sentRefreshTokens)
         assertEquals(1, relogins)
         assertNull(tokens.refreshToken)
+    }
+
+    @Test
+    fun `a resend the backend did not use leaves the pair its last send`() = runTest {
+        for (resend in listOf(Reply.Status(429), Reply.Unsent)) {
+            storePair(expiresAt = 0L)
+            val manager = manager(Reply.Lost, resend, Reply.Pair("access-2", "refresh-2"))
+
+            // Only the first send may have reached the backend.
+            assertNull("$resend", manager.authHeader())
+            assertEquals("$resend", 0, relogins)
+            assertEquals("$resend", "refresh-1", tokens.refreshToken)
+            assertEquals("$resend", 1, tokens.refreshTokenSends)
+            clock += 60_000
+
+            assertEquals("$resend", "Bearer access-2", manager.authHeader())
+            assertEquals("$resend", 0, relogins)
+        }
     }
 
     @Test
@@ -391,6 +426,22 @@ class AuthTokenManagerRefreshTest {
     }
 
     @Test
+    fun `OkHttp does not send a refresh again for a 503 that asks for it at once`() = runTest {
+        // OkHttp follows a 503 with Retry-After: 0 by sending the request again,
+        // whatever retryOnConnectionFailure says.
+        val unavailable = LoopbackReply("""{"detail":"error"}""", status = 503, headers = listOf("Retry-After: 0"))
+        LoopbackBackend(listOf(unavailable, LoopbackReply(pairJson("access-2", "refresh-2")))).use { backend ->
+            val manager = networkManager(backend.baseUrl)
+
+            assertNull(manager.authHeader())
+
+            assertEquals(listOf("refresh-1"), backend.refreshTokens)
+            assertEquals("refresh-1", tokens.refreshToken)
+            assertEquals(1, tokens.refreshTokenSends)
+        }
+    }
+
+    @Test
     fun `a refresh reply that comes back after a sign-out stores nothing`() = runTest {
         val manager = manager(Reply.Pair("access-2", "refresh-2"))
         onRefreshSent = { manager.logout() }
@@ -519,7 +570,9 @@ class AuthTokenManagerRefreshTest {
 
     @Test
     fun `no route to the host keeps the pair and pauses refreshes`() = runTest {
-        val manager = networkManager("http://127.0.0.1:9/v3") { socketFactory(UnroutableSocketFactory) }
+        val manager = networkManager("http://127.0.0.1:9/v3") {
+            socketFactory(FailingConnectSocketFactory { NoRouteToHostException("Host unreachable") })
+        }
 
         assertNull(manager.authHeader())
         clock += 59_000
@@ -529,6 +582,24 @@ class AuthTokenManagerRefreshTest {
         assertEquals(0, relogins)
         assertEquals("access-1", tokens.accessToken)
         assertEquals("refresh-1", tokens.refreshToken)
+    }
+
+    @Test
+    fun `a connect that times out keeps the pair uncounted and pauses refreshes`() = runTest {
+        // What a connect to a host that drops the packets raises once its timeout passes,
+        // the same exception as a read timeout after the token went out.
+        val manager = networkManager("http://127.0.0.1:9/v3") {
+            socketFactory(FailingConnectSocketFactory { SocketTimeoutException("failed to connect") })
+        }
+
+        assertNull(manager.authHeader())
+        clock += 59_000
+        assertNull(manager.authHeader())
+
+        assertEquals(1, calls.get())
+        assertEquals(0, relogins)
+        assertEquals("refresh-1", tokens.refreshToken)
+        assertEquals(0, tokens.refreshTokenSends)
     }
 
     @Test
@@ -642,6 +713,9 @@ class AuthTokenManagerRefreshTest {
         /** No reply reaches the phone, whether or not the backend rotated. */
         data object Lost : Reply
 
+        /** The request never leaves the phone: the connect is refused. */
+        data object Unsent : Reply
+
         data class Status(val code: Int) : Reply
     }
 
@@ -651,6 +725,11 @@ class AuthTokenManagerRefreshTest {
         return OkHttpClient.Builder()
             .addInterceptor { chain ->
                 val request = chain.request()
+                // Before the fake backend sees the request, as OkHttp raises it.
+                if (script.first() == Reply.Unsent) {
+                    script.removeFirst()
+                    throw ConnectException("Failed to connect")
+                }
                 if (request.url.encodedPath.endsWith("/auth/refresh")) {
                     val body = Buffer().also { request.body!!.writeTo(it) }.readUtf8()
                     sentRefreshTokens += JSONObject(body).getString("refresh_token")
@@ -660,6 +739,7 @@ class AuthTokenManagerRefreshTest {
                 }
                 when (val reply = script.removeFirst()) {
                     Reply.Lost -> throw SocketTimeoutException("timeout")
+                    Reply.Unsent -> error("raised above")
                     is Reply.Status -> answer(request, reply.code, """{"detail":"error"}""")
                     is Reply.Pair -> answer(request, 200, pairJson(reply.access, reply.refresh))
                 }
@@ -683,8 +763,16 @@ private fun pairJson(access: String, refresh: String, expiresIn: Int = 900) =
     """{"access_token":"$access","refresh_token":"$refresh","expires_in":$expiresIn,""" +
         """"device_id":"device-1"}"""
 
-/** One answer of [LoopbackBackend]: [body] with [status], each of its bytes [trickleMs] after the last. */
-private class LoopbackReply(val body: String, val status: Int = 200, val trickleMs: Long = 0)
+/**
+ * One answer of [LoopbackBackend]: [body] with [status] and any further [headers], each of its
+ * bytes [trickleMs] after the last.
+ */
+private class LoopbackReply(
+    val body: String,
+    val status: Int = 200,
+    val trickleMs: Long = 0,
+    val headers: List<String> = emptyList(),
+)
 
 /**
  * A plain-HTTP backend on the loopback address that answers each request with
@@ -743,6 +831,7 @@ private class LoopbackBackend(
                 val bytes = reply.body.toByteArray()
                 output.write(
                     ("HTTP/1.1 ${reply.status} Answer\r\nContent-Type: application/json\r\n" +
+                        reply.headers.joinToString("") { "$it\r\n" } +
                         "Content-Length: ${bytes.size}\r\n\r\n").toByteArray()
                 )
                 if (reply.trickleMs == 0L) output.write(bytes)
@@ -761,11 +850,10 @@ private class LoopbackBackend(
     override fun close() = server.close()
 }
 
-/** Hands out sockets whose connect fails as Android's does when the host is unreachable. */
-private object UnroutableSocketFactory : SocketFactory() {
+/** Hands out sockets whose connect fails with [failure], as Android's does when the host is unreachable or silent. */
+private class FailingConnectSocketFactory(private val failure: () -> IOException) : SocketFactory() {
     override fun createSocket(): Socket = object : Socket() {
-        override fun connect(endpoint: SocketAddress?, timeout: Int): Unit =
-            throw NoRouteToHostException("Host unreachable")
+        override fun connect(endpoint: SocketAddress?, timeout: Int): Unit = throw failure()
     }
 
     override fun createSocket(host: String?, port: Int): Socket = unconnectedOnly()
@@ -784,8 +872,8 @@ private class SavesRecorder(private val inner: SharedPreferences) : SharedPrefer
     val commits = mutableListOf<Set<String>>()
     var applies = 0
 
-    /** Reports each commit as failed, as a disk that refuses the write does, after the edit is in memory. */
-    var failCommits = false
+    /** Reports each commit that writes this key as failed, as a disk that refuses the write does, after the edit is in memory. */
+    var failCommitsOf: String? = null
 
     override fun edit(): SharedPreferences.Editor = Editor(inner.edit())
 
@@ -819,7 +907,7 @@ private class SavesRecorder(private val inner: SharedPreferences) : SharedPrefer
 
         override fun commit(): Boolean {
             commits += keys.toSet()
-            return editor.commit() && !failCommits
+            return editor.commit() && failCommitsOf.let { it == null || it !in keys }
         }
 
         override fun apply() {

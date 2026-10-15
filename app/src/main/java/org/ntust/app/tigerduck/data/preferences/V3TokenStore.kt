@@ -22,10 +22,14 @@ class V3TokenStore internal constructor(private val prefs: SharedPreferences) {
      */
     val refreshTokenSends: Int get() = prefs.getInt(KEY_REFRESH_TOKEN_SENDS, 0)
 
-    /** Stores the count of [refreshTokenSends], committed like [save] so a restart keeps it. */
-    fun saveRefreshTokenSends(count: Int) {
+    /**
+     * Stores the count of [refreshTokenSends], committed like [save] so a restart keeps it, and
+     * says whether the disk took it.
+     */
+    fun saveRefreshTokenSends(count: Int): Boolean {
         val written = prefs.edit().putInt(KEY_REFRESH_TOKEN_SENDS, count).commit()
         if (!written) Log.w(TAG, "refresh token send count not written to disk")
+        return written
     }
 
     /**

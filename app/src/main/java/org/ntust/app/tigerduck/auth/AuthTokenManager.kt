@@ -10,10 +10,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import okhttp3.Call
+import okhttp3.EventListener
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.BufferedSink
 import org.json.JSONObject
 import org.ntust.app.tigerduck.BuildConfig
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
@@ -23,7 +27,9 @@ import org.ntust.app.tigerduck.push.currentDeviceModel
 import org.ntust.app.tigerduck.util.logSummary
 import java.io.IOException
 import java.net.ConnectException
+import java.net.InetSocketAddress
 import java.net.NoRouteToHostException
+import java.net.Proxy
 import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.cancellation.CancellationException
@@ -56,9 +62,9 @@ class AuthTokenManager(
     var signInWithStoredAccount: (suspend (signInGeneration: Int) -> SignInAttempt)? = null
 
     // OkHttp sends a failed request again on its own, up to three sends of one
-    // refresh token in all, and the backend takes a third send as reuse. The
-    // timeout keeps the two sends [sendWithOneResend] makes inside the
-    // backend's 60 s grace.
+    // refresh token in all, and the backend takes a third send as reuse; for a
+    // reply that asks for a send again, see [oneShot]. The timeout keeps the
+    // two sends [sendWithOneResend] makes inside the backend's 60 s grace.
     private val refreshClient = httpClient.newBuilder()
         .retryOnConnectionFailure(false)
         .callTimeout(REFRESH_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -387,7 +393,7 @@ class AuthTokenManager(
                 refreshPausedAt = null
                 return outcome.accessToken
             }
-            RefreshOutcome.Unavailable -> {
+            RefreshOutcome.Unavailable, RefreshOutcome.Unused -> {
                 refreshPausedAt = now()
                 return null
             }
@@ -419,39 +425,51 @@ class AuthTokenManager(
      * pair it gave is unused the backend answers the old token once more with
      * a fresh pair, and takes any later send of it as reuse, so a resend that
      * fails too is a failed refresh, never a token kept for later. After a
-     * counted send the resend could be that later send.
+     * counted send the resend could be that later send. A resend the backend
+     * did not use ([RefreshOutcome.Unused]) leaves the token that send, kept
+     * for a later refresh.
      */
     private fun sendWithOneResend(refreshToken: String, sends: Int, signIn: Int): RefreshOutcome {
         val first = send(refreshToken, sends, signIn)
         val mayResend = sends + 1 < MAX_REFRESH_TOKEN_SENDS && signIn == signInGeneration
         if (first != RefreshOutcome.NoReply || !mayResend) return first
-        return send(refreshToken, sends + 1, signIn) as? RefreshOutcome.Refreshed ?: RefreshOutcome.Refused
+        return when (val second = send(refreshToken, sends + 1, signIn)) {
+            is RefreshOutcome.Refreshed, RefreshOutcome.Unused -> second
+            else -> RefreshOutcome.Refused
+        }
     }
 
     /**
      * Sends [refreshToken], counted on disk before it goes out, so a process
      * killed while it is out leaves it counted; [sendsBefore] is the count
-     * before it. A 429 and a send that never left the device put the count
-     * back, as the backend did not use the token.
+     * before it. A count the disk does not take keeps it from going out. A
+     * 429 and a send that never left the device put the count back, as the
+     * backend did not use the token.
      */
     private fun send(refreshToken: String, sendsBefore: Int, signIn: Int): RefreshOutcome {
         val json = JSONObject().apply {
             put("refresh_token", refreshToken)
         }
-        val body = json.toString().toRequestBody(jsonType)
+        val body = json.toString().toRequestBody(jsonType).oneShot()
         val request = Request.Builder()
             .url("$baseUrl/auth/refresh")
             .post(body)
             .build()
-        countSends(refreshToken, sendsBefore + 1, signIn)
+        if (!countSends(refreshToken, sendsBefore + 1, signIn)) {
+            // Counted in memory only, a restart would forget it; put back there too.
+            countSends(refreshToken, sendsBefore, signIn)
+            return RefreshOutcome.Unused
+        }
+        val progress = SendProgress()
         return try {
-            refreshClient.newCall(request).execute().use { response ->
+            refreshClient.newCall(request).apply { addEventListener(progress) }.execute().use { response ->
                 if (response.code == 429 || response.code >= 500) {
                     Log.w(TAG, "refresh got HTTP ${response.code}; keeping the tokens")
                     // The backend's limiter answers before the refresh runs. A
                     // 5xx may come from a gateway after the backend rotated.
-                    if (response.code == 429) countSends(refreshToken, sendsBefore, signIn)
-                    return@use RefreshOutcome.Unavailable
+                    if (response.code != 429) return@use RefreshOutcome.Unavailable
+                    countSends(refreshToken, sendsBefore, signIn)
+                    return@use RefreshOutcome.Unused
                 }
                 if (!response.isSuccessful) return@use RefreshOutcome.Refused
                 val result = JSONObject(response.body.string())
@@ -463,10 +481,10 @@ class AuthTokenManager(
                 RefreshOutcome.Refreshed(newAccess)
             }
         } catch (e: IOException) {
-            if (e.wasNeverSent()) {
+            if (e.wasNeverSent() || progress.failedBeforeWriting) {
                 Log.w(TAG, "refresh not sent: ${e.logSummary()}; keeping the tokens")
                 countSends(refreshToken, sendsBefore, signIn)
-                RefreshOutcome.Unavailable
+                RefreshOutcome.Unused
             } else {
                 Log.w(TAG, "refresh got no reply: ${e.javaClass.simpleName}")
                 RefreshOutcome.NoReply
@@ -476,18 +494,50 @@ class AuthTokenManager(
 
     // Only while [refreshToken] is still the account's stored token: a pair
     // stored since, by a sign-in or for the next account, has a count of its own.
-    private fun countSends(refreshToken: String, count: Int, signIn: Int) {
+    // False when the disk did not take the count.
+    private fun countSends(refreshToken: String, count: Int, signIn: Int): Boolean =
         synchronized(signInLock) {
-            if (generation == signIn && tokens.refreshToken == refreshToken) tokens.saveRefreshTokenSends(count)
+            generation != signIn || tokens.refreshToken != refreshToken || tokens.saveRefreshTokenSends(count)
         }
-    }
 
     // OkHttp 5 raises these before it writes the request: the DNS lookup's
     // UnknownHostException as is, and a refused or unreachable connect as a
     // ConnectException or NoRouteToHostException. A timeout or a reset may
-    // come after the token went out, so either stays a NoReply.
+    // come after the token went out, so either stays a NoReply unless the
+    // call's SendProgress saw it fail before writing the request.
     private fun IOException.wasNeverSent(): Boolean =
         this is UnknownHostException || this is ConnectException || this is NoRouteToHostException
+
+    /**
+     * What a refresh call got to before it failed. One that began to connect
+     * and failed before writing the request never sent the token: a connect
+     * timeout, to a host that drops the packets, raises the same
+     * SocketTimeoutException as a reply that never came.
+     */
+    private class SendProgress : EventListener() {
+        @Volatile private var connecting = false
+        @Volatile private var writing = false
+
+        val failedBeforeWriting: Boolean get() = connecting && !writing
+
+        override fun connectStart(call: Call, inetSocketAddress: InetSocketAddress, proxy: Proxy) {
+            connecting = true
+        }
+
+        override fun requestHeadersStart(call: Call) {
+            writing = true
+        }
+    }
+
+    // OkHttp sends a request again after some replies, whatever
+    // retryOnConnectionFailure says: a 503 with Retry-After: 0, and a 307 or a
+    // 308 with its body. It sends none whose body is one-shot.
+    private fun RequestBody.oneShot(): RequestBody = object : RequestBody() {
+        override fun contentType() = this@oneShot.contentType()
+        override fun contentLength() = this@oneShot.contentLength()
+        override fun writeTo(sink: BufferedSink) = this@oneShot.writeTo(sink)
+        override fun isOneShot() = true
+    }
 
     private sealed interface RefreshOutcome {
         // Not a data class, whose toString() would print the token.
@@ -497,11 +547,17 @@ class AuthTokenManager(
         data object NoReply : RefreshOutcome
 
         /**
-         * A 429 or a 5xx, or a send that never left the device: the token is
-         * kept for a later refresh. A 5xx is counted, as a gateway's may come
-         * after the backend rotated.
+         * A 5xx: the token is kept for a later refresh, and counted, as a
+         * gateway's may come after the backend rotated.
          */
         data object Unavailable : RefreshOutcome
+
+        /**
+         * A 429, or a send that never left the device or was not counted on
+         * disk: the backend did not use the token, which is kept for a later
+         * refresh without the send counted.
+         */
+        data object Unused : RefreshOutcome
 
         /** Anything else, a 401 among them: the app signs in again, as after every failed refresh before. */
         data object Refused : RefreshOutcome
