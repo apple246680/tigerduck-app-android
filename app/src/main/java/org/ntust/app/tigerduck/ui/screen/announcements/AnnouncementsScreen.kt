@@ -1,7 +1,5 @@
 package org.ntust.app.tigerduck.ui.screen.announcements
 
-import android.os.SystemClock
-import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -45,7 +43,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -82,9 +79,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -169,29 +163,12 @@ fun AnnouncementsScreen(
     // a bulletin -- and for a field that takes focus without a gesture having opened anything.
     searchReveal.pinned = searchFocused || state.searchText.isNotEmpty()
 
-    // A search left behind for more than five minutes in the background is cleared, so coming back
-    // later does not open on a stale filtered list; a quick switch to another app keeps it. The
-    // activity's own lifecycle, not this screen's: opening a bulletin stops the screen too.
-    val activityLifecycle = (LocalActivity.current as? LifecycleOwner)?.lifecycle
+    // A search the view model cleared on the app's return (see AnnouncementsViewModel.searchResets)
+    // takes the field's focus with it, so the keyboard does not come back up over the full list.
     val focusManager = LocalFocusManager.current
-    val currentViewModel by rememberUpdatedState(viewModel)
-    DisposableEffect(activityLifecycle) {
-        var backgroundedAt: Long? = null
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_STOP -> backgroundedAt = SystemClock.elapsedRealtime()
-                Lifecycle.Event.ON_START -> {
-                    if (bulletinSearchResets(backgroundedAt, SystemClock.elapsedRealtime())) {
-                        focusManager.clearFocus()
-                        currentViewModel.setSearch("")
-                    }
-                    backgroundedAt = null
-                }
-                else -> Unit
-            }
-        }
-        activityLifecycle?.addObserver(observer)
-        onDispose { activityLifecycle?.removeObserver(observer) }
+    val searchResets by viewModel.searchResets.collectAsStateWithLifecycle()
+    LaunchedEffect(searchResets) {
+        if (searchResets > 0) focusManager.clearFocus()
     }
 
     // Plain Box (not BoxWithConstraints) avoids SubcomposeLayout: the latter

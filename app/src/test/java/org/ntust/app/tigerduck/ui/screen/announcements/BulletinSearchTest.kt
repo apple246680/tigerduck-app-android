@@ -27,8 +27,7 @@ class BulletinSearchTest {
 
     @Test
     fun `the search resets only after more than five minutes away`() {
-        assertFalse(bulletinSearchResets(backgroundedAt = null, now = 1_000_000))
-        assertFalse(bulletinSearchResets(backgroundedAt = 0, now = 5 * 60_000L))
-        assertTrue(bulletinSearchResets(backgroundedAt = 0, now = 5 * 60_000L + 1))
+        assertFalse(bulletinSearchResets(awayMs = 5 * 60_000L))
+        assertTrue(bulletinSearchResets(awayMs = 5 * 60_000L + 1))
     }
 }

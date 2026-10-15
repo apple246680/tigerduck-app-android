@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.R
+import org.ntust.app.tigerduck.util.AppReturns
 import org.ntust.app.tigerduck.data.BulletinReadStateStore
 import org.ntust.app.tigerduck.data.BulletinRepository
 import org.ntust.app.tigerduck.data.RefreshPolicy
@@ -77,9 +78,8 @@ internal fun BulletinSummary.matchesSearch(text: String): Boolean =
 /** How long the app may sit in the background before the bulletin search is cleared on return. */
 internal const val BULLETIN_SEARCH_RESET_MS = 5 * 60_000L
 
-/** Whether coming back at [now] from the background entered at [backgroundedAt] clears the search. */
-internal fun bulletinSearchResets(backgroundedAt: Long?, now: Long): Boolean =
-    backgroundedAt != null && now - backgroundedAt > BULLETIN_SEARCH_RESET_MS
+/** Whether coming back after [awayMs] in the background clears the search. */
+internal fun bulletinSearchResets(awayMs: Long): Boolean = awayMs > BULLETIN_SEARCH_RESET_MS
 
 /**
  * Drives AnnouncementsScreen. Ports BulletinsViewModel.swift faithfully:
@@ -94,6 +94,7 @@ class AnnouncementsViewModel @Inject constructor(
     private val repository: BulletinRepository,
     private val readState: BulletinReadStateStore,
     private val prefs: AppPreferences,
+    appReturns: AppReturns,
 ) : ViewModel() {
 
 
@@ -144,9 +145,28 @@ class AnnouncementsViewModel @Inject constructor(
     )
     val state: StateFlow<State> = _state.asStateFlow()
 
+    /**
+     * Counts the searches cleared on the app's return ([BULLETIN_SEARCH_RESET_MS]), for the screen
+     * to drop the search field's focus along with its text.
+     */
+    private val _searchResets = MutableStateFlow(0)
+    val searchResets: StateFlow<Int> = _searchResets.asStateFlow()
+
     init {
         readState.readIds
             .onEach { ids -> _state.update { withDisplayed(it.copy(readIds = ids)) } }
+            .launchIn(viewModelScope)
+        // A search left behind for more than five minutes in the background is cleared, so coming
+        // back later does not open on a stale filtered list; a quick switch to another app keeps
+        // it. The whole app's coming and going, not the list screen's: the app can be left from a
+        // bulletin's own page, where the list is not on screen to notice.
+        appReturns.returns
+            .onEach { away ->
+                if (bulletinSearchResets(away) && _state.value.searchText.isNotEmpty()) {
+                    setSearch("")
+                    _searchResets.update { it + 1 }
+                }
+            }
             .launchIn(viewModelScope)
     }
 
