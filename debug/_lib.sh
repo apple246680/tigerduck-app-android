@@ -3,9 +3,12 @@
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Local non-CI builds redirect output to ~/.tigerduck-build/<module>/ — see
+# Local non-CI builds redirect output to ~/.tigerduck-build/<checkout>/<module>/,
+# <checkout> being this checkout's path under $HOME with / as _ — see
 # build.gradle.kts. CI / F-Droid keep the standard <module>/build/.
-LOCAL_BUILD_ROOT="$HOME/.tigerduck-build"
+CHECKOUT_KEY="$(cd "$ROOT_DIR" && pwd -P)"
+CHECKOUT_KEY="${CHECKOUT_KEY#"$HOME"/}"
+LOCAL_BUILD_ROOT="$HOME/.tigerduck-build/${CHECKOUT_KEY//\//_}"
 
 # Echo the absolute path to a module's outputs/ dir, accounting for the local
 # redirect. Usage: module_outputs_dir app  → /…/app/outputs (or app/build/outputs)
