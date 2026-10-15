@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.browser.customtabs.CustomTabsIntent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -37,5 +38,21 @@ class BulletinSourceLinkTest {
         val started = shadowOf(context).nextStartedActivity
         assertEquals(url, started.dataString)
         assertTrue(started.hasExtra(CustomTabsIntent.EXTRA_SESSION))
+    }
+
+    @Test
+    fun `a source that is not a web page opens nothing, whatever the setting`() {
+        listOf("javascript:alert(1)", "intent://x#Intent;scheme=x;end", "tel:0227333141", "file:///sdcard/x", "custom://open").forEach { href ->
+            listOf("system", "inApp").forEach { preference ->
+                openBulletinSource(context, href, preference)
+                assertNull("$href ($preference)", shadowOf(context).nextStartedActivity)
+            }
+        }
+    }
+
+    @Test
+    fun `an upper-case scheme is still a web page`() {
+        openBulletinSource(context, "HTTPS://www.ntust.edu.tw/", "system")
+        assertEquals(Intent.ACTION_VIEW, shadowOf(context).nextStartedActivity.action)
     }
 }

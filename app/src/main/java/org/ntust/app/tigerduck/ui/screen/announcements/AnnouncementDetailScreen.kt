@@ -302,9 +302,13 @@ private fun DetailBody(
 /**
  * Opens a bulletin's source page the way the link-opening setting says: in an in-app browser tab,
  * or in the system's default browser. A tab that cannot be launched falls back to the browser.
+ *
+ * Only a web page: the address comes from the bulletin feed, and handed to the system as it is,
+ * any other scheme could start whatever app claims it.
  */
 internal fun openBulletinSource(context: Context, url: String, browserPreference: String) {
     val uri = url.toUri()
+    if (uri.scheme?.lowercase() !in WEB_SCHEMES) return
     if (browserPreference == "inApp") {
         try {
             CustomTabsIntent.Builder().build().launchUrl(context, uri)
@@ -315,3 +319,5 @@ internal fun openBulletinSource(context: Context, url: String, browserPreference
     }
     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
 }
+
+private val WEB_SCHEMES = setOf("http", "https")
