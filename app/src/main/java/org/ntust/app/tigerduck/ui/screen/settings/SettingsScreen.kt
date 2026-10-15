@@ -49,6 +49,7 @@ import org.ntust.app.tigerduck.ui.BrowserPreference
 import org.ntust.app.tigerduck.ui.component.ContentCard
 import org.ntust.app.tigerduck.ui.component.PageHeader
 import org.ntust.app.tigerduck.ui.component.SectionHeader
+import org.ntust.app.tigerduck.sensor.FlipDetector
 import org.ntust.app.tigerduck.ui.component.TigerDuckDialog
 import org.ntust.app.tigerduck.ui.haptics.HapticScenario
 import org.ntust.app.tigerduck.ui.haptics.Haptics
@@ -130,8 +131,8 @@ fun SettingsScreen(
     val useEnglishCourseAbbreviation = viewModel.appState.useEnglishCourseAbbreviation
     val useEnglishClassroomAbbreviation = viewModel.appState.useEnglishClassroomAbbreviation
     val classroomMandarinDisplay = viewModel.appState.classroomMandarinDisplay
-    val libraryEnabled = viewModel.appState.libraryFeatureEnabled
     val appLanguage = viewModel.appState.appLanguage
+    val flipSensorSupported = remember(context) { FlipDetector.isSupported(context) }
     val shouldShowEnglishAbbreviationToggle = AppLanguageManager.isCourseApiEnglish(appLanguage)
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -169,7 +170,7 @@ fun SettingsScreen(
     // read, so the row follows a change made since (in the tab editor, or by
     // answering a page of this very replay).
     val configuredTabs = viewModel.appState.configuredTabs
-    val latestWhatsNew: WhatsNewFlow? = remember(whatsNewReplay, configuredTabs, libraryEnabled) {
+    val latestWhatsNew: WhatsNewFlow? = remember(whatsNewReplay, configuredTabs) {
         whatsNewReplay?.let { WhatsNewFlow.from(it, whatsNewCatalog, whatsNewSummaries) }
     }
     // The open sheet's page ids: fixed when the row is tapped and saved across
@@ -250,18 +251,16 @@ fun SettingsScreen(
                             onHighlightConsumed = { highlightNtustRow = false },
                         )
 
-                        if (libraryEnabled) {
-                            HorizontalDivider()
-                            AccountRow(
-                                title = stringResource(R.string.settings_account_library_system),
-                                isLoggedIn = isLibraryLoggedIn,
-                                subtitle = if (isLibraryLoggedIn) viewModel.libraryUsername else null,
-                                isLoggingIn = libIsLoggingIn,
-                                onLogin = { showLibraryLoginSheet = true },
-                                onLogout = { viewModel.logoutLibrary() },
-                                actionMinWidth = accountButtonMinWidth,
-                            )
-                        }
+                        HorizontalDivider()
+                        AccountRow(
+                            title = stringResource(R.string.settings_account_library_system),
+                            isLoggedIn = isLibraryLoggedIn,
+                            subtitle = if (isLibraryLoggedIn) viewModel.libraryUsername else null,
+                            isLoggingIn = libIsLoggingIn,
+                            onLogin = { showLibraryLoginSheet = true },
+                            onLogout = { viewModel.logoutLibrary() },
+                            actionMinWidth = accountButtonMinWidth,
+                        )
 
                         HorizontalDivider()
                         // Its own account (spec §7.1). A rejected password shows as
@@ -497,10 +496,14 @@ fun SettingsScreen(
             item {
                 ContentCard {
                     Column {
-                        SettingsLinkRow(stringResource(R.string.settings_library_related_features)) {
-                            onNavigateToLibrarySettings()
+                        // Its page holds only flip-to-library, so a phone
+                        // that cannot sense the flip leaves the row out.
+                        if (flipSensorSupported) {
+                            SettingsLinkRow(stringResource(R.string.settings_library_related_features)) {
+                                onNavigateToLibrarySettings()
+                            }
+                            HorizontalDivider()
                         }
-                        HorizontalDivider()
                         SettingsLinkRow(stringResource(R.string.school_mail_account_title)) {
                             onNavigateToSchoolMailSettings()
                         }
@@ -726,16 +729,6 @@ fun SettingsScreen(
                 viewModel.logoutNtust()
             },
             dismissText = stringResource(R.string.action_cancel),
-        )
-    }
-
-    if (viewModel.appState.pendingLibraryEnablePrompt) {
-        TigerDuckDialog(
-            onDismissRequest = { viewModel.appState.pendingLibraryEnablePrompt = false },
-            title = stringResource(R.string.settings_library_feature_disabled_title),
-            message = stringResource(R.string.settings_library_feature_disabled_message),
-            confirmText = stringResource(R.string.settings_acknowledged),
-            onConfirm = { viewModel.appState.pendingLibraryEnablePrompt = false },
         )
     }
 

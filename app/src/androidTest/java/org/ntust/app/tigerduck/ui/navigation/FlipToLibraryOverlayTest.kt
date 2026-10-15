@@ -32,8 +32,8 @@ import org.ntust.app.tigerduck.ui.theme.TigerDuckAppTheme
  * The flip gate leans on one platform fact: a dialog, a bottom sheet or a menu is a window of
  * its own that takes the input focus from the app's window. Robolectric does not model window
  * focus, so this checks it on a device. Each test opens a real overlay, waits for the activity's
- * window to lose the focus, fires a flip by hand, and checks that neither Library nor the
- * one-time prompt is reached until the overlay closes and the focus comes back.
+ * window to lose the focus, fires a flip by hand, and checks that Library is not reached until
+ * the overlay closes and the focus comes back.
  */
 @RunWith(AndroidJUnit4::class)
 class FlipToLibraryOverlayTest {
@@ -54,8 +54,6 @@ class FlipToLibraryOverlayTest {
     private var overlay by mutableStateOf(Overlay.NONE)
     private lateinit var navController: NavHostController
     private lateinit var windowInfo: WindowInfo
-    private var hasSeenFirstTrigger = true
-    private var firstTriggerRequests = 0
 
     private fun show() {
         rule.setContent {
@@ -66,10 +64,8 @@ class FlipToLibraryOverlayTest {
                 FlipToLibraryEffect(
                     navController = navController,
                     flipToLibraryEnabled = { true },
-                    libraryFeatureEnabled = { true },
-                    isLibraryLoggedIn = { true },
-                    hasSeenFirstTrigger = { hasSeenFirstTrigger },
-                    requestFirstTrigger = { firstTriggerRequests++ },
+                    signedInToLibrary = { true },
+                    stillSignedInToLibrary = { true },
                     onNavigated = {},
                     newSensor = { _, onFaceDown -> sensor.also { it.onFaceDown = onFaceDown } },
                 )
@@ -147,20 +143,6 @@ class FlipToLibraryOverlayTest {
 
     @Test
     fun aDialogTakesTheFocusAndHoldsTheFlipBack() = assertTheFlipWaitsFor(Overlay.DIALOG)
-
-    @Test
-    fun theOneTimePromptIsNotSpentWhileASheetIsOpen() {
-        hasSeenFirstTrigger = false
-        show()
-        open(Overlay.SHEET)
-        flip()
-        assertEquals(0, firstTriggerRequests)
-
-        close()
-        flip()
-        assertEquals(1, firstTriggerRequests)
-        assertEquals("the first flip explains rather than navigates", HOME, route())
-    }
 
     private companion object {
         const val HOME = "home"

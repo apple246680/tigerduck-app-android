@@ -43,8 +43,6 @@ class FlipToLibraryEffectTest {
     private lateinit var navController: NavHostController
     private lateinit var sensor: Sensor
     private var nowNanos = 0L
-    private var hasSeenFirstTrigger = true
-    private var firstTriggerRequests = 0
     private var haptics = 0
 
     @Before
@@ -62,10 +60,8 @@ class FlipToLibraryEffectTest {
             FlipToLibraryEffect(
                 navController = navController,
                 flipToLibraryEnabled = { true },
-                libraryFeatureEnabled = { true },
-                isLibraryLoggedIn = { true },
-                hasSeenFirstTrigger = { hasSeenFirstTrigger },
-                requestFirstTrigger = { firstTriggerRequests++ },
+                signedInToLibrary = { true },
+                stillSignedInToLibrary = { true },
                 onNavigated = { haptics++ },
             )
             if (withGraph) {
@@ -157,20 +153,6 @@ class FlipToLibraryEffectTest {
         composeRule.waitForIdle()
         flip()
         assertEquals(Screen.SchoolMailCompose.route, route())
-    }
-
-    @Test
-    fun `the one-time prompt is not spent on a flip over a dialog`() {
-        hasSeenFirstTrigger = false
-        show()
-        focusWindow(false)
-        flip()
-        assertEquals(0, firstTriggerRequests)
-
-        focusWindow(true)
-        flip()
-        assertEquals(1, firstTriggerRequests)
-        assertEquals("the first flip explains rather than navigates", "home", route())
     }
 
     @Test

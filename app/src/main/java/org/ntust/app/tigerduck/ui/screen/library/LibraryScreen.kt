@@ -149,6 +149,16 @@ fun LibraryScreen(
 
     LaunchedEffect(viewModel) { viewModel.load() }
 
+    // While this page shows, the flip-to-library offer waits: it would cover
+    // the code. It shows once the page is left. Counted from the back stack
+    // entry's lifecycle rather than from composition, which outlasts the
+    // page's time on top.
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val presence = viewModel.presenceObserver { activity?.isChangingConfigurations == true }
+        lifecycleOwner.lifecycle.addObserver(presence)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(presence) }
+    }
+
     // Key on `storedUsername` (a real StateFlow) instead of the plain
     // suggestedUsername getter — Compose can't observe a non-State property,
     // so keying on it doesn't re-init the field after a logout + sign-in

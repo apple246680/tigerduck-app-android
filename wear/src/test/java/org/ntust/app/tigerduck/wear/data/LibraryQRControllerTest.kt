@@ -115,6 +115,17 @@ class LibraryQRControllerTest {
         assertNotNull(controller.qrBitmap.value)
     }
 
+    @Test
+    fun `the same account with spaces around it keeps its code while it reloads`() {
+        answers += { "code" }
+        answers += { awaitCancellation() }
+        controller.start(64, accounts)
+
+        accounts.value = " b10000001 "
+
+        assertNotNull(controller.qrBitmap.value)
+    }
+
     /** Runs what is dispatched to it only when the test says, in order. */
     private class Queue : CoroutineDispatcher() {
         private val tasks = ArrayDeque<Runnable>()

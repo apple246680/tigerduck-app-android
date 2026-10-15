@@ -72,6 +72,12 @@ class TigerDuckApp : Application(), Configuration.Provider {
     @Inject
     lateinit var notificationChannels: NotificationChannelRegistrar
 
+    @Inject
+    lateinit var librarySession: org.ntust.app.tigerduck.library.LibrarySession
+
+    @Inject
+    lateinit var libraryService: org.ntust.app.tigerduck.shared.LibraryService
+
     // Injected so it exists from launch: it redraws the widgets on a change
     // of language itself, which no other launch path would start.
     @Inject
@@ -138,12 +144,27 @@ class TigerDuckApp : Application(), Configuration.Provider {
         }
         appScope.launch {
             authService.authState.collect {
+                // A school sign-in can sign in to the library too, and a
+                // school sign-out can take the library account with it.
+                librarySession.refresh()
                 wearBridge.publish()
                 // Auth state flips when SSO + library login finishes (or
                 // when logout clears creds), so this is also the right
                 // moment to (re)mirror the library credentials onto the
                 // paired watch.
                 wearBridge.publishLibraryCredentials()
+            }
+        }
+        // A sign-in with the stored library credentials, at a return to the app
+        // or behind the Library page, changes what Settings and the flip read.
+        // A refusal also takes the password off the watch.
+        appScope.launch {
+            libraryService.storedSignIns.collect { outcome ->
+                org.ntust.app.tigerduck.library.onStoredLibrarySignIn(
+                    outcome,
+                    librarySession,
+                    wearBridge::publishLibraryCredentials,
+                )
             }
         }
         // Mirror language changes to the watch so its UI follows the phone.

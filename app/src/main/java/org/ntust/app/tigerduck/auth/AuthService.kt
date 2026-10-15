@@ -137,6 +137,8 @@ class AuthService @Inject constructor(
     private val schoolSignIn = SchoolSignIn(
         libraryStore = credentials,
         libraryService = libraryService,
+        schoolAccount = { credentials.schoolAccountGeneration },
+        isSchoolAccount = credentials::isSchoolAccount,
         studentId = { credentials.ntustStudentId },
         password = { credentials.ntustPassword },
         sessionIsWarm = { sessionManager.cookiesValid },
@@ -184,13 +186,16 @@ class AuthService @Inject constructor(
 
     private val librarySignIn = LibraryAfterSchoolSignIn(
         tokenValid = { credentials.isLibraryTokenValid },
+        hasAccountOtherThan = libraryService::hasAccountOtherThan,
+        schoolAccount = { credentials.schoolAccountGeneration },
+        isSchoolAccount = credentials::isSchoolAccount,
+        libraryAccount = { credentials.libraryAccountGeneration },
         // An automatic sign-in: it yields to a library account the user signed in to meanwhile.
-        login = { studentId, password ->
-            libraryService.login(studentId, password, credentials.libraryAccountGeneration, byUser = false)
+        login = { studentId, password, libraryAccount, stillCurrent ->
+            libraryService.login(studentId, password, libraryAccount, byUser = false, stillCurrent)
         },
         signInGeneration = { authTokenManager.signInGeneration },
         accountLock = accountLock,
-        dropLibrary = { credentials.clearLibraryCredentials() },
     )
 
     /**
@@ -343,14 +348,13 @@ class AuthService @Inject constructor(
         // would find no session to go out with, and leak the device row.
         val authHeader = authTokenManager.currentAuthHeader()
         // A school mail account signed in as the same student goes with it, and its background
-        // checks and notifications stop; another student's stays. Before the clear below, which
-        // takes the student ID it is matched by.
+        // checks and notifications stop; another student's stays. Before the sign-out below,
+        // which takes the student ID it is matched by.
         credentials.ntustStudentId?.let { mailAccount.signOutIfSchoolAccount(it) }
         // One step for a sign-in under way, which checks the generation under the same lock
         // before it stores anything: it either stores before this clears, or stores nothing.
         synchronized(accountLock) {
-            credentials.clearNtustCredentials()
-            credentials.clearLibraryCredentials()
+            credentials.signOutSchoolAccount()
             authTokenManager.logout()
         }
         // A queued live_activity push, and an edit still waiting to be

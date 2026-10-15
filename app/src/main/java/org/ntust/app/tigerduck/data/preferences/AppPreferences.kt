@@ -503,6 +503,24 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
         get() = prefs.getBoolean("previousDefaultTabsChecked", false)
         set(value) = prefs.edit().putBoolean("previousDefaultTabsChecked", value).apply()
 
+    /**
+     * Set once this install has been through [LibraryTabAddMigration]. A flag
+     * rather than a [dataSchemaVersion] step, like [previousDefaultTabsChecked].
+     */
+    var libraryTabAddChecked: Boolean
+        get() = prefs.getBoolean("libraryTabAddChecked", false)
+        set(value) = prefs.edit().putBoolean("libraryTabAddChecked", value).apply()
+
+    /**
+     * The old library opt-in switch, read once and deleted: whether this
+     * install had the library on before it was always on.
+     */
+    fun takeLegacyLibraryOptIn(): Boolean {
+        val wasOn = prefs.getBoolean(LEGACY_LIBRARY_OPT_IN, false)
+        prefs.edit().remove(LEGACY_LIBRARY_OPT_IN).apply()
+        return wasOn
+    }
+
     var invertSliderDirection: Boolean
         get() = prefs.getBoolean("invertSliderDirection", false)
         set(value) = prefs.edit().putBoolean("invertSliderDirection", value).apply()
@@ -538,22 +556,29 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
         get() = prefs.getBoolean("analyticsEnabled", false)
         set(value) = prefs.edit().putBoolean("analyticsEnabled", value).apply()
 
-    var libraryFeatureEnabled: Boolean
-        get() = prefs.getBoolean("libraryFeatureEnabled", false)
-        set(value) = prefs.edit().putBoolean("libraryFeatureEnabled", value).apply()
-
-    // Defaults ON (matching iOS): the user discovers the gesture on their first
-    // accidental flip, where the first-trigger prompt explains it and offers to
-    // turn it off. The sensor still only runs while the parent Library feature
-    // is enabled, so a user with Library off pays no battery cost.
+    // Default off, as on the iPhone: the app offers it once a library account
+    // is signed in (FlipToLibraryPrompt). Until 2.5 it defaulted on, which
+    // FlipToLibraryDefaultOffMigration handles for an upgrade.
     var flipToLibraryEnabled: Boolean
-        get() = prefs.getBoolean("flipToLibraryEnabled", true)
-        set(value) = prefs.edit().putBoolean("flipToLibraryEnabled", value).apply()
+        get() = prefs.getBoolean(FLIP_TO_LIBRARY, false)
+        set(value) = prefs.edit().putBoolean(FLIP_TO_LIBRARY, value).apply()
+
+    /** Whether [flipToLibraryEnabled] was ever written, by its switch or by the prompt. */
+    val hasStoredFlipToLibrary: Boolean
+        get() = prefs.contains(FLIP_TO_LIBRARY)
+
+    /**
+     * Set once this install has been through `FlipToLibraryDefaultOffMigration`.
+     * A flag rather than a [dataSchemaVersion] step, like [previousDefaultTabsChecked].
+     */
+    var flipToLibraryDefaultOffChecked: Boolean
+        get() = prefs.getBoolean("flipToLibraryDefaultOffChecked", false)
+        set(value) = prefs.edit().putBoolean("flipToLibraryDefaultOffChecked", value).apply()
 
     // --- First-trigger prompts ---
     // One-shot "you just did X for the first time — keep it?" prompts, keyed by
     // a stable storage slug (see FirstTriggerPromptKey). The flag is written
-    // only when the user makes a Keep / Turn-off choice, never on mere display,
+    // only when the user taps one of the prompt's buttons, never on mere display,
     // so a prompt dismissed by any other path re-arms on the next trigger.
     override fun hasSeenFirstTriggerPrompt(storageKey: String): Boolean =
         prefs.getBoolean("firstTriggerPromptSeen.$storageKey", false)
@@ -1001,6 +1026,11 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
 
         /** Comma is safe: NTUST semester codes are `[0-9]{3}[12H]`. */
         private const val SEMESTER_LIST_DELIMITER = ","
+
+        /** The library opt-in switch's key, kept only to read it once (see [takeLegacyLibraryOptIn]). */
+        private const val LEGACY_LIBRARY_OPT_IN = "libraryFeatureEnabled"
+
+        private const val FLIP_TO_LIBRARY = "flipToLibraryEnabled"
 
         const val MIN_TUNABLE_HAPTIC_DURATION_MS = 5
         const val MAX_TUNABLE_HAPTIC_DURATION_MS = 60

@@ -42,9 +42,8 @@ import org.ntust.app.tigerduck.data.preferences.AppPreferences
 /**
  * 1x1 home-screen widget that deep-links straight to the library QR page.
  * The tap opens `tigerduck://library`, which MainActivity turns into the
- * [ROUTE_SENTINEL] route; MainNavigation resolves that at launch time so an
- * intervening feature-disable toggle always routes the user to Settings with
- * the enable-prompt instead of a dead Library screen.
+ * [ROUTE_SENTINEL] route; MainNavigation resolves that to the Library page
+ * at launch time.
  */
 class LibraryShortcutWidget(
     /** Where the settings come from: Hilt's, except in a test, which has no Hilt. */
