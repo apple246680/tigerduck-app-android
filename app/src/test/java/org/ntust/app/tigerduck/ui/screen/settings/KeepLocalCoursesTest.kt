@@ -290,6 +290,27 @@ class UseLocalCoursesTest {
     }
 
     @Test
+    fun `it reports the terms it reset once their upload landed, a failure's included`() = runTest {
+        // 1151 is reset and uploaded; 1142's reset lands, its upload fails;
+        // 1132 has nothing cached and is not reset. The course ignores follow
+        // the reset terms (tigerduck-app-android#307).
+        var uploads = 0
+        val server = object : CourseSyncBackend {
+            override suspend fun deleteAllCourses(semester: String) = Unit
+            override suspend fun uploadCourses(courses: List<Course>, semester: String) {
+                if (++uploads == 2) throw IOException("connection lost")
+            }
+            override suspend fun deleteCourse(courseKey: String) = Unit
+            override suspend fun patchCustomName(moodleId: String, name: String, locale: String) = Unit
+        }
+
+        val reset = run(server, "1151" to roster("CS1"), "1142" to roster("CS9"), "1132" to emptyList())
+
+        assertEquals(setOf("1151"), reset)
+        assertEquals("ask again", events.first { it == "ask again" })
+    }
+
+    @Test
     fun `its terms are latched for the requests, stamped, and only then released`() = runTest {
         run(Recording { events += "request" }, "1151" to roster("CS1"))
 

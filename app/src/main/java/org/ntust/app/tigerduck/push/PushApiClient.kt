@@ -311,19 +311,36 @@ class PushApiClient @Inject constructor(
         }
     }
 
+    private val assignmentUploads = UploadLedger(
+        store = object : UploadLedgerStore {
+            override val fingerprint: String? get() = prefs.assignmentsUploadFingerprint
+            override val acceptedAtMs: Long get() = prefs.assignmentsUploadedAtMs
+            override fun record(fingerprint: String, atMs: Long) {
+                prefs.assignmentsUploadFingerprint = fingerprint
+                prefs.assignmentsUploadedAtMs = atMs
+            }
+        },
+        clock = System::currentTimeMillis,
+    )
+
     /**
      * Fire-and-forget upload of the user's assignment list so the backend can
      * persist it for cross-device sync. Callers wrap this in `runCatching`
      * — a failure here must never block the normal fetch/save flow.
+     *
+     * A list the backend already accepted goes again only once it changes,
+     * or six hours on ([UploadLedger]); each upload defers the server's own
+     * Moodle sync by two hours. Pinned to the sign-in it starts under.
      */
     suspend fun uploadAssignments(
         assignments: List<Assignment>,
     ) = withContext(Dispatchers.IO) {
         if (!isSyncCapable || !prefs.syncAssignments) return@withContext
+        val signIn = authTokenManager.signInGeneration
         val iso8601 = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }
-        val items = assignments.map { a ->
+        val items = assignments.sortedBy { it.assignmentId.toIntOrNull() ?: 0 }.map { a ->
             mapOf(
                 "moodle_assignment_id" to (a.assignmentId.toIntOrNull() ?: 0),
                 "course_no" to a.courseNo,
@@ -335,16 +352,20 @@ class PushApiClient @Inject constructor(
                 "grade" to null,
             )
         }
-        val payload = mapOf("assignments" to items)
-        val body = gson.toJson(payload).toRequestBody(jsonType)
-        val request = Request.Builder()
-            .url("$baseUrl/sync/assignments/upload")
-            .post(body)
-            .addAuthHeader()
-            .build()
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw PushApiException("uploadAssignments failed: HTTP ${response.code}")
+        val json = gson.toJson(mapOf("assignments" to items))
+        assignmentUploads.sendIfDue(
+            fingerprint = uploadFingerprint(json),
+            isCurrent = { authTokenManager.signInGeneration == signIn },
+        ) {
+            val request = Request.Builder()
+                .url("$baseUrl/sync/assignments/upload")
+                .post(json.toRequestBody(jsonType))
+                .addAuthHeader(signIn)
+                .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw PushApiException("uploadAssignments failed: HTTP ${response.code}")
+                }
             }
         }
     }
