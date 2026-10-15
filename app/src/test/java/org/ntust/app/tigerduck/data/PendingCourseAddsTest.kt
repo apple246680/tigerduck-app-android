@@ -165,6 +165,34 @@ class PendingCourseAddsTest {
     }
 
     @Test
+    fun `a retry waiting behind an upload sends nothing once that upload retired the add`() = runTest {
+        cache.saveCourses(listOf(typed), term)
+        answer = { throw IOException("offline") }
+        adds.send(listOf(typed), term, typed.courseNo)
+        uploads.clear()
+
+        val sending = CompletableDeferred<Unit>()
+        val landed = CompletableDeferred<Unit>()
+        answer = {
+            sending.complete(Unit)
+            landed.await()
+            listOf("MA1010002")
+        }
+        val first = launch { adds.retry() }
+        sending.await()
+        // Read the add while it still waited, then queued behind the upload under way.
+        val second = launch { adds.retry() }
+        runCurrent()
+        answer = { listOf("MA1010002") }
+        landed.complete(Unit)
+        first.join()
+        second.join()
+
+        // Its stale force key would bring the course back past a delete made elsewhere meanwhile.
+        assertEquals(1, uploads.size)
+    }
+
+    @Test
     fun `an add whose course was deleted since is not sent again, though the cache still has it`() = runTest {
         cache.saveCourses(listOf(typed), term)
         answer = { throw IOException("offline") }

@@ -121,15 +121,19 @@ class PendingCourseAdds internal constructor(
         courses: List<Course>? = null,
     ): Boolean = sendMutex.withLock {
         if (generation != dataCache.userDataGeneration || signIn != signInGeneration()) return@withLock false
+        // Only adds still waiting: one an upload ahead of this one retired meanwhile must not go
+        // again, its force key lifting a delete made since.
+        val stillWaiting = waiting()[semester].orEmpty()
+        val requested = courseNos.filter { it in stillWaiting }
         val cached = dataCache.loadCourses(semester)
         val deleted = dataCache.loadDeletedCourseNos()
-        val held = courseNos.filter { no ->
+        val held = requested.filter { no ->
             cached.any { it.courseNo == no } && !CourseTombstoneKeys.isHidden(no, semester, deleted)
         }
         val accepted = if (held.isEmpty()) emptyList() else {
             upload(courses ?: cached.filter { it.courseNo in held }, semester, held, signIn)
         }
-        val done = courseNos - held.toSet() + accepted
+        val done = requested - held.toSet() + accepted
         if (done.isNotEmpty()) edit(generation) { it.without(semester, done) }
         true
     }

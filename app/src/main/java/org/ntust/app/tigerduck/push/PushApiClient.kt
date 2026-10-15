@@ -1,10 +1,12 @@
 package org.ntust.app.tigerduck.push
 
 import com.google.gson.Gson
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.Call
 import okhttp3.Request
 import org.json.JSONObject
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -371,6 +373,19 @@ class PushApiClient @Inject constructor(
     }
 
     /**
+     * The course upload's call, with a deadline for the whole of it. PendingCourseAdds holds its
+     * send lock through the upload, and a course delete or term reset waits on that lock: the
+     * client's per-read timeouts alone would let an answer trickled in byte by byte hold it.
+     */
+    internal fun uploadCall(request: Request): Call =
+        client.newCall(request).apply { timeout().timeout(UPLOAD_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS) }
+
+    companion object {
+        /** See [uploadCall]: longer than any upload of a term's courses takes. */
+        const val UPLOAD_CALL_TIMEOUT_SECONDS = 60L
+    }
+
+    /**
      * Upload the user's course list so the backend can persist it for
      * cross-device sync. Callers wrap this in `runCatching` — a failure here
      * must never block the normal fetch/save flow.
@@ -398,7 +413,7 @@ class PushApiClient @Inject constructor(
             .post(body)
             .addAuthHeader(signIn)
             .build()
-        client.newCall(request).execute().use { response ->
+        uploadCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 throw PushApiException("uploadCourses failed: HTTP ${response.code}")
             }
