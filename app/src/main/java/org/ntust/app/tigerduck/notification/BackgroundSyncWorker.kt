@@ -18,14 +18,15 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import org.ntust.app.tigerduck.AppConstants
 import org.ntust.app.tigerduck.academic.AcademicCalendarStore
+import org.ntust.app.tigerduck.academic.SemesterTerm
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
@@ -127,11 +128,10 @@ class BackgroundSyncWorker @AssistedInject constructor(
         // otherwise skip the fetch and report success.
         val retry = runAttemptCount > 0
         // And once a term, whatever the pages ask: see firstRunOfTerm.
-        val termStartMs = academicCalendar.current()
-            .currentTerm(AppClock.localDateTime().toLocalDate())
-            ?.start?.atStartOfDay(AppConstants.TAIPEI_ZONE)?.toInstant()?.toEpochMilli()
+        val today = AppClock.localDateTime().toLocalDate()
+        val term = academicCalendar.current().currentTerm(today)
         val coursesDue = triggered || retry ||
-            firstRunOfTerm(prefs.backgroundCoursesSyncedAtMs, termStartMs, now) ||
+            firstRunOfTerm(prefs.backgroundCoursesTerm, term, today) ||
             RefreshPolicies.coursesEvery?.let {
                 RefreshPolicy.hasPassed(prefs.backgroundCoursesSyncedAtMs, now, it)
             } == true
@@ -141,7 +141,11 @@ class BackgroundSyncWorker @AssistedInject constructor(
 
         val coursesOk = !coursesDue || syncCourses(studentId, password)
         if (authService.storedStudentId != studentId) return Result.success()
-        if (coursesDue && coursesOk) prefs.backgroundCoursesSyncedAtMs = now
+        if (coursesDue && coursesOk) {
+            prefs.backgroundCoursesSyncedAtMs = now
+            // The term the fetch covered, by the app's clock: see firstRunOfTerm.
+            if (term != null && !today.isBefore(term.start)) prefs.backgroundCoursesTerm = term.code
+        }
         val assignmentsOk = when {
             !assignmentsDue -> true
             // What the server announced may be a submission made elsewhere.
@@ -602,17 +606,14 @@ class BackgroundSyncWorker @AssistedInject constructor(
         }
 
         /**
-         * Whether a run fetches the timetable though no page asks it to: the
-         * term the app is on began after the last time a run fetched it
-         * ([coursesFetchedAtMs]), so that term's courses may never have been
-         * fetched at all. The class reminders and the Live Update read each
-         * day's courses from its own term, and arm nothing for a term with
-         * none cached. Once a term: the fetch moves the stamp past
-         * [termStartMs]. Not for a term yet to begin, which the calendar
-         * gives before its first term starts.
+         * Whether this is the first run in [term], by the app's clock ([today]), since courses were
+         * last fetched in [fetchedTerm]: the new term's courses may never have been fetched, and
+         * the reminders planned from them need them. Not for a term yet to begin, which the
+         * calendar gives before its first term starts. Compared by term code, not by time, so a
+         * debug clock moved into a later term still fetches it once and no more.
          */
-        internal fun firstRunOfTerm(coursesFetchedAtMs: Long, termStartMs: Long?, nowMs: Long): Boolean =
-            termStartMs != null && termStartMs <= nowMs && coursesFetchedAtMs < termStartMs
+        internal fun firstRunOfTerm(fetchedTerm: String?, term: SemesterTerm?, today: LocalDate): Boolean =
+            term != null && !today.isBefore(term.start) && fetchedTerm != term.code
 
         /**
          * What a run that could not fetch courses or assignments reports.
