@@ -7,6 +7,37 @@ import org.junit.Test
 class BulletinRepositoryListSessionTest {
 
     @Test
+    fun `a detail's own summary can be cleared when no list row has one`() {
+        val repo = BulletinRepository()
+        fun detail(summary: String?) = org.ntust.app.tigerduck.network.model.BulletinDetail(
+            id = 8, externalId = "e8", title = "T", titleClean = null, canonicalOrg = null,
+            importance = null, summary = summary, sourceUrl = null, postedAt = null,
+            bodyClean = null, bodyMd = null, rawPublisher = null,
+        )
+        repo.putDetail(detail("old"))
+        repo.putDetail(detail(null))
+
+        org.junit.Assert.assertNull(repo.summary(8)?.summary)
+    }
+
+    @Test
+    fun `a detail without a summary keeps the list row's`() {
+        val repo = BulletinRepository()
+        repo.putSummaries(listOf(org.ntust.app.tigerduck.network.model.BulletinSummary(
+            id = 7, externalId = "e7", title = "T", titleClean = null, canonicalOrg = null,
+            importance = null, summary = "列表摘要", sourceUrl = null, postedAt = null,
+        )))
+        repo.putDetail(org.ntust.app.tigerduck.network.model.BulletinDetail(
+            id = 7, externalId = "e7", title = "T", titleClean = null, canonicalOrg = null,
+            importance = null, summary = "  ", sourceUrl = null, postedAt = null,
+            bodyClean = null, bodyMd = null, rawPublisher = null,
+        ))
+
+        // The next open of the detail falls back to it when the detail has no body.
+        org.junit.Assert.assertEquals("列表摘要", repo.summary(7)?.summary)
+    }
+
+    @Test
     fun `there is no session before the first refresh`() {
         assertNull(BulletinRepository().listSession(includeDeleted = false))
     }

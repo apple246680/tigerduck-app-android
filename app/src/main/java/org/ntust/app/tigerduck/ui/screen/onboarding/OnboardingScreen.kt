@@ -11,6 +11,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -161,24 +162,21 @@ fun OnboardingScreen(
         scope.launch { pagerState.animateScrollToPage(page) }
     }
 
-    // System back: walk one page back inside onboarding; on page 0 fall
-    // through to the same two-press-to-exit pattern MainNavigation uses
+    // System back on page 0, where OnboardingStepNavigation hands it over
+    // (on the others it walks one page back): the same two-press-to-exit
+    // pattern MainNavigation uses
     // (we're rendered before MainNavigation, so its BackHandler isn't live
     // yet — duplicate the logic here so the UX is consistent).
     val context = LocalContext.current
     val backPressExitHint = stringResource(R.string.app_exit_confirm_toast)
     var lastBackPressMs by remember { mutableLongStateOf(0L) }
-    BackHandler(enabled = !showEndpointEditor) {
-        if (pagerState.currentPage > 0) {
-            goToPage(pagerState.currentPage - 1)
+    fun backOnFirstPage() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastBackPressMs < 2000L) {
+            (context as? Activity)?.finish()
         } else {
-            val now = SystemClock.elapsedRealtime()
-            if (now - lastBackPressMs < 2000L) {
-                (context as? Activity)?.finish()
-            } else {
-                lastBackPressMs = now
-                Toast.makeText(context, backPressExitHint, Toast.LENGTH_SHORT).show()
-            }
+            lastBackPressMs = now
+            Toast.makeText(context, backPressExitHint, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -197,8 +195,9 @@ fun OnboardingScreen(
         // Replaces the pager rather than layering over it: the editor owns a
         // Scaffold with its own top bar and back affordance. In the main app
         // system back is the NavHost's pop, so the editor has no BackHandler
-        // of its own; this one closes it, and the onboarding BackHandler
-        // above is disabled meanwhile so back doesn't page the hidden pager.
+        // of its own; this one closes it, and the pager's own
+        // (OnboardingStepNavigation) is not composed meanwhile, so back
+        // doesn't page the hidden pager.
         BackHandler { showEndpointEditor = false }
 
         // The editor's top bar takes no window insets of its own, because in
@@ -431,61 +430,22 @@ fun OnboardingScreen(
                         title = stringResource(R.string.onboarding_sign_in_title),
                         subtitle = stringResource(R.string.onboarding_sign_in_subtitle),
                         actions = {
-                            if (isSignedIn) {
-                                // The session survived the upgrade, so this
-                                // page is a confirmation rather than a form —
-                                // an upgrading user is never asked to type a
-                                // password they already gave this install.
-                                Button(
-                                    onClick = { goToPage(permissionsPageIndex) },
-                                    modifier = Modifier.fillMaxWidth(0.6f),
-                                ) { Text(stringResource(R.string.action_next)) }
-                            } else {
-                                // Ordered least-committal first: look at the
-                                // server, then repoint the app at a different
-                                // one, then give up and skip. A sign-in that
-                                // fails here has no other way to tell the user
-                                // whether the backend is the reason.
-                                TextButton(onClick = { openUrl(context, AppUrls.SERVER_STATUS) }) {
-                                    Text(stringResource(R.string.settings_check_server_status))
-                                }
-                                // Not while a sign-in is in flight: it would
-                                // repoint the backend mid-round-trip, and its
-                                // completion pages the hidden pager on.
-                                TextButton(
-                                    onClick = { showEndpointEditor = true },
-                                    enabled = !isLoggingIn,
-                                ) {
-                                    Text(stringResource(R.string.onboarding_custom_endpoint_button))
-                                }
-                                TextButton(onClick = { goToPage(permissionsPageIndex) }) {
-                                    Text(
-                                        stringResource(R.string.onboarding_skip_for_now),
-                                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = ContentAlpha.SECONDARY)
-                                    )
-                                }
-                                Button(
-                                    onClick = {
-                                        focusManager.clearFocus()
-                                        viewModel.login(studentId, password) {
-                                            password = ""
-                                            goToPage(permissionsPageIndex)
-                                        }
-                                    },
-                                    enabled = studentId.isNotBlank() && password.isNotBlank() && !isLoggingIn,
-                                    modifier = Modifier.fillMaxWidth(0.8f),
-                                ) {
-                                    if (isLoggingIn) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(20.dp),
-                                            strokeWidth = 2.dp,
-                                            color = MaterialTheme.colorScheme.onPrimary,
-                                        )
-                                    } else {
-                                        Text(stringResource(R.string.onboarding_sign_in_button))
+                            SignInPageActions(
+                                isSignedIn = isSignedIn,
+                                isLoggingIn = isLoggingIn,
+                                canSignIn = studentId.isNotBlank() && password.isNotBlank(),
+                                onCheckServerStatus = { openUrl(context, AppUrls.SERVER_STATUS) },
+                                onCustomEndpoint = { showEndpointEditor = true },
+                                onSkip = { goToPage(permissionsPageIndex) },
+                                onSignIn = {
+                                    focusManager.clearFocus()
+                                    viewModel.login(studentId, password) {
+                                        password = ""
+                                        goToPage(permissionsPageIndex)
                                     }
-                                }
-                            }
+                                },
+                                onNext = { goToPage(permissionsPageIndex) },
+                            )
                         },
                     ) {
                         Column(
@@ -625,33 +585,15 @@ fun OnboardingScreen(
                 ),
         )
 
-        // Navigation arrows. Forward is gated to pages already visited so
-        // per-page requirements (privacy/login) still apply on first
-        // traversal.
-        FilledTonalIconButton(
-            onClick = { goToPage(pagerState.currentPage - 1) },
-            enabled = pagerState.currentPage > 0,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 24.dp, bottom = 40.dp),
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = stringResource(R.string.action_back),
-            )
-        }
-        FilledTonalIconButton(
-            onClick = { goToPage(pagerState.currentPage + 1) },
-            enabled = canAdvanceFrom(pagerState.currentPage),
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 24.dp, bottom = 40.dp),
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                contentDescription = stringResource(R.string.action_next),
-            )
-        }
+        // Composed only while the pager shows: the endpoint editor has its
+        // own back.
+        OnboardingStepNavigation(
+            page = pagerState.currentPage,
+            canAdvance = canAdvanceFrom(pagerState.currentPage),
+            isLoggingIn = isLoggingIn,
+            onGoToPage = ::goToPage,
+            onBackOnFirstPage = ::backOnFirstPage,
+        )
 
         // Page indicator
         Row(
@@ -674,5 +616,130 @@ fun OnboardingScreen(
                 )
             }
         }
+    }
+}
+
+/**
+ * The sign-in page's buttons: Next once signed in, else the way out of a
+ * failing sign-in and the sign-in itself. Neither Next nor Skip while a
+ * sign-in runs: it cannot be stopped, so a student who skipped would be
+ * signed in anyway, and its completion would page the wizard on from
+ * wherever they had gone. The Settings sign-in sheet cannot be closed
+ * meanwhile either.
+ */
+@Composable
+internal fun SignInPageActions(
+    isSignedIn: Boolean,
+    isLoggingIn: Boolean,
+    canSignIn: Boolean,
+    onCheckServerStatus: () -> Unit,
+    onCustomEndpoint: () -> Unit,
+    onSkip: () -> Unit,
+    onSignIn: () -> Unit,
+    onNext: () -> Unit,
+) {
+    if (isSignedIn) {
+        // The session survived the upgrade, so this
+        // page is a confirmation rather than a form —
+        // an upgrading user is never asked to type a
+        // password they already gave this install. A sign-in
+        // here shows it too, once the school takes the password
+        // and while the rest of the sign-in, which then pages on
+        // by itself, still runs.
+        Button(
+            onClick = onNext,
+            enabled = !isLoggingIn,
+            modifier = Modifier.fillMaxWidth(0.6f),
+        ) { Text(stringResource(R.string.action_next)) }
+    } else {
+        // Ordered least-committal first: look at the
+        // server, then repoint the app at a different
+        // one, then give up and skip. A sign-in that
+        // fails here has no other way to tell the user
+        // whether the backend is the reason.
+        TextButton(onClick = onCheckServerStatus) {
+            Text(stringResource(R.string.settings_check_server_status))
+        }
+        // Not while a sign-in is in flight: it would
+        // repoint the backend mid-round-trip, and its
+        // completion pages the hidden pager on.
+        TextButton(
+            onClick = onCustomEndpoint,
+            enabled = !isLoggingIn,
+        ) {
+            Text(stringResource(R.string.onboarding_custom_endpoint_button))
+        }
+        TextButton(onClick = onSkip, enabled = !isLoggingIn) {
+            Text(
+                stringResource(R.string.onboarding_skip_for_now),
+                color = MaterialTheme.colorScheme.onBackground.copy(
+                    alpha = if (isLoggingIn) ContentAlpha.DISABLED else ContentAlpha.SECONDARY,
+                ),
+            )
+        }
+        Button(
+            onClick = onSignIn,
+            enabled = canSignIn && !isLoggingIn,
+            modifier = Modifier.fillMaxWidth(0.8f),
+        ) {
+            if (isLoggingIn) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                )
+            } else {
+                Text(stringResource(R.string.onboarding_sign_in_button))
+            }
+        }
+    }
+}
+
+/**
+ * The wizard's back and forward arrows, and system back, which walks one
+ * page back and hands page 0's press to [onBackOnFirstPage]. Forward is
+ * gated to pages already visited ([canAdvance]) so per-page requirements
+ * (privacy/login) still apply on first traversal. None of them moves while
+ * a sign-in runs, for the reason [SignInPageActions] gives; system back is
+ * taken and dropped then, rather than left to close the app.
+ */
+@Composable
+internal fun BoxScope.OnboardingStepNavigation(
+    page: Int,
+    canAdvance: Boolean,
+    isLoggingIn: Boolean,
+    onGoToPage: (Int) -> Unit,
+    onBackOnFirstPage: () -> Unit,
+) {
+    BackHandler {
+        when {
+            isLoggingIn -> Unit
+            page > 0 -> onGoToPage(page - 1)
+            else -> onBackOnFirstPage()
+        }
+    }
+    FilledTonalIconButton(
+        onClick = { onGoToPage(page - 1) },
+        enabled = page > 0 && !isLoggingIn,
+        modifier = Modifier
+            .align(Alignment.BottomStart)
+            .padding(start = 24.dp, bottom = 40.dp),
+    ) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+            contentDescription = stringResource(R.string.action_back),
+        )
+    }
+    FilledTonalIconButton(
+        onClick = { onGoToPage(page + 1) },
+        enabled = canAdvance && !isLoggingIn,
+        modifier = Modifier
+            .align(Alignment.BottomEnd)
+            .padding(end = 24.dp, bottom = 40.dp),
+    ) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+            contentDescription = stringResource(R.string.action_next),
+        )
     }
 }

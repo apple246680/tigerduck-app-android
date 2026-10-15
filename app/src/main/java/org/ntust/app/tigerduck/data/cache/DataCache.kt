@@ -591,6 +591,27 @@ class DataCache @Inject constructor(
             ?: emptyList()
     }
 
+    // --- Pending course adds (semester → course numbers) ---
+    // Courses added by hand whose upload the backend has not taken; see
+    // PendingCourseAdds, the only writer. A new file, so an older install
+    // simply has none; read tolerantly all the same.
+
+    /** False, and nothing written, when the data was wiped since [generation]. */
+    suspend fun savePendingCourseAdds(pending: Map<String, List<String>>, generation: Int? = null): Boolean =
+        saveToUserDataIf(pending, "pending_course_adds.json", generation ?: writeGeneration())
+
+    /** Null and blank entries are left out, and so is a term left with none. */
+    suspend fun loadPendingCourseAdds(): Map<String, List<String>> {
+        val type = object : TypeToken<Map<String, List<String?>?>>() {}.type
+        return loadFromUserData<Map<String?, List<String?>?>>(type, "pending_course_adds.json")
+            .orEmpty()
+            .mapNotNull { (semester, nos) ->
+                val kept = nos.orEmpty().filterNotNull().filter(String::isNotBlank)
+                if (semester.isNullOrBlank() || kept.isEmpty()) null else semester to kept
+            }
+            .toMap()
+    }
+
     // --- Score Report (per studentId) ---
 
     /**
@@ -871,6 +892,7 @@ class DataCache @Inject constructor(
                     "pending_course_ignores.json",
                     "marked_completed_assignments.json",
                     "unsent_marks.json",
+                    "pending_course_adds.json",
                     "deleted_courses.json",
                     "course_custom_names.json",
                     "selection_dropped.json",

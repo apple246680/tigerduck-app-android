@@ -10,8 +10,11 @@ import androidx.compose.animation.core.keyframes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -221,20 +224,52 @@ internal fun AccountRow(
         }
     }
 }
+/**
+ * A row's [label] and its [value]: side by side, the value at the end, while
+ * both fit on one line, and otherwise the value under the label. Kept at its
+ * full width beside the label, a long value squeezed the label at a large
+ * font size until it broke mid-word ("La / ng"), and the row cut off what
+ * no longer fitted its height.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun LabelAndValue(
+    label: String,
+    labelColor: Color,
+    modifier: Modifier = Modifier,
+    value: @Composable () -> Unit,
+) {
+    FlowRow(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            // The gap to a value beside it; at a line's end when the value goes under it.
+            modifier = Modifier.padding(end = 8.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = labelColor,
+        )
+        value()
+    }
+}
+
 @Composable
 internal fun SettingsRow(label: String, value: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(SettingRowHeight)
-            .padding(horizontal = 16.dp),
+            .heightIn(min = SettingRowHeight)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-        Text(
-            value, style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY)
-        )
+        LabelAndValue(label = label, labelColor = Color.Unspecified, modifier = Modifier.weight(1f)) {
+            Text(
+                value, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY)
+            )
+        }
     }
 }
 @Composable
@@ -323,41 +358,41 @@ internal fun SettingsPickerRow(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            label,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(
+        LabelAndValue(
+            label = label,
+            labelColor = MaterialTheme.colorScheme.onSurface.copy(
                 alpha = if (enabled) 1f else ContentAlpha.DISABLED,
             ),
-        )
-        Box {
-            Text(
-                value, style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(
-                    alpha = if (enabled) ContentAlpha.SECONDARY else ContentAlpha.DISABLED,
-                )
-            )
-
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                options.forEach { (key, display) ->
-                    DropdownMenuItem(
-                        text = { Text(display) },
-                        onClick = {
-                            onSelect(key)
-                            expanded = false
-                        },
-                        leadingIcon = {
-                            RadioButton(
-                                selected = selectedKey == key,
-                                onClick = null
-                            )
-                        }
+            modifier = Modifier.weight(1f),
+        ) {
+            Box {
+                Text(
+                    value, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(
+                        alpha = if (enabled) ContentAlpha.SECONDARY else ContentAlpha.DISABLED,
                     )
+                )
+
+                DropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    options.forEach { (key, display) ->
+                        DropdownMenuItem(
+                            text = { Text(display) },
+                            onClick = {
+                                onSelect(key)
+                                expanded = false
+                            },
+                            leadingIcon = {
+                                RadioButton(
+                                    selected = selectedKey == key,
+                                    onClick = null
+                                )
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -402,19 +437,19 @@ internal fun SettingsLinkRowWithValue(label: String, value: String, onClick: () 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(SettingRowHeight)
+            .heightIn(min = SettingRowHeight)
             .semantics(mergeDescendants = true) { role = Role.Button }
             .clickable { onClick() }
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-        Text(
-            value,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY),
-            maxLines = 1,
-        )
+        LabelAndValue(label = label, labelColor = Color.Unspecified, modifier = Modifier.weight(1f)) {
+            Text(
+                value,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY),
+            )
+        }
         Spacer(Modifier.width(8.dp))
         Icon(
             Icons.Filled.ChevronRight,

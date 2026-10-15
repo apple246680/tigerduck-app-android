@@ -135,14 +135,16 @@ class EmptyClassroomViewModel internal constructor(
     }
 
     /**
-     * Opens on the current period, or the next teaching day's first, the first time and after the
-     * day shown has passed; then loads the day.
+     * Opens on the current period, or the next teaching day's first, the first time, after the
+     * day shown has passed and once the period chosen today has ended; then loads the day. A
+     * pinned tab keeps this model, so a morning's period would otherwise stay into the afternoon.
+     * As iOS (tigerduck-app/tigerduck-app#533).
      */
     fun appear() {
         isStarted = true
         tick()
         val state = _state.value
-        if (!hasOpened || state.selectedDay < state.today) {
+        if (!hasOpened || state.selectedDay < state.today || state.selectedPeriod < state.endedPeriods) {
             val (day, period) = EmptyClassroomSchedule.opening(
                 state.now, EmptyClassroomSchedule.DAY_COUNT - 1, ::isTeachingDay,
             )

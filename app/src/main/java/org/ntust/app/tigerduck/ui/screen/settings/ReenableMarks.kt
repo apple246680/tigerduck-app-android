@@ -93,3 +93,14 @@ internal fun heldUntilAnswered(categories: Collection<String>): Set<String> =
     categories.filterTo(mutableSetOf()) { it in HELD_UNTIL_ANSWERED }
 
 private val HELD_UNTIL_ANSWERED = setOf("assignments", "course_colors", "course_names")
+
+/**
+ * The categories [pending] when the dialog over [answered] is answered that
+ * the dialog does not cover: switched back on while its check ran. The check
+ * that covers them started before the answer, which drops its result
+ * (`ReenableResolutions.isCurrent`), so they stay pending and are checked
+ * again once the answer has been applied. As iOS
+ * (tigerduck-app/tigerduck-app#602).
+ */
+internal fun unanswered(pending: Set<String>, answered: Collection<String>): Set<String> =
+    pending - answered.toSet()
