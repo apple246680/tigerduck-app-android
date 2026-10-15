@@ -239,7 +239,7 @@ class SchoolMailComposeViewModelTest {
             vm.setTo("a@x.tw")
             vm.send()
             assertTrue(vm.state.value.done)
-            assertNull("$outcome", notices.posted.value?.notice)
+            assertNull("$outcome", notices.posted?.notice)
         }
     }
 
@@ -259,7 +259,7 @@ class SchoolMailComposeViewModelTest {
             val s = vm.state.value
             assertTrue("$outcome still sent the mail", s.done)
             assertEquals("$outcome must never read as a failed send", null, s.error)
-            assertEquals("$outcome must say why the copy is missing", notice, notices.posted.value?.notice)
+            assertEquals("$outcome must say why the copy is missing", notice, notices.posted?.notice)
         }
         assertEquals(3, repo.sent.size)
     }
@@ -273,7 +273,7 @@ class SchoolMailComposeViewModelTest {
             notices.dismiss()
             if (vm.state.value.to.entries.isEmpty()) vm.setTo("a@x.tw")
             vm.send()
-            return notices.posted.value?.origin
+            return notices.posted?.origin
         }
         assertEquals(SentCopyOrigin.List, originAfterSending(vm(ComposeMode.NEW)))
         assertEquals(SentCopyOrigin.Message("INBOX", 5), originAfterSending(vm(ComposeMode.REPLY, "INBOX", 5)))
@@ -296,7 +296,7 @@ class SchoolMailComposeViewModelTest {
         repo.onSend = { account.signOut() }
         vm.send()
         assertTrue(vm.state.value.done)
-        assertNull(notices.posted.value)
+        assertNull(notices.posted)
     }
 
     @Test
@@ -310,7 +310,7 @@ class SchoolMailComposeViewModelTest {
         assertTrue(account.authFailed.value)
         assertTrue("the send still succeeded", vm.state.value.done)
         assertEquals(null, vm.state.value.error)
-        assertTrue(notices.posted.value?.notice is SentCopyNotice.Failed)
+        assertTrue(notices.posted?.notice is SentCopyNotice.Failed)
     }
 
     @Test

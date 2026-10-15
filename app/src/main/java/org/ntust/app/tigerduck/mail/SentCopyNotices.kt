@@ -5,14 +5,13 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.mail.smtp.SentCopy
-import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -60,38 +59,58 @@ class SentCopyNotices @Inject constructor(
     account: MailAccount,
     @ApplicationScope scope: CoroutineScope,
 ) {
-    private val _posted = MutableStateFlow<PostedSentCopyNotice?>(null)
-    val posted: StateFlow<PostedSentCopyNotice?> = _posted.asStateFlow()
+    /**
+     * The account's generation and the notice posted under it, as one value. [report] checks the
+     * one and publishes the other in a single compare-and-set, and the account changing moves the
+     * one and clears the other the same way, so the cleanup -- which runs on [scope]'s dispatcher,
+     * not the sender's -- lands before a report or after it, never between its check and its
+     * publication, where it used to leave the departing account's notice to the next sign-in.
+     */
+    private data class Posting(val generation: Int, val notice: PostedSentCopyNotice?)
 
-    private val generation = AtomicInteger()
+    private val posting = MutableStateFlow(Posting(0, null))
+
+    /** The notice last posted under the signed-in account, if any; a screen's own is [noticeFor]. */
+    val posted: PostedSentCopyNotice? get() = posting.value.notice
 
     /**
      * Moved each time the account changes. A send reads it as it starts and hands it to [report],
      * so a send the account left while it was going out reports nothing to the next one.
      */
-    val accountGeneration: Int get() = generation.get()
+    val accountGeneration: Int get() = posting.value.generation
 
     init {
         // Subscribed before this returns, as the repository's own sign-out collector is.
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
             merge(account.signOuts, account.studentChanges).collect {
-                generation.incrementAndGet()
-                _posted.value = null
+                posting.update { Posting(it.generation + 1, null) }
             }
         }
     }
 
+    /**
+     * Runs inside [report] once the account was found unchanged, before the notice is published:
+     * a test's seam for landing a sign-out exactly there. Null in the app.
+     */
+    internal var onReportChecked: (() -> Unit)? = null
+
     /** Posts [notice] for [origin], unless the account has changed since [accountGeneration] was read. */
     fun report(notice: SentCopyNotice, origin: SentCopyOrigin, accountGeneration: Int) {
-        if (accountGeneration == generation.get()) _posted.value = PostedSentCopyNotice(notice, origin)
+        posting.update { current ->
+            if (current.generation != accountGeneration) return@update current
+            onReportChecked?.invoke()
+            // Published only if nothing moved [posting] since [current] was read; an account that
+            // changed meanwhile fails this compare-and-set, and the next pass sees its generation.
+            current.copy(notice = PostedSentCopyNotice(notice, origin))
+        }
     }
 
     fun dismiss() {
-        _posted.value = null
+        posting.update { it.copy(notice = null) }
     }
 
     /** The notice for [origin]'s screen alone, kept current in [scope]. */
     fun noticeFor(origin: SentCopyOrigin, scope: CoroutineScope): StateFlow<SentCopyNotice?> =
-        posted.map { it?.takeIf { p -> p.origin == origin }?.notice }
-            .stateIn(scope, SharingStarted.Eagerly, posted.value?.takeIf { it.origin == origin }?.notice)
+        posting.map { it.notice?.takeIf { p -> p.origin == origin }?.notice }
+            .stateIn(scope, SharingStarted.Eagerly, posted?.takeIf { it.origin == origin }?.notice)
 }

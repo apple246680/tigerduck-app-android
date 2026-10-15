@@ -34,14 +34,14 @@ class SentCopyNoticesTest {
     @Test
     fun `a notice carries where the mail was sent from`() {
         report(SentCopyOrigin.Message("INBOX", 5))
-        assertEquals(PostedSentCopyNotice(SentCopyNotice.NoFolder, SentCopyOrigin.Message("INBOX", 5)), notices.posted.value)
+        assertEquals(PostedSentCopyNotice(SentCopyNotice.NoFolder, SentCopyOrigin.Message("INBOX", 5)), notices.posted)
     }
 
     @Test
     fun `signing out takes the notice with it`() {
         report()
         account.signOut()
-        assertNull(notices.posted.value)
+        assertNull(notices.posted)
     }
 
     @Test
@@ -50,14 +50,14 @@ class SentCopyNoticesTest {
         // Over the first student's account without a sign-out in between, as the sign-in sheet
         // shown after a rejected password allows.
         runBlocking { account.signIn("b10000002", "pw2") }
-        assertNull(notices.posted.value)
+        assertNull(notices.posted)
     }
 
     @Test
     fun `the same student signing in again keeps it`() {
         report()
         runBlocking { account.signIn("b10000001", "pw") }
-        assertEquals(SentCopyNotice.NoFolder, notices.posted.value?.notice)
+        assertEquals(SentCopyNotice.NoFolder, notices.posted?.notice)
     }
 
     @Test
@@ -65,6 +65,17 @@ class SentCopyNoticesTest {
         val generation = notices.accountGeneration
         account.signOut()
         notices.report(SentCopyNotice.Unknown, SentCopyOrigin.List, generation)
-        assertNull(notices.posted.value)
+        assertNull(notices.posted)
+    }
+
+    @Test
+    fun `a sign-out that lands while a notice is being published takes that notice with it too`() {
+        // In the app the cleanup runs on another dispatcher, so it can land between report's check
+        // of the account and its publication. Here it is made to land exactly there: the account
+        // was still the sender's when checked, and has left by the time the notice is published --
+        // which must not leave that notice on the next student's screens.
+        notices.onReportChecked = { account.signOut() }
+        report()
+        assertNull(notices.posted)
     }
 }
