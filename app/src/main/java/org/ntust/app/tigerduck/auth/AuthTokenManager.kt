@@ -42,6 +42,7 @@ class AuthTokenManager(
     private val prefs: AppPreferences,
     private val deviceUuid: String,
     private val now: () -> Long = System::currentTimeMillis,
+    signInCallTimeoutMs: Long = SIGN_IN_CALL_TIMEOUT_SECONDS * 1_000,
 ) {
     private val refreshMutex = Mutex()
     private val jsonType = "application/json".toMediaType()
@@ -61,6 +62,12 @@ class AuthTokenManager(
     private val refreshClient = httpClient.newBuilder()
         .retryOnConnectionFailure(false)
         .callTimeout(REFRESH_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .build()
+
+    // For the sign-in, which an automatic one makes under NonCancellable while
+    // callers wait on it; see SIGN_IN_CALL_TIMEOUT_SECONDS.
+    private val signInClient = httpClient.newBuilder()
+        .callTimeout(signInCallTimeoutMs, TimeUnit.MILLISECONDS)
         .build()
 
     // When a refresh last got a 429 or a 5xx, or could not be sent; read and
@@ -276,7 +283,7 @@ class AuthTokenManager(
             .url("$baseUrl/auth/login")
             .post(body)
             .build()
-        httpClient.newCall(request).execute().use { response ->
+        signInClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw AuthException("login failed: ${response.code}", response.code)
             val result = JSONObject(response.body.string())
             val accessToken = result.getString("access_token")
@@ -343,9 +350,9 @@ class AuthTokenManager(
         validTokenIfSignedIn(signIn)?.let { return it }
 
         // With the generation under the lock a sign-out takes, so the token is
-        // the account's that asked.
-        val refreshToken = synchronized(signInLock) {
-            if (generation == signIn) tokens.refreshToken else null
+        // the account's that asked; its count with it.
+        val (refreshToken, sends) = synchronized(signInLock) {
+            if (generation == signIn) tokens.refreshToken?.let { it to tokens.refreshTokenSends } else null
         } ?: return null
         // No header rather than the access token in its last seconds, which
         // would draw a 401, and Home answers a 401 with a relogin.
@@ -353,12 +360,19 @@ class AuthTokenManager(
         // Finishes even when the caller is cancelled: stopped between a send
         // and what follows it, a token the backend may have rotated would stay
         // on disk for the next refresh.
-        withContext(NonCancellable) { refreshAndSettle(refreshToken, signIn) }
+        withContext(NonCancellable) { refreshAndSettle(refreshToken, sends, signIn) }
     }
 
-    private suspend fun refreshAndSettle(refreshToken: String, signIn: Int): String? {
+    /** [sends]: the sends of [refreshToken] counted before this refresh; see [V3TokenStore.refreshTokenSends]. */
+    private suspend fun refreshAndSettle(refreshToken: String, sends: Int, signIn: Int): String? {
         val outcome = try {
-            withContext(Dispatchers.IO) { sendWithOneResend(refreshToken, signIn) }
+            if (sends >= MAX_REFRESH_TOKEN_SENDS) {
+                // Another send could be its third use: sign in again instead.
+                Log.w(TAG, "refresh token may have been used twice; signing in again")
+                RefreshOutcome.Refused
+            } else {
+                withContext(Dispatchers.IO) { sendWithOneResend(refreshToken, sends, signIn) }
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -397,21 +411,30 @@ class AuthTokenManager(
     }
 
     /**
-     * Sends [refreshToken], and once more at once if no reply came back and
-     * the account has not signed out since.
+     * Sends [refreshToken], and once more at once if no reply came back, no
+     * send before this refresh was counted ([sends]), and the account has not
+     * signed out since.
      *
-     * A send whose reply is lost may still have rotated the token. Within 60 s
-     * of a rotation the backend answers the old token once more with a fresh
-     * pair, and takes any later send of it as reuse, so a resend that fails
-     * too is a failed refresh, never a token kept for later.
+     * A send whose reply is lost may still have rotated the token. While the
+     * pair it gave is unused the backend answers the old token once more with
+     * a fresh pair, and takes any later send of it as reuse, so a resend that
+     * fails too is a failed refresh, never a token kept for later. After a
+     * counted send the resend could be that later send.
      */
-    private fun sendWithOneResend(refreshToken: String, signIn: Int): RefreshOutcome {
-        val first = send(refreshToken, signIn)
-        if (first != RefreshOutcome.NoReply || signIn != signInGeneration) return first
-        return send(refreshToken, signIn) as? RefreshOutcome.Refreshed ?: RefreshOutcome.Refused
+    private fun sendWithOneResend(refreshToken: String, sends: Int, signIn: Int): RefreshOutcome {
+        val first = send(refreshToken, sends, signIn)
+        val mayResend = sends + 1 < MAX_REFRESH_TOKEN_SENDS && signIn == signInGeneration
+        if (first != RefreshOutcome.NoReply || !mayResend) return first
+        return send(refreshToken, sends + 1, signIn) as? RefreshOutcome.Refreshed ?: RefreshOutcome.Refused
     }
 
-    private fun send(refreshToken: String, signIn: Int): RefreshOutcome {
+    /**
+     * Sends [refreshToken], counted on disk before it goes out, so a process
+     * killed while it is out leaves it counted; [sendsBefore] is the count
+     * before it. A 429 and a send that never left the device put the count
+     * back, as the backend did not use the token.
+     */
+    private fun send(refreshToken: String, sendsBefore: Int, signIn: Int): RefreshOutcome {
         val json = JSONObject().apply {
             put("refresh_token", refreshToken)
         }
@@ -420,10 +443,14 @@ class AuthTokenManager(
             .url("$baseUrl/auth/refresh")
             .post(body)
             .build()
+        countSends(refreshToken, sendsBefore + 1, signIn)
         return try {
             refreshClient.newCall(request).execute().use { response ->
                 if (response.code == 429 || response.code >= 500) {
                     Log.w(TAG, "refresh got HTTP ${response.code}; keeping the tokens")
+                    // The backend's limiter answers before the refresh runs. A
+                    // 5xx may come from a gateway after the backend rotated.
+                    if (response.code == 429) countSends(refreshToken, sendsBefore, signIn)
                     return@use RefreshOutcome.Unavailable
                 }
                 if (!response.isSuccessful) return@use RefreshOutcome.Refused
@@ -438,11 +465,20 @@ class AuthTokenManager(
         } catch (e: IOException) {
             if (e.wasNeverSent()) {
                 Log.w(TAG, "refresh not sent: ${e.logSummary()}; keeping the tokens")
+                countSends(refreshToken, sendsBefore, signIn)
                 RefreshOutcome.Unavailable
             } else {
                 Log.w(TAG, "refresh got no reply: ${e.javaClass.simpleName}")
                 RefreshOutcome.NoReply
             }
+        }
+    }
+
+    // Only while [refreshToken] is still the account's stored token: a pair
+    // stored since, by a sign-in or for the next account, has a count of its own.
+    private fun countSends(refreshToken: String, count: Int, signIn: Int) {
+        synchronized(signInLock) {
+            if (generation == signIn && tokens.refreshToken == refreshToken) tokens.saveRefreshTokenSends(count)
         }
     }
 
@@ -461,8 +497,9 @@ class AuthTokenManager(
         data object NoReply : RefreshOutcome
 
         /**
-         * A 429 or a 5xx, or a send that never left the device: the backend did
-         * not take the refresh, so the token is kept for a later one.
+         * A 429 or a 5xx, or a send that never left the device: the token is
+         * kept for a later refresh. A 5xx is counted, as a gateway's may come
+         * after the backend rotated.
          */
         data object Unavailable : RefreshOutcome
 
@@ -490,6 +527,11 @@ class AuthTokenManager(
         const val TAG = "AuthTokenManager"
         const val REFRESH_TIMEOUT_SECONDS = 20L
 
+        // The backend answers a refresh token twice at most: once, and again
+        // while the pair it gave is unused. It takes a third use for theft and
+        // revokes every session of the device.
+        const val MAX_REFRESH_TOKEN_SENDS = 2
+
         // The backend limits refreshes per IP over a minute.
         const val REFRESH_PAUSE_MS = 60_000L
     }
@@ -500,3 +542,13 @@ class AuthTokenManager(
  * backend's here, and the Moodle token renewal's SSO sign-in (MoodleTokenRenewal).
  */
 internal const val SIGN_IN_PAUSE_MS = 5 * 60_000L
+
+/**
+ * The deadline for each whole call of an automatic sign-in: the backend's sign-in here, and each
+ * step of the Moodle token harvest, its SSO sign-in among them (MoodleTokenService); the sign-in
+ * by hand makes the same calls. The clients time each read alone, so a server that trickles its
+ * answer could hold the sign-in, which runs under NonCancellable, and whoever waits on it, without
+ * end. A step takes a few seconds, redirects included; 30 s is above both clients' read timeouts
+ * (15 s and 20 s), so a step with one slow read they let through still ends in time.
+ */
+internal const val SIGN_IN_CALL_TIMEOUT_SECONDS = 30L
