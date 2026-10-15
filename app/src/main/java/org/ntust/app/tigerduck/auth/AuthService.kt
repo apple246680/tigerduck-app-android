@@ -186,13 +186,16 @@ class AuthService @Inject constructor(
 
     private val librarySignIn = LibraryAfterSchoolSignIn(
         tokenValid = { credentials.isLibraryTokenValid },
+        hasAccountOtherThan = libraryService::hasAccountOtherThan,
+        schoolAccount = { credentials.schoolAccountGeneration },
+        isSchoolAccount = credentials::isSchoolAccount,
+        libraryAccount = { credentials.libraryAccountGeneration },
         // An automatic sign-in: it yields to a library account the user signed in to meanwhile.
-        login = { studentId, password ->
-            libraryService.login(studentId, password, credentials.libraryAccountGeneration, byUser = false)
+        login = { studentId, password, libraryAccount, stillCurrent ->
+            libraryService.login(studentId, password, libraryAccount, byUser = false, stillCurrent)
         },
         signInGeneration = { authTokenManager.signInGeneration },
         accountLock = accountLock,
-        dropLibrary = { credentials.clearLibraryCredentials() },
     )
 
     /**
