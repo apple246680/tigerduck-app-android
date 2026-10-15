@@ -128,8 +128,14 @@ class FakeSchoolMailRepository : SchoolMailRepository {
 
     /** Thrown by [folders] -- the first call a list load makes. */
     var foldersError: MailError? = null
+    var foldersCalls = 0
+
+    /** While set, [folders] suspends on it after counting the call: a folder list still on its way. */
+    var foldersGate: CompletableDeferred<Unit>? = null
 
     override suspend fun folders(): ResolvedFolders {
+        foldersCalls++
+        foldersGate?.await()
         foldersError?.let { throw it }
         return resolved
     }

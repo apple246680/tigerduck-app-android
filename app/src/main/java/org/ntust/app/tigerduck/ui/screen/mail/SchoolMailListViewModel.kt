@@ -151,6 +151,9 @@ class SchoolMailListViewModel @Inject constructor(
     private var pollJob: Job? = null
     private var prefetchJob: Job? = null
 
+    /** The [load] in progress, so a second call -- Retry tapped twice, a pull -- waits on it instead of starting another. */
+    private var loadJob: Job? = null
+
     /**
      * True once a warm queue has run to the end, so a resume knows there is nothing left to warm.
      * Reset whenever a new queue is built, and whenever the account goes away.
@@ -178,6 +181,8 @@ class SchoolMailListViewModel @Inject constructor(
         viewModelScope.launch {
             account.signedIn.collect { signedIn ->
                 if (!signedIn) {
+                    loadJob?.cancel()
+                    loadJob = null
                     prefetchJob?.cancel()
                     prefetchJob = null
                     prefetchDone = false
@@ -191,7 +196,11 @@ class SchoolMailListViewModel @Inject constructor(
 
     fun load() {
         if (!account.signedIn.value) return
-        viewModelScope.launch {
+        if (loadJob?.isActive == true) return
+        // At once, not when the first page is asked for: the folder list comes first, and a failed
+        // state left up meanwhile is a Retry button that starts a second load.
+        _state.update { it.copy(loadState = LoadState.Loading) }
+        loadJob = viewModelScope.launch {
             try {
                 val folders = repository.folders()
                 val merged = FolderSelection.AllMail.MERGED.mapNotNull { folders.nameOf(it) }
@@ -330,9 +339,9 @@ class SchoolMailListViewModel @Inject constructor(
      * the background or from a mail, and mail that arrived meanwhile -- its notification perhaps
      * already in the shade -- should be on the list when it does. Not while a load is still
      * running, or has not run yet, and not within [RESUME_POLL_FRESH_MS] of a first page landing:
-     * that page already is the answer. Decided [RESUME_POLL_GRACE_MS] in rather than here, since
-     * coming back from a mail composes the list again, and the load that starts as it appears
-     * lands just after this call.
+     * that page already is the answer, and not while it has failed, which Retry is there for.
+     * Decided [RESUME_POLL_GRACE_MS] in rather than here, since coming back from a mail composes
+     * the list again, and the load that starts as it appears lands just after this call.
      */
     fun startPolling() {
         if (account.authFailed.value) return
@@ -360,7 +369,9 @@ class SchoolMailListViewModel @Inject constructor(
 
     private fun pollsOnResume(): Boolean {
         val s = _state.value
-        if (s.loadState is LoadState.Idle || s.loadState is LoadState.Loading) return false
+        // A failed list says so and offers Retry; a look of its own on every return would only
+        // repeat the failure as a toast over it.
+        if (s.loadState !is LoadState.Loaded) return false
         val landed = firstPageAt ?: return true
         return clock.now() - landed >= RESUME_POLL_FRESH_MS
     }
@@ -390,7 +401,11 @@ class SchoolMailListViewModel @Inject constructor(
     private suspend fun fetchFirstPage() {
         val selection = _state.value.selected
         val targets = _state.value.targets
-        if (targets.isEmpty()) return
+        if (targets.isEmpty()) {
+            // Nothing to read, so nothing still loading either.
+            _state.update { if (it.loadState is LoadState.Loading) it.copy(loadState = LoadState.Loaded) else it }
+            return
+        }
         _state.update { it.copy(loadState = LoadState.Loading) }
         try {
             val pages = targets.map { folder -> folder to repository.loadPage(folder, null) }

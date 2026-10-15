@@ -2,6 +2,7 @@
 
 package org.ntust.app.tigerduck.ui.screen.mail
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
@@ -334,6 +335,41 @@ class SchoolMailListViewModelTest {
         vm.refresh()
         assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Loaded)
         assertEquals(listOf(1L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `Retry while the folder list is still on its way starts no second load`() {
+        repo.add("INBOX", mailSummary(1))
+        repo.foldersError = MailError.Network()
+        vm.load()
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        repo.foldersError = null
+        val gate = CompletableDeferred<Unit>()
+        repo.foldersGate = gate
+        vm.refresh()
+        // The failed state, and its Retry, give way at once to the load.
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Loading)
+        vm.refresh()
+        vm.load()
+        assertEquals(2, repo.foldersCalls)
+        repo.foldersGate = null
+        gate.complete(Unit)
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Loaded)
+        assertEquals(listOf(1L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `coming back to a list that failed to load does not look at the inbox on its own`() {
+        repo.add("INBOX", mailSummary(1))
+        repo.loadError = MailError.Network()
+        vm.load()
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        val calls = repo.statusCalls
+        vm.startPolling()
+        main.dispatcher.scheduler.advanceTimeBy(SchoolMailListViewModel.RESUME_POLL_GRACE_MS + 1)
+        main.dispatcher.scheduler.runCurrent()
+        assertEquals(calls, repo.statusCalls)
+        vm.stopPolling()
     }
 
     @Test
