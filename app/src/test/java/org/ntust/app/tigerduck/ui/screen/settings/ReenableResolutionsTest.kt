@@ -69,6 +69,32 @@ class ReenableResolutionsTest {
     }
 
     @Test
+    fun `a category switched on while an answered dialog's check ran is checked once the answer is applied`() {
+        // As the Settings screens run them: each check reads the pending set as it starts.
+        val resolutions = ReenableResolutions()
+        var pending = setOf("courses")
+        val checked = mutableListOf<Set<String>>()
+        fun check(): Int? = resolutions.checkStarting { check() }?.also { checked += pending }
+
+        val first = check()!!
+        // Names switched back on while the courses check waits for the server.
+        pending = pending + "course_names"
+        val second = check()!!
+        // The courses check finds a difference, and its dialog is answered before the second returns.
+        assertTrue(resolutions.isCurrent(first))
+        val answered = listOf("courses")
+        val left = unanswered(pending, answered)
+        pending = heldUntilAnswered(answered) + left
+        resolutions.start()
+        if (left.isNotEmpty()) check()
+
+        assertFalse("the answer changed what the second compared", resolutions.isCurrent(second))
+        assertEquals(setOf("course_names"), pending)
+        resolutions.finish()
+        assertEquals(listOf(setOf("courses"), setOf("courses", "course_names"), setOf("course_names")), checked)
+    }
+
+    @Test
     fun `a check that does not wait leaves a Settings screen's waiting check in place`() {
         // The owed check a sync starts must not take the place of the one a
         // Settings screen left waiting, whose dialog it would then never show.
