@@ -5,11 +5,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -21,10 +20,9 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.first
 import org.ntust.app.tigerduck.library.FlipToLibrarySetting
 import org.ntust.app.tigerduck.sensor.FlipDetector
+import org.ntust.app.tigerduck.sensor.FlipSensor
 import org.ntust.app.tigerduck.ui.AppState
 import org.ntust.app.tigerduck.ui.firsttrigger.FirstTriggerPromptController
 import org.ntust.app.tigerduck.ui.firsttrigger.FirstTriggerPromptKey
@@ -48,8 +46,9 @@ import org.ntust.app.tigerduck.ui.haptics.Haptics
  * signs in again behind the code (tigerduck-app/tigerduck-app#528).
  *
  * Net effect: when the user flips the phone face-down with a valid library
- * session, the nav controller jumps to [Screen.Library]; a flip while already
- * on Library is a no-op.
+ * session, the nav controller jumps to [Screen.Library]; flips already on
+ * Library or with something in front of the page (see [FlipToLibraryGate])
+ * are silently no-op.
  */
 @Composable
 fun FlipToLibraryEffect(
@@ -69,14 +68,7 @@ fun FlipToLibraryEffect(
         ).firstTriggerPromptController()
     }
 
-    // Reading the Compose-state-backed switch and the sign-in here makes the
-    // enclosing composition observe changes, so the DisposableEffect below
-    // restarts when either changes.
     val signedIn by appState.librarySession.signedIn.collectAsStateWithLifecycle()
-    val armed = FlipToLibraryGate.isArmed(
-        enabled = appState.flipToLibraryEnabled,
-        signedInToLibrary = signedIn,
-    )
 
     // Asks once whether to turn the gesture on: right after a library sign-in,
     // or at a launch already signed in. Not over the Library page, where it
@@ -103,18 +95,47 @@ fun FlipToLibraryEffect(
         }
     }
 
-    // Cold-start race: MainNavigation installs this effect before NavHost
-    // declares its graph, so a flip during initial composition lands before
-    // navigate() has any destinations to route to. Dropping the callback
-    // would also strand the detector in FaceDown (it only fires once per
-    // Upright -> FaceDown transition), forcing the user to re-arm with a
-    // full upright -> face-down cycle before the next try would register.
-    // Queue the pending flip and consume it once the back stack appears.
-    var pendingFlip by remember(navController, appState) { mutableStateOf(false) }
+    FlipToLibraryEffect(
+        navController = navController,
+        flipToLibraryEnabled = { appState.flipToLibraryEnabled },
+        signedInToLibrary = { signedIn },
+        stillSignedInToLibrary = { appState.librarySession.refresh() },
+        onNavigated = { Haptics.perform(context, HapticScenario.FlipToLibrary) },
+    )
+}
+
+/**
+ * [FlipToLibraryEffect] with its app-wide state read through lambdas, so a
+ * test can drive a real detector, window and back stack without Hilt.
+ * [stillSignedInToLibrary] checks the sign-in again as a flip fires.
+ * [onNavigated] runs after a flip has opened Library (the haptic).
+ * [newSensor] builds the detector, or returns null where the phone has no
+ * sensor for it; an instrumented test passes one it can fire by hand.
+ *
+ * [flipToLibraryEnabled] and [signedInToLibrary] are also read during
+ * composition: they must read snapshot state, so a change re-registers the
+ * detector.
+ */
+@Composable
+internal fun FlipToLibraryEffect(
+    navController: NavController,
+    flipToLibraryEnabled: () -> Boolean,
+    signedInToLibrary: () -> Boolean,
+    stillSignedInToLibrary: () -> Boolean,
+    onNavigated: () -> Unit,
+    newSensor: (Context, onFaceDown: () -> Unit) -> FlipSensor? = ::flipDetectorIfSupported,
+) {
+    val context = LocalContext.current
+
+    val currentFlipEnabled by rememberUpdatedState(flipToLibraryEnabled)
+    val currentStillSignedIn by rememberUpdatedState(stillSignedInToLibrary)
+    val currentOnNavigated by rememberUpdatedState(onNavigated)
+    // The app window's; a dialog or sheet is a window of its own.
+    val windowInfo by rememberUpdatedState(LocalWindowInfo.current)
 
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val detector = remember(navController, appState) {
-        FlipDetector(context) {
+    val detector = remember(navController) {
+        newSensor(context) onFaceDown@{
             // Fire-time guards. All checks are synchronous and main-thread —
             // sensor callbacks deliver on the main thread by default. Re-checking
             // the switch closes the brief window where the user toggles
@@ -122,29 +143,36 @@ fun FlipToLibraryEffect(
             // DisposableEffect restarts and unregisters the detector. Only
             // someone who turned it on is listening, so a flip that passes
             // these opens Library straight away.
-            if (!appState.flipToLibraryEnabled) return@FlipDetector
-            if (!appState.librarySession.refresh()) return@FlipDetector
-            if (navController.currentBackStackEntry == null) {
-                pendingFlip = true
-                return@FlipDetector
-            }
-            navigateToLibrary(navController, context)
+            if (!currentFlipEnabled()) return@onFaceDown
+            if (!currentStillSignedIn()) return@onFaceDown
+            // Not over a dialog, a sheet or a mail draft: leaving the page
+            // drops what the user was in the middle of. Nothing is consumed,
+            // so the next flip with nothing open works.
+            if (!FlipToLibraryGate.mayNavigate(
+                    windowFocused = windowInfo.isWindowFocused,
+                    currentRoute = navController.currentDestination?.route,
+                )
+            ) return@onFaceDown
+            // No graph yet: dropped like any other ignored flip. This used to
+            // queue the flip for the graph to appear, but no flip can get here
+            // before it does. A flip fires at the earliest 800 ms of sensor
+            // events (two 400 ms debounce windows) after the detector registers,
+            // and the detector registers in the same frame that composes
+            // MainNavigation's NavHost, which sets the graph; the window
+            // focus the gate above requires also arrives only after that
+            // first frame.
+            if (navController.currentBackStackEntry == null) return@onFaceDown
+            if (navigateToLibrary(navController)) currentOnNavigated()
         }
-    }
+    } ?: return // No rotation-vector sensor on this phone.
 
-    if (pendingFlip) {
-        LaunchedEffect(Unit) {
-            snapshotFlow { navController.currentBackStackEntry }
-                .filterNotNull()
-                .first()
-            // Re-check gates at consume time — `enabled` and the session
-            // can change while the back stack is being built.
-            if (appState.flipToLibraryEnabled && appState.librarySession.refresh()) {
-                navigateToLibrary(navController, context)
-            }
-            pendingFlip = false
-        }
-    }
+    // Reading the Compose-state-backed switch and the sign-in here makes the
+    // enclosing composition observe changes, so the DisposableEffect below
+    // restarts when either changes.
+    val armed = FlipToLibraryGate.isArmed(
+        enabled = flipToLibraryEnabled(),
+        signedInToLibrary = signedInToLibrary(),
+    )
 
     DisposableEffect(armed, lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
@@ -166,12 +194,36 @@ fun FlipToLibraryEffect(
 }
 
 /**
- * Whether flip-to-library listens, and what its switch in Settings shows. The
- * flip opens the library's QR code, which needs a signed-in library account, so
- * until one is the switch reads off and takes no input; the choice it holds
- * comes back with the sign-in.
+ * Whether flip-to-library listens, what its switch in Settings shows, when it
+ * offers itself, and whether a flip may leave the current page.
+ *
+ * The flip opens the library's QR code, which needs a signed-in library
+ * account, so until one is the switch reads off and takes no input; the
+ * choice it holds comes back with the sign-in.
+ *
+ * The iPhone ignores the flip while a sheet or alert is presented, since the
+ * switch would drop whatever the user was in the middle of. Android has no
+ * "something is presented" flag, so [mayNavigate] asks whether the app's
+ * window has the input focus, which every window in front of it takes. That
+ * makes the flip do nothing, by design, whenever the app is visible but
+ * something else holds the focus:
+ *   - in split screen, a freeform or pop-up window, or DeX, while the other
+ *     app is the one last touched;
+ *   - while a system dialog is up: a permission prompt, the low-battery or
+ *     USB dialog, the share sheet;
+ *   - while the notification shade, an expanded bubble or an edge panel is
+ *     open.
+ * A heads-up notification, the volume panel, a toast and the keyboard take
+ * no focus, so a flip with one of them showing still works. Once the focus
+ * is back, the next flip (upright, then face down again) works.
  */
 internal object FlipToLibraryGate {
+    /**
+     * Pages the iPhone presents as a sheet, which the flip leaves alone
+     * there: the mail composer, whose draft would be dropped.
+     */
+    private val SHEET_ROUTES = setOf(Screen.SchoolMailCompose.route)
+
     fun isArmed(enabled: Boolean, signedInToLibrary: Boolean): Boolean = enabled && signedInToLibrary
 
     fun switchReadsOn(enabled: Boolean, signedInToLibrary: Boolean): Boolean = enabled && signedInToLibrary
@@ -197,15 +249,30 @@ internal object FlipToLibraryGate {
      */
     fun offerWaitsForPage(currentRoute: String?, startRoutePending: Boolean): Boolean =
         startRoutePending || currentRoute == null || currentRoute == Screen.Library.route
+
+    /**
+     * [windowFocused] is whether the app's own window has the focus. A
+     * dialog, a bottom sheet, a dropdown menu, a system permission prompt
+     * and the pulled-down notification shade are each a window of their
+     * own that takes it, so this one check covers them all, the way the
+     * iPhone asks UIKit whether anything is presented.
+     */
+    fun mayNavigate(windowFocused: Boolean, currentRoute: String?): Boolean =
+        windowFocused && currentRoute !in SHEET_ROUTES
 }
 
-private fun navigateToLibrary(navController: NavController, context: Context) {
+/** A [FlipDetector] where the phone has the sensor it reads, else nothing to register. */
+private fun flipDetectorIfSupported(context: Context, onFaceDown: () -> Unit): FlipSensor? =
+    if (FlipDetector.isSupported(context)) FlipDetector(context, onFaceDown) else null
+
+/** Whether it navigated: a flip on Library itself stays put, without the haptic. */
+private fun navigateToLibrary(navController: NavController): Boolean {
     val currentRoute = navController.currentDestination?.route
-    if (currentRoute == Screen.Library.route) return
+    if (currentRoute == Screen.Library.route) return false
     navController.navigate(Screen.Library.route) {
         launchSingleTop = true
     }
-    Haptics.perform(context, HapticScenario.FlipToLibrary)
+    return true
 }
 
 /**

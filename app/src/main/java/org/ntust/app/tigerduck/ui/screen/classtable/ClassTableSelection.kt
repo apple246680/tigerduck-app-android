@@ -10,10 +10,44 @@ package org.ntust.app.tigerduck.ui.screen.classtable
 import org.ntust.app.tigerduck.AppConstants
 import org.ntust.app.tigerduck.academic.QuietDays
 import org.ntust.app.tigerduck.shared.Course
+import org.ntust.app.tigerduck.shared.contiguousPeriodRuns
 import java.time.LocalDate
 import java.util.Calendar
 
 object ClassTableSelection {
+
+    /**
+     * The course the detail shows for [selected], as it is now, so a rename made from the detail
+     * shows at once: the copy in the term it was picked from. That is [courses], the grid's term,
+     * unless it was picked [fromAnotherTerm], the live term the today strip shows while the grid
+     * is on another, whose copy is in [liveCourses]; one course number can be in both. A course
+     * no longer listed keeps the copy that was picked.
+     */
+    fun detailCourse(
+        selected: Course?,
+        courses: List<Course>,
+        liveCourses: List<Course>,
+        fromAnotherTerm: Boolean,
+    ): Course? {
+        selected ?: return null
+        val term = if (fromAnotherTerm) liveCourses else courses
+        return term.firstOrNull { it.courseNo == selected.courseNo } ?: selected
+    }
+
+    /**
+     * The course a rename of [courseNo] is measured against: the grid term's copy, else the live
+     * term's, for a course picked from the today strip that the grid's term does not list.
+     */
+    fun renameTarget(courseNo: String, courses: List<Course>, liveCourses: List<Course>): Course? =
+        courses.firstOrNull { it.courseNo == courseNo } ?: liveCourses.firstOrNull { it.courseNo == courseNo }
+
+    /** [courses] with [courseNo]'s own name set to [name], or cleared with null. */
+    fun renamed(courses: List<Course>, courseNo: String, name: String?): List<Course> =
+        courses.map { if (it.courseNo == courseNo) it.copy(customCourseName = name) else it }
+
+    /** The detail's title: the user's own name for the course, else its [fullName], else its name. */
+    fun detailTitle(course: Course, fullName: String?): String =
+        course.customCourseName ?: fullName ?: course.displayName
 
     /** Weekday (Mon=1 … Sun=7) paired with minutes since midnight. */
     data class DayTime(val weekday: Int, val minuteOfDay: Int)
@@ -69,6 +103,19 @@ object ClassTableSelection {
         val first = AppConstants.PeriodTimes.mapping[periods.first()] ?: return null
         val last = AppConstants.PeriodTimes.mapping[periods.last()] ?: return null
         return "${first.first} - ${last.second}"
+    }
+
+    /**
+     * The block of [course] on [weekday] a today-carousel card stands for at [minuteOfDay]: the
+     * first not yet over, or the last once all are. A course meeting twice a day shows the
+     * afternoon block's times and room once the morning one ends. Null when it does not meet.
+     */
+    fun carouselBlock(course: Course, weekday: Int, minuteOfDay: Int): List<String>? {
+        val runs = contiguousPeriodRuns(course.schedule[weekday].orEmpty())
+        return runs.firstOrNull { run ->
+            val end = AppConstants.PeriodTimes.mapping[run.last()]?.second?.let(::minuteOfDay)
+            end == null || minuteOfDay <= end
+        } ?: runs.lastOrNull()
     }
 
     /**

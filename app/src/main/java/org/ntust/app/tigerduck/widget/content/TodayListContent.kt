@@ -24,30 +24,28 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import org.ntust.app.tigerduck.AppConstants
 import org.ntust.app.tigerduck.R
-import org.ntust.app.tigerduck.shared.Course
+import org.ntust.app.tigerduck.widget.CourseBlock
 import org.ntust.app.tigerduck.widget.WidgetColors
 import org.ntust.app.tigerduck.widget.WidgetState
+import org.ntust.app.tigerduck.widget.isOngoing
 import org.ntust.app.tigerduck.widget.widgetCourseColor
 
 /**
- * Today's courses in order of their first period, or none on a quiet day
+ * The Today widget's rows: one per block, so a course meeting in periods 3–4
+ * and 7–8 has two rows, each with its own times and room, in the order they
+ * are taught (iOS `WidgetTimelineDerivation.todayRows`). None on a quiet day
  * ([WidgetState.isQuietToday]): before 開學 the timetable is cached weeks
  * ahead and would list classes for a term that has not started, and on a
  * holiday the user has not opted back into no class meets, as the Next Class
  * widget shows. Filtered here rather than in WidgetDataLoader because the
  * Week grid shares `state.courses` and keeps rendering the timetable.
  */
-internal fun todayListCourses(state: WidgetState): List<Course> {
+internal fun todayListBlocks(state: WidgetState): List<CourseBlock> {
     if (state.isQuietToday) return emptyList()
-    val today = state.currentWeekday
     val order = AppConstants.Periods.chronologicalOrder
     return state.courses
-        .filter { it.schedule.containsKey(today) }
-        .sortedBy { course ->
-            course.schedule[today]!!
-                .minByOrNull { order.indexOf(it) }
-                ?.let { order.indexOf(it) } ?: Int.MAX_VALUE
-        }
+        .flatMap { CourseBlock.allOf(it, state.currentWeekday) }
+        .sortedBy { block -> order.indexOf(block.firstPeriodId).takeIf { it >= 0 } ?: Int.MAX_VALUE }
 }
 
 @Composable
@@ -64,8 +62,7 @@ fun TodayListContent(state: WidgetState, colors: WidgetColors, tapAction: Action
         context.getString(R.string.weekday_sun_short),
     )
     val isWeekend = today == 6 || today == 7
-    val order = AppConstants.Periods.chronologicalOrder
-    val todayCourses = todayListCourses(state)
+    val todayBlocks = todayListBlocks(state)
 
     Column(
         modifier = GlanceModifier
@@ -104,7 +101,7 @@ fun TodayListContent(state: WidgetState, colors: WidgetColors, tapAction: Action
                 }
             }
 
-            todayCourses.isEmpty() && isWeekend -> {
+            todayBlocks.isEmpty() && isWeekend -> {
                 Text(
                     text = context.getString(R.string.widget_no_classes_weekend),
                     style = TextStyle(
@@ -114,7 +111,7 @@ fun TodayListContent(state: WidgetState, colors: WidgetColors, tapAction: Action
                 )
             }
 
-            todayCourses.isEmpty() -> {
+            todayBlocks.isEmpty() -> {
                 Text(
                     text = context.getString(R.string.widget_no_classes_today),
                     style = TextStyle(
@@ -125,15 +122,9 @@ fun TodayListContent(state: WidgetState, colors: WidgetColors, tapAction: Action
             }
 
             else -> {
-                todayCourses.forEach { course ->
-                    val isOngoing = course.courseNo in state.ongoingCourseNos
-                    val periods = course.schedule[today]!!.sortedBy { order.indexOf(it) }
-                    val firstPeriod = periods.first()
-                    val lastPeriod = periods.last()
-                    val startTime = AppConstants.PeriodTimes.mapping[firstPeriod]?.first ?: ""
-                    val endTime = AppConstants.PeriodTimes.mapping[lastPeriod]?.second ?: ""
-                    val periodRange = if (firstPeriod == lastPeriod) firstPeriod
-                    else "$firstPeriod–$lastPeriod"
+                todayBlocks.forEach { block ->
+                    val course = block.course
+                    val isOngoing = state.isOngoing(block)
                     // iOS parity: ongoing rows tint with the course's own
                     // color (not a single shared highlight), so back-to-back
                     // 衝堂 ongoing rows stay visually distinguishable.
@@ -157,7 +148,7 @@ fun TodayListContent(state: WidgetState, colors: WidgetColors, tapAction: Action
                     ) {
                         Column(modifier = GlanceModifier.width(70.dp)) {
                             Text(
-                                text = periodRange,
+                                text = block.periodRange,
                                 style = TextStyle(
                                     color = ColorProvider(primaryText),
                                     fontSize = 13.sp,
@@ -165,7 +156,7 @@ fun TodayListContent(state: WidgetState, colors: WidgetColors, tapAction: Action
                                 ),
                             )
                             Text(
-                                text = "$startTime–$endTime",
+                                text = "${block.startTime}–${block.endTime}",
                                 style = TextStyle(
                                     color = ColorProvider(secondaryText),
                                     fontSize = 11.sp,
@@ -184,7 +175,7 @@ fun TodayListContent(state: WidgetState, colors: WidgetColors, tapAction: Action
                                 ),
                                 maxLines = 1,
                             )
-                            val room = course.classroom(today)
+                            val room = block.classroom
                             if (room.isNotEmpty()) {
                                 Text(
                                     text = room,

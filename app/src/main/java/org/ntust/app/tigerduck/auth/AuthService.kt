@@ -8,7 +8,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.cache.BulletinCache
 import org.ntust.app.tigerduck.data.BulletinReadStateStore
 import org.ntust.app.tigerduck.data.cache.DataCache
@@ -19,7 +18,6 @@ import org.ntust.app.tigerduck.network.CourseService
 import org.ntust.app.tigerduck.network.MoodleService
 import org.ntust.app.tigerduck.network.MoodleTokenService
 import org.ntust.app.tigerduck.network.NtustSessionManager
-import org.ntust.app.tigerduck.network.SsoLoginError
 import org.ntust.app.tigerduck.network.SsoLoginService
 import org.ntust.app.tigerduck.push.NotificationSettingsSync
 import org.ntust.app.tigerduck.push.PushRegistrationService
@@ -42,6 +40,7 @@ class AuthService @Inject constructor(
     private val notificationSettingsSync: NotificationSettingsSync,
     private val authTokenManager: AuthTokenManager,
     private val moodleTokenService: MoodleTokenService,
+    private val storedPasswordLatch: StoredPasswordLatch,
     private val courseService: CourseService,
     private val moodleService: MoodleService,
     private val dataCache: DataCache,
@@ -51,6 +50,7 @@ class AuthService @Inject constructor(
     @param:ApplicationScope private val appScope: CoroutineScope,
     private val demoAccount: org.ntust.app.tigerduck.demo.DemoAccount,
     private val prefs: org.ntust.app.tigerduck.data.preferences.AppPreferences,
+    private val classroomUsage: org.ntust.app.tigerduck.emptyclassroom.ClassroomUsageService,
     private val mailAccount: org.ntust.app.tigerduck.mail.MailAccount,
 ) {
     /**
@@ -101,6 +101,11 @@ class AuthService @Inject constructor(
 
     private val loginMutex = Mutex()
 
+    // Held by a sign-out while it drops the stored account and moves the sign-in generation, and
+    // by a sign-in while it checks that generation and stores what it got: one that started
+    // before a sign-out then keeps nothing.
+    private val accountLock = Any()
+
     // The automatic backend sign-in, after a refused refresh and whenever
     // something finds no session.
     private val storedAccountSignIn = StoredAccountSignIn(
@@ -109,9 +114,9 @@ class AuthService @Inject constructor(
         studentId = { credentials.ntustStudentId },
         password = { credentials.ntustPassword },
         storedMoodleToken = { credentials.moodleToken },
-        // Unlike obtainToken(), stores no token once the account has signed
-        // out, so a sign-out during the harvest leaves none for the next one.
-        harvestMoodleToken = { moodleTokenService.refreshToken() },
+        // A token in place of the one the backend refused. Stores none once the
+        // account has signed out, and sends no password the school refused.
+        harvestMoodleToken = { refused -> moodleTokenService.renewToken(refused) },
         afterSignIn = {
             appScope.launch {
                 runCatching { pushRegistration.onSignedIn() }
@@ -127,7 +132,8 @@ class AuthService @Inject constructor(
         },
     )
 
-    // Run under loginMutex, by login() and ensureAuthenticated().
+    // The stored account's sign-in again, run under loginMutex by ensureAuthenticated(). The
+    // typed sign-in is typedSignIn's.
     private val schoolSignIn = SchoolSignIn(
         libraryStore = credentials,
         libraryService = libraryService,
@@ -137,11 +143,10 @@ class AuthService @Inject constructor(
         password = { credentials.ntustPassword },
         sessionIsWarm = { sessionManager.cookiesValid },
         signInToSchool = { studentId, password, typed ->
-            val serviceUrl = "https://courseselection.ntust.edu.tw/"
             if (typed) {
-                ssoLoginService.signIn(serviceUrl, studentId, password)
+                ssoLoginService.signIn(SSO_SERVICE_URL, studentId, password)
             } else {
-                ssoLoginService.ensureServiceLogin(serviceUrl, studentId, password)
+                ssoLoginService.ensureServiceLogin(SSO_SERVICE_URL, studentId, password)
             }
         },
         // A library-only demo sign-in may still be standing in; see
@@ -152,6 +157,43 @@ class AuthService @Inject constructor(
     init {
         authTokenManager.signInWithStoredAccount = storedAccountSignIn::signIn
     }
+
+    // The sign-in with credentials the user typed. The school checks them from an empty session
+    // rather than trusting whatever session the jar holds: it may still be another account's --
+    // see [SsoLoginService.signIn].
+    private val typedSignIn = TypedAccountSignIn(
+        schoolSignIn = { studentId, password ->
+            ssoLoginService.signIn(SSO_SERVICE_URL, studentId, password)
+        },
+        signInInteractively = { signIn -> authTokenManager.signInInteractively(signIn) },
+        signInGeneration = { authTokenManager.signInGeneration },
+        accountLock = accountLock,
+        storedStudentId = { credentials.ntustStudentId },
+        writeAccount = { studentId, password ->
+            credentials.ntustStudentId = studentId
+            credentials.ntustPassword = password
+        },
+        latch = storedPasswordLatch,
+        // The store-review account signs in without a server — see DemoAccount.
+        demoSignIn = { studentId, password ->
+            demoAccount.matches(studentId, password).also { matches -> if (matches) demoAccount.enter() }
+        },
+        signInToLibrary = { studentId, password, generation ->
+            signInToLibrary(studentId, password, generation)
+        },
+        markSignedIn = { _authState.value = true },
+    )
+
+    private val librarySignIn = LibraryAfterSchoolSignIn(
+        tokenValid = { credentials.isLibraryTokenValid },
+        // An automatic sign-in: it yields to a library account the user signed in to meanwhile.
+        login = { studentId, password ->
+            libraryService.login(studentId, password, credentials.libraryAccountGeneration, byUser = false)
+        },
+        signInGeneration = { authTokenManager.signInGeneration },
+        accountLock = accountLock,
+        dropLibrary = { credentials.clearLibraryCredentials() },
+    )
 
     /**
      * Signs in to the backend again after it refused the session, as the
@@ -180,74 +222,70 @@ class AuthService @Inject constructor(
         try {
             val normalizedId = studentId.trim().uppercase()
 
-            // The store-review account signs in without a server — see
-            // DemoAccount. Checked before anything goes out, so these
-            // credentials never reach NTUST.
-            if (demoAccount.matches(normalizedId, password)) {
-                demoAccount.enter()
-                credentials.ntustStudentId = normalizedId
-                credentials.ntustPassword = password
-                importedClassTables.accountDidSignIn(normalizedId)
-                _authState.value = true
-                _isLoggingIn.value = false
-                return@withLock true
+            // Registered before authState flips: an automatic sign-in it sets off, such as Home's
+            // pull, waits for this one instead of logging in too. The generation is read before
+            // the credentials are stored, so a sign-out from here on keeps the v3 login below from
+            // storing a pair. The credentials are stored, and the stored-password latch lifted,
+            // the moment the school takes them, and the library signs in before authState flips;
+            // see TypedAccountSignIn.
+            val outcome = typedSignIn.signIn(
+                normalizedId,
+                password,
+                // Before the class table can show: another account must not inherit what the
+                // last one imported, whether imported while signed out or left by a wipe that
+                // never ran.
+                prepareSignedIn = {
+                    importedClassTables.accountDidSignIn(normalizedId)
+                    // After the store knows who signed in, which empties another account's leftovers.
+                    if (demoAccount.isActive) demoAccount.importClassmates()
+                },
+            ) { signIn, sameStudent ->
+                // Best-effort: v3 JWT login failures must not block the SSO
+                // session. The automatic sign-in tries again later; this one
+                // never waits for its pause.
+                // Harvest a FRESH Moodle token before the v3 login. The backend
+                // verifies it against moodle2, and the stored token is stale or
+                // empty right after SSO (especially on a fresh install) — which
+                // makes the backend reject the login with 401 invalid_token.
+                // iOS does the same obtain-then-login. Best-effort: fall back to
+                // this student's stored token, and never let a harvest failure
+                // block the SSO session. obtainToken stores nothing once the
+                // account has signed out, and stillCurrent then keeps the
+                // fallback from sending anything. It reads the stored ID too:
+                // the sign-out drops the credentials before it moves the generation.
+                val stillCurrent = {
+                    authTokenManager.signInGeneration == signIn && credentials.ntustStudentId == normalizedId
+                }
+                val moodleToken = interactiveMoodleToken(
+                    harvest = { moodleTokenService.obtainToken(normalizedId, password) },
+                    stored = { credentials.moodleToken },
+                    sameStudent = sameStudent,
+                    stillCurrent = stillCurrent,
+                )
+                if (moodleToken.isNullOrEmpty()) {
+                    // A backend login without one could only be refused, and
+                    // would count against the login limit. The automatic
+                    // sign-in tries again.
+                    android.util.Log.w("AuthService", "v3 login skipped: no Moodle token")
+                    return@signIn SignInAttempt.FAILED
+                }
+                try {
+                    authTokenManager.login(
+                        studentId = normalizedId,
+                        moodleToken = moodleToken,
+                        moodlePrivateToken = null,
+                        signInGeneration = signIn,
+                    )
+                    SignInAttempt.SIGNED_IN
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    android.util.Log.w("AuthService", "v3 login failed (best-effort): ${e.logSummary()}")
+                    SignInAttempt.FAILED
+                }
             }
 
-            val success = schoolSignIn.typed(normalizedId, password)
-
-            if (success) {
-                // Registered before authState flips: an automatic sign-in it
-                // sets off, such as Home's pull, waits for this one instead of
-                // logging in too. signIn is read before the credentials are
-                // stored, so a sign-out from here on keeps the v3 login below
-                // from storing a pair.
-                authTokenManager.signInInteractively { signIn ->
-                    credentials.ntustStudentId = normalizedId
-                    credentials.ntustPassword = password
-                    // Before the class table can show: another account must not inherit what the last
-                    // one imported, whether imported while signed out or left by a wipe that never ran.
-                    importedClassTables.accountDidSignIn(normalizedId)
-                    _authState.value = true
-                    // Best-effort: v3 JWT login failures must not block the SSO
-                    // session. The automatic sign-in tries again later; this one
-                    // never waits for its pause.
-                    // Harvest a FRESH Moodle token before the v3 login. The backend
-                    // verifies it against moodle2, and the stored token is stale or
-                    // empty right after SSO (especially on a fresh install) — which
-                    // makes the backend reject the login with 401 invalid_token.
-                    // iOS does the same obtain-then-login. Best-effort: fall back to
-                    // any stored token, and never let a harvest failure block the
-                    // SSO session.
-                    val moodleToken = try {
-                        moodleTokenService.obtainToken(normalizedId, password)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        android.util.Log.w("AuthService", "Moodle token harvest failed; using stored: ${e.logSummary()}")
-                        credentials.moodleToken
-                    }
-                    if (moodleToken.isNullOrEmpty()) {
-                        // A backend login without one could only be refused, and
-                        // would count against the login limit. The automatic
-                        // sign-in tries again.
-                        android.util.Log.w("AuthService", "v3 login skipped: no Moodle token")
-                        return@signInInteractively SignInAttempt.FAILED
-                    }
-                    try {
-                        authTokenManager.login(
-                            studentId = normalizedId,
-                            moodleToken = moodleToken,
-                            moodlePrivateToken = null,
-                            signInGeneration = signIn,
-                        )
-                        SignInAttempt.SIGNED_IN
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        android.util.Log.w("AuthService", "v3 login failed (best-effort): ${e.logSummary()}")
-                        SignInAttempt.FAILED
-                    }
-                }
+            if (outcome == TypedAccountSignIn.Outcome.SIGNED_IN) {
                 runCatching { pushRegistration.onSignedIn() }
                     .onFailure { e -> if (e is CancellationException) throw e }
                 // Same catch-up as the automatic sign-in, for a fresh SSO login.
@@ -255,16 +293,12 @@ class AuthService @Inject constructor(
             }
 
             _isLoggingIn.value = false
-            success
+            outcome != TypedAccountSignIn.Outcome.NOT_SIGNED_IN
         } catch (e: CancellationException) {
             _isLoggingIn.value = false
             throw e
         } catch (e: Exception) {
-            _loginError.value = if (e is SsoLoginError.NetworkError) {
-                context.getString(R.string.error_network_unavailable)
-            } else {
-                e.message ?: context.getString(R.string.error_sign_in_failed)
-            }
+            _loginError.value = context.signInErrorMessage(e)
             _isLoggingIn.value = false
             false
         }
@@ -283,6 +317,26 @@ class AuthService @Inject constructor(
         }
     }
 
+    /**
+     * The library sign-in after the school's, unless the library token is still good. [generation]
+     * was read before the sign-in began: a sign-out since leaves none of what it stores.
+     */
+    private suspend fun signInToLibrary(normalizedId: String, password: String, generation: Int) {
+        // Best-effort: library credentials may differ from NTUST SSO, so a
+        // failure here must not fail the SSO login — but log it, otherwise
+        // "library QR never works" is undiagnosable in the field.
+        try {
+            librarySignIn.signIn(normalizedId, password, generation)
+            // A library-only demo sign-in may still be standing in; see
+            // [org.ntust.app.tigerduck.demo.DemoAccount.signOutLibrary].
+            demoAccount.signOutLibrary()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            android.util.Log.w("AuthService", "Library login failed (best-effort): ${e.logSummary()}")
+        }
+    }
+
     fun logout() {
         // Snapshot the bearer BEFORE wiping tokens: clearNtustCredentials() and
         // authTokenManager.logout() both null the v3 access token, and
@@ -294,8 +348,12 @@ class AuthService @Inject constructor(
         // checks and notifications stop; another student's stays. Before the sign-out below,
         // which takes the student ID it is matched by.
         credentials.ntustStudentId?.let { mailAccount.signOutIfSchoolAccount(it) }
-        credentials.signOutSchoolAccount()
-        authTokenManager.logout()
+        // One step for a sign-in under way, which checks the generation under the same lock
+        // before it stores anything: it either stores before this clears, or stores nothing.
+        synchronized(accountLock) {
+            credentials.signOutSchoolAccount()
+            authTokenManager.logout()
+        }
         // A queued live_activity push, and an edit still waiting to be
         // confirmed, both belong to the account that is leaving. Neither may
         // reach whoever signs in next.
@@ -305,6 +363,10 @@ class AuthService @Inject constructor(
         // sign in would find its session warm and read its roster.
         courseService.cancelSharedFetches()
         moodleService.cancelSharedFetches()
+        // Likewise the empty-classroom finder: its kept days came from this session, and a read
+        // still queued for it must not sign the departing account in again. The next account
+        // opens on its own building.
+        org.ntust.app.tigerduck.emptyclassroom.forgetEmptyClassroom(classroomUsage, prefs)
         sessionManager.signOut()
         bulletinReadStateStore.clear()
         // The cache they dated is wiped below; left behind, they would date
@@ -314,6 +376,10 @@ class AuthService @Inject constructor(
         // Left pending, it would hold the next session's assignment marks and
         // then offer Use Local, sending that emptied data over the server's.
         prefs.pendingConflictCategories = emptySet()
+        // A refusal belongs to the password leaving with the account; and an
+        // automatic sign-in of that account still waiting for its answer
+        // latches nothing for the next one.
+        storedPasswordLatch.clear()
         _loginError.value = null
         _authState.value = false
         pushRegistration.unregister(authHeader)
@@ -342,5 +408,10 @@ class AuthService @Inject constructor(
 
     fun clearLoginError() {
         _loginError.value = null
+    }
+
+    private companion object {
+        // The service the school sign-in signs in to.
+        const val SSO_SERVICE_URL = "https://courseselection.ntust.edu.tw/"
     }
 }

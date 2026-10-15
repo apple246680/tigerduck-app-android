@@ -1,6 +1,5 @@
 package org.ntust.app.tigerduck.mail
 
-import com.icegreen.greenmail.util.ServerSetupTest
 import jakarta.mail.MessagingException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -32,13 +31,18 @@ class MailConnectionProbeTest {
     private val credentials = InMemoryCredentialStore()
     private val probe = SocketMailConnectionProbe(credentials, site)
 
-    /** The invented third-party account the override points at: not the school's, by construction. */
-    private val local = MailDevServerSettings(
-        enabled = true,
-        domain = "probe.example",
-        imap = MailEndpoint("127.0.0.1", ServerSetupTest.IMAP.port, MailTransportSecurity.NONE),
-        smtp = MailEndpoint("127.0.0.1", ServerSetupTest.SMTP.port, MailTransportSecurity.NONE),
-    )
+    /**
+     * The invented third-party account the override points at: not the school's, by construction.
+     * Lazy because the server only knows its ports once the rule has started it.
+     */
+    private val local by lazy {
+        MailDevServerSettings(
+            enabled = true,
+            domain = "probe.example",
+            imap = server.config.imap,
+            smtp = server.config.smtp,
+        )
+    }
 
     /** GreenMail's login for the mailbox [MailTestServer] creates, and its password. */
     private fun signedInHere() {

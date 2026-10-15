@@ -83,6 +83,11 @@ class DebugFixtureStore @Inject constructor(
         get() = prefs.getBoolean(KEY_DEMO_MODE, false)
         set(value) = prefs.edit().putBoolean(KEY_DEMO_MODE, value).apply()
 
+    /** The demo courses' announcements the demo account has opened, which stay read across restarts. */
+    var demoMoodleReadIds: Set<Int>
+        get() = prefs.getStringSet(KEY_DEMO_MOODLE_READ, null).orEmpty().mapNotNull { it.toIntOrNull() }.toSet()
+        set(value) = prefs.edit().putStringSet(KEY_DEMO_MOODLE_READ, value.map { it.toString() }.toSet()).apply()
+
     fun clear() {
         prefs.edit().clear().apply()
     }
@@ -94,5 +99,6 @@ class DebugFixtureStore @Inject constructor(
         const val KEY_QR_FAKE_SIGNED_IN = "library_qr_fake_signed_in"
         const val KEY_LIBRARY_USERNAME = "library_username"
         const val KEY_DEMO_MODE = "demo_mode"
+        const val KEY_DEMO_MOODLE_READ = "demo_moodle_read"
     }
 }

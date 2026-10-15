@@ -1,14 +1,10 @@
 package org.ntust.app.tigerduck.network
 
 import android.os.SystemClock
-import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
@@ -19,10 +15,14 @@ import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.network.model.MoodleAssignmentsCourse
 import org.ntust.app.tigerduck.network.model.MoodleAssignmentsEnvelope
+import org.ntust.app.tigerduck.network.model.MoodleAssignmentNode
 import org.ntust.app.tigerduck.network.model.MoodleEnrolledCourse
 import org.ntust.app.tigerduck.network.model.MoodleSubmissionLastAttempt
 import org.ntust.app.tigerduck.network.model.MoodleSubmissionStatusEnvelope
+import org.ntust.app.tigerduck.network.moodle.MoodleWebservice
+import org.ntust.app.tigerduck.util.MAX_CONCURRENT_SCHOOL_REQUESTS
 import org.ntust.app.tigerduck.util.SharedFetch
+import org.ntust.app.tigerduck.util.mapAtMost
 import java.util.Date
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
@@ -35,18 +35,10 @@ class MoodleService @Inject constructor(
     private val courseService: CourseService,
     private val dataCache: DataCache,
     private val prefs: AppPreferences,
+    private val webservice: MoodleWebservice,
     @param:ApplicationScope appScope: CoroutineScope,
 ) {
     private val client: OkHttpClient get() = sessionManager.client
-    private val gson = Gson()
-    private val webserviceUrl = WEBSERVICE_URL
-
-    // The site-info user id, with the wstoken it was asked with. A token is
-    // one account's, so a different token is asked again: kept on its own,
-    // the id outlived a sign-out and went out with the next account's calls.
-    @Volatile
-    private var cachedUserId: Pair<String, Int>? = null
-    private val siteInfoLock = Any()
 
     // Home, the class table, the calendar and the worker each ask for these,
     // within seconds of each other on launch — see SharedFetch. Keyed by the
@@ -119,8 +111,9 @@ class MoodleService @Inject constructor(
     suspend fun fetchEnrolledCourses(): List<MoodleEnrolledCourse> =
         shared(sharedEnrolled, tokenService.currentToken()) {
             withContext(Dispatchers.IO) {
-                attemptWithTokenRetry { token ->
-                    val userId = getSiteInfoUserId(token)
+                // The site info is asked under the token, so a stale token there is renewed too.
+                webservice.withToken { token ->
+                    val userId = webservice.siteInfo(token).userId
                     callEnrolledCourses(token, userId)
                 }
             }
@@ -239,7 +232,8 @@ class MoodleService @Inject constructor(
     /**
      * `mod_assign_get_assignments` for [courseIds], then one
      * `mod_assign_get_submission_status` per assignment the cache has not
-     * already confirmed, fanned out in parallel. A status call that fails is
+     * already confirmed and that can still change ([assignmentsToAsk]), four
+     * at a time. A status call that fails is
      * left out of the map, which the caller reads as "not submitted" — see
      * [org.ntust.app.tigerduck.data.CourseRosterMerge.preserveConfirmedSubmissions].
      *
@@ -254,25 +248,31 @@ class MoodleService @Inject constructor(
             val recheck = recheckingRefreshes.get() > 0
             val confirmed =
                 if (recheck) emptyMap() else confirmedSubmissions(dataCache.loadAssignments())
+            val closedBefore = dataCache.loadClosedAssignments()
+            val closed = if (recheck) emptyMap() else closedBefore
             var askedWith = ""
             var asked = 0
-            val round = attemptWithTokenRetry { token ->
+            var askedAt = 0L
+            var closedNow: Map<Int, Long> = emptyMap()
+            val round = webservice.withToken { token ->
                 askedWith = token
-                val userId = getSiteInfoUserId(token)
+                val userId = webservice.siteInfo(token).userId
                 val courses = callGetAssignments(token, courseIds)
-                val toAsk = courses.flatMap { it.assignments }
-                    .filter { it.id !in confirmed }
+                val all = courses.flatMap { it.assignments }
+                val toAsk = assignmentsToAsk(all, confirmed, closed, System.currentTimeMillis())
                 asked = toAsk.size
-                val statuses = coroutineScope {
-                    toAsk.map { a ->
-                        async(Dispatchers.IO) {
-                            runCatching { callGetSubmissionStatus(token, a.id, userId) }
-                                .getOrNull()
-                                ?.let { a.id to it }
-                        }
-                    }.awaitAll().filterNotNull().toMap()
-                }
+                askedAt = System.currentTimeMillis()
+                val statuses = mapAtMost(MAX_CONCURRENT_SCHOOL_REQUESTS, toAsk) { a ->
+                    runCatching { callGetSubmissionStatus(token, a.id, userId) }
+                        .getOrNull()
+                        ?.let { a.id to it }
+                }.filterNotNull().toMap()
+                closedNow = closedUnsubmitted(all, statuses, askedAt, closedBefore)
                 AssignmentsRound(courses, statuses, confirmed)
+            }
+            // Only for the account that asked, as the stamp below.
+            if (tokenService.currentToken() == askedWith && closedNow != closedBefore) {
+                dataCache.saveClosedAssignments(closedNow)
             }
             // Stamped here rather than at each caller, so every screen and
             // the worker date the data alike — see RefreshPolicies. Only
@@ -294,62 +294,11 @@ class MoodleService @Inject constructor(
         }
     }
 
-    /** Run [block] with current token; on `invalidtoken`, refresh once and retry. */
-    private suspend inline fun <T> attemptWithTokenRetry(block: (String) -> T): T {
-        val token = tokenService.currentToken() ?: tokenService.refreshToken()
-        return try {
-            block(token)
-        } catch (e: MoodleWebserviceError.InvalidToken) {
-            Log.w("MoodleService", "wstoken rejected, refreshing once")
-            tokenService.clearToken()
-            synchronized(siteInfoLock) { cachedUserId = null }
-            val fresh = tokenService.refreshToken()
-            block(fresh)
-        }
-    }
-
-    /**
-     * Lazy site-info probe: serializes concurrent IO callers so only one
-     * `core_webservice_get_site_info` round-trip fires per token, and
-     * double-checks under the lock so a clear from [attemptWithTokenRetry]
-     * doesn't get stomped on by an in-flight fetch.
-     */
-    private fun getSiteInfoUserId(token: String): Int {
-        cachedUserId?.takeIf { it.first == token }?.let { return it.second }
-        synchronized(siteInfoLock) {
-            cachedUserId?.takeIf { it.first == token }?.let { return it.second }
-            val url =
-                "$webserviceUrl?moodlewsrestformat=json&wsfunction=core_webservice_get_site_info&wstoken=$token"
-            val req = Request.Builder().url(url).post(FormBody.Builder().build()).build()
-            val body = client.newCall(req).execute().use { response ->
-                if (!response.isSuccessful) throw MoodleWebserviceError.HttpStatus(response.code)
-                response.body.string()
-            }
-            MoodleWebserviceError.fromJsonBody(body)?.let { throw it }
-            val parsed = try {
-                gson.fromJson(body, Map::class.java)
-            } catch (e: Exception) {
-                throw MoodleWebserviceError.MalformedResponse("site_info not JSON: ${e.message}")
-            }
-            val rawUserId = parsed?.get("userid")
-                ?: throw MoodleWebserviceError.MalformedResponse("userid missing from site_info")
-            val userId = (rawUserId as? Number)?.toInt()
-                ?: throw MoodleWebserviceError.MalformedResponse("userid has unexpected type: $rawUserId")
-            cachedUserId = token to userId
-            return userId
-        }
-    }
-
     private fun callEnrolledCourses(token: String, userId: Int): List<MoodleEnrolledCourse> {
-        val url =
-            "$webserviceUrl?moodlewsrestformat=json&wsfunction=core_enrol_get_users_courses&wstoken=$token"
+        val url = MoodleWebservice.url("core_enrol_get_users_courses", token)
         val form = FormBody.Builder().add("userid", userId.toString()).build()
         val req = Request.Builder().url(url).post(form).build()
-        val body = client.newCall(req).execute().use { response ->
-            if (!response.isSuccessful) throw MoodleWebserviceError.HttpStatus(response.code)
-            response.body.string()
-        }
-        MoodleWebserviceError.fromJsonBody(body)?.let { throw it }
+        val body = MoodleWebservice.execute(client, req)
         return try {
             decodeEnrolledCourses(body)
         } catch (e: Exception) {
@@ -360,7 +309,7 @@ class MoodleService @Inject constructor(
     private fun callGetAssignments(token: String, courseIds: List<Int>): List<MoodleAssignmentsCourse> =
         requestAssignments(
             client,
-            "$webserviceUrl?moodlewsrestformat=json&wsfunction=mod_assign_get_assignments&wstoken=$token",
+            MoodleWebservice.url("mod_assign_get_assignments", token),
             courseIds,
         )
 
@@ -387,11 +336,9 @@ class MoodleService @Inject constructor(
     companion object {
         private val decodeGson = Gson()
 
-        private const val WEBSERVICE_URL = "https://moodle2.ntust.edu.tw/webservice/rest/server.php"
-
         /** The `mod_assign_get_submission_status` endpoint under [token]. */
         internal fun submissionStatusUrl(token: String): String =
-            "$WEBSERVICE_URL?moodlewsrestformat=json&wsfunction=mod_assign_get_submission_status&wstoken=$token"
+            MoodleWebservice.url("mod_assign_get_submission_status", token)
 
         /**
          * The `mod_assign_get_assignments` form for [courseIds]. It asks only
@@ -415,11 +362,7 @@ class MoodleService @Inject constructor(
             courseIds: List<Int>,
         ): List<MoodleAssignmentsCourse> {
             val req = Request.Builder().url(url).post(assignmentsForm(courseIds)).build()
-            val body = client.newCall(req).execute().use { response ->
-                if (!response.isSuccessful) throw MoodleWebserviceError.HttpStatus(response.code)
-                response.body.string()
-            }
-            return decodeAssignments(body)
+            return decodeAssignments(MoodleWebservice.execute(client, req))
         }
 
         /**
@@ -459,6 +402,72 @@ class MoodleService @Inject constructor(
          * is the first one seen, so a later resubmission's, a late one
          * included, shows only after a pull, which asks about everything.
          */
+        /**
+         * The assignments of a round Moodle is asked about: not one without a
+         * due date or taking no submissions, which the list leaves out
+         * anyway; not one the cache has [confirmed]; and not one [closed]
+         * (by id, when Moodle said so, epoch ms) within the last
+         * [CLOSED_FOR_MS]. As iOS's `AppServiceBridge.recordsToAskAbout`
+         * (tigerduck-app/tigerduck-app#257).
+         */
+        internal fun assignmentsToAsk(
+            assignments: List<MoodleAssignmentNode>,
+            confirmed: Map<Int, Date>,
+            closed: Map<Int, Long>,
+            nowMs: Long,
+        ): List<MoodleAssignmentNode> = assignments.filter {
+            it.duedate > 0 && it.nosubmissions == 0 && it.id !in confirmed && !stillClosed(closed[it.id], nowMs)
+        }
+
+        /**
+         * How long an assignment found closed is not asked about. Not for
+         * good: a teacher can grant an extension or lift a lock afterwards,
+         * and the student's clock or Moodle's answer can be wrong.
+         */
+        internal const val CLOSED_FOR_MS = 24 * 60 * 60 * 1000L
+
+        // Closed at [closedAtMs], and not longer ago than CLOSED_FOR_MS by a
+        // clock that has not gone back past it.
+        private fun stillClosed(closedAtMs: Long?, nowMs: Long): Boolean {
+            closedAtMs ?: return false
+            val age = nowMs - closedAtMs
+            return age in 0 until CLOSED_FOR_MS
+        }
+
+        /**
+         * The closed assignments after a round asked at [askedAtMs]: each one
+         * Moodle answered not handed in and no longer editable or submittable
+         * by this student (`canedit`, `cansubmit`, which take the student's
+         * own cutoff, override and extension into account), once its
+         * submissions had opened; and each one [kept] from before that this
+         * round did not ask about, while still closed. Not one Moodle does
+         * not say this of: closed by this phone's clock and the assignment's
+         * cutoff, one an extension or an override keeps open was never asked
+         * about again.
+         */
+        internal fun closedUnsubmitted(
+            assignments: List<MoodleAssignmentNode>,
+            statuses: Map<Int, MoodleSubmissionStatusEnvelope>,
+            askedAtMs: Long,
+            kept: Map<Int, Long>,
+        ): Map<Int, Long> {
+            val closed = mutableMapOf<Int, Long>()
+            for (assignment in assignments) {
+                val status = statuses[assignment.id]
+                if (status != null) {
+                    val attempt = status.lastattempt ?: continue
+                    val opened = (assignment.allowsubmissionsfromdate ?: 0L) * 1000 <= askedAtMs
+                    if (attempt.handedIn == null && attempt.canedit == false && attempt.cansubmit != true && opened) {
+                        closed[assignment.id] = askedAtMs
+                    }
+                } else {
+                    val keptAt = kept[assignment.id] ?: continue
+                    if (stillClosed(keptAt, askedAtMs)) closed[assignment.id] = keptAt
+                }
+            }
+            return closed
+        }
+
         internal fun confirmedSubmissions(cached: List<Assignment>): Map<Int, Date> =
             cached.filter { it.isCompleted }
                 .mapNotNull { a ->
@@ -500,11 +509,7 @@ class MoodleService @Inject constructor(
                 .apply { if (userId != null) add("userid", userId.toString()) }
                 .build()
             val req = Request.Builder().url(url).post(form).build()
-            val body = client.newCall(req).execute().use { response ->
-                if (!response.isSuccessful) throw MoodleWebserviceError.HttpStatus(response.code)
-                response.body.string()
-            }
-            return decodeSubmissionStatus(body)
+            return decodeSubmissionStatus(MoodleWebservice.execute(client, req))
         }
 
         /**

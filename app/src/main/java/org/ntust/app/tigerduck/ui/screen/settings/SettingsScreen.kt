@@ -4,15 +4,9 @@
 
 package org.ntust.app.tigerduck.ui.screen.settings
 
-import android.content.Intent
-import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -20,11 +14,9 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -40,21 +32,20 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import org.ntust.app.tigerduck.BuildConfig
+import org.ntust.app.tigerduck.AppUrls
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
+import org.ntust.app.tigerduck.ui.BrowserPreference
 import org.ntust.app.tigerduck.ui.component.ContentCard
 import org.ntust.app.tigerduck.ui.component.PageHeader
 import org.ntust.app.tigerduck.ui.component.SectionHeader
@@ -62,6 +53,7 @@ import org.ntust.app.tigerduck.sensor.FlipDetector
 import org.ntust.app.tigerduck.ui.component.TigerDuckDialog
 import org.ntust.app.tigerduck.ui.haptics.HapticScenario
 import org.ntust.app.tigerduck.ui.haptics.Haptics
+import org.ntust.app.tigerduck.ui.openLink
 import org.ntust.app.tigerduck.ui.screen.mail.ForgotMailPasswordLink
 import org.ntust.app.tigerduck.ui.screen.mail.MailAccountViewModel
 import org.ntust.app.tigerduck.ui.screen.mail.messageRes
@@ -70,6 +62,7 @@ import org.ntust.app.tigerduck.ui.screen.whatsnew.WhatsNewFlow
 import org.ntust.app.tigerduck.ui.screen.whatsnew.WhatsNewSheet
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
+import org.ntust.app.tigerduck.ui.theme.VisualPreset
 import org.ntust.app.tigerduck.data.model.ManualCheckResult
 import org.ntust.app.tigerduck.update.UpdateChecker
 import org.ntust.app.tigerduck.update.WhatsNewGate
@@ -85,6 +78,7 @@ fun SettingsScreen(
     onNavigateToLiveActivity: () -> Unit = {},
     onNavigateToSchoolMailNotificationSettings: () -> Unit = {},
     onNavigateToNotificationPermissionSettings: () -> Unit = {},
+    onNavigateToClassReminders: () -> Unit = {},
     onNavigateToAssignmentReminders: () -> Unit = {},
     onNavigateToCloudSync: () -> Unit = {},
     onNavigateToLibrarySettings: () -> Unit = {},
@@ -115,6 +109,8 @@ fun SettingsScreen(
     }
 
     var showNtustLoginSheet by remember { mutableStateOf(false) }
+    var confirmNtustSignOut by remember { mutableStateOf(false) }
+    val importedClassTables by viewModel.importedClassTables.collectAsStateWithLifecycle()
     var showLibraryLoginSheet by remember { mutableStateOf(false) }
 
     // Auto-dismiss dialogs when login succeeds
@@ -126,6 +122,7 @@ fun SettingsScreen(
     }
 
     val accentColorHex = viewModel.appState.accentColorHex
+    val visualPreset = viewModel.appState.visualPreset
     val showAbsoluteTime = viewModel.appState.showAbsoluteAssignmentTime
     val alwaysShowAllPeriods = viewModel.appState.alwaysShowAllPeriods
     val showClassroomInClassTable = viewModel.appState.showClassroomInClassTable
@@ -140,7 +137,7 @@ fun SettingsScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val appVersion = remember { BuildConfig.VERSION_NAME }
+    val appVersion = remember { appVersionLabel(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE) }
 
     // About section dependencies: UpdateChecker for "Check for updates" and
     // WhatsNewRepository for the manual What's New entry point. Pulled via
@@ -242,7 +239,13 @@ fun SettingsScreen(
                             subtitle = if (isNtustLoggedIn) viewModel.ntustStudentId else null,
                             isLoggingIn = isNtustLoggingIn,
                             onLogin = { showNtustLoginSheet = true },
-                            onLogout = { viewModel.logoutNtust() },
+                            onLogout = {
+                                // The sign-out deletes the imported class tables, so it asks first.
+                                importedClassTables.requestSignOut(
+                                    confirm = { confirmNtustSignOut = true },
+                                    signOut = { viewModel.logoutNtust() },
+                                )
+                            },
                             actionMinWidth = accountButtonMinWidth,
                             highlight = highlightNtustRow,
                             onHighlightConsumed = { highlightNtustRow = false },
@@ -300,42 +303,11 @@ fun SettingsScreen(
                             // Show the mode-appropriate display color but always
                             // persist the canonical (light) hex so the pair swaps
                             // when the user toggles the color theme.
-                            val accentPaletteDisplay = if (TigerDuckTheme.isDarkMode) {
-                                AppPreferences.themeColorsDark
-                            } else {
-                                AppPreferences.themeColors
-                            }
-                            // Eight 32dp swatches need 326dp, more than a narrow phone -- or a
-                            // larger display size -- leaves inside this card, and a plain Row
-                            // squeezes whatever does not fit out of the last one. Scrolling
-                            // keeps every swatch round.
-                            Row(
-                                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                accentPaletteDisplay.forEachIndexed { idx, (_, displayHex) ->
-                                    val canonicalHex = AppPreferences.themeColors[idx].second
-                                    val color = Color(0xFF000000 or displayHex.toLong())
-                                    Box(
-                                        modifier = Modifier
-                                            .size(32.dp)
-                                            .clip(CircleShape)
-                                            .background(color)
-                                            .clickable {
-                                                viewModel.appState.accentColorHex = canonicalHex
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (accentColorHex == canonicalHex) {
-                                            Text(
-                                                "\u2713",
-                                                color = Color.White,
-                                                style = MaterialTheme.typography.labelSmall
-                                            )
-                                        }
-                                    }
-                                }
-                            }
+                            AccentColorSwatches(
+                                selectedHex = accentColorHex,
+                                isDark = TigerDuckTheme.isDarkMode,
+                                onSelect = { viewModel.appState.accentColorHex = it },
+                            )
                         }
                     }
                 }
@@ -346,6 +318,15 @@ fun SettingsScreen(
             item {
                 ContentCard {
                     Column {
+                        // The style names are not localized: they read the same in every language.
+                        SettingsPickerRow(
+                            label = stringResource(R.string.settings_visual_preset_label),
+                            value = visualPreset.displayName,
+                            options = VisualPreset.entries.map { it.rawValue to it.displayName },
+                            selectedKey = visualPreset.rawValue,
+                            onSelect = { viewModel.appState.visualPreset = VisualPreset.fromRawValue(it) },
+                        )
+                        HorizontalDivider()
                         SettingsToggleRow(
                             stringResource(R.string.settings_show_absolute_assignment_time),
                             showAbsoluteTime
@@ -377,14 +358,14 @@ fun SettingsScreen(
                         // Link opening method
                         SettingsPickerRow(
                             label = stringResource(R.string.settings_link_opening_method),
-                            value = if (browserPreference == "inApp") {
+                            value = if (browserPreference == BrowserPreference.IN_APP) {
                                 stringResource(R.string.settings_browser_in_app)
                             } else {
                                 stringResource(R.string.settings_browser_system_default)
                             },
                             options = listOf(
-                                "system" to stringResource(R.string.settings_browser_system_default),
-                                "inApp" to stringResource(R.string.settings_browser_in_app)
+                                BrowserPreference.SYSTEM to stringResource(R.string.settings_browser_system_default),
+                                BrowserPreference.IN_APP to stringResource(R.string.settings_browser_in_app)
                             ),
                             selectedKey = browserPreference,
                             onSelect = { viewModel.appState.browserPreference = it }
@@ -468,6 +449,13 @@ fun SettingsScreen(
             item {
                 ContentCard {
                     Column {
+                        // First, as on iOS. This phone posts its own class
+                        // reminders, so unlike iOS's row this one works with
+                        // cloud sync off too.
+                        SettingsLinkRow(
+                            stringResource(R.string.settings_class_reminder)
+                        ) { onNavigateToClassReminders() }
+                        HorizontalDivider()
                         SettingsLinkRow(
                             stringResource(R.string.settings_assignment_due_reminder)
                         ) { onNavigateToAssignmentReminders() }
@@ -576,7 +564,7 @@ fun SettingsScreen(
                         // into their browser mid-hop.
                         HorizontalDivider()
                         SettingsLinkRow(stringResource(R.string.settings_check_server_status)) {
-                            openUrl(context, "https://status.tigerduck.app/", browserPreference)
+                            openLink(context, AppUrls.SERVER_STATUS, browserPreference)
                         }
                         // What's New — only when pages or a summary are
                         // registered for the resolved locale. During early
@@ -591,7 +579,7 @@ fun SettingsScreen(
                         }
                         HorizontalDivider()
                         SettingsLinkRow(stringResource(R.string.settings_official_website)) {
-                            openUrl(context, "https://tigerduck.app/", browserPreference)
+                            openLink(context, AppUrls.WEBSITE, browserPreference)
                         }
                         HorizontalDivider()
                         SettingsLinkRow(stringResource(R.string.settings_about_others)) {
@@ -726,6 +714,24 @@ fun SettingsScreen(
         )
     }
 
+    if (confirmNtustSignOut) {
+        TigerDuckDialog(
+            onDismissRequest = { confirmNtustSignOut = false },
+            title = stringResource(R.string.action_sign_out),
+            message = stringResource(R.string.settings_sign_out_imported_tables),
+            confirmText = stringResource(R.string.action_sign_out),
+            confirmColors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.error,
+                contentColor = MaterialTheme.colorScheme.onError,
+            ),
+            onConfirm = {
+                confirmNtustSignOut = false
+                viewModel.logoutNtust()
+            },
+            dismissText = stringResource(R.string.action_cancel),
+        )
+    }
+
     // Manual "Check for updates" result alert. Only mounts for UpToDate /
     // Failed — when Play reports an available update the regular
     // UpdatePromptHost surfaces the three-button dialog instead, and the
@@ -765,17 +771,16 @@ fun SettingsScreen(
         )
     }
 }
+/**
+ * The About section's version row: the version and, in brackets, the build
+ * number, which tells test builds of one version apart in a bug report. The
+ * iPhone shows "2.4.0 (Build 123)"; the bare number needs no translation.
+ */
+internal fun appVersionLabel(versionName: String, versionCode: Int): String = "$versionName ($versionCode)"
+
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 internal interface SettingsEntryPoint {
     fun updateChecker(): UpdateChecker
     fun whatsNewRepository(): WhatsNewRepository
-}
-private fun openUrl(context: android.content.Context, url: String, browserPreference: String) {
-    val uri = url.toUri()
-    if (browserPreference == "inApp") {
-        CustomTabsIntent.Builder().build().launchUrl(context, uri)
-    } else {
-        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-    }
 }

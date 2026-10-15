@@ -1,10 +1,9 @@
 package org.ntust.app.tigerduck.liveactivity
 
 import android.Manifest
+import android.app.Notification
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -14,7 +13,6 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.ntust.app.tigerduck.BuildConfig
-import org.ntust.app.tigerduck.MainActivity
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
@@ -22,7 +20,10 @@ import org.ntust.app.tigerduck.notification.ClassPreparingNotificationReceiver
 import org.ntust.app.tigerduck.notification.DeviceSkin
 import org.ntust.app.tigerduck.notification.NotificationChannelRegistrar
 import org.ntust.app.tigerduck.notification.NotificationChannels
+import org.ntust.app.tigerduck.notification.NotificationGroup
 import org.ntust.app.tigerduck.notification.brandedNotification
+import org.ntust.app.tigerduck.openAppPendingIntent
+import org.ntust.app.tigerduck.pendingIntent
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -77,6 +78,10 @@ class LiveActivityNotifier @Inject constructor(
     // transition into a new scenario (may alert, subject to per-scenario pref).
     private var lastScenario: LiveActivityScenario? = null
 
+    // Whether a class was going on under what [lastScenario] last showed; see
+    // LiveActivitySnapshot.duringClass.
+    private var lastDuringClass = false
+
     /** Fixed for the life of the process; see [samsungNowBarExtras]. */
     private val deviceSkin = DeviceSkin.current()
 
@@ -106,6 +111,7 @@ class LiveActivityNotifier @Inject constructor(
         if (snapshot == null) {
             manager.cancel(NOTIFICATION_ID)
             lastScenario = null
+            lastDuringClass = false
             return false
         }
         if (!hasPostPermission()) {
@@ -119,17 +125,13 @@ class LiveActivityNotifier @Inject constructor(
                 Log.w(TAG, "dropping ${snapshot.scenario}: POST_NOTIFICATIONS is denied")
             }
             lastScenario = null
+            lastDuringClass = false
             return false
         }
 
-        val contentIntent = PendingIntent.getActivity(
-            context,
-            0,
-            Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
+        // The due-soon assignment opens in Moodle and a class opens the class
+        // table, through MainActivity; see LiveActivitySnapshot.link.
+        val contentIntent = snapshot.link?.pendingIntent(context) ?: openAppPendingIntent(context)
 
         val visibility = if (preferences.showOnLockScreen) {
             NotificationCompat.VISIBILITY_PUBLIC
@@ -138,7 +140,16 @@ class LiveActivityNotifier @Inject constructor(
         }
 
         val scenarioChanged = lastScenario != snapshot.scenario
-        val alerting = scenarioChanged && !(quiet && lastScenario == null)
+        // A deadline coming within its lead time during a class takes the
+        // Live Update over quietly, and gives it back to the class just as
+        // quietly once it passes or is marked done: the class goes on, and a
+        // chime in it is the one alert nobody wants. Only while a class runs
+        // under both: a deadline that shows as the class ends, or a class
+        // that starts as a deadline passes, sounds as usual.
+        val swappedInClass = lastDuringClass && snapshot.duringClass &&
+            setOf(lastScenario, snapshot.scenario) ==
+            setOf(LiveActivityScenario.IN_CLASS, LiveActivityScenario.ASSIGNMENT_URGENT)
+        val alerting = scenarioChanged && !(quiet && lastScenario == null) && !swappedInClass
         val soundWanted = alerting && wantsSoundFor(snapshot.scenario)
 
         // For sound to play on a scenario transition we need to (a) drop the
@@ -239,15 +250,15 @@ class LiveActivityNotifier @Inject constructor(
         manager.notify(NOTIFICATION_ID, builder.build())
 
         // Once the class is actually ongoing, the alarm-driven "即將上課" banner
-        // is redundant. The receiver's setTimeoutAfter is a best-effort hint
-        // and can lag past class start, leaving two side-by-side notifications
-        // for the same class. Clear any stragglers explicitly on the
-        // CLASS_PREPARING → IN_CLASS transition.
+        // is redundant; see clearStartedClassBanners, which LiveActivityManager
+        // also runs on every refresh. Here, on the switch to "in class", it
+        // clears a banner from an older build that carries no start too.
         if (scenarioChanged && snapshot.scenario == LiveActivityScenario.IN_CLASS) {
-            cancelClassPreparingBanners()
+            clearStartedClassBanners(AppClock.nowMillis(), includeUndated = true)
         }
 
         lastScenario = snapshot.scenario
+        lastDuringClass = snapshot.duringClass
 
         return spelledOut &&
             manager.getNotificationChannel(CHANNEL_ID)?.importance != NotificationManager.IMPORTANCE_NONE
@@ -345,22 +356,45 @@ class LiveActivityNotifier @Inject constructor(
         }
     }
 
-    private fun cancelClassPreparingBanners() {
-        manager.activeNotifications.forEach { sbn ->
-            if (sbn.notification.channelId == ClassPreparingNotificationReceiver.CHANNEL_ID) {
-                manager.cancel(sbn.tag, sbn.id)
-            }
+    /**
+     * Clears the "class starting soon" banners whose class has begun by
+     * [nowMs]; a banner for a class still to come stays. Each banner carries
+     * its class's start ([ClassPreparingNotificationReceiver.EXTRA_CLASS_START_MS]).
+     * One posted by a build before that extra counts as begun only when
+     * [includeUndated], which the switch to "in class" passes, as it used to
+     * clear every banner.
+     *
+     * The banner's own setTimeoutAfter is a best-effort hint that can lag past
+     * class start; LiveActivityManager calls this on every refresh, the one at
+     * class start included, whatever scenario is showing.
+     */
+    fun clearStartedClassBanners(nowMs: Long, includeUndated: Boolean = false) {
+        val active = runCatching { manager.activeNotifications }.getOrNull() ?: return
+        for (sbn in active) {
+            val banner = sbn.notification
+            if (banner.channelId != ClassPreparingNotificationReceiver.CHANNEL_ID) continue
+            if (banner.flags and Notification.FLAG_GROUP_SUMMARY != 0) continue
+            val startMs = banner.extras.getLong(ClassPreparingNotificationReceiver.EXTRA_CLASS_START_MS, 0L)
+            val begun = if (startMs > 0L) startMs <= nowMs else includeUndated
+            // Through the stack, so its summary goes with the last banner.
+            if (begun) NotificationGroup.CLASS.cancel(context, sbn.id, sbn.tag)
         }
     }
 
     fun cancel() {
         manager.cancel(NOTIFICATION_ID)
         lastScenario = null
+        lastDuringClass = false
     }
 
     private fun wantsSoundFor(scenario: LiveActivityScenario): Boolean = when (scenario) {
         LiveActivityScenario.IN_CLASS -> preferences.soundInClass
-        LiveActivityScenario.CLASS_PREPARING -> preferences.soundClassPreparing
+        // The class reminder already sounds for the coming class, so with
+        // class reminders on, the Live Update turning to the same class stays
+        // quiet rather than alerting a second time. Its own sound is for
+        // those who have class reminders off.
+        LiveActivityScenario.CLASS_PREPARING ->
+            preferences.soundClassPreparing && !appPreferences.classReminderEnabled
         LiveActivityScenario.ASSIGNMENT_URGENT -> preferences.soundAssignment
     }
 

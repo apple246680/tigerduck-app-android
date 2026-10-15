@@ -479,7 +479,7 @@ fun SpecialFolder.labelRes(): Int = when (this) {
 
 /** Mirrors Announcements' BulletinCard: 12dp surfaceVariant card, 7dp unread dot, SemiBold when unread. */
 @Composable
-private fun MailCard(message: MailSummary, mailDomain: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun MailCard(message: MailSummary, mailDomain: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val cs = MaterialTheme.colorScheme
     val unread = !message.flags.seen
     // [modifier] lands on the same layout node as Surface's own clickable, so semantics set on
@@ -514,7 +514,13 @@ private fun MailCard(message: MailSummary, mailDomain: String, onClick: () -> Un
                     }
                 }
                 if (message.hasAttachments) {
-                    Icon(Icons.Filled.AttachFile, contentDescription = null, tint = cs.outline, modifier = Modifier.size(14.dp))
+                    // Labelled: nothing else on the card says the mail has attachments.
+                    Icon(
+                        Icons.Filled.AttachFile,
+                        contentDescription = stringResource(R.string.school_mail_attachments),
+                        tint = cs.outline,
+                        modifier = Modifier.size(14.dp),
+                    )
                     Spacer(Modifier.width(4.dp))
                 }
                 Text(MailDateFormat.short(message.sentAt ?: message.receivedAt), style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant)

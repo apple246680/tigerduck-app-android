@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.BuildConfig
 import org.ntust.app.tigerduck.auth.AuthService
+import org.ntust.app.tigerduck.auth.StoredPasswordLatch
 import org.ntust.app.tigerduck.data.DataMigration
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.model.AppFeature
@@ -38,6 +39,7 @@ import org.ntust.app.tigerduck.notification.AssignmentReminderOffset
 import org.ntust.app.tigerduck.notification.SystemPermissions
 import org.ntust.app.tigerduck.ui.haptics.HapticScenario
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
+import org.ntust.app.tigerduck.ui.theme.VisualPreset
 import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -222,6 +224,19 @@ class AppState @Inject constructor(
         }
         return Color(0xFF000000L or (hex.toLong() and 0xFFFFFFL))
     }
+
+    private val visualPresetSetting =
+        VisualPresetSetting(prefs, onChange = { widgetUpdater.requestUpdate() })
+
+    /**
+     * The interface style picked in Settings > Display. The app root provides
+     * it to every screen through [org.ntust.app.tigerduck.ui.theme.LocalVisualStylePolicy].
+     */
+    var visualPreset: VisualPreset
+        get() = visualPresetSetting.value
+        set(value) {
+            visualPresetSetting.value = value
+        }
 
     private var showAbsoluteAssignmentTimeState by mutableStateOf(prefs.showAbsoluteAssignmentTime)
 
@@ -436,11 +451,21 @@ class AppState @Inject constructor(
         }
 
     // Transient signal from signed-out empty states (Home, ClassTable,
-    // Calendar, Score): when the user taps the lock icon we navigate to
+    // Calendar, Score): when the user taps "Sign in" we navigate to
     // Settings and flip this so the NTUST account row pulses, drawing the
     // user's attention to the action they need to take. Consumed (cleared)
     // by SettingsScreen after the animation finishes.
     var pendingNtustSignInHighlight by mutableStateOf(false)
+
+    // "Sign in again", after the automatic sign-in failed: opens the school
+    // sign-in over whatever page asked (NtustSignInSheetHost), as the iPhone
+    // does. Not persisted.
+    var ntustSignInSheetRequested by mutableStateOf(false)
+
+    // The refusal whose "Automatic sign-in failed" banner the user closed. It
+    // stays closed on every page for the rest of this run; a later refusal is
+    // another object and shows again. Not persisted.
+    var dismissedPasswordRejection by mutableStateOf<StoredPasswordLatch.Rejection?>(null)
 
     private var configuredTabsState by mutableStateOf(prefs.configuredTabs)
 
@@ -545,6 +570,7 @@ class AppState @Inject constructor(
             hasCompletedOnboardingState = prefs.hasCompletedOnboarding
             onboardingVersionState = prefs.onboardingVersion
             accentColorHexState = prefs.accentColorHex
+            visualPresetSetting.reload()
             showAbsoluteAssignmentTimeState = prefs.showAbsoluteAssignmentTime
             alwaysShowAllPeriodsState = prefs.alwaysShowAllPeriods
             showClassroomInClassTableState = prefs.showClassroomInClassTable
@@ -569,6 +595,9 @@ class AppState @Inject constructor(
                 hapticStrengthStates[scenario] = prefs.hapticStrength(scenario)
                 hapticDurationStates[scenario] = prefs.hapticDurationMs(scenario)
             }
+            // The widgets draw the wiped courses, accent and interface style,
+            // and redraw only when asked; reload() above does not ask.
+            widgetUpdater.requestUpdate()
 
             librarySession.refresh()
             _needsUserReset.value = false

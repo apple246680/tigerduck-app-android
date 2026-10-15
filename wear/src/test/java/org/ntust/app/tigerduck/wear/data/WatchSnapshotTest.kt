@@ -54,4 +54,56 @@ class WatchSnapshotTest {
         assertEquals("OS", next.course.courseNo)
         assertEquals(2, next.daysAhead)
     }
+
+    // ---- a course meeting twice a day ----
+
+    // Thursday 2026-10-15: periods 1-2 in TR-513, 6-7 in TR-215.
+    private val thursday = monday.plusDays(3)
+    private val twice = Course.fromSchedule(
+        courseNo = "CS3005301",
+        courseName = "Data Structures",
+        classroom = "TR-513, TR-215",
+        schedule = mapOf(4 to listOf("1", "2", "6", "7"), 5 to listOf("1", "2", "6", "7")),
+        classroomMap = mapOf(
+            "4-1" to "TR-513", "4-2" to "TR-513", "4-6" to "TR-215", "4-7" to "TR-215",
+            "5-1" to "TR-513", "5-2" to "TR-513", "5-6" to "TR-215", "5-7" to "TR-215",
+        ),
+    )
+
+    private fun twiceSnapshot() = WatchSnapshot(
+        courses = listOf(twice),
+        accentHex = SchedulePersistence.DEFAULT_ACCENT,
+        syncedAtMs = 1_000L,
+        loggedIn = true,
+        languageTag = null,
+        quietDays = emptySet(),
+    )
+
+    @Test
+    fun `the class going on shows the room of its block`() {
+        val now = twiceSnapshot().nextClass(thursday, 14 * 60) as NextClassResult.Ongoing
+        assertEquals("TR-215", now.classroom)
+    }
+
+    @Test
+    fun `the next class today shows the room of the block that starts next`() {
+        val next = twiceSnapshot().nextClass(thursday, 12 * 60) as NextClassResult.NextToday
+        assertEquals(13 * 60 + 20, next.startMinute)
+        assertEquals("TR-215", next.classroom)
+    }
+
+    @Test
+    fun `the next class day shows the room of its first block`() {
+        val next = twiceSnapshot().nextClass(thursday, 18 * 60) as NextClassResult.NextFuture
+        assertEquals("TR-513", next.classroom)
+    }
+
+    @Test
+    fun `today lists each block with its own room`() {
+        assertEquals(
+            listOf("TR-513", "TR-215"),
+            twiceSnapshot().todaysClasses(thursday, 7 * 60).map { it.classroom },
+        )
+    }
 }
+

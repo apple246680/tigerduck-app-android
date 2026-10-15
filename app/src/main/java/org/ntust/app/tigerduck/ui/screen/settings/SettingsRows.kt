@@ -296,12 +296,17 @@ internal fun SettingsToggleRow(
         )
     }
 }
+/**
+ * [enabled] greys the row out in place and stops it opening, as
+ * [SettingsToggleRow] does for a switch.
+ */
 @Composable
 internal fun SettingsPickerRow(
     label: String,
     value: String,
     options: List<Pair<String, String>>,
     selectedKey: String,
+    enabled: Boolean = true,
     onSelect: (String) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -314,15 +319,24 @@ internal fun SettingsPickerRow(
             // clipped — Mandarin labels are tall enough to need the extra
             // room.
             .heightIn(min = SettingRowHeight)
-            .clickable { expanded = true }
+            .clickable(enabled = enabled) { expanded = true }
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        Text(
+            label,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(
+                alpha = if (enabled) 1f else ContentAlpha.DISABLED,
+            ),
+        )
         Box {
             Text(
                 value, style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY)
+                color = MaterialTheme.colorScheme.onSurface.copy(
+                    alpha = if (enabled) ContentAlpha.SECONDARY else ContentAlpha.DISABLED,
+                )
             )
 
             DropdownMenu(

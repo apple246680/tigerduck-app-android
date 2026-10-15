@@ -3,6 +3,8 @@ package org.ntust.app.tigerduck.data.cache
 import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.ntust.app.tigerduck.data.CourseIgnores
@@ -23,6 +25,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.model.CalendarEvent
 import org.ntust.app.tigerduck.data.model.PendingCourseIgnore
+import org.ntust.app.tigerduck.data.model.UnsentMark
 import org.ntust.app.tigerduck.data.model.SyncConflict
 import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.data.model.ScoreReport
@@ -86,6 +89,25 @@ class DataCache @Inject constructor(
      */
     class Generation(val value: Int) : AbstractCoroutineContextElement(Generation) {
         companion object Key : CoroutineContext.Key<Generation>
+    }
+
+    private val _marksAdoptedVersion = MutableStateFlow(0)
+
+    /**
+     * Bumped after [adoptAssignmentMarks], for Home to read the marks again
+     * before its next swipe writes the ones it holds back over them.
+     */
+    val marksAdoptedVersion: StateFlow<Int> = _marksAdoptedVersion.asStateFlow()
+
+    /**
+     * Replaces the ignored and marked-done sets with the ones a re-enable
+     * answer took (Use Server), and says so on [marksAdoptedVersion]. Not for
+     * Home's own writes: reading those back could undo a newer swipe.
+     */
+    suspend fun adoptAssignmentMarks(ignored: Set<String>, completed: Set<String>) {
+        saveIgnoredAssignments(ignored)
+        saveMarkedCompletedAssignments(completed)
+        _marksAdoptedVersion.update { it + 1 }
     }
 
     suspend fun replaceIgnoredAssignments(ids: Set<String>) = saveIgnoredAssignments(ids)
@@ -158,6 +180,19 @@ class DataCache @Inject constructor(
         if (manual.isEmpty()) return remote
         val manualNos = manual.map { it.courseNo }.toSet()
         return remote.filter { it.courseNo !in manualNos } + manual
+    }
+
+    /**
+     * Whether [semester]'s portal rows are cached: `courses_<semester>.json`
+     * lives in the evictable cacheDir, and once the system evicts it,
+     * [loadCourses] returns the hand-typed courses alone.
+     */
+    suspend fun hasPortalCourses(semester: String): Boolean {
+        absorbLegacyCourseCache()
+        val type = object : TypeToken<List<Course>>() {}.type
+        return load<List<Course>>(type, coursesFilename(semester), requireContent = COURSE_NO_TOKEN)
+            ?.let(::usableRows)
+            ?.any { !it.isManual } == true
     }
 
     private fun manualCoursesFilename(semester: String): String = "manual_courses_$semester.json"
@@ -506,6 +541,22 @@ class DataCache @Inject constructor(
             ?: emptyList()
     }
 
+    // --- Course rows seen (course key -> server row id) ---
+    // The rows the last full sync that took the course ignores listed; see
+    // CourseIgnoreReconciler.recreated. CourseIgnoreSync is the only writer.
+
+    /** False, and nothing written, when the data was wiped since [generation]. */
+    suspend fun saveCourseRowsSeen(rows: Map<String, Long>, generation: Int? = null): Boolean =
+        saveToUserDataIf(rows, "course_rows_seen.json", generation ?: writeGeneration())
+
+    suspend fun loadCourseRowsSeen(): Map<String, Long> {
+        val type = object : TypeToken<Map<String, Long?>>() {}.type
+        return loadFromUserData<Map<String, Long?>>(type, "course_rows_seen.json")
+            .orEmpty()
+            .mapNotNull { (key, id) -> id?.let { key to it } }
+            .toMap()
+    }
+
     // --- Marked-Completed Assignments (set of assignmentIds) ---
     // Independent from Moodle's `isCompleted`: lets the user manually flag a
     // homework as done from the swipe gesture even when Moodle hasn't (or
@@ -521,6 +572,23 @@ class DataCache @Inject constructor(
         val type = object : TypeToken<List<String>>() {}.type
         return loadFromUserData<List<String>>(type, "marked_completed_assignments.json")?.toSet()
             ?: emptySet()
+    }
+
+    // --- Unsent assignment marks (assignmentId → status) ---
+    // Marks tapped here whose PATCH the backend has not confirmed; see
+    // UnsentMarks, the only writer. In filesDir with the marks themselves.
+
+    /** False, and nothing written, when the data was wiped since [generation]. */
+    suspend fun saveUnsentMarks(marks: List<UnsentMark>, generation: Int? = null): Boolean =
+        saveToUserDataIf(marks, "unsent_marks.json", generation ?: writeGeneration())
+
+    /** Rows without an id or a status are left out. */
+    suspend fun loadUnsentMarks(): List<UnsentMark> {
+        val type = object : TypeToken<List<UnsentMark?>>() {}.type
+        return loadFromUserData<List<UnsentMark?>>(type, "unsent_marks.json")
+            ?.filterNotNull()
+            ?.filter { it.assignmentId != null && it.status != null }
+            ?: emptyList()
     }
 
     // --- Score Report (per studentId) ---
@@ -587,6 +655,138 @@ class DataCache @Inject constructor(
         return load<Map<String, Int>>(type, "moodle_course_ids.json") ?: emptyMap()
     }
 
+    // --- A course's Moodle data, per account ---
+    // What the course detail's Moodle screens show (forums, announcements,
+    // grades, members, summary), kept so they draw at once and offline. One
+    // file per kind and course under `moodle/<account>/`, each with the time
+    // its data was fetched. Wiped with the rest on sign-out.
+    //
+    // Versioned as a whole by [MOODLE_CACHE_SCHEMA]: a file in another shape
+    // reads as absent, and the screen fetches it again. Bump it with ANY
+    // change to the classes in network/model/moodle — the Gson Unsafe path
+    // would leave a field the old file lacks null behind a non-null type.
+
+    /** A copy of a course's Moodle data, as [saveMoodleData] kept it. */
+    data class MoodleCached<T>(val value: T, val fetchedAtMs: Long)
+
+    suspend fun saveMoodleData(value: Any, fetchedAtMs: Long, name: String, account: String) {
+        val generation = writeGeneration()
+        cacheMutex.withLock {
+            if (generation != userDataGeneration) return@withLock
+            withContext(Dispatchers.IO) {
+                val envelope = JsonObject().apply {
+                    addProperty("v", MOODLE_CACHE_SCHEMA)
+                    addProperty("fetchedAt", fetchedAtMs)
+                    add("value", gson.toJsonTree(value))
+                }
+                val file = moodleFile(name, account)
+                file.parentFile?.mkdirs()
+                atomicWrite(file, gson.toJson(envelope))
+            }
+        }
+    }
+
+    suspend fun <T> loadMoodleData(type: java.lang.reflect.Type, name: String, account: String): MoodleCached<T>? =
+        cacheMutex.withLock {
+            withContext(Dispatchers.IO) {
+                try {
+                    val file = moodleFile(name, account)
+                    if (!file.exists()) return@withContext null
+                    val envelope = JsonParser.parseString(file.readText()).asJsonObject
+                    if (envelope.get("v")?.asInt != MOODLE_CACHE_SCHEMA) return@withContext null
+                    val value: T = gson.fromJson(envelope.get("value"), type) ?: return@withContext null
+                    MoodleCached(value, envelope.get("fetchedAt").asLong)
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        }
+
+    /** Where files of [account]'s Moodle data that are not JSON, such as member pictures, go. */
+    fun moodleFilesDir(account: String): File = File(moodleDir, moodleAccountFolder(account))
+
+    private val moodleDir: File get() = File(cacheDir, MOODLE_DIR)
+
+    /**
+     * Where [account]'s opened Moodle files are kept: copies the app hands to another app through
+     * its FileProvider (`moodle_files` in res/xml/file_provider_paths.xml). Apart from
+     * [moodleFilesDir], so that path exposes nothing but these copies.
+     */
+    fun moodleOpenedFilesDir(account: String): File =
+        File(File(cacheDir, MOODLE_OPENED_DIR), opaqueFolder(account))
+
+    /**
+     * A folder name for [account] that does not spell it: its path shows in the content URI
+     * another app is handed.
+     */
+    private fun opaqueFolder(account: String): String {
+        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+        mac.init(javax.crypto.spec.SecretKeySpec(installSalt(), "HmacSHA256"))
+        return mac.doFinal(account.trim().uppercase().toByteArray())
+            .take(8)
+            .joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * A random key made once per install and kept in private preferences, so the account folder's
+     * name cannot be worked back to a student ID by hashing every ID there is. Read from disk
+     * once, then held for the process: one that could not be written still names the folder the
+     * same way until the app restarts. A full reset makes a new one.
+     */
+    @Synchronized
+    private fun installSalt(): ByteArray {
+        salt?.let { return it }
+        val kept = moodleSaltPrefs.getString(MOODLE_SALT_KEY, null)
+            ?.let { runCatching { android.util.Base64.decode(it, android.util.Base64.NO_WRAP) }.getOrNull() }
+            ?.takeIf { it.size >= 16 }
+        val made = kept ?: ByteArray(32).also {
+            java.security.SecureRandom().nextBytes(it)
+            val written = moodleSaltPrefs.edit()
+                .putString(MOODLE_SALT_KEY, android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP))
+                .commit()
+            if (!written) android.util.Log.w(TAG, "Moodle folder salt not saved")
+        }
+        salt = made
+        return made
+    }
+
+    /** Drops the folder salt, on disk and held, for a full reset. */
+    @Synchronized
+    private fun forgetInstallSalt() {
+        salt = null
+        moodleSaltPrefs.edit().clear().commit()
+    }
+
+    private var salt: ByteArray? = null
+
+    private val moodleSaltPrefs = context.getSharedPreferences(MOODLE_SALT_PREFS, Context.MODE_PRIVATE)
+
+    private fun moodleFile(name: String, account: String): File {
+        // A name is the app's own, such as "courses/123/grades"; dot segments never come from it,
+        // but nothing outside the account's folder may be written if one ever did.
+        val safe = name.split('/').filter { it.isNotEmpty() && it != "." && it != ".." }.joinToString("/")
+        return File(moodleFilesDir(account), "$safe.json")
+    }
+
+    private fun moodleAccountFolder(account: String): String =
+        account.filter { it.isLetterOrDigit() }.ifEmpty { "_" }
+
+    // --- Assignments closed unsubmitted (assignment id -> when Moodle said so, epoch ms) ---
+    // Past their cutoff with nothing handed in, which cannot change, so a
+    // round does not ask Moodle about them again; see
+    // MoodleService.assignmentsToAsk. Moodle's own data, so in the cache.
+
+    suspend fun saveClosedAssignments(closed: Map<Int, Long>) =
+        save(closed.mapKeys { it.key.toString() }, "closed_assignments.json")
+
+    suspend fun loadClosedAssignments(): Map<Int, Long> {
+        val type = object : TypeToken<Map<String, Long?>>() {}.type
+        return load<Map<String, Long?>>(type, "closed_assignments.json")
+            .orEmpty()
+            .mapNotNull { (id, at) -> id.toIntOrNull()?.let { key -> at?.let { key to it } } }
+            .toMap()
+    }
+
     // --- Calendar Events ---
 
     suspend fun saveCalendarEvents(events: List<CalendarEvent>) =
@@ -624,6 +824,8 @@ class DataCache @Inject constructor(
                     listOf(cacheDir, userDataDir).forEach { dir ->
                         dir.listFiles()?.forEach { runCatching { it.deleteRecursively() } }
                     }
+                    // It names the opened files' folders, which are gone, and a fresh install has none.
+                    forgetInstallSalt()
                 }
             }
         }
@@ -641,6 +843,7 @@ class DataCache @Inject constructor(
                     "calendar_events.json",
                     "course_lookups.json",
                     "moodle_course_ids.json",
+                    "closed_assignments.json",
                 ).forEach { name ->
                     runCatching { File(cacheDir, name).delete() }
                 }
@@ -654,6 +857,9 @@ class DataCache @Inject constructor(
                     cacheDir.listFiles { _, name -> name.startsWith("score_") && name.endsWith(".json") }
                         ?.forEach { it.delete() }
                 }
+                // Every account's Moodle copies, member pictures and opened files.
+                runCatching { moodleDir.deleteRecursively() }
+                runCatching { File(cacheDir, MOODLE_OPENED_DIR).deleteRecursively() }
             }
         }
         userDataMutex.withLock {
@@ -664,11 +870,13 @@ class DataCache @Inject constructor(
                     "ignored_courses.json",
                     "pending_course_ignores.json",
                     "marked_completed_assignments.json",
+                    "unsent_marks.json",
                     "deleted_courses.json",
                     "course_custom_names.json",
                     "selection_dropped.json",
                     "server_known_courses.json",
                     "semester_reset_at.json",
+                    "course_rows_seen.json",
                 ).forEach { name ->
                     runCatching { File(userDataDir, name).delete() }
                 }
@@ -778,6 +986,14 @@ class DataCache @Inject constructor(
 
     internal companion object {
         private const val TAG = "DataCache"
+
+        private const val MOODLE_DIR = "moodle"
+        private const val MOODLE_OPENED_DIR = "moodle_open"
+        private const val MOODLE_SALT_PREFS = "moodle_files"
+        private const val MOODLE_SALT_KEY = "folder_salt"
+
+        /** See saveMoodleData: bump with any change to the classes in network/model/moodle. */
+        internal const val MOODLE_CACHE_SCHEMA = 1
 
         // Sentinel literal present in any course JSON written by a build
         // with un-obfuscated field names. Used by loadCourses to reject

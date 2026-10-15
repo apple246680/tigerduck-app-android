@@ -25,8 +25,14 @@ data class WidgetState(
      * today carousel hides outside the term but the grid stays.
      */
     val isQuietToday: Boolean,
-    val ongoingCourseNos: List<String>,
-    val nextCourseTodayNo: String?,
+    /**
+     * The blocks going on now, one per course: the block, not the course, so
+     * a course meeting twice today shows the times, periods and room of the
+     * block it is in, and only that block is highlighted.
+     */
+    val ongoingBlocks: List<CourseBlock>,
+    /** The next block to start today, from a course not going on now. */
+    val nextTodayBlock: CourseBlock?,
     /**
      * `(courseNo, weekday, firstPeriodId)` for the next class beyond today —
      * scans up to 7 future days so the Next Class widget shows Monday's
@@ -65,3 +71,23 @@ data class WidgetState(
         val TickKey = longPreferencesKey("widget_refresh_tick")
     }
 }
+
+/** Whether [block] is one of the blocks going on now. */
+fun WidgetState.isOngoing(block: CourseBlock): Boolean =
+    ongoingBlocks.any { it.isSameBlock(block) }
+
+/**
+ * Whether the Week grid's tile of [course] covering [tilePeriods] on [weekday]
+ * holds a block going on now: today's column only, and only the tile of the
+ * block in progress, not the course's other blocks that day or other days.
+ *
+ * An overlap rather than a match on the first period, because the grid has
+ * rows only for [WidgetState.activePeriodIds]: with period 5 hidden, a course
+ * on 4 and 6 is one tile in the grid but two blocks in the schedule.
+ */
+fun WidgetState.isOngoingTile(course: Course, weekday: Int, tilePeriods: List<String>): Boolean =
+    weekday == currentWeekday && ongoingBlocks.any { block ->
+        block.course.courseNo == course.courseNo &&
+                block.weekday == weekday &&
+                block.periods.any { it in tilePeriods }
+    }
