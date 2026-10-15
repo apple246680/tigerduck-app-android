@@ -36,6 +36,7 @@ import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
+import org.ntust.app.tigerduck.data.PendingCourseAdds
 import org.ntust.app.tigerduck.data.UnsentMarks
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.network.CourseService
@@ -110,6 +111,7 @@ class HomeBackendSync @Inject constructor(
     private val academicCalendar: org.ntust.app.tigerduck.academic.AcademicCalendarStore,
     private val courseIgnoreSync: CourseIgnoreSync,
     private val unsentMarks: UnsentMarks,
+    private val pendingCourseAdds: PendingCourseAdds,
     private val reenableCheck: ReenableCheck,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) {
@@ -140,15 +142,17 @@ class HomeBackendSync @Inject constructor(
             if (BuildConfig.DEBUG) ServerFailureSimulator.check(ServerKind.BACKEND)
             val account = authService.storedStudentId
             val generation = courseIgnoreSync.currentGeneration()
-            // Unsent course-ignore changes and marks go first, so the snapshot has them.
+            // Unsent course-ignore changes, marks and course adds go first, so the snapshot has them.
             courseIgnoreSync.retryPending()
             unsentMarks.retry()
+            pendingCourseAdds.retry()
             // The first-sync mark upload is pinned to the sign-in read here:
             // a sign-out and another sign-in meanwhile must not send these
             // marks as theirs.
             val (result, signIn) = fetchPinned({ authTokenManager.signInGeneration }) {
                 syncApiClient.fetchFullSync()
             }
+            pendingCourseAdds.listed(result.serverCourses)
             // One reading of the switches, for the steps below and for what
             // this sync records as synced: one flipped meanwhile counts from the next.
             val switchedOn = categoriesSwitchedOn(prefs)

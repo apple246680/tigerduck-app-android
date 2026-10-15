@@ -90,6 +90,7 @@ class ClassTableViewModel @Inject constructor(
     private val localEdits: org.ntust.app.tigerduck.ui.screen.home.LocalEdits,
     private val importedClassTableStore: ImportedClassTableStore,
     private val importedCourseLookup: ImportedCourseLookup,
+    private val pendingCourseAdds: org.ntust.app.tigerduck.data.PendingCourseAdds,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
 
@@ -130,6 +131,9 @@ class ClassTableViewModel @Inject constructor(
     // opened again at once already reads the new value.
     private val ignoredCourses = ClassTableIgnoredCourses(dataCache.assignmentMarksVersion)
 
+    // A term's reset as far as files and the backend go; see resetCourses.
+    private val termReset = ClassTableTermReset(dataCache)
+
     /** What the course detail lists: see [OutstandingAssignments]. */
     val outstandingAssignments: StateFlow<List<Assignment>> = combine(
         _assignments,
@@ -152,6 +156,14 @@ class ClassTableViewModel @Inject constructor(
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
+
+    /**
+     * Whether the first load of the account's class table is done: its cache
+     * read and, when it fetches, that fetch. Until then an empty term is one
+     * not read yet; see [ShownClassTable.showsNoCourses].
+     */
+    private val _hasSettled = MutableStateFlow(false)
+    val hasSettled: StateFlow<Boolean> = _hasSettled
 
     val isLoggedIn: StateFlow<Boolean> = authService.authState
 
@@ -203,6 +215,10 @@ class ClassTableViewModel @Inject constructor(
 
     private val _selectedWeekday = MutableStateFlow<Int?>(null)
     private val _selectedPeriodId = MutableStateFlow<String?>(null)
+
+    // The block of periods the detail was opened on, for its time: a course
+    // meeting twice a day shows the times of the one tapped, not the day's.
+    private val _selectedPeriods = MutableStateFlow<List<String>?>(null)
 
     // The term the selected course belongs to. Not always the picker's: the
     // today carousel shows the live term's courses whatever term the grid
@@ -278,6 +294,14 @@ class ClassTableViewModel @Inject constructor(
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val syncCompleteEvent: SharedFlow<Unit> = _syncCompleteEvent.asSharedFlow()
+
+    private val _resetFailedEvent = MutableSharedFlow<String>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+
+    /** A term whose reset the backend could not take, and which was left as it was. */
+    val resetFailedEvent: SharedFlow<String> = _resetFailedEvent.asSharedFlow()
 
     /** The class tables imported from share codes, and whose the page shows. */
     val importedTables: StateFlow<ImportedClassTables> = importedClassTableStore.tables
@@ -420,6 +444,7 @@ class ClassTableViewModel @Inject constructor(
                     _moodleCourseIdByIdnumber.value = emptyMap()
                     courseCustomNames = emptyMap()
                     hasLoaded = false
+                    _hasSettled.value = false
                     TigerDuckTheme.clearCourseColorMap()
                 } else if (signedIn) {
                     // As a launch, so the page counts as loaded. Launched, so
@@ -740,7 +765,7 @@ class ClassTableViewModel @Inject constructor(
         get() {
             val course = _selectedCourse.value ?: return null
             val weekday = _selectedWeekday.value ?: return null
-            return ClassTableSelection.timeRange(course, weekday)
+            return ClassTableSelection.detailTimeRange(course, weekday, _selectedPeriods.value)
         }
 
     /**
@@ -794,9 +819,25 @@ class ClassTableViewModel @Inject constructor(
     val selectedFromAnotherTerm: Boolean
         get() = selectedCourseSemester.let { it != null && it != _currentSemester.value }
 
-    fun selectCourse(course: Course, weekday: Int, periodId: String, fromLiveTerm: Boolean = false) {
+    fun selectCourse(
+        course: Course,
+        weekday: Int,
+        periodId: String,
+        fromLiveTerm: Boolean = false,
+        // The block a today card stands for; a grid tap opens the cell's, around [periodId].
+        periods: List<String>? = null,
+    ) {
         _selectedWeekday.value = weekday
         _selectedPeriodId.value = periodId
+        _selectedPeriods.value = periods ?: ClassTableSelection.block(
+            course,
+            weekday,
+            periodId,
+            ClassTableCellLayout.activePeriods(
+                shownTable.value.courses,
+                showAllPeriods = appPreferences.alwaysShowAllPeriods,
+            ).map { it.id },
+        )
         selectedCourseSemester = if (fromLiveTerm) liveCoursesTerm else _currentSemester.value
         _selectedCourse.value = course
     }
@@ -870,8 +911,9 @@ class ClassTableViewModel @Inject constructor(
                 )
             }
             dataCache.saveCourses(updated, _currentSemester.value)
-            val forceKey = "client:${_currentSemester.value}:${course.courseNo}"
-            runCatching { pushApiClient.uploadCourses(updated, _currentSemester.value, forceKeys = listOf(forceKey)) }
+            // Kept until it lands: in a term the server already has, no
+            // sync would send it again otherwise.
+            pendingCourseAdds.send(updated, semester, course.courseNo)
             widgetUpdater.requestUpdate()
         }
         localEdits.noteEdit()
@@ -1083,6 +1125,9 @@ class ClassTableViewModel @Inject constructor(
             }
             refreshLiveSemesterCourses()
             if (fetch) fetchFlight.join(::fetchData)
+            // Not in a finally: a sign-out cancels this job and has just
+            // cleared the flag for the next account.
+            _hasSettled.value = true
         }
     }
 
@@ -1133,12 +1178,14 @@ class ClassTableViewModel @Inject constructor(
                 // rows back after it, hand-added courses included, and the
                 // fetch below would then keep them.
                 fetchFlight.runAlone {
-                    try {
+                    val wiped = try {
                         wipeTerm(semester)
                     } finally {
                         release()
                     }
-                    fetchData()
+                    // Left as it was, and said so, as iOS does; a refetch
+                    // over it would change nothing.
+                    if (wiped) fetchData() else _resetFailedEvent.tryEmit(semester)
                 }
             } finally {
                 release()
@@ -1146,47 +1193,25 @@ class ClassTableViewModel @Inject constructor(
         }
     }
 
-    /** [resetCourses]' part that forgets the term, here and on the server. */
-    private suspend fun wipeTerm(semester: String) {
-        val stored = dataCache.loadDeletedCourseNos()
-        val lifted = CourseTombstoneKeys.entriesResetting(semester, stored)
-        if (lifted.isNotEmpty()) dataCache.saveDeletedCourseNos(stored - lifted)
-        val deleted = runCatching { pushApiClient.deleteAllCourses(semester) }
-            .onFailure { Log.w("ClassTableVM", "deleteAllCourses failed (non-fatal): ${it.logSummary()}") }
-            .isSuccess
-        if (deleted) {
-            // Only once the server has forgotten the term. Wiping
-            // first and then failing the DELETE would leave an
-            // empty grid with the server still full, to be merged
-            // back as hand-added rows.
-            //
-            // The stamp is taken after the DELETE landed: a
-            // snapshot fetched before this instant still carries
-            // the pre-reset roster — see DataCache.saveSemesterResetAt.
-            dataCache.saveSemesterResetAt(semester, System.currentTimeMillis())
-            // The server has forgotten every number in this term,
-            // so a hand-typed course re-added later is unknown to
-            // it again — see CourseSyncReconciler.reconcileSemester.
-            dataCache.saveServerKnownNos(dataCache.loadServerKnownNos() - semester)
-            // The term's cache goes too, hand-typed courses
-            // included: a reset means "start this term over", and
-            // the roster the portal returns next is the whole of
-            // it. Load-bearing for sync as well — with the old
-            // roster still on disk next to an empty server term, a
-            // sync would push it back up, and this device's upload
-            // releases its own reset tombstones, so the reset would
-            // undo itself.
-            dataCache.saveCourses(emptyList(), semester)
-            if (_currentSemester.value == semester) _courses.value = emptyList()
-            val inTerm = { key: String -> CourseIgnores.semesterOf(key) == semester }
-            val edit = ignoredCourses.edit { keys -> keys.filterNotTo(mutableSetOf(), inTerm) }
-            try {
-                courseIgnoreSync.forget(inTerm)
-            } finally {
-                ignoredCoursesSaved(edit)
-            }
-            widgetUpdater.requestUpdate()
+    /**
+     * [resetCourses]' part that forgets the term, on the server and then
+     * here; see [ClassTableTermReset]. False, with nothing changed, when the
+     * server could not be told.
+     */
+    private suspend fun wipeTerm(semester: String): Boolean {
+        val held = termReset.run(semester) { pushApiClient.deleteAllCourses(semester) } ?: return false
+        if (_currentSemester.value == semester) _courses.value = emptyList()
+        // Their names went from the file with the term.
+        courseCustomNames = courseCustomNames - held
+        val inTerm = { key: String -> CourseIgnores.semesterOf(key) == semester }
+        val edit = ignoredCourses.edit { keys -> keys.filterNotTo(mutableSetOf(), inTerm) }
+        try {
+            courseIgnoreSync.forget(inTerm)
+        } finally {
+            ignoredCoursesSaved(edit)
         }
+        widgetUpdater.requestUpdate()
+        return true
     }
 
     /** A pull to refresh: what the schools have now, not an answer kept for sharing. */

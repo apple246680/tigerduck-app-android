@@ -313,5 +313,41 @@ class ClassTableSelectionTest {
         assertEquals(listOf("6", "7"), ClassTableSelection.carouselBlock(twiceOnMonday, 1, 18 * 60))
         assertNull(ClassTableSelection.carouselBlock(twiceOnMonday, 2, 7 * 60))
     }
+
+    // ---- the block the course detail opens on (tigerduck-app-android#243) ----
+
+    private val morningAndAfternoon = course("CS4", mapOf(1 to listOf("3", "4", "7", "8")))
+
+    @Test
+    fun `a tapped period opens its own block, not the whole day`() {
+        assertEquals(listOf("3", "4"), ClassTableSelection.block(morningAndAfternoon, 1, "4"))
+        assertEquals(listOf("7", "8"), ClassTableSelection.block(morningAndAfternoon, 1, "8"))
+        assertEquals("14:20 - 16:20", ClassTableSelection.timeRange(listOf("7", "8")))
+    }
+
+    @Test
+    fun `a period the course does not take opens the next block, as a conflict pick names the cluster's first`() {
+        assertEquals(listOf("7", "8"), ClassTableSelection.block(morningAndAfternoon, 1, "6"))
+        assertNull("nothing after the last block", ClassTableSelection.block(morningAndAfternoon, 1, "9"))
+        assertNull("no block on a day it does not meet", ClassTableSelection.block(morningAndAfternoon, 2, "3"))
+    }
+
+    @Test
+    fun `blocks either side of a row the grid leaves out are one cell, and open together`() {
+        val c = course("CS5", mapOf(1 to listOf("3", "4", "6", "7")))
+        val drawn = listOf("1", "2", "3", "4", "6", "7", "8", "9", "10")
+
+        assertEquals(listOf("3", "4", "6", "7"), ClassTableSelection.block(c, 1, "6", drawn))
+        assertEquals("with period 5 drawn", listOf("6", "7"), ClassTableSelection.block(c, 1, "6"))
+    }
+
+    @Test
+    fun `the detail's time is the opened block's, else the whole day's`() {
+        assertEquals(
+            "10:20 - 12:10",
+            ClassTableSelection.detailTimeRange(morningAndAfternoon, 1, block = listOf("3", "4")),
+        )
+        assertEquals("10:20 - 16:20", ClassTableSelection.detailTimeRange(morningAndAfternoon, 1, block = null))
+    }
 }
 

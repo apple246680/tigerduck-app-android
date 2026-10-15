@@ -61,6 +61,29 @@ class ClassTableShownTableTest {
     }
 
     @Test
+    fun `the user's own empty term says so once its first load has settled, and not during a fetch`() {
+        val empty = shownTableOf(emptyList(), "1151", listOf("1151"), tables(), DisplayedTable(null, null, 0))
+
+        assertTrue(empty.showsNoCourses(settled = true, isLoading = false))
+        assertFalse("before the first load has settled", empty.showsNoCourses(settled = false, isLoading = false))
+        assertFalse("while a fetch runs", empty.showsNoCourses(settled = true, isLoading = true))
+
+        val filled = shownTableOf(own, "1151", listOf("1151"), tables(), DisplayedTable(null, null, 0))
+        assertFalse(filled.showsNoCourses(settled = true, isLoading = false))
+    }
+
+    @Test
+    fun `someone else's empty term says so whatever the user's own fetch is doing`() {
+        val lookedUpNothing = ming.copy(terms = listOf(ImportedPerson.Term("1151", listOf("MA1010001"), emptyList())))
+        val shown = shownTableOf(
+            own, "1151", listOf("1151"),
+            ImportedClassTables(listOf(lookedUpNothing), "ming"), DisplayedTable("ming", "1151", 1),
+        )
+
+        assertTrue(shown.showsNoCourses(settled = false, isLoading = true))
+    }
+
+    @Test
     fun `a switch keeps the term on screen when the person shared it, else opens on their latest`() {
         val start = DisplayedTable(null, null, 0)
 

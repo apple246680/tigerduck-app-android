@@ -8,7 +8,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,6 +21,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,7 +42,6 @@ import org.ntust.app.tigerduck.ui.theme.LocalVisualStylePolicy
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun TimetableGrid(
-    viewModel: ClassTableViewModel,
     /**
      * The collected course list, not `viewModel.courses.value`: a plain read
      * of the StateFlow registers no dependency, so a course added into rows
@@ -63,6 +62,8 @@ internal fun TimetableGrid(
     /** Null leaves the action out of the long-press menu. */
     onToggleIgnoreAssignments: ((Course) -> Unit)? = null,
     onPickConflict: (Course, Course, Int, String) -> Unit = { _, _, _, _ -> },
+    /** A tap on a course: the course, its weekday and the period tapped. None in an exported image. */
+    onSelect: (course: Course, weekday: Int, periodId: String) -> Unit = { _, _, _ -> },
     /** False on someone else's class table, whose courses have no long-press menu. */
     editable: Boolean = true,
     /**
@@ -111,24 +112,12 @@ internal fun TimetableGrid(
         val totalHeight = cellHeight * periods.size
 
         Column(modifier = Modifier.fillMaxWidth()) {
-            // Header row
-            Row {
-                Box(modifier = Modifier.width(periodColWidth))
-                weekdays.forEach { day ->
-                    Box(
-                        modifier = Modifier.width(dayColWidth),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = dayLabels.getOrElse(day) { "$day" },
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
+            ClassTableWeekdayHeader(weekdays, dayLabels, periodColWidth, dayColWidth)
 
-            // Grid body — use Box with absolute positioning so blocks can span rows
+            // Grid body — use Box with absolute positioning so blocks can span rows.
+            // Offsets from the top left in either direction: a Box aligns to the
+            // start, which in a right-to-left language put every block at the right
+            // edge before its offset pushed it off the screen.
             val rowHeightPx = with(LocalDensity.current) { cellHeight.toPx() }
             Box(
                 modifier = Modifier
@@ -137,7 +126,8 @@ internal fun TimetableGrid(
                     .then(
                         if (onRowsPlaced == null) Modifier
                         else Modifier.onGloballyPositioned { onRowsPlaced(it, rowHeightPx) }
-                    )
+                    ),
+                contentAlignment = AbsoluteAlignment.TopLeft,
             ) {
                 // Period labels (left column)
                 periods.forEachIndexed { periodIndex, period ->
@@ -205,7 +195,7 @@ internal fun TimetableGrid(
                                     roomHint = slot.roomHint,
                                     dayColWidth = dayColWidth,
                                     cellHeight = cellHeight,
-                                    viewModel = viewModel,
+                                    onSelect = onSelect,
                                     courseNosWithAssignments = slot.withAssignments,
                                     courseNosIgnoringAssignments = slot.ignoringAssignments,
                                     onLongPress = onLongPress,
@@ -219,6 +209,36 @@ internal fun TimetableGrid(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * The weekday labels over the grid's day columns, [dayLabels] indexed by weekday. Placed the way
+ * the cells are, at absolute offsets from the left: a `Row` mirrors in a right-to-left language,
+ * and put each label over another day's courses.
+ */
+@Composable
+private fun ClassTableWeekdayHeader(
+    weekdays: List<Int>,
+    dayLabels: List<String>,
+    periodColWidth: Dp,
+    dayColWidth: Dp,
+) {
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = AbsoluteAlignment.TopLeft) {
+        weekdays.forEachIndexed { dayIndex, day ->
+            Box(
+                modifier = Modifier
+                    .width(dayColWidth)
+                    .absoluteOffset(x = periodColWidth + dayColWidth * dayIndex),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = dayLabels.getOrElse(day) { "$day" },
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
         }
     }
@@ -247,7 +267,7 @@ private fun CourseSlot(
     roomHint: String?,
     dayColWidth: Dp,
     cellHeight: Dp,
-    viewModel: ClassTableViewModel,
+    onSelect: (course: Course, weekday: Int, periodId: String) -> Unit,
     courseNosWithAssignments: Set<String>,
     courseNosIgnoringAssignments: Set<String>,
     onLongPress: (() -> Unit)?,
@@ -270,7 +290,7 @@ private fun CourseSlot(
             periodId = periodId,
             hasAssignment = role.course.courseNo in courseNosWithAssignments,
             assignmentsIgnored = role.course.courseNo in courseNosIgnoringAssignments,
-            onTap = { viewModel.selectCourse(role.course, weekday, periodId) },
+            onTap = { onSelect(role.course, weekday, periodId) },
             onLongPress = onLongPress,
             onRename = onRename,
             onPickColor = onPickColor,
@@ -311,7 +331,7 @@ private fun CourseSlot(
             weekday = weekday,
             hasAssignment = { courseNo -> courseNo in courseNosWithAssignments },
             assignmentsIgnored = { courseNo -> courseNo in courseNosIgnoringAssignments },
-            onSelect = { course, firstPeriodId -> viewModel.selectCourse(course, weekday, firstPeriodId) },
+            onSelect = { course, firstPeriodId -> onSelect(course, weekday, firstPeriodId) },
             onLongPress = onLongPress,
             onRename = onRename,
             onPickColor = onPickColor,

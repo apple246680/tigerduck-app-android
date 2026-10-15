@@ -33,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -341,7 +342,8 @@ internal fun MultiConflictCourseCell(
             .absoluteOffset(x = x, y = y)
             .padding(1.dp),
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        // Lanes offset from the left in either direction, as the grid's blocks are.
+        BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = AbsoluteAlignment.TopLeft) {
             val rowHeight = maxHeight / cellRole.combinedSpan
             val laneWidth = maxWidth / cellRole.laneCount
 
