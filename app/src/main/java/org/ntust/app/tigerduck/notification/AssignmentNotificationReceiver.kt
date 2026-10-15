@@ -16,10 +16,14 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import org.ntust.app.tigerduck.AppLink
 import org.ntust.app.tigerduck.R
+import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.AssignmentReminderPrefs
 import org.ntust.app.tigerduck.di.ApplicationScope
+import org.ntust.app.tigerduck.openAppPendingIntent
+import org.ntust.app.tigerduck.pendingIntent
 import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
 
@@ -68,7 +72,7 @@ class AssignmentNotificationReceiver : BroadcastReceiver() {
                     verdict = { reminderCheck.verdict(assignmentId, armedDueAtMs) },
                 ) {
                     notificationChannels.ensureRegistered()
-                    post(context, title, courseName, assignmentId, offset)
+                    post(context, appPreferences.appLanguage, title, courseName, assignmentId, offset)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -141,15 +145,27 @@ class AssignmentNotificationReceiver : BroadcastReceiver() {
         /**
          * Post the reminder, past every check onReceive makes first; the
          * developer menu's preview posts through here too. The channels must
-         * already exist.
+         * exist.
+         *
+         * In [appLanguage], the language chosen in the app: a receiver's
+         * context carries the phone's, and below API 33 the in-app choice
+         * never reaches it, so the reminder came out in the phone's language
+         * under an otherwise translated app. Taken here rather than left to
+         * the caller, so no path can post without it.
+         *
+         * A tap opens the assignment, through `tigerduck://assignment/<id>`,
+         * in the Moodle app or the browser, as on iOS. An id no link can
+         * carry, such as the preview's, opens the app.
          */
         fun post(
-            context: Context,
+            baseContext: Context,
+            appLanguage: String,
             title: String,
             courseName: String,
             assignmentId: String,
             offset: AssignmentReminderOffset?,
         ) {
+            val context = AppLanguageManager.localizedContext(baseContext, appLanguage)
             val notificationManager =
                 context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -167,11 +183,15 @@ class AssignmentNotificationReceiver : BroadcastReceiver() {
                     context.getString(R.string.notification_assignment_due_body, courseName, title)
             }
 
+            val tap = AppLink.assignment(assignmentId)?.pendingIntent(context)
+                ?: openAppPendingIntent(context)
+
             val notification = context.brandedNotification(CHANNEL_ID)
                 .setContentTitle(titleText)
                 .setContentText(bodyText)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true)
+                .setContentIntent(tap)
                 .setGroup(NotificationGroup.ASSIGNMENT.key)
                 .build()
 

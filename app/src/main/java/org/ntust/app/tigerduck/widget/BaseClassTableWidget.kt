@@ -22,7 +22,8 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
-import org.ntust.app.tigerduck.MainActivity
+import org.ntust.app.tigerduck.AppLink
+import org.ntust.app.tigerduck.activityIntent
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.ui.theme.VisualStylePolicy
 import org.ntust.app.tigerduck.widget.content.NextClassContent
@@ -49,10 +50,7 @@ abstract class BaseClassTableWidget(
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val prefs = prefs(context)
-        val tapIntent = Intent(context, MainActivity::class.java)
-            .putExtra("start_route", "classTable")
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        val tapAction = actionStartActivity(tapIntent)
+        val tapAction = actionStartActivity(tapIntent(context))
         provideContent {
             // Reactive tick read from Glance preferences — bumping it from
             // WidgetUpdater forces this composition to re-run, which in turn
@@ -93,4 +91,14 @@ abstract class BaseClassTableWidget(
             context.applicationContext,
             WidgetThemeEntryPoint::class.java,
         ).appPreferences()
+
+    companion object {
+        /**
+         * A tap opens `tigerduck://classtable`. The link goes as the intent's
+         * data, which Glance leaves alone: an intent with none is given a
+         * `glance-action:` URI of Glance's own.
+         */
+        internal fun tapIntent(context: Context): Intent =
+            AppLink.ClassTable.activityIntent(context).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
 }

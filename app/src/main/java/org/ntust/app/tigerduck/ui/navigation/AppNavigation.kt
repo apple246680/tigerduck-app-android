@@ -1,6 +1,7 @@
 package org.ntust.app.tigerduck.ui.navigation
 
 import android.app.Activity
+import android.util.Log
 import android.content.Context
 import android.os.SystemClock
 import android.widget.Toast
@@ -47,6 +48,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -89,6 +91,7 @@ import org.ntust.app.tigerduck.ui.screen.settings.AboutOthersScreen
 import org.ntust.app.tigerduck.ui.screen.settings.LanguagePickerScreen
 import org.ntust.app.tigerduck.ui.screen.settings.LicenseDetailScreen
 import org.ntust.app.tigerduck.ui.screen.settings.AssignmentReminderSettingsScreen
+import org.ntust.app.tigerduck.ui.screen.settings.ClassReminderSettingsScreen
 import org.ntust.app.tigerduck.ui.screen.settings.CourseNameSizeSettingsScreen
 import org.ntust.app.tigerduck.ui.screen.settings.LibrarySettingsScreen
 import org.ntust.app.tigerduck.ui.screen.settings.LiveActivitySettingsScreen
@@ -124,6 +127,7 @@ sealed class Screen(val route: String) {
     object SchoolMailNotificationSettings : Screen("schoolMailNotificationSettings")
     object NotificationPermissionSettings : Screen("notificationPermissionSettings")
     object AssignmentReminderSettings : Screen("assignmentReminderSettings")
+    object ClassReminderSettings : Screen("classReminderSettings")
     object SourceCodePicker : Screen("sourceCodePicker")
     object OtherSettings : Screen("otherSettings")
     object AboutOthers : Screen("aboutOthers")
@@ -187,6 +191,20 @@ fun AppNavigation(
     }
 }
 
+/**
+ * Opens the screen a widget, a notification or a link asked for, on top of
+ * the current one. Returns whether it opened.
+ *
+ * MainActivity only passes routes it accepts (`startRouteOf`), but a route
+ * the graph cannot take, or an argument it cannot read, must still leave the
+ * app where it is: thrown here, it would end the effect that called this,
+ * and the app with it, and come back with the intent from Recents.
+ */
+internal fun NavHostController.navigateToStartRoute(route: String): Boolean =
+    runCatching { navigate(route) { launchSingleTop = true } }
+        .onFailure { Log.w("StartRoute", "not opened: ${it.javaClass.simpleName}") }
+        .isSuccess
+
 @Composable
 fun MainNavigation(
     appState: AppState,
@@ -220,9 +238,7 @@ fun MainNavigation(
         snapshotFlow { navController.currentBackStackEntry }
             .filterNotNull()
             .first()
-        navController.navigate(target) {
-            launchSingleTop = true
-        }
+        navController.navigateToStartRoute(target)
         // Consume so that re-tapping the same notification (which delivers the
         // identical route string) re-fires this LaunchedEffect instead of
         // being deduped by the same key.
@@ -563,6 +579,7 @@ fun MainNavigation(
                     onNavigateToNotificationPermissionSettings = {
                         navController.navigate(Screen.NotificationPermissionSettings.route)
                     },
+                    onNavigateToClassReminders = { navController.navigate(Screen.ClassReminderSettings.route) },
                     onNavigateToAssignmentReminders = { navController.navigate(Screen.AssignmentReminderSettings.route) },
                     onNavigateToCloudSync = { navController.navigate(Screen.CloudSync.route) },
                     onNavigateToLibrarySettings = { navController.navigate(Screen.LibrarySettings.route) },
@@ -708,6 +725,9 @@ fun MainNavigation(
             }
             page(Screen.NotificationPermissionSettings.route) {
                 NotificationPermissionSettingsScreen(onBack = { navController.popBackStack() })
+            }
+            page(Screen.ClassReminderSettings.route) {
+                ClassReminderSettingsScreen(onBack = { navController.popBackStack() })
             }
             page(Screen.AssignmentReminderSettings.route) {
                 AssignmentReminderSettingsScreen(onBack = { navController.popBackStack() })

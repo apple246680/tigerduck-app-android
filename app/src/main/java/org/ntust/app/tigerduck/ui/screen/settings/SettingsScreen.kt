@@ -86,6 +86,7 @@ fun SettingsScreen(
     onNavigateToLiveActivity: () -> Unit = {},
     onNavigateToSchoolMailNotificationSettings: () -> Unit = {},
     onNavigateToNotificationPermissionSettings: () -> Unit = {},
+    onNavigateToClassReminders: () -> Unit = {},
     onNavigateToAssignmentReminders: () -> Unit = {},
     onNavigateToCloudSync: () -> Unit = {},
     onNavigateToLibrarySettings: () -> Unit = {},
@@ -489,6 +490,13 @@ fun SettingsScreen(
             item {
                 ContentCard {
                     Column {
+                        // First, as on iOS. This phone posts its own class
+                        // reminders, so unlike iOS's row this one works with
+                        // cloud sync off too.
+                        SettingsLinkRow(
+                            stringResource(R.string.settings_class_reminder)
+                        ) { onNavigateToClassReminders() }
+                        HorizontalDivider()
                         SettingsLinkRow(
                             stringResource(R.string.settings_assignment_due_reminder)
                         ) { onNavigateToAssignmentReminders() }

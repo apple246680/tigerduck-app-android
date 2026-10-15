@@ -13,7 +13,6 @@ import kotlinx.coroutines.withTimeout
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.liveactivity.LiveActivityManager
-import org.ntust.app.tigerduck.liveactivity.LiveActivityPreferences
 import org.ntust.app.tigerduck.util.logSummary
 import org.ntust.app.tigerduck.widget.WidgetBoundaryScheduler
 import javax.inject.Inject
@@ -23,12 +22,6 @@ class BootReceiver : BroadcastReceiver() {
 
     @Inject
     lateinit var scheduler: AssignmentNotificationScheduler
-
-    @Inject
-    lateinit var classPreparingScheduler: ClassPreparingNotificationScheduler
-
-    @Inject
-    lateinit var liveActivityPreferences: LiveActivityPreferences
 
     @Inject
     lateinit var dataCache: DataCache
@@ -60,30 +53,19 @@ class BootReceiver : BroadcastReceiver() {
                         }
                     }
                     val courses = dataCache.loadCourses()
-                    if (liveActivityPreferences.isEnabled && liveActivityPreferences.showClassPreparing &&
-                        courses.isNotEmpty()
-                    ) {
-                        // 翹課 parked — see DataCache's skipped-dates section.
-                        val skipped = emptyMap<String, List<String>>()
-                        // val skipped = dataCache.loadSkippedDates()
-                        classPreparingScheduler.scheduleAll(
-                            courses = courses,
-                            skippedDates = skipped,
-                            leadTimeSec = liveActivityPreferences.classPreparingLeadTimeSec,
-                        )
-                    }
                     // AlarmManager alarms don't survive reboot; without this
                     // the widget's class-boundary refresh stays dead until the
                     // user opens the app or BackgroundSyncWorker fires.
                     widgetBoundaryScheduler.scheduleForToday(courses)
 
-                    // Same story for the Live Activity ongoing notification —
-                    // re-arm its boundary alarm so the CLASS_PREPARING →
+                    // Same story for the class reminders and the Live
+                    // Activity ongoing notification: the refresh re-arms the
+                    // reminders from their own settings, and the Live
+                    // Update's boundary alarm so the CLASS_PREPARING →
                     // IN_CLASS transition still fires when the device boots
-                    // before the user reopens the app.
-                    if (liveActivityPreferences.isEnabled) {
-                        liveActivityManager.refreshAndWait()
-                    }
+                    // before the user reopens the app. Unconditional, as the
+                    // reminders no longer depend on the Live Update.
+                    liveActivityManager.refreshAndWait()
                 }
             } catch (e: Exception) {
                 android.util.Log.w("BootReceiver", "Boot rescheduling failed: ${e.logSummary()}")
