@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.model.CalendarEvent
 import org.ntust.app.tigerduck.data.model.PendingCourseIgnore
+import org.ntust.app.tigerduck.data.model.UnsentMark
 import org.ntust.app.tigerduck.data.model.SyncConflict
 import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.data.model.ScoreReport
@@ -160,6 +161,19 @@ class DataCache @Inject constructor(
         if (manual.isEmpty()) return remote
         val manualNos = manual.map { it.courseNo }.toSet()
         return remote.filter { it.courseNo !in manualNos } + manual
+    }
+
+    /**
+     * Whether [semester]'s portal rows are cached: `courses_<semester>.json`
+     * lives in the evictable cacheDir, and once the system evicts it,
+     * [loadCourses] returns the hand-typed courses alone.
+     */
+    suspend fun hasPortalCourses(semester: String): Boolean {
+        absorbLegacyCourseCache()
+        val type = object : TypeToken<List<Course>>() {}.type
+        return load<List<Course>>(type, coursesFilename(semester), requireContent = COURSE_NO_TOKEN)
+            ?.let(::usableRows)
+            ?.any { !it.isManual } == true
     }
 
     private fun manualCoursesFilename(semester: String): String = "manual_courses_$semester.json"
@@ -525,6 +539,23 @@ class DataCache @Inject constructor(
             ?: emptySet()
     }
 
+    // --- Unsent assignment marks (assignmentId → status) ---
+    // Marks tapped here whose PATCH the backend has not confirmed; see
+    // UnsentMarks, the only writer. In filesDir with the marks themselves.
+
+    /** False, and nothing written, when the data was wiped since [generation]. */
+    suspend fun saveUnsentMarks(marks: List<UnsentMark>, generation: Int? = null): Boolean =
+        saveToUserDataIf(marks, "unsent_marks.json", generation ?: writeGeneration())
+
+    /** Rows without an id or a status are left out. */
+    suspend fun loadUnsentMarks(): List<UnsentMark> {
+        val type = object : TypeToken<List<UnsentMark?>>() {}.type
+        return loadFromUserData<List<UnsentMark?>>(type, "unsent_marks.json")
+            ?.filterNotNull()
+            ?.filter { it.assignmentId != null && it.status != null }
+            ?: emptyList()
+    }
+
     // --- Score Report (per studentId) ---
 
     /**
@@ -787,6 +818,7 @@ class DataCache @Inject constructor(
                     "ignored_courses.json",
                     "pending_course_ignores.json",
                     "marked_completed_assignments.json",
+                    "unsent_marks.json",
                     "deleted_courses.json",
                     "course_custom_names.json",
                     "selection_dropped.json",

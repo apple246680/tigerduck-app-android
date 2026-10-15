@@ -108,6 +108,15 @@ class AndroidMailNotifier @Inject constructor(
 
     override fun cancelMessage(uid: Long) = NotificationGroup.MAIL.cancel(context, MailNotificationPlanner.notificationId(uid))
 
+    override fun cancelPosted(messages: List<MailSummary>) {
+        // By id, not from activeNotifications as cancelAll goes: the system lists a notification
+        // only some time after it was posted, and this runs right after the post. Every id the
+        // post may have used, as it was one by one or one count.
+        messages.forEach { manager.cancel(MailNotificationPlanner.notificationId(it.uid)) }
+        manager.cancel(MailNotificationPlanner.SUMMARY_ID)
+        NotificationGroup.MAIL.cancelSummary(context)
+    }
+
     override fun cancelAll() {
         // By id as well as group: an auth failure posted before it joined the stack has no group.
         manager.activeNotifications

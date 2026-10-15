@@ -1,6 +1,7 @@
-// The course detail a course cell opens: a page of its own, so the Moodle
-// screens it leads to push over it and back returns to it. Its row and card
-// primitives, and the Moodle hand-off, live here too.
+// The course detail a course cell opens, the root page of its sheet (see
+// CourseDetailSheet), so the Moodle screens it leads to push inside the sheet
+// and back returns to it. Its row and card primitives, and the Moodle
+// hand-off, live here too.
 
 package org.ntust.app.tigerduck.ui.screen.classtable
 
@@ -26,26 +27,21 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -56,7 +52,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -72,7 +67,6 @@ import kotlinx.coroutines.delay
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.shared.Course
-import org.ntust.app.tigerduck.ui.component.NoTopBarInsets
 import org.ntust.app.tigerduck.ui.haptics.HapticScenario
 import org.ntust.app.tigerduck.ui.haptics.Haptics
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleCourseSection
@@ -81,7 +75,6 @@ import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodlePage
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.cardDividerColor
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.openMoodlePage
 import org.ntust.app.tigerduck.ui.screen.home.openAssignmentInMoodle
-import org.ntust.app.tigerduck.ui.screen.settings.SubSettingsBarHeight
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.formatCredits
@@ -89,25 +82,22 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 /**
- * The class table's selected course, in full:
- *   1. Title, rename and "Open in Moodle" in the bar, with the course colour under the title
+ * The class table's selected course, in full, as the root of its sheet:
+ *   1. Title, rename and "Open in Moodle", with the course colour under the title
  *   2. Two emphasis cards side by side: classroom | time
  *   3. The info rows: instructor, code (tap to copy), dimension, duration, credits, enrollment
  *   4. Incomplete assignments, each opening in Moodle, then the course's Moodle section, whose
- *      rows open the Moodle screens over this page
+ *      rows push the Moodle screens inside the sheet
  *
- * [showsMoodle] is off for a course on someone else's class table: the Moodle course is the
- * signed-in student's. The page closes itself when there is no selected course to show, as after
- * the process was restored or the account signed out.
+ * A course on someone else's class table shows read-only: no rename, and none of the Moodle
+ * course or assignments, which are the signed-in student's. The sheet closes when there is no
+ * selected course to show, as after the account signed out or the class table switched.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun CourseDetailScreen(
+internal fun CourseDetailSheetPage(
     viewModel: ClassTableViewModel,
     browserPreference: String,
-    onBack: () -> Unit,
     onOpenRoute: (String) -> Unit,
-    showsMoodle: Boolean = true,
     moodleViewModel: MoodleCourseViewModel = hiltViewModel(),
 ) {
     val selected by viewModel.selectedCourse.collectAsStateWithLifecycle()
@@ -115,19 +105,26 @@ internal fun CourseDetailScreen(
     val liveCourses by viewModel.liveSemesterCourses.collectAsStateWithLifecycle()
     val outstanding by viewModel.outstandingAssignments.collectAsStateWithLifecycle()
     val moodleIds by viewModel.moodleCourseIdMap.collectAsStateWithLifecycle()
+    val shown by viewModel.shownTable.collectAsStateWithLifecycle()
+    val readOnly = shown.person != null
+    val showsMoodle = !readOnly
 
-    // The course as it is now, so a rename made here shows at once.
-    val course = ClassTableSelection.detailCourse(selected, courses, liveCourses, viewModel.selectedFromAnotherTerm)
-    if (course == null) {
-        LaunchedEffect(Unit) { onBack() }
-        return
-    }
+    // The course as it is now, so a rename made here shows at once. Someone else's from their
+    // class table, not the user's copy of a course both take.
+    val course = ClassTableSelection.detailCourse(
+        selected,
+        if (readOnly) shown.courses else courses,
+        liveCourses,
+        viewModel.selectedFromAnotherTerm,
+    ) ?: return
 
     val context = LocalContext.current
     val title = viewModel.detailTitle(course)
     val classroom = viewModel.selectedCourseClassroom
     val timeRange = viewModel.selectedCourseTimeRange
-    val assignments = remember(outstanding, course.courseNo) { outstanding.filter { it.courseNo == course.courseNo } }
+    val assignments = remember(outstanding, course.courseNo, readOnly) {
+        if (readOnly) emptyList() else outstanding.filter { it.courseNo == course.courseNo }
+    }
     val moodleCourseId = remember(course.courseNo, moodleIds) { viewModel.moodleCourseIdFor(course) }
     LaunchedEffect(moodleCourseId, showsMoodle) {
         moodleViewModel.bind(moodleCourseId.takeIf { showsMoodle }, course.courseNo)
@@ -135,74 +132,38 @@ internal fun CourseDetailScreen(
     val store by moodleViewModel.store.collectAsStateWithLifecycle()
     var renaming by rememberSaveable { mutableStateOf(false) }
 
-    val scroll = rememberScrollState()
-    val headerPx = with(LocalDensity.current) { 56.dp.toPx() }
-    // The title moves up into the bar once the page's own heading scrolls under it.
-    val titleInBar by remember { derivedStateOf { scroll.value > headerPx } }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                windowInsets = NoTopBarInsets,
-                title = {
-                    if (titleInBar) Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { renaming = true }) {
-                        Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.class_table_rename_title))
-                    }
-                    if (showsMoodle && moodleCourseId != null) {
-                        IconButton(onClick = { openCourseInMoodle(context, moodleCourseId) }) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.OpenInNew,
-                                contentDescription = stringResource(R.string.a11y_course_detail_open_moodle),
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                    }
-                },
-                expandedHeight = SubSettingsBarHeight,
-            )
-        },
-        containerColor = MaterialTheme.colorScheme.background,
-    ) { padding ->
-        // Centred and held to a readable width on a tablet or in landscape.
-        Box(
+    // Centred and held to a readable width on a tablet or in landscape.
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(scroll),
-            contentAlignment = Alignment.TopCenter,
+                .widthIn(max = 720.dp)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(top = 4.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Column(
-                modifier = Modifier
-                    .widthIn(max = 720.dp)
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(top = 4.dp, bottom = 32.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp),
-            ) {
-                CourseDetailContent(
-                    course = course,
-                    title = title,
-                    classroom = classroom,
-                    timeRange = timeRange,
-                    assignments = assignments,
-                )
-                val current = store
-                if (showsMoodle && moodleCourseId != null && current != null && current.courseId == moodleCourseId) {
-                    MoodleCourseSection(current, browserPreference, onOpenRoute)
-                }
+            CourseDetailContent(
+                course = course,
+                title = title,
+                classroom = classroom,
+                timeRange = timeRange,
+                assignments = assignments,
+                onRename = if (readOnly) null else ({ renaming = true }),
+                onOpenInMoodle = moodleCourseId?.takeIf { showsMoodle }?.let { id -> { openCourseInMoodle(context, id) } },
+            )
+            val current = store
+            if (showsMoodle && moodleCourseId != null && current != null && current.courseId == moodleCourseId) {
+                MoodleCourseSection(current, browserPreference, onOpenRoute)
             }
         }
     }
 
-    if (renaming) {
+    if (renaming && !readOnly) {
         CourseRenameDialog(viewModel = viewModel, course = course, onDismiss = { renaming = false })
     }
 }
@@ -215,6 +176,10 @@ private fun CourseDetailContent(
     classroom: String,
     timeRange: String?,
     assignments: List<Assignment>,
+    /** Null on someone else's class table, which offers no rename. */
+    onRename: (() -> Unit)?,
+    /** Null for a course with no Moodle course of the user's. */
+    onOpenInMoodle: (() -> Unit)?,
 ) {
     val courseColor = TigerDuckTheme.courseColor(course.courseNo)
     val dash = "—"
@@ -251,12 +216,34 @@ private fun CourseDetailContent(
     // Title with a course-coloured accent bar under it, so the cards below
     // read as belonging to *this* course at a glance.
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.semantics { heading() },
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics { heading() },
+            )
+            if (onRename != null) {
+                IconButton(onClick = onRename) {
+                    Icon(
+                        imageVector = Icons.Filled.Edit,
+                        contentDescription = stringResource(R.string.class_table_rename_title),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            if (onOpenInMoodle != null) {
+                IconButton(onClick = onOpenInMoodle) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                        contentDescription = stringResource(R.string.a11y_course_detail_open_moodle),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+        }
         Box(
             modifier = Modifier
                 .fillMaxWidth()

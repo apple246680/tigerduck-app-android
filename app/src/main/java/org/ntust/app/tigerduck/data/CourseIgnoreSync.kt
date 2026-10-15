@@ -209,12 +209,19 @@ class CourseIgnoreSync internal constructor(
     suspend fun pushLocal(result: BackendSyncResult?, generation: Int) {
         val server = result?.let { serverView(it) }
         val serverRows = serverRows(result)
+        // A term reset after [result] was fetched, as Use Local's own course
+        // reset when it fell back to the re-enable check's snapshot, is left
+        // out of [server], but its courses are back on the server now.
+        val reset = result?.let { resetSince(it) }.orEmpty()
         mutex.withLock {
             val local = dataCache.loadIgnoredCourses()
             val ignored = if (server == null) {
                 local
             } else {
-                local.filterTo(mutableSetOf()) { CourseIgnores.semesterOf(it) in server.semesters }
+                local.filterTo(mutableSetOf()) {
+                    val term = CourseIgnores.semesterOf(it)
+                    term in server.semesters || term in reset
+                }
             }
             val cleared = server?.keys.orEmpty() - local
             val now = clock()
@@ -374,9 +381,13 @@ class CourseIgnoreSync internal constructor(
         CourseIgnoreReconciler.serverIgnores(
             result.courseOverrides,
             result.serverCourses,
-            resetSemesters = dataCache.loadSemesterResetAt().filterValues { it > result.fetchedAtMs }.keys +
-                dataCache.resettingSemesters(),
+            resetSemesters = resetSince(result),
         )
+
+    // The terms this device reset after [result] was fetched, or is resetting.
+    private suspend fun resetSince(result: BackendSyncResult): Set<String> =
+        dataCache.loadSemesterResetAt().filterValues { it > result.fetchedAtMs }.keys +
+            dataCache.resettingSemesters()
 
     private fun serverRows(result: BackendSyncResult?): Map<String?, CourseOverrideResult> =
         result?.courseOverrides.orEmpty().associateBy { o ->

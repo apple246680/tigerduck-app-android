@@ -6,10 +6,13 @@ import android.os.SystemClock
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -24,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -71,14 +75,11 @@ import org.ntust.app.tigerduck.ui.screen.calendar.CalendarScreen
 import org.ntust.app.tigerduck.ui.screen.calendar.CalendarViewModel
 import org.ntust.app.tigerduck.ui.screen.classtable.ClassTableScreen
 import org.ntust.app.tigerduck.ui.screen.classtable.ClassTableViewModel
-import org.ntust.app.tigerduck.ui.screen.classtable.CourseDetailScreen
-import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleAnnouncementScreen
-import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleAnnouncementsScreen
-import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleCourseViewModel
-import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleGradesScreen
-import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleMemberScreen
-import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleMembersScreen
-import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleRoutes
+import org.ntust.app.tigerduck.ui.screen.classtable.sharing.ClassTableImportHost
+import org.ntust.app.tigerduck.ui.screen.classtable.sharing.ClassTableSwitcherEntry
+import org.ntust.app.tigerduck.ui.screen.classtable.sharing.ClassTableSwitcherMenuItems
+import org.ntust.app.tigerduck.ui.screen.classtable.sharing.ClassTableImportViewModel
+import org.ntust.app.tigerduck.ui.screen.emptyclassroom.EmptyClassroomScreen
 import org.ntust.app.tigerduck.ui.screen.home.HomeScreen
 import org.ntust.app.tigerduck.ui.screen.home.HomeViewModel
 import org.ntust.app.tigerduck.ui.screen.library.LibraryScreen
@@ -116,6 +117,7 @@ sealed class Screen(val route: String) {
     object AnnouncementSubscriptions : Screen("announcements/subscriptions")
     object Library : Screen("library")
     object Score : Screen("score")
+    object EmptyClassroom : Screen("emptyClassroom")
     object More : Screen("more")
     object Settings : Screen("settings")
     object TabEditor : Screen("tabEditor")
@@ -205,6 +207,8 @@ fun MainNavigation(
     val homeViewModel: HomeViewModel = hiltViewModel()
     val classTableViewModel: ClassTableViewModel = hiltViewModel()
     val calendarViewModel: CalendarViewModel = hiltViewModel()
+    val classTableImportViewModel: ClassTableImportViewModel = hiltViewModel()
+    ShowOwnClassTableFromWidget(widgetStartRoute) { classTableViewModel.showTable(null) }
     LaunchedEffect(Unit) {
         homeViewModel.load()
         classTableViewModel.load()
@@ -261,6 +265,12 @@ fun MainNavigation(
     val bottomItems = configuredTabs + listOf(AppFeature.MORE)
     val tabRoutes = remember(bottomItems) { bottomItems.map { it.toRoute() }.toSet() }
     val tabTap = remember { TabTap() }
+    // The Class Table tab's switcher, which its long press opens.
+    var showClassTableSwitcher by remember { mutableStateOf(false) }
+    val importedTables by classTableViewModel.importedTables.collectAsStateWithLifecycle()
+    val switcherUserName = classTableViewModel.studentId?.takeIf { it.isNotBlank() }
+        ?: stringResource(R.string.common_not_signed_in)
+    val switchClassTableLabel = stringResource(R.string.a11y_class_table_switch)
     // NavHost startDestination must not change mid-session, so freeze it on
     // first composition. popUpTo, in contrast, needs the *current* first tab
     // so reordering via TabEditor doesn't pop to a removed route.
@@ -359,12 +369,58 @@ fun MainNavigation(
                 NavigationBar {
                     bottomItems.forEach { feature ->
                         val route = feature.toRoute()
+                        val isClassTable = route == Screen.ClassTable.route
                         NavigationBarItem(
                             icon = {
-                                Icon(
-                                    feature.icon,
-                                    contentDescription = stringResource(feature.displayNameRes)
+                                Box {
+                                    Icon(
+                                        feature.icon,
+                                        contentDescription = stringResource(feature.displayNameRes)
+                                    )
+                                    if (isClassTable) {
+                                        // On the tab, above it: the user's own row ends nearest.
+                                        DropdownMenu(
+                                            expanded = showClassTableSwitcher,
+                                            onDismissRequest = { showClassTableSwitcher = false },
+                                            shape = RoundedCornerShape(12.dp),
+                                        ) {
+                                            ClassTableSwitcherMenuItems(
+                                                ClassTableSwitcherEntry.sections(importedTables, switcherUserName),
+                                            ) { entry ->
+                                                showClassTableSwitcher = false
+                                                // The page shows what the row picks, or hosts the import.
+                                                if (currentRoute != route) {
+                                                    navController.navigateToTab(route, firstTab = popUpToDest, tabTap)
+                                                }
+                                                when (entry) {
+                                                    ClassTableSwitcherEntry.ImportClassTable ->
+                                                        classTableImportViewModel.start()
+                                                    is ClassTableSwitcherEntry.Person ->
+                                                        classTableViewModel.showTable(entry.id)
+                                                    is ClassTableSwitcherEntry.User ->
+                                                        classTableViewModel.showTable(null)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = if (isClassTable) {
+                                Modifier.classTableTabGestures(
+                                    isShowingClassTable = { currentRoute == route },
+                                    onLongPress = {
+                                        Haptics.perform(context, HapticScenario.ClassTableLongPress)
+                                        showClassTableSwitcher = true
+                                    },
+                                    onDoubleTap = {
+                                        if (classTableViewModel.tabDoubleTapped()) {
+                                            Haptics.perform(context, HapticScenario.TabSwitch)
+                                        }
+                                    },
+                                    longPressLabel = switchClassTableLabel,
                                 )
+                            } else {
+                                Modifier
                             },
                             label = {
                                 Text(
@@ -427,66 +483,9 @@ fun MainNavigation(
                 ClassTableScreen(
                     viewModel = classTableViewModel,
                     onOpenSignInSettings = openSignInSettings,
-                    onOpenCourseDetail = {
-                        navController.navigate(MoodleRoutes.COURSE_DETAIL) { launchSingleTop = true }
-                    },
+                    onRequestImport = classTableImportViewModel::start,
                 )
-            }
-            page(MoodleRoutes.COURSE_DETAIL) { entry ->
-                CourseDetailScreen(
-                    viewModel = classTableViewModel,
-                    browserPreference = appState.browserPreference,
-                    onBack = { navController.popIfTop(entry) },
-                    onOpenRoute = { navController.navigate(it) },
-                )
-            }
-            val moodleCourseArg = navArgument(MoodleCourseViewModel.ARG_COURSE_ID) { type = NavType.IntType }
-            page(MoodleRoutes.ANNOUNCEMENTS, arguments = listOf(moodleCourseArg)) { entry ->
-                MoodleAnnouncementsScreen(
-                    onBack = { navController.popIfTop(entry) },
-                    onOpenRoute = { navController.navigate(it) },
-                )
-            }
-            page(
-                MoodleRoutes.ANNOUNCEMENT,
-                arguments = listOf(
-                    moodleCourseArg,
-                    navArgument(MoodleRoutes.ARG_DISCUSSION_ID) { type = NavType.IntType },
-                ),
-            ) { entry ->
-                MoodleAnnouncementScreen(
-                    discussionId = entry.arguments?.getInt(MoodleRoutes.ARG_DISCUSSION_ID) ?: 0,
-                    browserPreference = appState.browserPreference,
-                    onBack = { navController.popIfTop(entry) },
-                    onOpenRoute = { navController.navigate(it) },
-                )
-            }
-            page(MoodleRoutes.GRADES, arguments = listOf(moodleCourseArg)) { entry ->
-                MoodleGradesScreen(
-                    browserPreference = appState.browserPreference,
-                    onBack = { navController.popIfTop(entry) },
-                )
-            }
-            page(MoodleRoutes.MEMBERS, arguments = listOf(moodleCourseArg)) { entry ->
-                MoodleMembersScreen(
-                    onBack = { navController.popIfTop(entry) },
-                    onOpenRoute = { navController.navigate(it) },
-                )
-            }
-            page(
-                MoodleRoutes.MEMBER,
-                arguments = listOf(
-                    moodleCourseArg,
-                    navArgument(MoodleRoutes.ARG_MEMBER_ID) { type = NavType.IntType },
-                ),
-            ) { entry ->
-                MoodleMemberScreen(
-                    memberId = entry.arguments?.getInt(MoodleRoutes.ARG_MEMBER_ID) ?: 0,
-                    onBack = { navController.popIfTop(entry) },
-                    onComposeSchoolMail = { address ->
-                        navController.navigate(Screen.SchoolMailCompose.route(ComposeMode.NEW, to = address))
-                    },
-                )
+                CourseDetailSheetHost(classTableViewModel, appState.browserPreference)
             }
             page(Screen.Calendar.route) {
                 CalendarScreen(
@@ -549,6 +548,9 @@ fun MainNavigation(
             }
             page(Screen.Score.route) {
                 ScoreScreen(onOpenSignInSettings = openSignInSettings)
+            }
+            page(Screen.EmptyClassroom.route) {
+                EmptyClassroomScreen(onOpenSignInSettings = openSignInSettings)
             }
             page(Screen.More.route) { MoreScreen(navController, appState) }
             page(Screen.Settings.route) {
@@ -732,12 +734,22 @@ fun MainNavigation(
             }
         }
     }
+
+    // Over every page: the tab's menu can start an import from any of them.
+    ClassTableImportHost(
+        viewModel = classTableImportViewModel,
+        onImported = {
+            // The class table shows the person just imported.
+            if (navController.currentBackStackEntry?.destination?.route != Screen.ClassTable.route) {
+                navController.navigateToTab(Screen.ClassTable.route, firstTab = popUpToDest, tabTap)
+            }
+        },
+    )
 }
 
 /** The tab the bottom bar shows selected on [route]: a page's own tab, or the one it was opened from. */
 internal fun selectedTabRoute(route: String?): String? = when {
     route == Screen.Settings.route || route == Screen.TabEditor.route -> Screen.More.route
-    route == MoodleRoutes.COURSE_DETAIL || route?.startsWith(MoodleRoutes.PREFIX) == true -> Screen.ClassTable.route
     else -> route
 }
 
@@ -781,6 +793,18 @@ internal fun NavController.navigateToTab(route: String, firstTab: String, tabTap
     tabTap.record(fromId, currentBackStackEntry?.id)
 }
 
+/**
+ * The class table widget draws the user's own class table, so each start from it, a
+ * [startRoute] that opens the class table, shows that one with [showOwnClassTable].
+ */
+@Composable
+internal fun ShowOwnClassTableFromWidget(startRoute: String?, showOwnClassTable: () -> Unit) {
+    val latest by rememberUpdatedState(showOwnClassTable)
+    LaunchedEffect(startRoute) {
+        if (startRoute == Screen.ClassTable.route) latest()
+    }
+}
+
 fun AppFeature.toRoute(): String = when (this) {
     AppFeature.HOME -> Screen.Home.route
     AppFeature.CLASS_TABLE -> Screen.ClassTable.route
@@ -789,6 +813,7 @@ fun AppFeature.toRoute(): String = when (this) {
     AppFeature.SCHOOL_MAIL -> Screen.SchoolMail.route
     AppFeature.LIBRARY -> Screen.Library.route
     AppFeature.SCORE -> Screen.Score.route
+    AppFeature.EMPTY_CLASSROOM -> Screen.EmptyClassroom.route
     AppFeature.MORE -> Screen.More.route
     AppFeature.SETTINGS -> Screen.Settings.route
     else -> "placeholder/$id"

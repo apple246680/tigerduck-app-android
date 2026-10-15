@@ -50,6 +50,7 @@ class AuthService @Inject constructor(
     @param:ApplicationScope private val appScope: CoroutineScope,
     private val demoAccount: org.ntust.app.tigerduck.demo.DemoAccount,
     private val prefs: org.ntust.app.tigerduck.data.preferences.AppPreferences,
+    private val classroomUsage: org.ntust.app.tigerduck.emptyclassroom.ClassroomUsageService,
     private val mailAccount: org.ntust.app.tigerduck.mail.MailAccount,
 ) {
     /**
@@ -131,6 +132,26 @@ class AuthService @Inject constructor(
         },
     )
 
+    // The stored account's sign-in again, run under loginMutex by ensureAuthenticated(). The
+    // typed sign-in is typedSignIn's.
+    private val schoolSignIn = SchoolSignIn(
+        libraryStore = credentials,
+        libraryService = libraryService,
+        studentId = { credentials.ntustStudentId },
+        password = { credentials.ntustPassword },
+        sessionIsWarm = { sessionManager.cookiesValid },
+        signInToSchool = { studentId, password, typed ->
+            if (typed) {
+                ssoLoginService.signIn(SSO_SERVICE_URL, studentId, password)
+            } else {
+                ssoLoginService.ensureServiceLogin(SSO_SERVICE_URL, studentId, password)
+            }
+        },
+        // A library-only demo sign-in may still be standing in; see
+        // [org.ntust.app.tigerduck.demo.DemoAccount.signOutLibrary].
+        afterLibrarySignIn = { demoAccount.signOutLibrary() },
+    )
+
     init {
         authTokenManager.signInWithStoredAccount = storedAccountSignIn::signIn
     }
@@ -163,7 +184,10 @@ class AuthService @Inject constructor(
 
     private val librarySignIn = LibraryAfterSchoolSignIn(
         tokenValid = { credentials.isLibraryTokenValid },
-        login = { studentId, password -> libraryService.login(studentId, password) },
+        // An automatic sign-in: it yields to a library account the user signed in to meanwhile.
+        login = { studentId, password ->
+            libraryService.login(studentId, password, credentials.libraryAccountGeneration, byUser = false)
+        },
         signInGeneration = { authTokenManager.signInGeneration },
         accountLock = accountLock,
         dropLibrary = { credentials.clearLibraryCredentials() },
@@ -208,7 +232,11 @@ class AuthService @Inject constructor(
                 // Before the class table can show: another account must not inherit what the
                 // last one imported, whether imported while signed out or left by a wipe that
                 // never ran.
-                prepareSignedIn = { importedClassTables.accountDidSignIn(normalizedId) },
+                prepareSignedIn = {
+                    importedClassTables.accountDidSignIn(normalizedId)
+                    // After the store knows who signed in, which empties another account's leftovers.
+                    if (demoAccount.isActive) demoAccount.importClassmates()
+                },
             ) { signIn, sameStudent ->
                 // Best-effort: v3 JWT login failures must not block the SSO
                 // session. The automatic sign-in tries again later; this one
@@ -278,32 +306,13 @@ class AuthService @Inject constructor(
         // No session to build: every caller then reads its cache, which is
         // where the demo data is.
         if (demoAccount.isActive) return@withLock false
-        // Before the credentials: a sign-out from here on keeps the library's sign-in below.
-        val generation = authTokenManager.signInGeneration
-        val studentId = credentials.ntustStudentId ?: return@withLock false
-        val password = credentials.ntustPassword ?: return@withLock false
-
-        if (sessionManager.cookiesValid) return@withLock true
-
         try {
-            performSsoLoginUnlocked(studentId.trim().uppercase(), password, generation)
+            schoolSignIn.stored()
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             false
         }
-    }
-
-    /**
-     * The automatic SSO + library login work. Caller MUST already hold [loginMutex] —
-     * Kotlin `Mutex` is non-reentrant, so the public entry points each acquire
-     * the lock once and delegate here, avoiding the deadlock that would happen
-     * if one path called the other.
-     */
-    private suspend fun performSsoLoginUnlocked(normalizedId: String, password: String, generation: Int): Boolean {
-        val success = ssoLoginService.ensureServiceLogin(SSO_SERVICE_URL, normalizedId, password)
-        if (success) signInToLibrary(normalizedId, password, generation)
-        return success
     }
 
     /**
@@ -353,6 +362,10 @@ class AuthService @Inject constructor(
         // sign in would find its session warm and read its roster.
         courseService.cancelSharedFetches()
         moodleService.cancelSharedFetches()
+        // Likewise the empty-classroom finder: its kept days came from this session, and a read
+        // still queued for it must not sign the departing account in again. The next account
+        // opens on its own building.
+        org.ntust.app.tigerduck.emptyclassroom.forgetEmptyClassroom(classroomUsage, prefs)
         sessionManager.signOut()
         bulletinReadStateStore.clear()
         // The cache they dated is wiped below; left behind, they would date

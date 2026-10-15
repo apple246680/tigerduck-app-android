@@ -60,6 +60,13 @@ internal suspend fun <T> fetchWithSsoSession(
     return fetch() ?: bounced()
 }
 
+/**
+ * [block] under the lock, unless [isStillWanted] says, once the lock is held, that whoever asked
+ * no longer wants it; then [stale] without running it.
+ */
+internal suspend fun <T> Mutex.lockedUnlessStale(isStillWanted: () -> Boolean, stale: T, block: suspend () -> T): T =
+    withLock { if (isStillWanted()) block() else stale }
+
 @Singleton
 class SsoLoginService internal constructor(
     private val sessionManager: NtustSessionManager,
@@ -89,6 +96,20 @@ class SsoLoginService internal constructor(
         studentId: String,
         password: String
     ): Boolean = loginMutex.withLock { logIn(serviceUrl, studentId, password) }
+
+    /**
+     * [ensureServiceLogin] for a caller whose account may sign out while it waits for the lock:
+     * [isStillWanted] is asked once the lock is held, and a login no longer wanted returns false
+     * without a request, rather than signing a departed account in again.
+     */
+    suspend fun ensureServiceLogin(
+        serviceUrl: String,
+        studentId: String,
+        password: String,
+        isStillWanted: () -> Boolean,
+    ): Boolean = loginMutex.lockedUnlessStale(isStillWanted, stale = false) {
+        logIn(serviceUrl, studentId, password)
+    }
 
     /**
      * A sign-in with credentials just entered. [ensureServiceLogin] takes a
