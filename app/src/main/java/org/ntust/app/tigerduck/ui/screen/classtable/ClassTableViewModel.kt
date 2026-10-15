@@ -272,13 +272,6 @@ class ClassTableViewModel @Inject constructor(
     )
     val noNetworkEvent: SharedFlow<Unit> = _noNetworkEvent.asSharedFlow()
 
-    /** A course was selected: the screen opens its course detail. */
-    private val _courseDetailRequests = MutableSharedFlow<Unit>(
-        extraBufferCapacity = 1,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
-    val courseDetailRequests: SharedFlow<Unit> = _courseDetailRequests.asSharedFlow()
-
     private val _syncCompleteEvent = MutableSharedFlow<Unit>(
         extraBufferCapacity = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
@@ -805,7 +798,6 @@ class ClassTableViewModel @Inject constructor(
         _selectedPeriodId.value = periodId
         selectedCourseSemester = if (fromLiveTerm) liveCoursesTerm else _currentSemester.value
         _selectedCourse.value = course
-        _courseDetailRequests.tryEmit(Unit)
     }
 
     /**
@@ -850,8 +842,8 @@ class ClassTableViewModel @Inject constructor(
     private fun lookupMoodleCourseId(idnumber: String): Int? =
         _moodleCourseIdByIdnumber.value[MoodleCourseIds.normalizedIdnumber(idnumber)]
 
-    /** Closes the course detail, which closes itself without a selected course. */
-    private fun clearSelection() {
+    /** Closes the course detail, whose sheet shows only while a course is selected. */
+    fun clearSelection() {
         _selectedCourse.value = null
         selectedCourseSemester = null
     }

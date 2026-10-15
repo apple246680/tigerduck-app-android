@@ -75,14 +75,6 @@ import org.ntust.app.tigerduck.ui.screen.calendar.CalendarScreen
 import org.ntust.app.tigerduck.ui.screen.calendar.CalendarViewModel
 import org.ntust.app.tigerduck.ui.screen.classtable.ClassTableScreen
 import org.ntust.app.tigerduck.ui.screen.classtable.ClassTableViewModel
-import org.ntust.app.tigerduck.ui.screen.classtable.CourseDetailScreen
-import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleAnnouncementScreen
-import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleAnnouncementsScreen
-import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleCourseViewModel
-import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleGradesScreen
-import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleMemberScreen
-import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleMembersScreen
-import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleRoutes
 import org.ntust.app.tigerduck.ui.screen.classtable.sharing.ClassTableImportHost
 import org.ntust.app.tigerduck.ui.screen.classtable.sharing.ClassTableSwitcherEntry
 import org.ntust.app.tigerduck.ui.screen.classtable.sharing.ClassTableSwitcherMenuItems
@@ -489,67 +481,9 @@ fun MainNavigation(
                 ClassTableScreen(
                     viewModel = classTableViewModel,
                     onOpenSignInSettings = openSignInSettings,
-                    onOpenCourseDetail = {
-                        navController.navigate(MoodleRoutes.COURSE_DETAIL) { launchSingleTop = true }
-                    },
                     onRequestImport = classTableImportViewModel::start,
                 )
-            }
-            page(MoodleRoutes.COURSE_DETAIL) { entry ->
-                CourseDetailScreen(
-                    viewModel = classTableViewModel,
-                    browserPreference = appState.browserPreference,
-                    onBack = { navController.popIfTop(entry) },
-                    onOpenRoute = { navController.navigate(it) },
-                )
-            }
-            val moodleCourseArg = navArgument(MoodleCourseViewModel.ARG_COURSE_ID) { type = NavType.IntType }
-            page(MoodleRoutes.ANNOUNCEMENTS, arguments = listOf(moodleCourseArg)) { entry ->
-                MoodleAnnouncementsScreen(
-                    onBack = { navController.popIfTop(entry) },
-                    onOpenRoute = { navController.navigate(it) },
-                )
-            }
-            page(
-                MoodleRoutes.ANNOUNCEMENT,
-                arguments = listOf(
-                    moodleCourseArg,
-                    navArgument(MoodleRoutes.ARG_DISCUSSION_ID) { type = NavType.IntType },
-                ),
-            ) { entry ->
-                MoodleAnnouncementScreen(
-                    discussionId = entry.arguments?.getInt(MoodleRoutes.ARG_DISCUSSION_ID) ?: 0,
-                    browserPreference = appState.browserPreference,
-                    onBack = { navController.popIfTop(entry) },
-                    onOpenRoute = { navController.navigate(it) },
-                )
-            }
-            page(MoodleRoutes.GRADES, arguments = listOf(moodleCourseArg)) { entry ->
-                MoodleGradesScreen(
-                    browserPreference = appState.browserPreference,
-                    onBack = { navController.popIfTop(entry) },
-                )
-            }
-            page(MoodleRoutes.MEMBERS, arguments = listOf(moodleCourseArg)) { entry ->
-                MoodleMembersScreen(
-                    onBack = { navController.popIfTop(entry) },
-                    onOpenRoute = { navController.navigate(it) },
-                )
-            }
-            page(
-                MoodleRoutes.MEMBER,
-                arguments = listOf(
-                    moodleCourseArg,
-                    navArgument(MoodleRoutes.ARG_MEMBER_ID) { type = NavType.IntType },
-                ),
-            ) { entry ->
-                MoodleMemberScreen(
-                    memberId = entry.arguments?.getInt(MoodleRoutes.ARG_MEMBER_ID) ?: 0,
-                    onBack = { navController.popIfTop(entry) },
-                    onComposeSchoolMail = { address ->
-                        navController.navigate(Screen.SchoolMailCompose.route(ComposeMode.NEW, to = address))
-                    },
-                )
+                CourseDetailSheetHost(classTableViewModel, appState.browserPreference)
             }
             page(Screen.Calendar.route) {
                 CalendarScreen(
@@ -814,7 +748,6 @@ fun MainNavigation(
 /** The tab the bottom bar shows selected on [route]: a page's own tab, or the one it was opened from. */
 internal fun selectedTabRoute(route: String?): String? = when {
     route == Screen.Settings.route || route == Screen.TabEditor.route -> Screen.More.route
-    route == MoodleRoutes.COURSE_DETAIL || route?.startsWith(MoodleRoutes.PREFIX) == true -> Screen.ClassTable.route
     else -> route
 }
 

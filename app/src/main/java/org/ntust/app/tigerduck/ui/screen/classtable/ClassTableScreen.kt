@@ -156,7 +156,6 @@ internal fun carouselScrollTarget(isOngoing: List<Boolean>, firstOngoingIndex: I
 fun ClassTableScreen(
     viewModel: ClassTableViewModel = hiltViewModel(),
     onOpenSignInSettings: () -> Unit = {},
-    onOpenCourseDetail: () -> Unit = {},
     /** Opens the class table import, which the navigation host presents over every page. */
     onRequestImport: () -> Unit = {},
 ) {
@@ -266,9 +265,6 @@ fun ClassTableScreen(
     }
     LaunchedEffect(viewModel) {
         viewModel.tripleConflictEvent.collect { tripleConflictError = it }
-    }
-    LaunchedEffect(viewModel) {
-        viewModel.courseDetailRequests.collect { onOpenCourseDetail() }
     }
     LaunchedEffect(viewModel) {
         viewModel.importedTableProblems.collect { importedTableProblem = it }
