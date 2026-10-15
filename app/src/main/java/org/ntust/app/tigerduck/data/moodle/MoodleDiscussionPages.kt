@@ -121,18 +121,32 @@ class MoodleDiscussionPages(
         }
     }
 
-    /** Clears [discussionId]'s unread mark here and on the forum's section row. */
+    /**
+     * Clears [discussionId]'s unread mark here and on the forum's section row.
+     *
+     * The forum's count change is replayed onto a forums answer that was under way, and Moodle may
+     * have logged the view before giving that answer, which then already leaves this discussion
+     * out. So the count never drops below what the other listed discussions still hold unread:
+     * subtracting twice would hide their dot.
+     */
     fun markRead(discussionId: Int) {
-        val unread = currentList()?.discussions?.firstOrNull { it.id == discussionId }?.unreadCount ?: 0
+        val list = currentList() ?: return
+        val unread = list.discussions.firstOrNull { it.id == discussionId }?.unreadCount ?: 0
         if (unread <= 0) return
-        feed.update { list ->
-            list.copy(discussions = list.discussions.map { if (it.id == discussionId) it.copy(unreadCount = 0) else it })
+        val othersUnread = list.discussions.sumOf { if (it.id == discussionId) 0 else it.unreadCount }
+        feed.update { current ->
+            current.copy(discussions = current.discussions.map { if (it.id == discussionId) it.copy(unreadCount = 0) else it })
         }
         forums.update { term ->
             term.copy(
                 forums = term.forums.map { forum ->
                     if (forum.id != forumId) forum
-                    else forum.copy(unreadPostCount = maxOf(0, forum.unreadPostCount - unread))
+                    else forum.copy(
+                        unreadPostCount = maxOf(
+                            minOf(othersUnread, forum.unreadPostCount),
+                            forum.unreadPostCount - unread,
+                        ),
+                    )
                 },
             )
         }

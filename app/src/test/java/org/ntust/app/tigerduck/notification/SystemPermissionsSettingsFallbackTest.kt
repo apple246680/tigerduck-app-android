@@ -9,9 +9,9 @@
 package org.ntust.app.tigerduck.notification
 
 import android.app.Application
+import android.content.ComponentName
 import android.content.Intent
-import android.content.pm.ActivityInfo
-import android.content.pm.ResolveInfo
+import android.content.IntentFilter
 import android.os.Build
 import android.provider.Settings
 import org.junit.Assert.assertEquals
@@ -45,14 +45,12 @@ class SystemPermissionsSettingsFallbackTest {
 
     /** Gives [action] a settings activity to resolve to. */
     private fun handled(action: String) {
-        shadowOf(context.packageManager).addResolveInfoForIntent(
-            Intent(action),
-            ResolveInfo().apply {
-                activityInfo = ActivityInfo().apply {
-                    packageName = "com.android.settings"
-                    name = "com.android.settings.Settings"
-                }
-            },
+        val settings = ComponentName("com.android.settings", "com.android.settings.Settings")
+        val packages = shadowOf(context.packageManager)
+        packages.addActivityIfNotPresent(settings)
+        packages.addIntentFilterForActivity(
+            settings,
+            IntentFilter(action).apply { addCategory(Intent.CATEGORY_DEFAULT) },
         )
     }
 

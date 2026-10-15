@@ -33,7 +33,7 @@ class WidgetPickerEntriesTest {
 
     private fun ActivityInfo.isHiddenFromPicker(): Boolean {
         val xml = app.resources.getXml(metaData.getInt(AppWidgetManager.META_DATA_APPWIDGET_PROVIDER))
-        while (xml.next() != org.xmlpull.v1.XmlPullParser.START_TAG) Unit
+        while (xml.next() != org.xmlpull.v1.XmlPullParser.START_TAG) { /* skip to the root element */ }
         val features = xml.getAttributeIntValue(ANDROID_NS, "widgetFeatures", 0)
         return features and AppWidgetProviderInfo.WIDGET_FEATURE_HIDE_FROM_PICKER != 0
     }

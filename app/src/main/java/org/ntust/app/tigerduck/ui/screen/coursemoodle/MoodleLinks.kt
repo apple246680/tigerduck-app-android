@@ -12,7 +12,7 @@ import org.ntust.app.tigerduck.util.fileProviderAuthority
 import org.ntust.app.tigerduck.util.logSummary
 import java.io.File
 import org.ntust.app.tigerduck.network.moodle.MoodleWebservice
-import org.ntust.app.tigerduck.ui.screen.mail.openMailLink
+import org.ntust.app.tigerduck.ui.openLink
 import java.net.URLEncoder
 
 /**
@@ -79,7 +79,7 @@ fun openMoodleContentLink(context: Context, url: String, browserPreference: Stri
                 )
             }
         }
-        else -> openMailLink(context, url, browserPreference)
+        else -> openLink(context, url, browserPreference)
     }
 }
 

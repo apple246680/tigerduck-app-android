@@ -123,8 +123,11 @@ class ClassBannerClearingTest {
     private fun refreshWakes(): List<Long> =
         shadowOf(context.getSystemService(AlarmManager::class.java)).scheduledAlarms
             .filter {
-                it.type == AlarmManager.RTC_WAKEUP &&
-                    shadowOf(it.operation).savedIntent.action == LiveActivityBoundaryScheduler.ACTION_BOUNDARY
+                // Robolectric 4.17 deprecates the alarm's operation field without a getter to use instead.
+                @Suppress("DEPRECATION")
+                val operation = it.operation
+                it.getType() == AlarmManager.RTC_WAKEUP &&
+                    shadowOf(operation).savedIntent.action == LiveActivityBoundaryScheduler.ACTION_BOUNDARY
             }
             .map { it.triggerAtMs }
 
