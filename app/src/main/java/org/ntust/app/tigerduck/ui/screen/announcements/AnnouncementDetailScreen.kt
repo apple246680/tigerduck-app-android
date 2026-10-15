@@ -32,6 +32,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -113,8 +114,7 @@ fun AnnouncementDetailScreen(
                     if (s.summary != null) {
                         DetailBody(
                             chrome = s.summary,
-                            bodyMd = null,
-                            bodyClean = null,
+                            body = s.summary.summary,
                             bodyState = BodyState.Failed(onRetry = viewModel::reload),
                             taxonomy = s.taxonomy,
                         )
@@ -137,16 +137,14 @@ fun AnnouncementDetailScreen(
 
                 is AnnouncementDetailViewModel.State.Partial -> DetailBody(
                     chrome = s.summary,
-                    bodyMd = null,
-                    bodyClean = null,
+                    body = null,
                     bodyState = BodyState.Loading,
                     taxonomy = s.taxonomy,
                 )
 
                 is AnnouncementDetailViewModel.State.Loaded -> DetailBody(
                     chrome = s.detail.toSummary(),
-                    bodyMd = s.detail.bodyMd,
-                    bodyClean = s.detail.bodyClean,
+                    body = BulletinBodyRenderer.bodyMarkdown(s.detail, viewModel.listSummary),
                     bodyState = BodyState.Ready,
                     taxonomy = s.taxonomy,
                 )
@@ -161,12 +159,15 @@ private sealed interface BodyState {
     data class Failed(val onRetry: () -> Unit) : BodyState
 }
 
+/**
+ * [body] is the markdown to show under the title: the body once it has loaded, or the summary
+ * under the error when it could not.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DetailBody(
     chrome: BulletinSummary,
-    bodyMd: String?,
-    bodyClean: String?,
+    body: String?,
     bodyState: BodyState,
     taxonomy: TaxonomyResponse?,
 ) {
@@ -219,20 +220,9 @@ private fun DetailBody(
             style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
         )
         // Body content stays in Mandarin (server-side, original language).
-        // Render the markdown source when available so headings, lists, and
-        // links carry their formatting; fall back to the cleaned plain text.
+        // Which field it comes from is BulletinBodyRenderer.bodyMarkdown's call.
         when (bodyState) {
-            BodyState.Ready -> {
-                val md = bodyMd?.takeIf { it.isNotBlank() }
-                val plain = bodyClean?.takeIf { it.isNotBlank() }
-                when {
-                    md != null -> Markdown(content = md)
-                    plain != null -> Text(
-                        text = plain,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            }
+            BodyState.Ready -> body?.let { BodyMarkdown(it) }
 
             BodyState.Loading -> {
                 Row(
@@ -265,6 +255,8 @@ private fun DetailBody(
                         Text(stringResource(R.string.action_retry))
                     }
                 }
+                // The summary stands in for the body it could not load, as on the iPhone.
+                body?.let { BodyMarkdown(it) }
             }
         }
         // Footer: hashtag strip — wraps multi-line for posts with many tags.
@@ -294,4 +286,12 @@ private fun DetailBody(
             }
         }
     }
+}
+
+/** Server markdown with [BulletinBodyRenderer.normalize]'s fix-ups applied; nothing when blank. */
+@Composable
+private fun BodyMarkdown(markdown: String) {
+    if (markdown.isBlank()) return
+    val normalized = remember(markdown) { BulletinBodyRenderer.normalize(markdown) }
+    Markdown(content = normalized)
 }
