@@ -67,4 +67,19 @@ class ReenableResolutionsTest {
 
         assertFalse(resolutions.isCurrent(token))
     }
+
+    @Test
+    fun `a check that does not wait leaves a Settings screen's waiting check in place`() {
+        // The owed check a sync starts must not take the place of the one a
+        // Settings screen left waiting, whose dialog it would then never show.
+        val resolutions = ReenableResolutions()
+        val ran = mutableListOf<String>()
+        resolutions.start()
+        assertNull(resolutions.checkStarting { ran += "settings" })
+
+        assertNull(resolutions.checkStarting(waits = false) { ran += "owed" })
+        resolutions.finish()
+
+        assertEquals(listOf("settings"), ran)
+    }
 }

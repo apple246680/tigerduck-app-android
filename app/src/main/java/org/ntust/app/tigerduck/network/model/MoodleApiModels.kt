@@ -96,6 +96,14 @@ data class MoodleSubmissionLastAttempt(
     val locked: Boolean? = null,
     /** The due date of the student's extension, epoch seconds; null or 0 without one. */
     val extensionduedate: Long? = null,
+    /**
+     * Whether the student can still add to or change their submission, as
+     * Moodle works it out for them: their own cutoff, override and extension
+     * included. Null from a Moodle that does not say.
+     */
+    val canedit: Boolean? = null,
+    /** Whether the student can still submit a draft for grading. Null when not said. */
+    val cansubmit: Boolean? = null,
     val gradingstatus: String? = null
 ) {
     // Computed only, like MoodleEnrolledCourse's: Gson leaves a backing field null.
