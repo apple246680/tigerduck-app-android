@@ -4,6 +4,7 @@ import android.util.Log
 import kotlinx.coroutines.CancellationException
 import org.ntust.app.tigerduck.data.CourseIgnores
 import org.ntust.app.tigerduck.data.cache.DataCache
+import org.ntust.app.tigerduck.debug.DebugFixtureStore
 import org.ntust.app.tigerduck.network.MoodleService
 import org.ntust.app.tigerduck.network.MoodleWebserviceError
 import org.ntust.app.tigerduck.network.SubmissionStatusProbe
@@ -16,13 +17,15 @@ import javax.inject.Singleton
  * Whether a reminder that just fired is still due, by
  * [AssignmentReminderPolicy]: the cache first, then one status call to Moodle.
  * A submission Moodle reports goes into the cache and cancels the assignment's
- * other reminders, so they need no call of their own.
+ * other reminders, so they need no call of their own. The demo account's
+ * reminders answer from the cache alone, so store reviewers see them.
  */
 @Singleton
 class AssignmentReminderCheck @Inject constructor(
     private val dataCache: DataCache,
     private val scheduler: AssignmentNotificationScheduler,
     private val statusProbe: SubmissionStatusProbe,
+    private val fixtures: DebugFixtureStore,
 ) {
 
     suspend fun verdict(assignmentId: String, armedDueAtMs: Long?): ReminderVerdict {
@@ -30,6 +33,9 @@ class AssignmentReminderCheck @Inject constructor(
         val generation = dataCache.userDataGeneration
         AssignmentReminderPolicy.cacheDrop(cached(assignmentId), armedDueAtMs)
             ?.let { return ReminderVerdict.Drop(it) }
+        // The demo account has no Moodle token to ask with: its submission status is the
+        // bundled file's, already in the cache, which has the assignment still due.
+        if (fixtures.demoMode) return ReminderVerdict.Show
 
         val moodleId = assignmentId.toIntOrNull()
         val answer = moodleId?.let { askMoodle(it) } ?: ReminderStatusAnswer.NoAnswer
