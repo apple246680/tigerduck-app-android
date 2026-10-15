@@ -42,10 +42,22 @@ sealed interface SearchOutcome {
      * fetched yet, newest first, for [SchoolMailRepository.searchPage] to fetch as the list
      * scrolls.
      */
-    data class Server(override val messages: List<MailSummary>, val remaining: List<Long> = emptyList()) : SearchOutcome
+    data class Server(
+        override val messages: List<MailSummary>,
+        val remaining: List<Long> = emptyList(),
+        /** The folder's UIDVALIDITY the matches were found under, which [remaining] only means anything in; null where unknown. */
+        val uidValidity: Long? = null,
+    ) : SearchOutcome
     /** The server couldn't search; these are matches among already-loaded mail. */
     data class LoadedOnly(override val messages: List<MailSummary>) : SearchOutcome
 }
+
+/**
+ * A page of the matches a search left to fetch ([SearchOutcome.Server.remaining]), with the
+ * folder's UIDVALIDITY it was read under: once that differs from the search's own, the folder was
+ * recreated and the UIDs name other mail. Null where unknown.
+ */
+data class SearchPage(val uidValidity: Long?, val messages: List<MailSummary>)
 
 /**
  * How a search reads mail that is already loaded, where the server's own SEARCH is not available:
@@ -80,7 +92,7 @@ interface SchoolMailRepository {
     suspend fun search(folder: String, query: String): SearchOutcome
 
     /** The summaries of [uids], matches [search] left in [SearchOutcome.Server.remaining]; mail gone since is left out. */
-    suspend fun searchPage(folder: String, uids: List<Long>): List<MailSummary>
+    suspend fun searchPage(folder: String, uids: List<Long>): SearchPage
 
     /** Cache-first like [body], so revisiting a mail's source never re-downloads it. */
     suspend fun rawSource(folder: String, uid: Long): String
@@ -361,20 +373,24 @@ class MailRepository @Inject constructor(
         val q = query.trim()
         if (account.isDemo) return SearchOutcome.LoadedOnly(demoPage(folder).messages.filter { matchesLoadedMail(it, q) })
         return try {
-            // Newest first, so the first page is the newest matches and the rest page back.
-            val matches = withSession { it.search(folder, q) }
-            val newest = matches.take(PAGE_SIZE)
-            SearchOutcome.Server(withSession { it.fetchByUids(folder, newest) }, matches.drop(newest.size))
+            // Newest first, so the first page is the newest matches and the rest page back. One
+            // hold of the connection, so the page and the UIDVALIDITY are those the search saw.
+            withSession { session ->
+                val matches = session.search(folder, q)
+                val validity = session.uidValidity(folder)
+                val newest = matches.take(PAGE_SIZE)
+                SearchOutcome.Server(session.fetchByUids(folder, newest), matches.drop(newest.size), validity)
+            }
         } catch (e: MailError.SearchUnsupported) {
             val loaded = cachedPage(folder)?.messages.orEmpty()
             SearchOutcome.LoadedOnly(loaded.filter { matchesLoadedMail(it, q) })
         }
     }
 
-    override suspend fun searchPage(folder: String, uids: List<Long>): List<MailSummary> {
+    override suspend fun searchPage(folder: String, uids: List<Long>): SearchPage {
         // The demo search answers from the loaded mail, which leaves nothing to fetch later.
-        if (account.isDemo) return emptyList()
-        return withSession { it.fetchByUids(folder, uids) }
+        if (account.isDemo) return SearchPage(null, emptyList())
+        return withSession { session -> SearchPage(session.uidValidity(folder), session.fetchByUids(folder, uids)) }
     }
 
     /**

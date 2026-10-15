@@ -217,6 +217,18 @@ class AngusMailSessionReadTest {
     }
 
     @Test
+    fun `a folder's UIDVALIDITY is the one STATUS reports, read from the folder held open`() {
+        server.deliver("m1")
+        session().use { s ->
+            val expected = s.status("INBOX").uidValidity
+            assertEquals(expected, s.uidValidity("INBOX"))
+            // Answered from the open folder, which stays usable for the fetch that follows.
+            assertEquals(listOf("m1"), s.fetchPage("INBOX", null, 10).messages.map { it.subject })
+            assertEquals(expected, s.uidValidity("INBOX"))
+        }
+    }
+
+    @Test
     fun `production config keeps TLS on`() {
         assertEquals(MailTransportSecurity.IMPLICIT_TLS, MailServerConfig.NTUST.imap.security)
         assertEquals(MailTransportSecurity.IMPLICIT_TLS, MailServerConfig.NTUST.smtp.security)

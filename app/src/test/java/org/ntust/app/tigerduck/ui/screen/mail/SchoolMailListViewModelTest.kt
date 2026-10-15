@@ -249,6 +249,39 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
+    fun `search results from a recreated folder are dropped and the list reloads`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..5L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        val firstPages = repo.pageLimits.size
+        repo.searchPageValidity = 2
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        // The matches were found under another UIDVALIDITY: none of them can be trusted now.
+        assertEquals(emptyList<Long>(), vm.state.value.searchResults?.map { it.uid })
+        assertEquals(firstPages + 1, repo.pageLimits.size)
+        assertEquals(1, repo.searchPages.size)
+    }
+
+    @Test
+    fun `a scroll to the end fetches a few pages of search results at most`() {
+        repo.pageSize = 2
+        // Under unread only every match is read but the oldest, so page after page adds nothing.
+        repo.add("INBOX", mailSummary(1, subject = "期中考 1"))
+        // More than four pages of them: a page of search results is MailRepository.PAGE_SIZE matches.
+        repo.add("INBOX", *(2L..301L).map { mailSummary(it, subject = "期中考 $it", seen = true) }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setUnreadOnly(true)
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        assertEquals(1 + SchoolMailListViewModel.EMPTY_PAGE_WALKBACK, repo.searchPages.size)
+        assertFalse(vm.state.value.isPaginating)
+    }
+
+    @Test
     fun `clearing the search drops the matches it had left to fetch`() {
         repo.pageSize = 2
         repo.add("INBOX", *(1L..5L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())
@@ -321,6 +354,67 @@ class SchoolMailListViewModelTest {
         repo.olderPage = { _, _ -> MailPage(1, 3, listOf(mailSummary(2)), null, windowUids = 2L..3L) }
         vm.loadMoreIfNeeded(vm.state.value.displayed.last())
         assertEquals(listOf(4L, 2L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `an older page asked for before a refresh landed is dropped, not merged into the new list`() {
+        repo.pageSize = 2
+        repo.add("INBOX", mailSummary(1), mailSummary(2), mailSummary(3), mailSummary(4))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        val gate = CompletableDeferred<Unit>()
+        repo.olderPageGate = gate
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        // New mail, and a refresh lands while that older page is still on its way.
+        repo.add("INBOX", mailSummary(5), mailSummary(6))
+        vm.refresh()
+        assertEquals(listOf(6L, 5L), vm.state.value.displayed.map { it.uid })
+        repo.olderPageGate = null
+        gate.complete(Unit)
+        // Its cursor was taken from the list the refresh replaced: merging it would skip mail.
+        assertEquals(listOf(6L, 5L), vm.state.value.displayed.map { it.uid })
+        assertEquals(mapOf("INBOX" to 2), vm.state.value.cursors)
+        assertFalse(vm.state.value.isPaginating)
+    }
+
+    @Test
+    fun `an older page from a recreated folder reloads the list instead of merging into it`() {
+        repo.pageSize = 2
+        repo.add("INBOX", mailSummary(1), mailSummary(2), mailSummary(3), mailSummary(4))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        val firstPages = repo.pageLimits.size
+        // UIDVALIDITY 2: the UIDs on this page name other mail than the list's.
+        repo.olderPage = { _, _ -> MailPage(2, 4, listOf(mailSummary(9), mailSummary(8)), null) }
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertEquals(listOf(4L, 3L), vm.state.value.displayed.map { it.uid })
+        // The older page, then the first page again.
+        assertEquals(firstPages + 2, repo.pageLimits.size)
+    }
+
+    @Test
+    fun `an older page that adds nothing on screen walks back for one that does`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..6L).map { mailSummary(it) }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        // The range after the first page holds only mail flagged deleted.
+        repo.olderPage = { _, before -> if (before == 2) MailPage(1, 6, emptyList(), 4, windowUids = 3L..4L) else null }
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertEquals(listOf(6L, 5L, 2L, 1L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `walking back for something to show stops after a few pages`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..40L).map { mailSummary(it) }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        var asked = 0
+        repo.olderPage = { _, before -> asked++; MailPage(1, 40, emptyList(), before + 2) }
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertEquals(1 + SchoolMailListViewModel.EMPTY_PAGE_WALKBACK, asked)
+        assertFalse(vm.state.value.isPaginating)
     }
 
     @Test

@@ -109,6 +109,9 @@ class FakeSchoolMailRepository : SchoolMailRepository {
      */
     var olderPage: ((folder: String, beforeSeq: Int) -> MailPage?)? = null
 
+    /** While set, an older page ([loadPage] with a `beforeSeq`) suspends on it: a page still on its way. */
+    var olderPageGate: CompletableDeferred<Unit>? = null
+
     fun add(folder: String, vararg summaries: MailSummary) {
         mail.getOrPut(folder) { mutableListOf() } += summaries
     }
@@ -161,6 +164,7 @@ class FakeSchoolMailRepository : SchoolMailRepository {
                 }
             }
             loadError?.let { throw it }
+            if (beforeSeq != null) olderPageGate?.await()
             if (beforeSeq != null) olderPage?.invoke(folder, beforeSeq)?.let { return it }
             val all = sorted(folder)
             val from = beforeSeq ?: 0
@@ -233,7 +237,7 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         val hits = sorted(folder).filter { query in it.subject }
         // Paged like the real repository: the newest [pageSize] matches, the rest left to fetch.
         return if (searchUnsupported) SearchOutcome.LoadedOnly(hits)
-        else SearchOutcome.Server(hits.take(pageSize), hits.drop(pageSize).map { it.uid })
+        else SearchOutcome.Server(hits.take(pageSize), hits.drop(pageSize).map { it.uid }, uidValidity = 1)
     }
 
     /** Every `(folder, uids)` handed to [searchPage], in order. */
@@ -248,12 +252,15 @@ class FakeSchoolMailRepository : SchoolMailRepository {
      */
     var searchPageGate: CompletableDeferred<Unit>? = null
 
-    override suspend fun searchPage(folder: String, uids: List<Long>): List<MailSummary> {
+    /** The UIDVALIDITY [searchPage] reports; the search itself always reports 1. */
+    var searchPageValidity = 1L
+
+    override suspend fun searchPage(folder: String, uids: List<Long>): SearchPage {
         foldersTouched += folder
         searchPages += folder to uids
         searchPageGate?.await()
         searchPageError?.let { throw it }
-        return sorted(folder).filter { it.uid in uids }
+        return SearchPage(searchPageValidity, sorted(folder).filter { it.uid in uids })
     }
 
     var rawSourceError: MailError? = null

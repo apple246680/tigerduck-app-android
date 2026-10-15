@@ -164,7 +164,20 @@ class SchoolMailListViewModel @Inject constructor(
      * The server matches the last search has not fetched yet, per folder, newest first: what
      * scrolling to the end of the results fetches next ([loadMoreSearchResults]).
      */
-    private var unfetchedMatches: Map<String, List<Long>> = emptyMap()
+    private var unfetchedMatches: Map<String, UnfetchedMatches> = emptyMap()
+
+    /** A folder's matches still to fetch, and the UIDVALIDITY they were found under ([SearchOutcome.Server.uidValidity]). */
+    private data class UnfetchedMatches(val uidValidity: Long?, val uids: List<Long>)
+
+    /**
+     * Bumped whenever [UiState.messages] and [UiState.cursors] are replaced wholesale -- a first
+     * page, the cached page, another folder, a sign-out -- so an older page asked for before is
+     * dropped rather than merged: its cursor belonged to the list that was replaced.
+     */
+    private var listGeneration = 0
+
+    /** Each real folder's UIDVALIDITY as its last first page from the server gave it. */
+    private var folderValidity: Map<String, Long> = emptyMap()
 
     /**
      * Bumped by every search submitted or cleared, so a page of results still on its way for an
@@ -188,6 +201,8 @@ class SchoolMailListViewModel @Inject constructor(
                     prefetchDone = false
                     forgetSearch()
                     firstPageAt = null
+                    listGeneration++
+                    folderValidity = emptyMap()
                     _state.value = UiState()
                 }
             }
@@ -263,6 +278,7 @@ class SchoolMailListViewModel @Inject constructor(
         prefetchJob?.cancel()
         prefetchJob = null
         forgetSearch()
+        listGeneration++
         _state.update {
             it.copy(selected = selection, messages = emptyList(), cursors = emptyMap(), searchResults = null, searchText = "", searchLocalOnly = false)
         }
@@ -303,7 +319,7 @@ class SchoolMailListViewModel @Inject constructor(
         val s = _state.value
         if (s.isPaginating || s.displayed.lastOrNull()?.key != last.key) return
         if (s.searchResults != null) {
-            if (unfetchedMatches.values.any { it.isNotEmpty() }) viewModelScope.launch { loadMoreSearchResults() }
+            if (unfetchedMatches.values.any { it.uids.isNotEmpty() }) viewModelScope.launch { loadMoreSearchResults() }
             return
         }
         if (s.cursors.isEmpty()) return
@@ -389,6 +405,7 @@ class SchoolMailListViewModel @Inject constructor(
         val selection = _state.value.selected
         val pages = _state.value.targets.mapNotNull { folder -> repository.cachedPage(folder)?.let { folder to it } }
         if (pages.isEmpty() || _state.value.selected != selection) return
+        listGeneration++
         _state.update { it.copy(messages = rowsOf(selection, pages), cursors = cursorsOf(pages)) }
     }
 
@@ -410,6 +427,8 @@ class SchoolMailListViewModel @Inject constructor(
         try {
             val pages = targets.map { folder -> folder to repository.loadPage(folder, null) }
             if (_state.value.selected != selection) return
+            listGeneration++
+            folderValidity = folderValidity + pages.associate { (folder, page) -> folder to page.uidValidity }
             _state.update { it.copy(messages = rowsOf(selection, pages), cursors = cursorsOf(pages), loadState = LoadState.Loaded) }
             firstPageAt = clock.now()
             // Was "only for Inbox itself"; All mail shows the inbox's own mail too, so it must
@@ -507,18 +526,34 @@ class SchoolMailListViewModel @Inject constructor(
      */
     private suspend fun paginate() {
         val selection = _state.value.selected
-        val cursors = _state.value.cursors
-        if (cursors.isEmpty()) return
+        if (_state.value.cursors.isEmpty()) return
+        val generation = listGeneration
         _state.update { it.copy(isPaginating = true) }
         try {
-            val pages = cursors.entries.sortedBy { it.key }.map { (folder, before) -> folder to repository.loadPage(folder, before) }
-            if (_state.value.selected != selection) return
-            _state.update { st ->
-                val merged = pages.fold(st.messages) { rows, (folder, page) -> mergeOlderPage(rows, folder, page) }
-                st.copy(
-                    messages = if (selection is FolderSelection.AllMail) merged.sortedWith(NEWEST_FIRST) else merged.sortedByDescending { it.uid },
-                    cursors = st.cursors - cursors.keys + cursorsOf(pages),
-                )
+            var walkedBack = 0
+            while (true) {
+                val cursors = _state.value.cursors
+                if (cursors.isEmpty()) return
+                val end = _state.value.displayed.lastOrNull()?.key
+                val pages = cursors.entries.sortedBy { it.key }.map { (folder, before) -> folder to repository.loadPage(folder, before) }
+                if (_state.value.selected != selection || generation != listGeneration) return
+                // A folder recreated since its first page: the older page's UIDs name other mail
+                // than the list's, so it is not merged, and the list starts again from the top.
+                if (pages.any { (folder, page) -> folderValidity[folder].let { it != null && it != page.uidValidity } }) {
+                    fetchFirstPage()
+                    return
+                }
+                _state.update { st ->
+                    val merged = pages.fold(st.messages) { rows, (folder, page) -> mergeOlderPage(rows, folder, page) }
+                    st.copy(
+                        messages = if (selection is FolderSelection.AllMail) merged.sortedWith(NEWEST_FIRST) else merged.sortedByDescending { it.uid },
+                        cursors = st.cursors - cursors.keys + cursorsOf(pages),
+                    )
+                }
+                // A page that adds nothing on screen leaves no new last row to ask for the next one,
+                // so a few more are fetched straight away ([EMPTY_PAGE_WALKBACK]).
+                if (_state.value.displayed.lastOrNull()?.key != end || walkedBack == EMPTY_PAGE_WALKBACK) return
+                walkedBack++
             }
         } catch (e: MailError) {
             fail(e)
@@ -576,7 +611,8 @@ class SchoolMailListViewModel @Inject constructor(
             if (_state.value.selected != selection || generation != searchGeneration) return
             val rows = outcomes.flatMap { (folder, outcome) -> outcome.messages.map { MailRow(folder, it) } }
             unfetchedMatches = outcomes.mapNotNull { (folder, outcome) ->
-                (outcome as? SearchOutcome.Server)?.remaining?.takeIf { it.isNotEmpty() }?.let { folder to it }
+                (outcome as? SearchOutcome.Server)?.takeIf { it.remaining.isNotEmpty() }
+                    ?.let { folder to UnfetchedMatches(it.uidValidity, it.remaining) }
             }.toMap()
             _state.update {
                 it.copy(
@@ -595,36 +631,48 @@ class SchoolMailListViewModel @Inject constructor(
     /**
      * The next page of each folder's [unfetchedMatches], added to the results. A page can add
      * nothing that shows -- every match since deleted, or read under unread only -- and then no
-     * new last row appears to ask for the next one, so this keeps going until the end of the list
-     * moves or the matches run out. A failure stops it and says so; the page it was fetching
-     * stays unfetched for the next scroll to try again.
+     * new last row appears to ask for the next one, so up to [EMPTY_PAGE_WALKBACK] more follow
+     * until the end of the list moves or the matches run out. A failure stops it and says so; the
+     * page it was fetching stays unfetched for the next scroll to try again.
+     *
+     * A page read under another UIDVALIDITY than the search's means the folder was recreated since:
+     * its matches, listed and unfetched alike, name other mail now. They go, and the list reloads.
      */
     private suspend fun loadMoreSearchResults() {
         val selection = _state.value.selected
         val generation = searchGeneration
-        val end = _state.value.displayed.lastOrNull()?.key
         _state.update { it.copy(isPaginating = true) }
         try {
-            while (_state.value.displayed.lastOrNull()?.key == end) {
-                val pending = unfetchedMatches.filterValues { it.isNotEmpty() }
+            var walkedBack = 0
+            while (true) {
+                val end = _state.value.displayed.lastOrNull()?.key
+                val pending = unfetchedMatches.filterValues { it.uids.isNotEmpty() }
                 if (pending.isEmpty()) return
-                for ((folder, uids) in pending) {
-                    val batch = uids.take(MailRepository.PAGE_SIZE)
-                    val more = try {
+                for ((folder, matches) in pending) {
+                    val batch = matches.uids.take(MailRepository.PAGE_SIZE)
+                    val page = try {
                         repository.searchPage(folder, batch)
                     } catch (e: MailError) {
                         if (generation == searchGeneration) searchFail(e)
                         return
                     }
                     if (_state.value.selected != selection || generation != searchGeneration) return
-                    unfetchedMatches = unfetchedMatches + (folder to uids.drop(batch.size))
+                    if (matches.uidValidity != null && page.uidValidity != null && page.uidValidity != matches.uidValidity) {
+                        unfetchedMatches = unfetchedMatches - folder
+                        _state.update { st -> st.copy(searchResults = st.searchResults?.filterNot { it.folder == folder }) }
+                        fetchFirstPage()
+                        return
+                    }
+                    unfetchedMatches = unfetchedMatches + (folder to matches.copy(uids = matches.uids.drop(batch.size)))
                     _state.update { st ->
                         val results = st.searchResults ?: return@update st
                         val listed = results.mapTo(HashSet()) { it.key }
-                        val added = more.map { MailRow(folder, it) }.filter { it.key !in listed }
+                        val added = page.messages.map { MailRow(folder, it) }.filter { it.key !in listed }
                         st.copy(searchResults = ordered(selection, results + added))
                     }
                 }
+                if (_state.value.displayed.lastOrNull()?.key != end || walkedBack == EMPTY_PAGE_WALKBACK) return
+                walkedBack++
             }
         } finally {
             _state.update { it.copy(isPaginating = false) }
@@ -790,6 +838,13 @@ class SchoolMailListViewModel @Inject constructor(
 
         /** How long a resume waits before deciding its look at the inbox; see [startPolling]. */
         internal const val RESUME_POLL_GRACE_MS = 500L
+
+        /**
+         * How many more pages a scroll to the end fetches, of the list or of search results, when
+         * the one it asked for added nothing on screen: all deleted, already listed, or read under
+         * unread only. Bounded, so one scroll can never page through a whole mailbox.
+         */
+        internal const val EMPTY_PAGE_WALKBACK = 3
 
         /** Enough to fill a screen; the real load that follows a chip tap replaces it. */
         internal const val PREFETCH_LIMIT = 20

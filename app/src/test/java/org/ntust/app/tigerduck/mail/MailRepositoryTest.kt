@@ -274,7 +274,10 @@ class MailRepositoryTest {
         val outcome = repo.search("INBOX", "期中") as SearchOutcome.Server
         assertEquals(uids.takeLast(MailRepository.PAGE_SIZE).reversed(), outcome.messages.map { it.uid })
         assertEquals(uids.take(2).reversed(), outcome.remaining)
-        assertEquals(uids.take(2).reversed(), repo.searchPage("INBOX", outcome.remaining).map { it.uid })
+        assertEquals(server.uidValidity, outcome.uidValidity)
+        val page = repo.searchPage("INBOX", outcome.remaining)
+        assertEquals(uids.take(2).reversed(), page.messages.map { it.uid })
+        assertEquals(server.uidValidity, page.uidValidity)
     }
 
     @Test
