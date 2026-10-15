@@ -80,6 +80,8 @@ class AnnouncementsViewModel @Inject constructor(
          * readIds ticks don't re-run the filter pass on every read.
          */
         val displayed: List<BulletinSummary> = emptyList(),
+        /** For the sync dot's "Last synced" row; see [BulletinCache.loadFetchedAt]. */
+        val syncedAtMs: Long = 0L,
     ) {
         val hasUnread: Boolean
             get() = filtered.any { it.id !in readIds }
@@ -119,6 +121,8 @@ class AnnouncementsViewModel @Inject constructor(
         hasLoaded = true
         viewModelScope.launch {
             val cached = cache.load()
+            val fetchedAt = cache.loadFetchedAt()
+            _state.update { it.copy(syncedAtMs = fetchedAt) }
             if (cached.isNotEmpty()) {
                 repository.putSummaries(cached)
                 _state.update { applyFilters(it.copy(items = sortedUnique(cached))) }
@@ -192,6 +196,9 @@ class AnnouncementsViewModel @Inject constructor(
                 // call: writing nextCursor / items here would overwrite the
                 // newer refresh that triggered our cancellation.
                 coroutineContext.ensureActive()
+                // Wall clock, for the "Last synced" row and across restarts;
+                // the session's elapsedRealtime below is neither.
+                val fetchedAt = System.currentTimeMillis()
                 val merged = sortedUnique(_state.value.items + response.items)
                 nextCursor = response.nextCursor
                 repository.putSummaries(merged)
@@ -201,10 +208,12 @@ class AnnouncementsViewModel @Inject constructor(
                             items = merged,
                             loadState = LoadState.Loaded,
                             hasMore = response.nextCursor != null,
+                            syncedAtMs = fetchedAt,
                         )
                     )
                 }
                 cache.save(merged)
+                cache.saveFetchedAt(fetchedAt)
                 repository.listRefreshed(
                     SystemClock.elapsedRealtime(), includeDeleted, response.nextCursor,
                 )

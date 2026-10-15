@@ -88,6 +88,7 @@ fun LibraryScreen(
     val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
     val isLoggedIn by viewModel.isLoggedIn.collectAsStateWithLifecycle()
     val storedUsername by viewModel.storedUsername.collectAsStateWithLifecycle()
+    val syncedAtMs by viewModel.syncedAtMs.collectAsStateWithLifecycle()
 
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -195,6 +196,7 @@ fun LibraryScreen(
                 text = if (isLoggedIn) stringResource(R.string.library_status_signed_in)
                 else stringResource(R.string.library_status_not_signed_in),
                 isLoading = isLoadingQR,
+                syncedAtMs = syncedAtMs,
             )
         }
 

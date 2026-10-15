@@ -69,6 +69,7 @@ fun ScoreScreen(
     val isLoggedIn by viewModel.isLoggedIn.collectAsStateWithLifecycle()
     val rankingScope by viewModel.rankingScope.collectAsStateWithLifecycle()
     val collapsedTerms by viewModel.collapsedTerms.collectAsStateWithLifecycle()
+    val syncedAtMs by viewModel.syncedAtMs.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { viewModel.load() }
 
@@ -97,6 +98,7 @@ fun ScoreScreen(
                     SyncStatusDot(
                         servers = listOf(ServerKind.COURSE_SELECTION),
                         isLoading = isRefreshing,
+                        syncedAtMs = syncedAtMs,
                     )
                 }
                 AutoSignInFailedBanner()

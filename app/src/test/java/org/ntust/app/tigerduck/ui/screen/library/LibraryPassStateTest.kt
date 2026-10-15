@@ -42,6 +42,9 @@ class LibraryPassStateTest {
     /** Whether the page showed the pass each time it read the session again. */
     private val refreshedWhileLoggedIn = mutableListOf<Boolean>()
 
+    /** The codes the page dated its "Last synced" row by, one per call. */
+    private var dated = 0
+
     private lateinit var state: LibraryPassState<String>
 
     private fun TestScope.pass(): LibraryPassState<String> = LibraryPassState(
@@ -61,6 +64,7 @@ class LibraryPassStateTest {
         describe = { it.message ?: "failed" },
         cache = LibraryQRCache(),
         now = { testScheduler.currentTime },
+        onFetched = { dated++ },
     ).also { state = it }
 
     /**
@@ -202,5 +206,34 @@ class LibraryPassStateTest {
         assertTrue(pass.isLoggedIn.value)
         assertEquals("image of code-3", pass.image.value)
         assertEquals(30, pass.countdown.value)
+    }
+
+    /**
+     * The page's "Last synced" row is the last code that landed for the account on screen: a
+     * failed request leaves it, and so does a code that came back for an account that left.
+     */
+    @Test
+    fun `each code that lands dates the page, and a failed one or another account's does not`() = runTest {
+        val pass = pass()
+        pass.load()
+        runCurrent()
+        assertEquals("image of code-1", pass.image.value)
+        assertEquals(1, dated)
+
+        fetches += { throw IOException("HTTP 503") }
+        advanceTimeBy(30_000)
+        runCurrent()
+        assertEquals(1, dated)
+
+        // The retry comes back for an account that has since been replaced, and the page
+        // fetches the new account's own code at once.
+        fetches += {
+            account = 2
+            "previous account's code"
+        }
+        advanceTimeBy(60_000)
+        runCurrent()
+        assertEquals("image of code-4", pass.image.value)
+        assertEquals(2, dated)
     }
 }

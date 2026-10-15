@@ -348,6 +348,7 @@ fun SchoolMailScreen(
                         // failure still has a home: the list itself shows the error.
                         text = statusText(mailStatus),
                         isLoading = isLoading,
+                        syncedAtMs = state.inboxFetchedAt,
                     )
                     IconButton(onClick = { viewModel.setUnreadOnly(!state.unreadOnly) }) {
                         Icon(

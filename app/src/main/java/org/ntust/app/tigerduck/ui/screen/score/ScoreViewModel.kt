@@ -54,6 +54,11 @@ class ScoreViewModel @Inject constructor(
 
     val isLoggedIn: StateFlow<Boolean> = authService.authState
 
+    private val syncedAt = ScoreSyncedAt(viewModelScope, authService.authState, scoreService::cachedScoreReport)
+
+    /** For the sync dot's "Last synced" row; see [ScoreSyncedAt]. */
+    val syncedAtMs: StateFlow<Long> = syncedAt.value
+
     private var hasLoaded = false
     private var hasSeededCollapse = false
 
@@ -74,6 +79,7 @@ class ScoreViewModel @Inject constructor(
 
         viewModelScope.launch {
             val cached = scoreService.cachedScoreReport(studentId)
+            syncedAt.show(cached)
             // report is nullable (Gson Unsafe defense) — skip the instant
             // paint on a degraded snapshot and let refresh() repopulate.
             cached?.report?.let {
@@ -116,7 +122,9 @@ class ScoreViewModel @Inject constructor(
         _isRefreshing.value = true
         _errorMessage.value = null
         try {
-            val fresh = scoreService.fetchScoreReport(studentId, password, forceRefresh = force)
+            val fresh = syncedAt.afterRefresh(studentId) {
+                scoreService.fetchScoreReport(studentId, password, forceRefresh = force)
+            }
             _report.value = fresh
             applyDefaultCollapseRule()
         } catch (e: NtustScoreError) {
