@@ -79,6 +79,10 @@ class AssignmentReminderCheck @Inject constructor(
         throw e
     } catch (_: MoodleWebserviceError.InvalidToken) {
         ReminderStatusAnswer.TokenRejected
+    } catch (_: MoodleWebserviceError.AccessDenied) {
+        // Moodle's first answer to an expired token, before it says `invalidtoken`. The status
+        // call is one every token may make, so it means the token, not the function.
+        ReminderStatusAnswer.TokenRejected
     } catch (e: Exception) {
         Log.w(TAG, "status call failed: ${e.logSummary()}")
         ReminderStatusAnswer.NoAnswer

@@ -1,7 +1,6 @@
 package org.ntust.app.tigerduck.network
 
 import android.os.SystemClock
-import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
@@ -20,6 +19,7 @@ import org.ntust.app.tigerduck.network.model.MoodleAssignmentNode
 import org.ntust.app.tigerduck.network.model.MoodleEnrolledCourse
 import org.ntust.app.tigerduck.network.model.MoodleSubmissionLastAttempt
 import org.ntust.app.tigerduck.network.model.MoodleSubmissionStatusEnvelope
+import org.ntust.app.tigerduck.network.moodle.MoodleWebservice
 import org.ntust.app.tigerduck.util.MAX_CONCURRENT_SCHOOL_REQUESTS
 import org.ntust.app.tigerduck.util.SharedFetch
 import org.ntust.app.tigerduck.util.mapAtMost
@@ -35,18 +35,10 @@ class MoodleService @Inject constructor(
     private val courseService: CourseService,
     private val dataCache: DataCache,
     private val prefs: AppPreferences,
+    private val webservice: MoodleWebservice,
     @param:ApplicationScope appScope: CoroutineScope,
 ) {
     private val client: OkHttpClient get() = sessionManager.client
-    private val gson = Gson()
-    private val webserviceUrl = WEBSERVICE_URL
-
-    // The site-info user id, with the wstoken it was asked with. A token is
-    // one account's, so a different token is asked again: kept on its own,
-    // the id outlived a sign-out and went out with the next account's calls.
-    @Volatile
-    private var cachedUserId: Pair<String, Int>? = null
-    private val siteInfoLock = Any()
 
     // Home, the class table, the calendar and the worker each ask for these,
     // within seconds of each other on launch — see SharedFetch. Keyed by the
@@ -119,8 +111,9 @@ class MoodleService @Inject constructor(
     suspend fun fetchEnrolledCourses(): List<MoodleEnrolledCourse> =
         shared(sharedEnrolled, tokenService.currentToken()) {
             withContext(Dispatchers.IO) {
-                attemptWithTokenRetry { token ->
-                    val userId = getSiteInfoUserId(token)
+                // The site info is asked under the token, so a stale token there is renewed too.
+                webservice.withToken { token ->
+                    val userId = webservice.siteInfo(token).userId
                     callEnrolledCourses(token, userId)
                 }
             }
@@ -261,9 +254,9 @@ class MoodleService @Inject constructor(
             var asked = 0
             var askedAt = 0L
             var closedNow: Map<Int, Long> = emptyMap()
-            val round = attemptWithTokenRetry { token ->
+            val round = webservice.withToken { token ->
                 askedWith = token
-                val userId = getSiteInfoUserId(token)
+                val userId = webservice.siteInfo(token).userId
                 val courses = callGetAssignments(token, courseIds)
                 val all = courses.flatMap { it.assignments }
                 val toAsk = assignmentsToAsk(all, confirmed, closed, System.currentTimeMillis())
@@ -301,62 +294,11 @@ class MoodleService @Inject constructor(
         }
     }
 
-    /** Run [block] with current token; on `invalidtoken`, refresh once and retry. */
-    private suspend inline fun <T> attemptWithTokenRetry(block: (String) -> T): T {
-        val token = tokenService.currentToken() ?: tokenService.refreshToken()
-        return try {
-            block(token)
-        } catch (e: MoodleWebserviceError.InvalidToken) {
-            Log.w("MoodleService", "wstoken rejected, refreshing once")
-            tokenService.clearToken()
-            synchronized(siteInfoLock) { cachedUserId = null }
-            val fresh = tokenService.refreshToken()
-            block(fresh)
-        }
-    }
-
-    /**
-     * Lazy site-info probe: serializes concurrent IO callers so only one
-     * `core_webservice_get_site_info` round-trip fires per token, and
-     * double-checks under the lock so a clear from [attemptWithTokenRetry]
-     * doesn't get stomped on by an in-flight fetch.
-     */
-    private fun getSiteInfoUserId(token: String): Int {
-        cachedUserId?.takeIf { it.first == token }?.let { return it.second }
-        synchronized(siteInfoLock) {
-            cachedUserId?.takeIf { it.first == token }?.let { return it.second }
-            val url =
-                "$webserviceUrl?moodlewsrestformat=json&wsfunction=core_webservice_get_site_info&wstoken=$token"
-            val req = Request.Builder().url(url).post(FormBody.Builder().build()).build()
-            val body = client.newCall(req).execute().use { response ->
-                if (!response.isSuccessful) throw MoodleWebserviceError.HttpStatus(response.code)
-                response.body.string()
-            }
-            MoodleWebserviceError.fromJsonBody(body)?.let { throw it }
-            val parsed = try {
-                gson.fromJson(body, Map::class.java)
-            } catch (e: Exception) {
-                throw MoodleWebserviceError.MalformedResponse("site_info not JSON: ${e.message}")
-            }
-            val rawUserId = parsed?.get("userid")
-                ?: throw MoodleWebserviceError.MalformedResponse("userid missing from site_info")
-            val userId = (rawUserId as? Number)?.toInt()
-                ?: throw MoodleWebserviceError.MalformedResponse("userid has unexpected type: $rawUserId")
-            cachedUserId = token to userId
-            return userId
-        }
-    }
-
     private fun callEnrolledCourses(token: String, userId: Int): List<MoodleEnrolledCourse> {
-        val url =
-            "$webserviceUrl?moodlewsrestformat=json&wsfunction=core_enrol_get_users_courses&wstoken=$token"
+        val url = MoodleWebservice.url("core_enrol_get_users_courses", token)
         val form = FormBody.Builder().add("userid", userId.toString()).build()
         val req = Request.Builder().url(url).post(form).build()
-        val body = client.newCall(req).execute().use { response ->
-            if (!response.isSuccessful) throw MoodleWebserviceError.HttpStatus(response.code)
-            response.body.string()
-        }
-        MoodleWebserviceError.fromJsonBody(body)?.let { throw it }
+        val body = MoodleWebservice.execute(client, req)
         return try {
             decodeEnrolledCourses(body)
         } catch (e: Exception) {
@@ -367,7 +309,7 @@ class MoodleService @Inject constructor(
     private fun callGetAssignments(token: String, courseIds: List<Int>): List<MoodleAssignmentsCourse> =
         requestAssignments(
             client,
-            "$webserviceUrl?moodlewsrestformat=json&wsfunction=mod_assign_get_assignments&wstoken=$token",
+            MoodleWebservice.url("mod_assign_get_assignments", token),
             courseIds,
         )
 
@@ -394,11 +336,9 @@ class MoodleService @Inject constructor(
     companion object {
         private val decodeGson = Gson()
 
-        private const val WEBSERVICE_URL = "https://moodle2.ntust.edu.tw/webservice/rest/server.php"
-
         /** The `mod_assign_get_submission_status` endpoint under [token]. */
         internal fun submissionStatusUrl(token: String): String =
-            "$WEBSERVICE_URL?moodlewsrestformat=json&wsfunction=mod_assign_get_submission_status&wstoken=$token"
+            MoodleWebservice.url("mod_assign_get_submission_status", token)
 
         /**
          * The `mod_assign_get_assignments` form for [courseIds]. It asks only
@@ -422,11 +362,7 @@ class MoodleService @Inject constructor(
             courseIds: List<Int>,
         ): List<MoodleAssignmentsCourse> {
             val req = Request.Builder().url(url).post(assignmentsForm(courseIds)).build()
-            val body = client.newCall(req).execute().use { response ->
-                if (!response.isSuccessful) throw MoodleWebserviceError.HttpStatus(response.code)
-                response.body.string()
-            }
-            return decodeAssignments(body)
+            return decodeAssignments(MoodleWebservice.execute(client, req))
         }
 
         /**
@@ -573,11 +509,7 @@ class MoodleService @Inject constructor(
                 .apply { if (userId != null) add("userid", userId.toString()) }
                 .build()
             val req = Request.Builder().url(url).post(form).build()
-            val body = client.newCall(req).execute().use { response ->
-                if (!response.isSuccessful) throw MoodleWebserviceError.HttpStatus(response.code)
-                response.body.string()
-            }
-            return decodeSubmissionStatus(body)
+            return decodeSubmissionStatus(MoodleWebservice.execute(client, req))
         }
 
         /**
