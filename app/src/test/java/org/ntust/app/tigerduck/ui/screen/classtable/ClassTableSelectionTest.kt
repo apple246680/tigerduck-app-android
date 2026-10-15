@@ -89,6 +89,22 @@ class ClassTableSelectionTest {
     }
 
     @Test
+    fun `a course picked from someone else's class table is theirs`() {
+        assertTrue(ClassTableSelection.isSomeoneElses(showingSomeoneElse = true, fromLiveTerm = false))
+    }
+
+    @Test
+    fun `a course picked from the live term is the user's own whatever the class table shows`() {
+        assertFalse(ClassTableSelection.isSomeoneElses(showingSomeoneElse = true, fromLiveTerm = true))
+        assertFalse(ClassTableSelection.isSomeoneElses(showingSomeoneElse = false, fromLiveTerm = true))
+    }
+
+    @Test
+    fun `a course picked from the user's own class table is theirs`() {
+        assertFalse(ClassTableSelection.isSomeoneElses(showingSomeoneElse = false, fromLiveTerm = false))
+    }
+
+    @Test
     fun `the detail's title is the custom name, else the full name, else the course name`() {
         val plain = course("CS1", emptyMap())
         assertEquals("Mine", ClassTableSelection.detailTitle(plain.copy(customCourseName = "Mine"), fullName = "Full"))
