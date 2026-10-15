@@ -69,6 +69,40 @@
                 <data android:host="classtable" />
                 <data android:host="library" />
             </intent-filter>
+            <!-- tigerduck://share/<code>, which tigerduck.app's "Open in TigerDuck" button opens
+                 through an intent: URL without a package, so either flavor answers it. Read by
+                 takeSharedClassTableCode, not AppLink.parse: the code goes to the class table
+                 import, which asks before anything is saved. -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="tigerduck" />
+                <data android:host="share" />
+            </intent-filter>
+            <!-- App Links: a class table share code is the URL HTTPS://TIGERDUCK.APP/T/<code>, so the
+                 camera, Google Lens, another QR app or a tapped link opens it here once the site's
+                 assetlinks.json, which lists both flavors' packages, verifies this filter.
+
+                 Android matches a filter's scheme and host case-sensitively, and share codes are
+                 written in upper case: a scanner that starts the URL exactly as written may reach
+                 the browser instead. No upper-case filter is added for that: verification would
+                 not cover it, so it would not open the app directly either. The web page's "Open
+                 in TigerDuck" button (the filter above) opens the app for a scanner that opens
+                 the browser. The path is matched case-sensitively too; the codes' /T/ is upper
+                 case. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="https" />
+                <data android:host="tigerduck.app" />
+                <data android:pathPrefix="/T/" />
+            </intent-filter>
         </activity>
 
 
