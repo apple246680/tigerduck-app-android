@@ -93,6 +93,27 @@ internal object CourseColorPick {
         return Result(updated, courseNo, applied, changed)
     }
 
+    /**
+     * The colour each of [courses] shows: its pin, or the colour the palette
+     * gives it among the pins, as the class table assigns them
+     * ([org.ntust.app.tigerduck.ui.theme.buildCourseColorAssignments]). Here
+     * because that one parses the pins through the platform, which a JVM test
+     * of a sync cannot run.
+     */
+    fun shownColors(courses: List<Course>): (String) -> Color {
+        val shown = mutableMapOf<String, Color>()
+        for (course in courses) {
+            course.customColorHex?.let(::parseHex)?.let { shown[course.courseNo] = it }
+        }
+        val taken = shown.values.toMutableSet()
+        for (course in courses.filter { it.courseNo !in shown }.sortedBy { it.courseNo }) {
+            val color = pickFreeCourseColor(course.courseNo, taken)
+            shown[course.courseNo] = color
+            taken += color
+        }
+        return { no -> shown[no] ?: pickFreeCourseColor(no, taken) }
+    }
+
     private fun parseHex(hex: String): Color? =
         hex.removePrefix("#").takeIf { it.length == 6 }?.toLongOrNull(16)?.let { Color(0xFF000000 or it) }
 

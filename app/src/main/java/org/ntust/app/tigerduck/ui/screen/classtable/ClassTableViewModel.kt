@@ -87,6 +87,7 @@ class ClassTableViewModel @Inject constructor(
     private val notificationScheduler: org.ntust.app.tigerduck.notification.AssignmentNotificationScheduler,
     private val liveActivityManager: org.ntust.app.tigerduck.liveactivity.LiveActivityManager,
     private val courseIgnoreSync: CourseIgnoreSync,
+    private val localEdits: org.ntust.app.tigerduck.ui.screen.home.LocalEdits,
     private val importedClassTableStore: ImportedClassTableStore,
     private val importedCourseLookup: ImportedCourseLookup,
     @param:ApplicationScope private val appScope: CoroutineScope,
@@ -844,6 +845,7 @@ class ClassTableViewModel @Inject constructor(
             runCatching { pushApiClient.uploadCourses(updated, _currentSemester.value, forceKeys = listOf(forceKey)) }
             widgetUpdater.requestUpdate()
         }
+        localEdits.noteEdit()
         TigerDuckTheme.buildCourseColorMap(updated)
         return true
     }
@@ -875,6 +877,7 @@ class ClassTableViewModel @Inject constructor(
             widgetUpdater.requestUpdate()
         }
         syncCourseOverride(courseNo, customName = trimmed.ifEmpty { "" }, locale = locale)
+        localEdits.noteEdit()
     }
 
     /** Clears any user override for [courseNo], restoring the default name. */
@@ -893,6 +896,7 @@ class ClassTableViewModel @Inject constructor(
             widgetUpdater.requestUpdate()
         }
         syncCourseOverride(courseNo, customName = "", locale = locale)
+        localEdits.noteEdit()
     }
 
     /**
@@ -926,6 +930,7 @@ class ClassTableViewModel @Inject constructor(
                 ignoredCoursesSaved(edit)
             }
         }
+        localEdits.noteEdit()
     }
 
     fun deleteCourse(courseNo: String) {
@@ -955,6 +960,7 @@ class ClassTableViewModel @Inject constructor(
             runCatching { pushApiClient.uploadCourses(updated, semester) }
                 .onFailure { e -> Log.w("ClassTable", "uploadCourses after delete failed: ${e.logSummary()}") }
         }
+        localEdits.noteEdit()
         TigerDuckTheme.buildCourseColorMap(updated)
     }
 
@@ -982,6 +988,7 @@ class ClassTableViewModel @Inject constructor(
         // A concrete hex each, a default included: the backend reads a
         // missing one as "unchanged".
         for ((no, hex) in pick.toSync) syncCourseOverride(no, colorHex = hex)
+        localEdits.noteEdit()
     }
 
     private fun syncCourseOverride(
@@ -1073,6 +1080,7 @@ class ClassTableViewModel @Inject constructor(
         // One at a time per term, and latched for the syncs that can run
         // in the middle — see DataCache.beginReset.
         if (!dataCache.beginReset(semester)) return
+        localEdits.noteEdit()
         viewModelScope.launch {
             // Released once, whichever way the reset ends: a second reset of
             // the term may already hold the latch by the time this one's

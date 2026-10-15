@@ -18,6 +18,11 @@ import org.ntust.app.tigerduck.push.CourseOverrideResult
 import org.ntust.app.tigerduck.push.CourseTombstone
 import org.ntust.app.tigerduck.push.ServerCourse
 import org.ntust.app.tigerduck.shared.Course
+import org.ntust.app.tigerduck.ui.screen.classtable.CourseColorPick
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
 
 object CourseSyncReconciler {
 
@@ -318,6 +323,52 @@ object CourseSyncReconciler {
     private const val REENABLE_CATEGORY = "courses"
 
     /**
+     * Whether a full sync applies the server's course colours: with their
+     * switch on ([switchOn]), and not from switching colour sync back on
+     * until the re-enable check finds no difference or the user has answered
+     * it. Applied in that window, the server's colours would answer for the
+     * user, and Use Local could no longer keep this phone's. iOS holds the
+     * course overrides the same way.
+     */
+    fun syncsCourseColors(switchOn: Boolean, pendingConflictCategories: Set<String>): Boolean =
+        switchOn && "course_colors" !in pendingConflictCategories
+
+    /** [syncsCourseColors] for the custom names and their re-enable check. */
+    fun syncsCourseNames(switchOn: Boolean, pendingConflictCategories: Set<String>): Boolean =
+        switchOn && "course_names" !in pendingConflictCategories
+
+    /**
+     * What a full sync does with the server's `courses_reset_at`: whether to
+     * [apply][CourseReset.apply] it, and what to [remember][CourseReset.remember]
+     * for the next sync to compare. Both times are the server's, so a phone
+     * whose clock runs ahead or behind can neither miss a reset nor apply one
+     * twice.
+     *
+     * [lastSeen] is the value the last full sync remembered: null before the
+     * account's first sync here, which has nothing from before a reset to drop
+     * and so only remembers the server's, and empty once a sync found none, so
+     * that the first reset after it counts as new. As iOS's
+     * `AppState.coursesReset` (tigerduck-app/tigerduck-app#236).
+     * [legacyLastSyncMs] is an older build's stamp; see the first branch.
+     */
+    fun coursesReset(server: String?, lastSeen: String?, legacyLastSyncMs: Long = 0L): CourseReset {
+        val serverAt = backendInstant(server)
+        if (lastSeen == null) {
+            // The first sync since the update, on an install an older build
+            // synced: it kept this phone's clock at its last sync, the old
+            // rule, read this once so a reset made elsewhere just before the
+            // update is not remembered unapplied.
+            val applyLegacy = legacyLastSyncMs > 0 && serverAt != null && serverAt.toEpochMilli() > legacyLastSyncMs
+            return CourseReset(apply = applyLegacy, remember = server.takeIf { serverAt != null } ?: "")
+        }
+        if (serverAt == null) return CourseReset(apply = false, remember = lastSeen)
+        val seenAt = backendInstant(lastSeen)
+        return CourseReset(apply = seenAt == null || serverAt > seenAt, remember = server!!)
+    }
+
+    data class CourseReset(val apply: Boolean, val remember: String)
+
+    /**
      * The terms to reconcile: everything the server knows plus the picker's,
      * less [excluding] — see [termsResetAfter].
      */
@@ -334,31 +385,61 @@ object CourseSyncReconciler {
     }.sorted()
 
     /**
+     * [courses] with the server's colours applied, and the courses that had
+     * to move off a colour a later pick took ([moved], by course number, with
+     * the colour each moved to), for the caller to send to the server.
+     */
+    data class ColorOutcome(
+        val courses: List<Course>,
+        val moved: Map<String, String>,
+    )
+
+    /**
      * Courses with server colours applied, or null when nothing changed —
      * the caller uses null to skip a cache write and a widget reload.
      *
      * An override matches on courseNo first and Moodle id second, because
      * manually-added courses may have no courseNo the server recognises.
+     *
+     * Applied in one pass, oldest pick first (`color_hex_updated_at`, with
+     * a row that has none counted as the oldest and ties broken by course
+     * number), each as a pick on the class table is ([CourseColorPick]): a
+     * course pinned to the colour moves to a colour of its own. So where the
+     * server holds two courses on one colour, as an older build left it, the
+     * latest pick keeps it, the same way on every device and every sync, and
+     * the course that moved is reported in [ColorOutcome.moved] for the
+     * caller to send, so the server stops holding the duplicate. Applied row
+     * by row, both kept the colour for good (tigerduck-app-android#295). The
+     * iPhone app applies them in the same order
+     * (`AppState.serverCourseColors`, tigerduck-app/tigerduck-app#252).
      */
     fun applyColorOverrides(
         courses: List<Course>,
         overrides: List<CourseOverrideResult>,
         syncColors: Boolean,
-    ): List<Course>? {
+    ): ColorOutcome? {
         if (!syncColors || courses.isEmpty()) return null
-        var changed = false
-        val updated = courses.map { course ->
+        val serverHex = mutableMapOf<String, String>()
+        val picks = courses.mapNotNull { course ->
             val override = overrides.find { it.courseNo == course.courseNo }
                 ?: overrides.find { it.moodleCourseId == course.moodleIdNumber }
-            val newHex = override?.colorHex ?: return@map course
-            if (newHex != course.customColorHex) {
-                changed = true
-                course.copy(customColorHex = newHex)
-            } else {
-                course
-            }
+            val hex = override?.colorHex ?: return@mapNotNull null
+            serverHex[course.courseNo] = hex.uppercase()
+            Triple(course.courseNo, hex, backendInstant(override.colorHexUpdatedAt) ?: Instant.MIN)
+        }.sortedWith(compareBy({ it.third }, { it.first }))
+
+        var updated = courses
+        val displaced = mutableSetOf<String>()
+        for ((courseNo, hex, _) in picks) {
+            val pick = CourseColorPick.assign(updated, courseNo, hex, CourseColorPick.shownColors(updated))
+            updated = pick.courses
+            displaced += pick.changed.keys - courseNo
         }
-        return if (changed) updated else null
+        val moved = updated
+            .filter { it.courseNo in displaced && it.customColorHex?.uppercase() != serverHex[it.courseNo] }
+            .mapNotNull { course -> course.customColorHex?.let { course.courseNo to it } }
+            .toMap()
+        return if (updated == courses && moved.isEmpty()) null else ColorOutcome(updated, moved)
     }
 
     /**
@@ -386,5 +467,23 @@ object CourseSyncReconciler {
             changed = true
         }
         return if (changed) merged.mapValues { it.value.toMap() } else null
+    }
+}
+
+/**
+ * A backend timestamp: Python's `isoformat()`, which carries microseconds
+ * unless they are zero, and an offset. Null for anything unparseable, and
+ * for a time with no offset read as UTC, which is what the backend writes.
+ */
+internal fun backendInstant(value: String?): Instant? {
+    if (value.isNullOrBlank()) return null
+    return try {
+        OffsetDateTime.parse(value).toInstant()
+    } catch (_: Exception) {
+        try {
+            LocalDateTime.parse(value).toInstant(ZoneOffset.UTC)
+        } catch (_: Exception) {
+            null
+        }
     }
 }
