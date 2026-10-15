@@ -57,6 +57,9 @@ interface SchoolMailRepository {
         background: Boolean = false,
     ): MailPage
     suspend fun inboxStatus(): FolderStatus
+
+    /** [folder]'s STATUS: the cheapest way to ask the server whether a folder is as the page last saw it. */
+    suspend fun status(folder: String): FolderStatus
     suspend fun refreshFlags(folder: String, uids: List<Long>): Map<Long, MailFlags>
     suspend fun summary(folder: String, uid: Long): MailSummary?
     suspend fun body(folder: String, uid: Long): MailBody
@@ -243,6 +246,11 @@ class MailRepository @Inject constructor(
         if (account.isDemo) return FolderStatus(1, 2_000, demoList("INBOX").size, 0)
         val inbox = folders().nameOf(SpecialFolder.INBOX) ?: "INBOX"
         return withSession { it.status(inbox) }
+    }
+
+    override suspend fun status(folder: String): FolderStatus {
+        if (account.isDemo) return FolderStatus(1, 2_000, demoList(folder).size, 0)
+        return withSession { it.status(folder) }
     }
 
     override suspend fun refreshFlags(folder: String, uids: List<Long>): Map<Long, MailFlags> {

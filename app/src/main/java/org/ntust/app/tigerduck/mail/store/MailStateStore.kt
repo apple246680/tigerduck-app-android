@@ -1,6 +1,7 @@
 package org.ntust.app.tigerduck.mail.store
 
 import android.content.Context
+import org.ntust.app.tigerduck.mail.imap.SpecialFolder
 
 /** Non-secret mail state. Its own file, so no AppPreferences migration ever touches it. */
 interface MailStateStore {
@@ -13,8 +14,12 @@ interface MailStateStore {
     /** The seen marker: the INBOX UID from which new mail counts as new. 0 = no baseline yet. */
     var inboxSeenUidNext: Long
     var lastForegroundCheckAt: Long
-    /** When the inbox last answered, epoch ms; 0 = never. See [org.ntust.app.tigerduck.mail.sync.MailChecker.inboxFetchedAt]. */
-    var inboxFetchedAt: Long
+    /**
+     * When [folder] (a server name) last answered, epoch ms; 0 = never. Per folder, so the list
+     * page can date the folder on screen. See [org.ntust.app.tigerduck.mail.sync.MailChecker.fetchedAt].
+     */
+    fun fetchedAt(folder: String): Long
+    fun setFetchedAt(folder: String, atMs: Long)
     /** Newest first, at most 10, `"<epochMillis>|<source>|<outcome>"`. */
     var diagnostics: List<String>
     fun ownedDeleted(folder: String, uidValidity: Long): Set<Long>
@@ -69,9 +74,17 @@ class SharedPrefsMailStateStore(context: Context) : MailStateStore {
         get() = prefs.getLong(K_FOREGROUND, 0L)
         set(value) = prefs.edit().putLong(K_FOREGROUND, value).apply()
 
-    override var inboxFetchedAt: Long
-        get() = prefs.getLong(K_FETCHED, 0L)
-        set(value) = prefs.edit().putLong(K_FETCHED, value).apply()
+    override fun fetchedAt(folder: String): Long = prefs.getLong(fetchedKey(folder), 0L)
+
+    override fun setFetchedAt(folder: String, atMs: Long) = prefs.edit().putLong(fetchedKey(folder), atMs).apply()
+
+    /**
+     * Every folder's date under its server name, except the inbox's, which keeps the one key the
+     * builds that dated the inbox alone wrote: an install upgraded from one of them then opens on
+     * that date rather than on "never synced". IMAP names the inbox INBOX in any case.
+     */
+    private fun fetchedKey(folder: String): String =
+        if (folder.equals(SpecialFolder.INBOX.imapName, ignoreCase = true)) K_FETCHED else K_FETCHED_PREFIX + folder
 
     override var diagnostics: List<String>
         get() = prefs.getString(K_DIAG, null)?.split('\n')?.filter { it.isNotBlank() }.orEmpty()
@@ -104,6 +117,7 @@ class SharedPrefsMailStateStore(context: Context) : MailStateStore {
         const val K_MARKER = "inbox_seen_uid_next"
         const val K_FOREGROUND = "last_foreground_check_at"
         const val K_FETCHED = "inbox_fetched_at"
+        const val K_FETCHED_PREFIX = "fetched_at:"
         const val K_DIAG = "diagnostics"
         const val K_OWNED = "owned_deleted"
     }

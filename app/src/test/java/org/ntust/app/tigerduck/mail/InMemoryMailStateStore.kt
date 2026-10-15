@@ -13,10 +13,16 @@ class InMemoryMailStateStore : MailStateStore {
         get() = field.also { onUidValidityRead?.invoke() }
     override var inboxSeenUidNext: Long = 0
     override var lastForegroundCheckAt: Long = 0
-    override var inboxFetchedAt: Long = 0
     override var diagnostics: List<String> = emptyList()
         set(value) { field = value.take(10) }
+    private val fetchedAt = mutableMapOf<String, Long>()
     private val owned = mutableMapOf<Pair<String, Long>, Set<Long>>()
+
+    override fun fetchedAt(folder: String): Long = fetchedAt[folder] ?: 0L
+
+    override fun setFetchedAt(folder: String, atMs: Long) {
+        fetchedAt[folder] = atMs
+    }
 
     /** Fires on every [ownedDeleted] read; with [beforeSetOwnedDeleted] it lets a test drive the
      *  exact interleaving of two overlapping owned-set read-modify-writes. */
@@ -38,8 +44,9 @@ class InMemoryMailStateStore : MailStateStore {
 
     override fun clear() {
         displayName = null; notificationsEnabled = true; authFailed = false; demoMailbox = false
-        inboxUidValidity = 0; inboxSeenUidNext = 0; lastForegroundCheckAt = 0; inboxFetchedAt = 0
+        inboxUidValidity = 0; inboxSeenUidNext = 0; lastForegroundCheckAt = 0
         diagnostics = emptyList()
+        fetchedAt.clear()
         owned.clear()
     }
 }

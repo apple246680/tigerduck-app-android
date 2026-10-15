@@ -23,6 +23,10 @@ class FakeSchoolMailRepository : SchoolMailRepository {
     /** Thrown by [inboxStatus] -- the first call the page poll makes. */
     var statusError: MailError? = null
     var statusCalls = 0
+
+    /** Thrown by [status] for that folder -- the poll's check of a folder on screen other than the inbox. */
+    val folderStatusErrors = mutableMapOf<String, MailError>()
+    val folderStatusCalls = mutableListOf<String>()
     var loadError: MailError? = null
     var searchUnsupported = false
     val bodies = mutableMapOf<Long, MailBody>()
@@ -166,6 +170,13 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         statusCalls++
         statusError?.let { throw it }
         return status
+    }
+
+    override suspend fun status(folder: String): FolderStatus = touching(folder) {
+        folderStatusCalls += folder
+        folderStatusErrors[folder]?.let { throw it }
+        val newest = sorted(folder).firstOrNull()?.uid ?: 0L
+        FolderStatus(status.uidValidity, newest + 1, mail[folder]?.size ?: 0, 0)
     }
     override suspend fun refreshFlags(folder: String, uids: List<Long>): Map<Long, MailFlags> =
         touching(folder) { sorted(folder).filter { it.uid in uids }.associate { it.uid to it.flags } }

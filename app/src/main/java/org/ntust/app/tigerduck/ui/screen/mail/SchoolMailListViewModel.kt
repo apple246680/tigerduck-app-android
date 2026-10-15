@@ -88,8 +88,12 @@ class SchoolMailListViewModel @Inject constructor(
         val searchResults: List<MailRow>? = null,
         val searchLocalOnly: Boolean = false,
         val isSearching: Boolean = false,
-        /** For the sync dot's "Last synced" row; see [MailChecker.inboxFetchedAt]. */
-        val inboxFetchedAt: Long = 0L,
+        /**
+         * When the folders on screen last had their newest page fetched -- for All mail the older
+         * of its two -- or 0 while one of them never has. For the sync dot's "Last synced" row;
+         * see [MailChecker.fetchedAt].
+         */
+        val fetchedAt: Long = 0L,
     ) {
         val displayed: List<MailRow>
             get() = (searchResults ?: messages).let { list -> if (unreadOnly) list.filter { !it.summary.flags.seen } else list }
@@ -180,6 +184,8 @@ class SchoolMailListViewModel @Inject constructor(
                     else -> inbox
                 }
                 _state.update { it.copy(chips = chips, others = folders.others, selected = keep, mergedFolders = merged) }
+                // The folders on screen are known now, and so is their date.
+                showFetchedAt()
             } catch (e: MailError) {
                 fail(e)
                 return@launch
@@ -218,6 +224,8 @@ class SchoolMailListViewModel @Inject constructor(
         _state.update {
             it.copy(selected = selection, messages = emptyList(), cursors = emptyMap(), searchResults = null, searchText = "", searchLocalOnly = false)
         }
+        // The new selection's own date, kept from its last fetch, until this one's lands.
+        showFetchedAt()
         viewModelScope.launch {
             showCached()
             fetchFirstPage()
@@ -265,7 +273,8 @@ class SchoolMailListViewModel @Inject constructor(
 
     /**
      * Spec §8.5: while the page is visible, look at the inbox every minute over
-     * the held connection. Spec §7.4: a rejected password stops the poll -- it
+     * the held connection, and at the other folders on screen with it (see [poll]).
+     * Spec §7.4: a rejected password stops the poll -- it
      * would otherwise re-send the same rejected LOGIN once a minute for as long
      * as the page is open. Signing in again clears the flag, and the screen
      * restarts polling from that.
@@ -323,10 +332,12 @@ class SchoolMailListViewModel @Inject constructor(
             val pages = targets.map { folder -> folder to repository.loadPage(folder, null) }
             if (_state.value.selected != selection) return
             _state.update { it.copy(messages = rowsOf(selection, pages), cursors = cursorsOf(pages), loadState = LoadState.Loaded) }
+            // Every folder the selection reads answered just now: the one selected, or both of
+            // All mail's.
+            fetched(targets)
             // Was "only for Inbox itself"; All mail shows the inbox's own mail too, so it must
             // move the notification seen marker exactly as viewing Inbox always did.
             if (_state.value.inboxInView) {
-                inboxFetched()
                 runCatching { checker.noteSeenByPage(repository.inboxStatus()) }
             }
         } catch (e: MailError) {
@@ -465,24 +476,40 @@ class SchoolMailListViewModel @Inject constructor(
     }
 
     /**
-     * Runs whenever the inbox's own mail is in view -- Inbox itself, or All mail merging it in
-     * (see [UiState.inboxInView]) -- every other real selection refreshes on pull-to-refresh
-     * instead. [newest] is read from the inbox's own rows specifically, not [UiState.messages] as
-     * a whole: in All mail, messages also holds Sent rows, whose UIDs live in a completely
-     * unrelated namespace and would otherwise skew the "did the inbox actually grow" check.
+     * Runs every minute while the page shows a list and no search. Whenever the inbox's own mail
+     * is in view -- Inbox itself, or All mail merging it in (see [UiState.inboxInView]) -- the
+     * inbox gets the new-mail check, and a grown inbox refetches the list. [newest] is read from
+     * the inbox's own rows specifically, not [UiState.messages] as a whole: in All mail, messages
+     * also holds Sent rows, whose UIDs live in a completely unrelated namespace and would
+     * otherwise skew the "did the inbox actually grow" check.
+     *
+     * Every other folder on screen -- Sent in All mail, or a folder viewed on its own -- is asked
+     * for its STATUS as well, the cheapest round trip there is, and dated when it answers. A
+     * check that finds nothing new must still move the "Last synced" row, or a time that stands
+     * still reads as a page that stopped syncing; All mail is dated by the older of its two
+     * folders, so both have to be verified for its row to move. A folder whose check failed keeps
+     * its date. The background [MailChecker] stays the inbox's alone: it is for notifications.
      */
     private suspend fun poll() {
         val s = _state.value
-        if (!s.inboxInView || s.searchResults != null) return
+        if (s.targets.isEmpty() || s.searchResults != null) return
         try {
-            val status = repository.inboxStatus()
-            val newest = s.messages.filter { it.folder == s.inboxFolder }.maxOfOrNull { it.uid } ?: 0L
-            if (status.uidNext > newest + 1) {
-                fetchFirstPage()
-                prefetchArrivedBodies(newest)
-            } else {
-                inboxFetched()
+            if (s.inboxInView) {
+                val status = repository.inboxStatus()
+                val newest = s.messages.filter { it.folder == s.inboxFolder }.maxOfOrNull { it.uid } ?: 0L
+                if (status.uidNext > newest + 1) {
+                    // The refetch dates every folder on screen itself.
+                    fetchFirstPage()
+                    prefetchArrivedBodies(newest)
+                    return
+                }
+                fetched(listOfNotNull(s.inboxFolder))
                 checker.noteSeenByPage(status)
+            }
+            for (folder in s.targets) {
+                if (folder == s.inboxFolder) continue
+                repository.status(folder)
+                fetched(listOf(folder))
             }
         } catch (e: MailError) {
             // A rejected password still has to reach the account (spec §7.4) -- both paths below
@@ -545,13 +572,20 @@ class SchoolMailListViewModel @Inject constructor(
         }
     }
 
-    /** The inbox answered the page: the "Last synced" row moves to now. */
-    private fun inboxFetched() {
-        checker.noteFetchedByPage()
+    /** [folders] answered the page just now: their dates move, and the "Last synced" row with them. */
+    private fun fetched(folders: List<String>) {
+        folders.forEach(checker::noteFetchedByPage)
         showFetchedAt()
     }
 
-    private fun showFetchedAt() = _state.update { it.copy(inboxFetchedAt = checker.inboxFetchedAt) }
+    /**
+     * The date of the folders on screen: the older of All mail's two, and 0 while one of them has
+     * none, as on the iPhone -- a merged list is only as fresh as its staler half. Nothing is on
+     * screen to date before [load] has resolved the folders.
+     */
+    private fun showFetchedAt() = _state.update { s ->
+        s.copy(fetchedAt = s.targets.minOfOrNull { checker.fetchedAt(it) } ?: 0L)
+    }
 
     /** Keyed by (folder, uid), never by UID alone -- the same UID in two folders is two mails. */
     private fun updateMessage(key: String, transform: (MailSummary) -> MailSummary) = _state.update { st ->

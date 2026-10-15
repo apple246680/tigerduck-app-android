@@ -73,26 +73,27 @@ class MailChecker @Inject constructor(
         // since, and the date would land in the state its sign-out just cleared.
         val reached = outcome is CheckOutcome.Baseline || outcome is CheckOutcome.NoChange || outcome is CheckOutcome.NewMail
         if (reached && account.accountGeneration == generation) {
-            state.inboxFetchedAt = clock.now()
+            state.setFetchedAt(INBOX, clock.now())
         }
         record(source, outcome)
         return outcome
     }
 
     /**
-     * When the inbox last answered this account, epoch ms, or 0: a check that reached it, or the
-     * list page reading it ([noteFetchedByPage]). What the School Mail page's "Last synced" row
-     * dates; cleared with the rest of the mail state at sign-out.
+     * When [folder] (a server name) last answered this account, epoch ms, or 0: a check that
+     * reached the inbox, or the list page reading the folder ([noteFetchedByPage]). What the
+     * School Mail page's "Last synced" row dates, for the folder on screen; cleared with the rest
+     * of the mail state at sign-out.
      */
-    val inboxFetchedAt: Long get() = state.inboxFetchedAt
+    fun fetchedAt(folder: String): Long = state.fetchedAt(folder)
 
     /**
-     * The list page read the inbox from the server. Not the demo mailbox, which has no server:
+     * The list page read [folder] from the server. Not the demo mailbox, which has no server:
      * like every other page on the demo account, it was never synced. Nor once the account has
      * signed out, as a fetch that was under way would date the cleared state.
      */
-    fun noteFetchedByPage() {
-        if (!account.isDemo && account.signedIn.value) state.inboxFetchedAt = clock.now()
+    fun noteFetchedByPage(folder: String) {
+        if (!account.isDemo && account.signedIn.value) state.setFetchedAt(folder, clock.now())
     }
 
     /** The list page showed the inbox up to [status]; those mails must never notify later. */
