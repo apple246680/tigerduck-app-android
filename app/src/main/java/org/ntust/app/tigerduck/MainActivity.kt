@@ -428,9 +428,10 @@ class MainActivity : AppCompatActivity() {
     /**
      * Opens the assignment a `tigerduck://assignment/<id>` link names — from a
      * reminder, the due-soon Live Update or another app — the way its Home
-     * row does: in the Moodle app, else in the browser. As on iOS, only an
-     * assignment this account has cached opens, so a link from elsewhere can
-     * open nothing but the user's own homework, at the address Moodle gave.
+     * row does: in the Moodle app, else in the browser, and not at all when
+     * Moodle gave it no address. As on iOS, only an assignment this account
+     * has cached opens, so a link from elsewhere can open nothing but the
+     * user's own homework, at the address Moodle gave.
      *
      * Once per delivery: the link is dropped from the intent, and an Activity
      * rebuilt from saved state or relaunched from Recents does not open it
