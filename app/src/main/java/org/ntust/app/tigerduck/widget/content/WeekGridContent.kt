@@ -20,7 +20,6 @@ import androidx.glance.layout.Box
 import androidx.glance.layout.Column
 import androidx.glance.layout.ContentScale
 import androidx.glance.layout.Row
-import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxHeight
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
@@ -68,8 +67,13 @@ fun WeekGridContent(
         context.getString(R.string.weekday_sun_short),
     )
     val showsPeriodTimes = style.classTableShowsPeriodTimes
-    // Narrower where the column holds only the period.
-    val periodColWidth = if (showsPeriodTimes) 32.dp else 20.dp
+    // Narrower where the column holds only the period, growing with a large
+    // font as the class table's does, so "10" stays on one line.
+    val periodColWidth = if (showsPeriodTimes) {
+        32.dp
+    } else {
+        maxOf(20.dp, (16 * context.resources.configuration.fontScale).dp)
+    }
     val outerPadding = 6.dp
     val headerHeight = 22.dp
     val headerBottomPad = 4.dp
@@ -154,26 +158,28 @@ fun WeekGridContent(
             }
 
             Row(modifier = GlanceModifier.fillMaxWidth()) {
-                Column(modifier = GlanceModifier.width(periodColWidth)) {
-                    state.activePeriodIds.forEach { periodId ->
-                        PeriodLabelCell(periodId, colors, cellHeight, showsPeriodTimes)
-                    }
+                GlanceStack(
+                    items = state.activePeriodIds,
+                    modifier = GlanceModifier.width(periodColWidth),
+                ) { periodId ->
+                    PeriodLabelCell(periodId, colors, cellHeight, showsPeriodTimes)
                 }
                 state.activeWeekdays.forEach { weekday ->
                     val cells = buildScheduleCells(state.activePeriodIds, state.courses, weekday)
-                    Column(modifier = GlanceModifier.defaultWeight().padding(horizontal = 1.dp)) {
-                        cells.forEach { cell ->
-                            ScheduleCellBox(
-                                cell = cell,
-                                colors = colors,
-                                style = style,
-                                courseColors = state.courseColors,
-                                ongoingCourseNos = state.ongoingCourseNos,
-                                blockHeight = cellHeight * cell.length,
-                                blockWidth = dayColWidth,
-                                courseNameScale = state.courseNameScale,
-                            )
-                        }
+                    GlanceStack(
+                        items = cells,
+                        modifier = GlanceModifier.defaultWeight().padding(horizontal = 1.dp),
+                    ) { cell ->
+                        ScheduleCellBox(
+                            cell = cell,
+                            colors = colors,
+                            style = style,
+                            courseColors = state.courseColors,
+                            ongoingCourseNos = state.ongoingCourseNos,
+                            blockHeight = cellHeight * cell.length,
+                            blockWidth = dayColWidth,
+                            courseNameScale = state.courseNameScale,
+                        )
                     }
                 }
             }
@@ -195,15 +201,44 @@ private fun WeekRowBands(
 ) {
     val bands = List(rowCount) { style.classTableRowBand(it, onSurface) }
     if (bands.all { it == null }) return
-    Column(modifier = GlanceModifier.fillMaxWidth()) {
-        Spacer(modifier = GlanceModifier.height(top))
-        bands.forEach { band ->
-            Box(
-                modifier = GlanceModifier
-                    .fillMaxWidth()
-                    .height(cellHeight)
-                    .background(ColorProvider(band ?: Color.Transparent)),
-            ) {}
+    // The offset is padding rather than a spacer: a spacer would be one more
+    // child, and Glance draws only a container's first ten.
+    GlanceStack(
+        items = bands,
+        modifier = GlanceModifier.fillMaxWidth().padding(top = top),
+    ) { band ->
+        Box(
+            modifier = GlanceModifier
+                .fillMaxWidth()
+                .height(cellHeight)
+                .background(ColorProvider(band ?: Color.Transparent)),
+        ) {}
+    }
+}
+
+/** The most children a Glance Row, Column or Box draws; it drops the rest. */
+private const val GLANCE_MAX_CHILDREN = 10
+
+/**
+ * A column of one child per item, which, past [GLANCE_MAX_CHILDREN] items,
+ * nests them in runs of that many so none is dropped: a grid of more than ten
+ * periods would otherwise lose its last rows.
+ */
+@Composable
+private fun <T> GlanceStack(
+    items: List<T>,
+    modifier: GlanceModifier,
+    content: @Composable (T) -> Unit,
+) {
+    Column(modifier = modifier) {
+        if (items.size <= GLANCE_MAX_CHILDREN) {
+            items.forEach { content(it) }
+        } else {
+            items.chunked(GLANCE_MAX_CHILDREN).forEach { run ->
+                Column(modifier = GlanceModifier.fillMaxWidth()) {
+                    run.forEach { content(it) }
+                }
+            }
         }
     }
 }
@@ -335,20 +370,22 @@ private fun SoloCell(
         )
 
         // One tile per period, each naming the course, as on the class table.
-        ClassTableGridStyle.PeriodTiles -> Column(
-            modifier = GlanceModifier.fillMaxWidth().height(blockHeight),
-        ) {
-            repeat(length) {
-                CourseTile(
-                    name = course.displayName,
-                    fill = cellBg,
-                    textColor = textColor,
-                    height = blockHeight / length,
-                    // A period tile's corners, tighter than a block's.
-                    cornerRadius = 4.dp,
-                    maxLines = 2,
-                    courseNameScale = courseNameScale,
-                )
+        ClassTableGridStyle.PeriodTiles -> {
+            val tileHeight = blockHeight / length
+            val fontScale = LocalContext.current.resources.configuration.fontScale
+            Column(modifier = GlanceModifier.fillMaxWidth().height(blockHeight)) {
+                repeat(length) {
+                    CourseTile(
+                        name = course.displayName,
+                        fill = cellBg,
+                        textColor = textColor,
+                        height = tileHeight,
+                        // A period tile's corners, tighter than a block's.
+                        cornerRadius = 4.dp,
+                        maxLines = tileNameLines(tileHeight, courseNameScale, fontScale),
+                        courseNameScale = courseNameScale,
+                    )
+                }
             }
         }
     }
@@ -637,3 +674,17 @@ internal fun weekCourseTextColor(
     colors: WidgetColors,
     style: VisualStylePolicy,
 ): Color = if (highlighted) Color.White else style.classTableCourseTextColor(colors.isDark)
+
+/**
+ * How many lines of a course name fit a period tile [height] high, from one up
+ * to two: a second line that does not fit is cut through the middle, on every
+ * tile of the run. The name is 10sp, scaled by [courseNameScale] and the
+ * system [fontScale], inside the tile's 1dp above and below and 2dp padding;
+ * a line of Chinese, which most course names are, takes about 1.45 times
+ * its size.
+ */
+internal fun tileNameLines(height: Dp, courseNameScale: Float, fontScale: Float): Int {
+    val textHeight = height.value - 2 * 1f - 2 * 2f
+    val lineHeight = 10f * courseNameScale * fontScale * 1.45f
+    return (textHeight / lineHeight).toInt().coerceIn(1, 2)
+}
