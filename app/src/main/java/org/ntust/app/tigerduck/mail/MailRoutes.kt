@@ -1,5 +1,6 @@
 package org.ntust.app.tigerduck.mail
 
+import org.ntust.app.tigerduck.mail.compose.MailtoLink
 import java.net.URLEncoder
 
 enum class ComposeMode { NEW, REPLY, REPLY_ALL, FORWARD, DRAFT }
@@ -16,7 +17,11 @@ object MailRoutes {
 
     fun message(folder: String, uid: Long) = "schoolMail/message/${encode(folder)}/$uid"
 
-    /** [mailto] is a whole `mailto:` link for a new mail to start from (see `MailtoLink`). */
+    /**
+     * [mailto] is a whole `mailto:` link for a new mail to start from, cut down by
+     * [MailtoLink.capped] when it is too long to carry in a route.
+     */
     fun compose(mode: ComposeMode, folder: String? = null, uid: Long? = null, mailto: String? = null) =
-        "schoolMail/compose?mode=${mode.name}&folder=${encode(folder.orEmpty())}&uid=${uid ?: -1}&mailto=${encode(mailto.orEmpty())}"
+        "schoolMail/compose?mode=${mode.name}&folder=${encode(folder.orEmpty())}&uid=${uid ?: -1}" +
+            "&mailto=${encode(mailto?.let(MailtoLink::capped).orEmpty())}"
 }

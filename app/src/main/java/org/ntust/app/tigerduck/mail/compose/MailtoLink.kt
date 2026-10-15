@@ -23,10 +23,26 @@ object MailtoLink {
         return Draft(
             to = addresses(decode(rest.substringBefore('?')), *values("to").toTypedArray()),
             cc = addresses(*values("cc").toTypedArray()),
-            subject = values("subject").firstOrNull().orEmpty(),
+            // One line, as the subject field shows it: sending strips control characters, so a line
+            // break left in would join words on the wire that were apart on screen.
+            subject = values("subject").firstOrNull().orEmpty().replace("\r\n", " ").map { if (it.isISOControl()) ' ' else it }.joinToString(""),
             body = values("body").firstOrNull().orEmpty().replace("\r\n", "\n"),
         )
     }
+
+    /**
+     * [href] as it can travel to the compose screen: whole up to [MAX_LENGTH], its addresses alone
+     * past that, and a bare `mailto:` when even those are too long. The link rides in the route,
+     * whose arguments are saved with the back stack, so one of hundreds of kilobytes in a mail
+     * would overflow that the moment the app went to the background.
+     */
+    fun capped(href: String): String = when {
+        href.length <= MAX_LENGTH -> href
+        else -> href.substringBefore('?').takeIf { it.length <= MAX_LENGTH } ?: SCHEME
+    }
+
+    /** The longest link [capped] passes on whole. */
+    const val MAX_LENGTH = 8_192
 
     /** Percent-decoding only: in a mailto link a `+` is a plus sign, not a space. */
     private fun decode(value: String): String =
