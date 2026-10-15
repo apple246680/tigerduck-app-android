@@ -170,7 +170,6 @@ fun ClassTableScreen(
     val schoolDataSyncedAtMs by viewModel.schoolDataSyncedAtMs.collectAsStateWithLifecycle()
     val isLoggedIn by viewModel.isLoggedIn.collectAsStateWithLifecycle()
     val currentMinute by viewModel.currentMinute.collectAsStateWithLifecycle()
-    val selectedCourse by viewModel.selectedCourse.collectAsStateWithLifecycle()
     // Collected as snapshot state (rather than reading the ViewModel's raw
     // StateFlow.value) so the badge icons recompose when the assignments
     // fetch completes after the courses fetch — a raw read registers no
@@ -217,7 +216,6 @@ fun ClassTableScreen(
     var sharing by remember { mutableStateOf<ClassTableShare?>(null) }
     val shareTerms by viewModel.shareTerms.collectAsStateWithLifecycle()
     var courseToRename by remember { mutableStateOf<Course?>(null) }
-    var renameText by remember { mutableStateOf("") }
     var courseToRecolor by remember { mutableStateOf<Course?>(null) }
     var conflictPicker by remember { mutableStateOf<ConflictPickerTarget?>(null) }
     var tripleConflictError by remember {
@@ -421,13 +419,15 @@ fun ClassTableScreen(
                         }
                     }
                 }
+                org.ntust.app.tigerduck.ui.screen.signin.AutoSignInFailedBanner(Modifier.padding(bottom = 8.dp))
 
                 if (!showsTable) {
                     org.ntust.app.tigerduck.ui.component.EmptyStateView(
                         icon = Icons.Filled.Lock,
                         title = stringResource(R.string.common_not_signed_in),
                         message = stringResource(R.string.common_sign_in_required_feature),
-                        onIconClick = onOpenSignInSettings,
+                        actionLabel = stringResource(R.string.onboarding_sign_in_button),
+                        onAction = onOpenSignInSettings,
                     )
                     Spacer(Modifier.height(32.dp))
                     return@Column
@@ -635,10 +635,7 @@ fun ClassTableScreen(
                                 }
                             }
                         },
-                        onRename = { course ->
-                            renameText = course.customCourseName ?: viewModel.defaultNameFor(course)
-                            courseToRename = course
-                        },
+                        onRename = { course -> courseToRename = course },
                         onDelete = { course ->
                             viewModel.deleteCourse(course.courseNo)
                         },
@@ -696,96 +693,8 @@ fun ClassTableScreen(
         }
     } // Box
 
-    selectedCourse?.let { course ->
-        CourseDetailDialog(
-            course = course,
-            title = viewModel.selectedCourseFullName ?: course.displayName,
-            classroom = viewModel.selectedCourseClassroom,
-            timeRange = viewModel.selectedCourseTimeRange,
-            assignments = if (shownPerson == null) {
-                outstandingAssignments.filter { it.courseNo == course.courseNo }
-            } else {
-                emptyList()
-            },
-            moodleCourseId = viewModel.moodleCourseIdFor(course),
-            readOnly = shownPerson != null,
-            onRename = {
-                renameText = course.customCourseName ?: viewModel.defaultNameFor(course)
-                courseToRename = course
-                viewModel.clearSelection()
-            },
-            onOpenInMoodle = { id -> openCourseInMoodle(context, id) },
-            onDismiss = { viewModel.clearSelection() },
-        )
-    }
-
     courseToRename?.let { course ->
-        val liveCourse = courses.find { it.courseNo == course.courseNo } ?: course
-        val defaultName = remember(liveCourse) { viewModel.defaultNameFor(liveCourse) }
-        val trimmed = renameText.trim()
-        val hasOverride = liveCourse.customCourseName != null
-        // Revert is meaningful when a stored override exists OR the user has
-        // typed away from the default; either way it restores the default.
-        val canRevert = hasOverride || (trimmed.isNotEmpty() && trimmed != defaultName)
-        TigerDuckDialog(
-            onDismissRequest = { courseToRename = null },
-            title = stringResource(R.string.class_table_rename_title),
-            confirmText = stringResource(R.string.action_confirm),
-            onConfirm = {
-                viewModel.setCustomCourseName(course.courseNo, renameText)
-                courseToRename = null
-            },
-            dismissText = stringResource(R.string.action_cancel),
-            onDismiss = { courseToRename = null },
-            content = {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(
-                        value = renameText,
-                        onValueChange = { renameText = it },
-                        label = { Text(stringResource(R.string.class_table_course_name)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            text = stringResource(
-                                R.string.class_table_rename_default_label,
-                                defaultName,
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(
-                                alpha = ContentAlpha.SECONDARY,
-                            ),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        TextButton(
-                            onClick = {
-                                if (hasOverride) {
-                                    viewModel.revertCourseName(course.courseNo)
-                                    courseToRename = null
-                                } else {
-                                    renameText = defaultName
-                                }
-                            },
-                            enabled = canRevert,
-                            contentPadding = PaddingValues(horizontal = 8.dp),
-                        ) {
-                            Text(
-                                stringResource(R.string.class_table_rename_revert),
-                                maxLines = 1,
-                            )
-                        }
-                    }
-                }
-            },
-        )
+        CourseRenameDialog(viewModel = viewModel, course = course, onDismiss = { courseToRename = null })
     }
 
     courseToRecolor?.let { course ->

@@ -20,7 +20,7 @@ class MoodleSubmissionStatusRequestTest {
     private val sent = mutableListOf<Request>()
 
     // Answers in place of the network: the interceptor never calls proceed().
-    private fun answering(body: String, code: Int = 200) =
+    private fun answering(body: String, code: Int = 200, retryAfter: String? = null) =
         OkHttpClient.Builder().addInterceptor { chain ->
             sent += chain.request()
             Response.Builder()
@@ -28,6 +28,7 @@ class MoodleSubmissionStatusRequestTest {
                 .protocol(Protocol.HTTP_1_1)
                 .code(code)
                 .message("")
+                .apply { if (retryAfter != null) header("Retry-After", retryAfter) }
                 .body(body.toResponseBody("application/json".toMediaType()))
                 .build()
         }.build()
@@ -49,6 +50,20 @@ class MoodleSubmissionStatusRequestTest {
         MoodleService.requestSubmissionStatus(answering("""{"warnings":[]}"""), url, 20977, userId = 16045)
 
         assertEquals(listOf("assignid" to "20977", "userid" to "16045"), sentForm())
+    }
+
+    @Test
+    fun `Moodle's maintenance page throws as maintenance, not as an HTTP error`() {
+        assertThrows(MoodleWebserviceError.SiteMaintenance::class.java) {
+            MoodleService.requestSubmissionStatus(
+                answering("<html>upgrading</html>", code = 503, retryAfter = "300"), url, 20977, userId = null,
+            )
+        }
+        assertThrows(MoodleWebserviceError.SiteMaintenance::class.java) {
+            MoodleService.requestSubmissionStatus(
+                answering("""{"errorcode":"sitemaintenance","exception":"moodle_exception"}"""), url, 20977, userId = null,
+            )
+        }
     }
 
     @Test

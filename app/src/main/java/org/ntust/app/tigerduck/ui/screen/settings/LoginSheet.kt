@@ -94,6 +94,11 @@ fun LoginSheet(
      */
     initialPassword: String = "",
     uppercaseInput: Boolean = false,
+    /**
+     * False to keep the account at [initialUsername]: signing in again as the stored account,
+     * where another student ID would first need that account signed out, in Settings.
+     */
+    usernameEditable: Boolean = true,
     isLoggingIn: Boolean,
     loginError: String?,
     onLogin: (String, String) -> Unit,
@@ -181,7 +186,7 @@ fun LoginSheet(
                         capitalization = KeyboardCapitalization.Sentences,
                         imeAction = ImeAction.Next,
                         onImeAction = { focusManager.moveFocus(FocusDirection.Down) },
-                        enabled = !isLoggingIn,
+                        enabled = !isLoggingIn && usernameEditable,
                         autofillHint = android.view.View.AUTOFILL_HINT_USERNAME,
                         useStandardKeyboardOverride = useStandardKeyboard,
                         modifier = Modifier
@@ -265,44 +270,47 @@ fun LoginSheet(
                         }
                     }
                 }
-                FilterChip(
-                    selected = useStandardKeyboard,
-                    onClick = { useStandardKeyboard = !useStandardKeyboard },
-                    // Icon goes inside the label slot so the chip's content
-                    // can be centered as a unit (the leadingIcon slot pins
-                    // its child to the chip's start edge, which leaves the
-                    // text floating off-center when the chip is full-width).
-                    label = {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Keyboard,
-                                contentDescription = null,
-                                modifier = Modifier.size(FilterChipDefaults.IconSize),
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(stringResource(R.string.account_id_use_standard_keyboard))
-                        }
-                    },
-                    enabled = !isLoggingIn,
-                    modifier = Modifier.fillMaxWidth(),
-                    // Match the floating chip used in onboarding / library so
-                    // the highlight reads consistently across the app:
-                    // unselected sits on `surfaceContainerHigh`, selected
-                    // fills with `primary` on `onPrimary` content. The icon
-                    // tint comes from `LocalContentColor`, which the chip
-                    // sets to label/selectedLabel — so it follows along
-                    // without an explicit `tint` argument.
-                    colors = FilterChipDefaults.filterChipColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        selectedContainerColor = MaterialTheme.colorScheme.primary,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                        selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary,
-                    ),
-                )
+                // The keyboard is for the student ID field, which a fixed account leaves alone.
+                if (usernameEditable) {
+                    FilterChip(
+                        selected = useStandardKeyboard,
+                        onClick = { useStandardKeyboard = !useStandardKeyboard },
+                        // Icon goes inside the label slot so the chip's content
+                        // can be centered as a unit (the leadingIcon slot pins
+                        // its child to the chip's start edge, which leaves the
+                        // text floating off-center when the chip is full-width).
+                        label = {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Keyboard,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(FilterChipDefaults.IconSize),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.account_id_use_standard_keyboard))
+                            }
+                        },
+                        enabled = !isLoggingIn,
+                        modifier = Modifier.fillMaxWidth(),
+                        // Match the floating chip used in onboarding / library so
+                        // the highlight reads consistently across the app:
+                        // unselected sits on `surfaceContainerHigh`, selected
+                        // fills with `primary` on `onPrimary` content. The icon
+                        // tint comes from `LocalContentColor`, which the chip
+                        // sets to label/selectedLabel — so it follows along
+                        // without an explicit `tint` argument.
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                            selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary,
+                        ),
+                    )
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,

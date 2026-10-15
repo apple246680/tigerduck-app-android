@@ -36,6 +36,8 @@ data class DemoFixture(
     val assignments: List<Assignment>?,
     val bulletins: List<BulletinSummary>?,
     val calendar: List<CalendarEvent>?,
+    /** The courses' Moodle content; see [DemoMoodle]. */
+    val moodle: DemoMoodle?,
     /**
      * Made-up classmates whose class tables the demo account has imported, as from their share
      * codes, so someone else's class table and the switcher show without a server.
@@ -91,6 +93,7 @@ data class DemoFixture(
                 assignments = root.list("assignments") { o, _ -> parseAssignment(o, lang) },
                 bulletins = root.list("bulletins") { o, i -> parseBulletin(o, i) },
                 calendar = root.list("calendar") { o, i -> parseCalendarEvent(o, i) },
+                moodle = DemoMoodleFixture.parse(root, lang),
                 classmates = root.list("classmates") { o, _ -> parseClassmate(o, lang) },
             )
         }

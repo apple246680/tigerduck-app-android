@@ -11,6 +11,7 @@ import org.junit.runner.RunWith
 import org.ntust.app.tigerduck.auth.AuthTokenManager.SignInAttempt
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore
+import org.ntust.app.tigerduck.network.MoodleWebserviceError
 import org.ntust.app.tigerduck.network.resolveAnnouncementEndpoint
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
@@ -33,6 +34,7 @@ class StoredAccountSignInTest {
     private var storedToken: String? = "stored"
     private var harvest: suspend () -> String = { "fresh" }
     private var harvests = 0
+    private val harvestedInPlaceOf = mutableListOf<String?>()
     private var afterSignIns = 0
 
     @Before
@@ -47,21 +49,85 @@ class StoredAccountSignInTest {
     }
 
     @Test
-    fun `it signs in with a Moodle token harvested for the purpose`() = runTest {
+    fun `it signs in with the stored Moodle token, sending no password to harvest another`() = runTest {
         assertEquals(SignInAttempt.SIGNED_IN, signIn())
 
-        assertEquals(listOf<String?>("fresh"), backend.sentMoodleTokens())
+        assertEquals(listOf<String?>("stored"), backend.sentMoodleTokens())
+        assertEquals(0, harvests)
         assertTrue(manager.isLoggedIn)
         assertEquals(1, afterSignIns)
     }
 
     @Test
-    fun `a harvest that fails falls back to the stored token`() = runTest {
+    fun `with no token stored, it signs in with one harvested for the purpose`() = runTest {
+        storedToken = null
+
+        assertEquals(SignInAttempt.SIGNED_IN, signIn())
+
+        assertEquals(listOf<String?>("fresh"), backend.sentMoodleTokens())
+        assertEquals(listOf<String?>(null), harvestedInPlaceOf)
+    }
+
+    @Test
+    fun `a stored token the backend refuses is replaced by a harvested one`() = runTest {
+        backend.answer(LOGIN, 401)
+
+        assertEquals(SignInAttempt.SIGNED_IN, signIn())
+
+        assertEquals(listOf<String?>("stored", "fresh"), backend.sentMoodleTokens())
+        assertEquals(1, afterSignIns)
+        // So the harvest replaces it rather than handing it back.
+        assertEquals(listOf<String?>("stored"), harvestedInPlaceOf)
+    }
+
+    @Test
+    fun `a harvest that hands the refused token back sends no second login`() = runTest {
+        backend.answer(LOGIN, 401)
+        harvest = { "stored" }
+
+        assertEquals(SignInAttempt.FAILED, signIn())
+
+        assertEquals(listOf<String?>("stored"), backend.sentMoodleTokens())
+    }
+
+    @Test
+    fun `a sign-in that fails for another reason harvests nothing`() = runTest {
+        backend.answer(LOGIN, 503)
+
+        assertEquals(SignInAttempt.FAILED, signIn())
+
+        assertEquals(0, harvests)
+        assertEquals(1, backend.received(LOGIN).size)
+    }
+
+    @Test
+    fun `a refused stored token and a harvest that fails is a failure`() = runTest {
+        backend.answer(LOGIN, 401)
         harvest = { throw IllegalStateException("Moodle unavailable") }
+
+        assertEquals(SignInAttempt.FAILED, signIn())
+
+        assertEquals(listOf<String?>("stored"), backend.sentMoodleTokens())
+    }
+
+    @Test
+    fun `a harvest the stored-password latch stops is a failure and sends no login`() = runTest {
+        storedToken = null
+        harvest = { throw MoodleWebserviceError.SsoLoginRejected(null) }
+
+        assertEquals(SignInAttempt.FAILED, signIn())
+
+        assertEquals(emptyList<String>(), backend.endpoints())
+    }
+
+    @Test
+    fun `with a stored token and no password, it signs in with the token`() = runTest {
+        password = null
 
         assertEquals(SignInAttempt.SIGNED_IN, signIn())
 
         assertEquals(listOf<String?>("stored"), backend.sentMoodleTokens())
+        assertEquals(0, harvests)
     }
 
     @Test
@@ -93,7 +159,8 @@ class StoredAccountSignInTest {
     }
 
     @Test
-    fun `a sign-out during the harvest sends no login with the token it falls back to`() = runTest {
+    fun `a sign-out during the harvest sends no login`() = runTest {
+        storedToken = null
         val generation = manager.signInGeneration
         harvest = {
             manager.logout()
@@ -110,6 +177,7 @@ class StoredAccountSignInTest {
 
     @Test
     fun `a refused login is a failure and starts nothing after it`() = runTest {
+        storedToken = null
         backend.answer(LOGIN, 503)
 
         assertEquals(SignInAttempt.FAILED, signIn())
@@ -124,8 +192,9 @@ class StoredAccountSignInTest {
         studentId = { studentId },
         password = { password },
         storedMoodleToken = { storedToken },
-        harvestMoodleToken = {
+        harvestMoodleToken = { refused ->
             harvests++
+            harvestedInPlaceOf += refused
             harvest()
         },
         afterSignIn = { afterSignIns++ },

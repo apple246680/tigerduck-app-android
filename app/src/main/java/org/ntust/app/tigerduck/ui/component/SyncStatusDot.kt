@@ -194,7 +194,10 @@ fun SyncStatusDot(
             },
         )
     }
-    SyncStatusDotBody(sources, isLoading, modifier, syncedAtMs)
+    val notes by ServerStatusTracker.notes.collectAsState()
+    // Why a source failed, where the state alone would mislead (Moodle's maintenance mode).
+    val note = servers.firstNotNullOfOrNull { notes[it] }?.let { stringResource(it) }
+    SyncStatusDotBody(sources, isLoading, modifier, syncedAtMs, note)
 }
 
 /**
@@ -246,6 +249,7 @@ private fun SyncStatusDotBody(
     isLoading: Boolean,
     modifier: Modifier = Modifier,
     syncedAtMs: Long? = null,
+    note: String? = null,
 ) {
     val summary = summarize(sources.map { it.status })
 
@@ -360,6 +364,14 @@ private fun SyncStatusDotBody(
                             else R.string.sync_status_last_synced
                         ),
                         text = dataAgeText(age),
+                    )
+                }
+                if (note != null) {
+                    Text(
+                        text = note,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.widthIn(max = 280.dp),
                     )
                 }
             }

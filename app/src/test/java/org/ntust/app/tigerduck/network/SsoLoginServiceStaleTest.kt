@@ -6,6 +6,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.ntust.app.tigerduck.auth.InMemoryStoredPasswordLatch
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.debug.DebugFixtureStore
 import org.ntust.app.tigerduck.debug.DemoModeInterceptor
@@ -23,7 +24,10 @@ import org.robolectric.annotation.Config
 class SsoLoginServiceStaleTest {
 
     private val context = RuntimeEnvironment.getApplication()
-    private val sso = SsoLoginService(NtustSessionManager(AppPreferences(context), DemoModeInterceptor(DebugFixtureStore(context))))
+    private val sso = SsoLoginService(
+        NtustSessionManager(AppPreferences(context), DemoModeInterceptor(DebugFixtureStore(context))),
+        InMemoryStoredPasswordLatch(),
+    )
     private val closedPort = "http://127.0.0.1:9/classroom_user/classroom_usecondition.aspx"
 
     @Test

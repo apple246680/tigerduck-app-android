@@ -62,6 +62,24 @@ class SyncStatusDotTest {
         assertEquals(ServerStatus.UNKNOWN, ServerStatusTracker.status(ServerKind.MOODLE))
     }
 
+    @Test
+    fun `Moodle's maintenance mode is said in words, and the next status clears it`() {
+        ServerStatusTracker.moodleFailed(org.ntust.app.tigerduck.network.MoodleWebserviceError.SiteMaintenance())
+        assertEquals(ServerStatus.FAILED, ServerStatusTracker.status(ServerKind.MOODLE))
+        assertEquals(
+            org.ntust.app.tigerduck.R.string.error_moodle_site_maintenance,
+            ServerStatusTracker.notes.value[ServerKind.MOODLE],
+        )
+
+        ServerStatusTracker.moodleFailed(java.io.IOException("offline"))
+        assertEquals("another failure carries no note", null, ServerStatusTracker.notes.value[ServerKind.MOODLE])
+
+        ServerStatusTracker.moodleFailed(org.ntust.app.tigerduck.network.MoodleWebserviceError.SiteMaintenance())
+        ServerStatusTracker.set(ServerStatus.OK, ServerKind.MOODLE)
+        assertEquals(null, ServerStatusTracker.notes.value[ServerKind.MOODLE])
+        ServerStatusTracker.reset()
+    }
+
     // --- dataAge -------------------------------------------------------------
 
     private val now = 1_800_000_000_000L

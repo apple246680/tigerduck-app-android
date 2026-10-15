@@ -182,6 +182,12 @@ class ClassTableViewModel @Inject constructor(
     // it on logout so a stale map can't survive an account switch.
     private val _moodleCourseIdByIdnumber = MutableStateFlow<Map<String, Int>>(emptyMap())
 
+    /**
+     * The id map as it changes, so the course detail finds a course's Moodle id the moment a
+     * sync brings it (see [moodleCourseIdFor]), as iOS retries after the first sync.
+     */
+    val moodleCourseIdMap: StateFlow<Map<String, Int>> = _moodleCourseIdByIdnumber
+
     // Per-locale custom course names: courseNo → locale ("zh"/"en") → display name.
     // Loaded from DataCache.courseCustomNames on init; written on every rename.
     // The resolved value for the current locale is stamped onto
@@ -781,12 +787,34 @@ class ClassTableViewModel @Inject constructor(
      * [fromLiveTerm] is for the today carousel, whose courses come from the
      * live term rather than the one the picker is showing.
      */
+    /**
+     * Whether the selected course is of a term other than the grid's: the live term, picked from
+     * the today strip while the grid shows another, whose copy is in [liveSemesterCourses].
+     */
+    val selectedFromAnotherTerm: Boolean
+        get() = selectedCourseSemester.let { it != null && it != _currentSemester.value }
+
     fun selectCourse(course: Course, weekday: Int, periodId: String, fromLiveTerm: Boolean = false) {
         _selectedWeekday.value = weekday
         _selectedPeriodId.value = periodId
         selectedCourseSemester = if (fromLiveTerm) liveCoursesTerm else _currentSemester.value
         _selectedCourse.value = course
     }
+
+    /**
+     * The course detail's title for [course], as it is now: a rename made from the detail shows
+     * at once, which [selectedCourseFullName], read off the course as it was selected, would not.
+     */
+    fun detailTitle(course: Course): String =
+        ClassTableSelection.detailTitle(
+            course,
+            // Someone else's course shows the name it was looked up with.
+            if (isShowingSomeoneElse) {
+                null
+            } else {
+                courseService.cachedFullCourseName(selectedCourseSemester ?: _currentSemester.value, course.courseNo)
+            },
+        )
 
     /**
      * Numeric Moodle course id for [course], or null when we have no entry
@@ -815,6 +843,7 @@ class ClassTableViewModel @Inject constructor(
     private fun lookupMoodleCourseId(idnumber: String): Int? =
         _moodleCourseIdByIdnumber.value[MoodleCourseIds.normalizedIdnumber(idnumber)]
 
+    /** Closes the course detail, whose sheet shows only while a course is selected. */
     fun clearSelection() {
         _selectedCourse.value = null
         selectedCourseSemester = null
@@ -860,17 +889,18 @@ class ClassTableViewModel @Inject constructor(
         if (isShowingSomeoneElse) return
         val trimmed = newName.trim()
         val locale = currentCourseLocale
-        val updated = _courses.value.map { course ->
-            if (course.courseNo != courseNo) return@map course
-            val defaultName = defaultNameFor(course)
-            val override = trimmed.takeIf {
-                it.isNotEmpty() && it != course.courseName && it != defaultName
-            }
-            courseCustomNames =
-                CourseNameOverrides.withOverride(courseCustomNames, courseNo, locale, override)
-            course.copy(customCourseName = override)
+        // The live term's copy too: a course renamed from the today strip, while the grid shows
+        // another term, may not be on the grid at all.
+        val course = ClassTableSelection.renameTarget(courseNo, _courses.value, _liveSemesterCourses.value) ?: return
+        val defaultName = defaultNameFor(course)
+        val override = trimmed.takeIf {
+            it.isNotEmpty() && it != course.courseName && it != defaultName
         }
+        courseCustomNames =
+            CourseNameOverrides.withOverride(courseCustomNames, courseNo, locale, override)
+        val updated = ClassTableSelection.renamed(_courses.value, courseNo, override)
         _courses.value = updated
+        _liveSemesterCourses.value = ClassTableSelection.renamed(_liveSemesterCourses.value, courseNo, override)
         viewModelScope.launch {
             dataCache.saveCourseCustomNames(courseCustomNames)
             dataCache.saveCourses(updated, _currentSemester.value)
@@ -886,10 +916,9 @@ class ClassTableViewModel @Inject constructor(
         val locale = currentCourseLocale
         courseCustomNames =
             CourseNameOverrides.withOverride(courseCustomNames, courseNo, locale, null)
-        val updated = _courses.value.map { course ->
-            if (course.courseNo == courseNo) course.copy(customCourseName = null) else course
-        }
+        val updated = ClassTableSelection.renamed(_courses.value, courseNo, null)
         _courses.value = updated
+        _liveSemesterCourses.value = ClassTableSelection.renamed(_liveSemesterCourses.value, courseNo, null)
         viewModelScope.launch {
             dataCache.saveCourseCustomNames(courseCustomNames)
             dataCache.saveCourses(updated, _currentSemester.value)

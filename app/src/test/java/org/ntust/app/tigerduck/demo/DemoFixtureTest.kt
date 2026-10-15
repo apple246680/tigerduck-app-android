@@ -128,6 +128,37 @@ class DemoFixtureTest {
     }
 
     @Test
+    fun `the Moodle section is read into the app's models`() {
+        val json = """
+            {"moodle": {"ownMemberId": 1, "courses": [
+              {"courseNo": "CS3005301", "moodleId": 5,
+               "summary": {"zh": "<p>摘要</p>", "en": "<p>Summary</p>"},
+               "announcements": [
+                 {"id": 7, "created": "2026-09-14T09:00", "pinned": true, "unread": true,
+                  "title": {"en": "Syllabus"}, "message": {"en": "<p>Hi <b>all</b></p>"},
+                  "attachments": [{"name": "a.pdf", "size": 10, "mime": "application/pdf"}]},
+                 {"title": "no date"}],
+               "grades": [{"name": "HW1", "module": "assign", "grade": "90", "max": 100},
+                          {"type": "course", "grade": "90", "max": 100}],
+               "members": [{"id": 1, "name": "B1 @ Me", "role": "student"}, {"name": "no id"}]},
+              {"moodleId": 6}
+            ]}}
+        """.trimIndent()
+        val moodle = DemoFixture.parse(json, DemoFixture.LANG_ZH).moodle!!
+
+        val course = moodle.courses.single()
+        assertEquals("<p>摘要</p>", course.summaryHtml)
+        val announcement = course.announcements.single()
+        assertEquals("Syllabus", announcement.title)
+        assertEquals("Hi all", announcement.preview)
+        assertTrue(announcement.isPinned)
+        assertEquals(1, announcement.unreadCount)
+        assertEquals("a.pdf", announcement.attachments.single().name)
+        assertEquals(listOf("mod", "course"), course.grades.map { it.type })
+        assertEquals(listOf(1), course.members.map { it.id })
+    }
+
+    @Test
     fun `a file without credentials never matches`() {
         val fixture = DemoFixture.parse("""{ "studentId": "B1" }""", DemoFixture.LANG_EN)
         assertFalse(fixture.matches("B1", ""))
@@ -148,6 +179,13 @@ class DemoFixtureTest {
             assertEquals(3, fixture.calendar!!.size)
             assertTrue(fixture.libraryFakeSignedIn)
             assertTrue(fixture.courses!!.all { it.courseName.isNotBlank() })
+            val moodle = fixture.moodle!!
+            assertEquals(3, moodle.courses.size)
+            val courseNos = fixture.courses!!.map { it.courseNo }
+            assertTrue("every Moodle course is a course on the timetable", moodle.courses.all { it.courseNo in courseNos })
+            assertTrue(moodle.courses.all { c -> c.announcements.all { it.title.isNotBlank() && it.created > 0 } })
+            assertTrue("the student is among each course's members",
+                moodle.courses.all { c -> c.members.any { it.id == moodle.ownMemberId } })
             val classmate = fixture.classmates!!.single()
             assertEquals(5, classmate.courses.size)
             // A share code names the classmate and carries each course, so the import is real.
