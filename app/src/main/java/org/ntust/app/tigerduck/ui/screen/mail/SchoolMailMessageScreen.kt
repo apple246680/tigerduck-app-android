@@ -75,6 +75,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import org.ntust.app.tigerduck.ui.openLink
 import org.ntust.app.tigerduck.util.fileProviderAuthority
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -222,9 +223,7 @@ fun SchoolMailMessageScreen(
                     }
                     if (state.content !is Content.Loading) {
                         Box {
-                            IconButton(onClick = { menuOpen = true }) {
-                                Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.school_mail_view_mode))
-                            }
+                            MessageActionsButton(onClick = { menuOpen = true })
                             MessageMenu(
                                 expanded = menuOpen,
                                 mode = state.mode,
@@ -392,7 +391,7 @@ fun SchoolMailMessageScreen(
                 target = target,
                 onOpen = {
                     pendingLink = null
-                    openLink(context, target.href, browserPreference)
+                    openBodyLink(context, target.href, browserPreference)
                 },
                 onDismiss = { pendingLink = null },
             )
@@ -460,6 +459,17 @@ fun SchoolMailMessageScreen(
  */
 internal fun offersLightMode(isDark: Boolean, mode: ViewMode, canFormat: Boolean): Boolean =
     isDark && canFormat && mode == ViewMode.FORMATTED
+
+/**
+ * The ⋮ button that opens [MessageMenu]. Named for every action in it, not
+ * only the view modes: it also holds mark unread, move and delete.
+ */
+@Composable
+internal fun MessageActionsButton(onClick: () -> Unit) {
+    IconButton(onClick = onClick) {
+        Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.school_mail_message_actions))
+    }
+}
 
 /** The message's ⋮ menu. Internal so [MailMessageMenuTest] can open it and read what TalkBack is told. */
 @Composable
@@ -718,15 +728,11 @@ private fun LinkDialog(target: SchoolMailMessageViewModel.LinkTarget, onOpen: ()
  * button that silently does nothing. Nothing new is launchable: the set is exactly the schemes
  * this already handled.
  */
-private fun openLink(context: Context, href: String, browserPreference: String) {
-    val uri = Uri.parse(href)
-    val scheme = uri.scheme?.lowercase()
+private fun openBodyLink(context: Context, href: String, browserPreference: String) {
+    val scheme = Uri.parse(href).scheme?.lowercase()
     if (scheme !in SchoolMailMessageViewModel.OPENABLE_SCHEMES) return
-    if (scheme == "mailto") {
-        runCatching { context.startActivity(Intent(Intent.ACTION_SENDTO, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-    } else {
-        openMailLink(context, href, browserPreference)
-    }
+    // openLink sends mailto: to a new message and refuses every other non-web scheme too.
+    openLink(context, href, browserPreference)
 }
 
 private fun openAttachment(context: Context, request: SchoolMailMessageViewModel.OpenRequest) {

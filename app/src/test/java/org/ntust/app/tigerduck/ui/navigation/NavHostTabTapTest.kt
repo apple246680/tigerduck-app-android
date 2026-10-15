@@ -11,7 +11,7 @@ import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -94,5 +94,105 @@ class NavHostTabTapTest {
         openSettingsFromMore()
         step { popBackStack() }
         assertEquals(true, lastPopSlides)
+    }
+}
+
+/** A page that closes itself must close only itself, however many times it asks. */
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class)
+class PopIfTopTest {
+
+    @get:Rule
+    val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+    private lateinit var navController: NavHostController
+
+    @Test
+    fun `a second pop for the same page leaves the page under it`() {
+        composeRule.setContent {
+            navController = rememberNavController()
+            NavHost(navController = navController, startDestination = "classTable") {
+                composable("classTable") {}
+                composable("classTable/course") {}
+                composable("courseMoodle/announcements") {}
+            }
+        }
+        composeRule.runOnIdle {
+            navController.navigate("classTable/course")
+            navController.navigate("courseMoodle/announcements")
+        }
+        composeRule.waitForIdle()
+        val top = composeRule.runOnIdle { navController.currentBackStackEntry!! }
+
+        composeRule.runOnIdle {
+            navController.popIfTop(top)
+            navController.popIfTop(top)
+        }
+        composeRule.waitForIdle()
+
+        assertEquals("classTable/course", navController.currentBackStackEntry?.destination?.route)
+    }
+}
+
+/** A widget or notification opening a tab from a page pushed over it lands on that tab, not a second copy of it. */
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class)
+class StartRouteTest {
+
+    @get:Rule
+    val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+    private lateinit var navController: NavHostController
+
+    @Test
+    fun `opening a tab from a page pushed over it goes back to the tab`() {
+        composeRule.setContent {
+            navController = rememberNavController()
+            NavHost(navController = navController, startDestination = "home") {
+                composable("home") {}
+                composable("more") {}
+                composable("settings") {}
+            }
+        }
+        composeRule.runOnIdle {
+            navController.navigate("more")
+            navController.navigate("settings")
+        }
+        composeRule.waitForIdle()
+
+        composeRule.runOnIdle {
+            navController.openStartRoute("more", tabRoutes = setOf("home", "more"), firstTab = "home", TabTap())
+        }
+        composeRule.waitForIdle()
+
+        assertEquals("more", navController.currentBackStackEntry?.destination?.route)
+        assertEquals("home", navController.previousBackStackEntry?.destination?.route)
+    }
+
+    @Test
+    fun `opening the tab already on screen leaves it as it is`() {
+        composeRule.setContent {
+            navController = rememberNavController()
+            NavHost(navController = navController, startDestination = "home") {
+                composable("home") {}
+                composable("classTable") {}
+            }
+        }
+        composeRule.runOnIdle { navController.navigate("classTable") }
+        composeRule.waitForIdle()
+        val before = composeRule.runOnIdle { navController.currentBackStackEntry!!.id }
+
+        composeRule.runOnIdle {
+            navController.openStartRoute("classTable", tabRoutes = setOf("home", "classTable"), firstTab = "home", TabTap())
+        }
+        composeRule.waitForIdle()
+
+        assertEquals("not rebuilt, so nothing on it is lost", before, navController.currentBackStackEntry!!.id)
+    }
+
+    @Test
+    fun `a page pushed from More keeps the More tab selected`() {
+        assertEquals("more", selectedTabRoute("settings"))
+        assertEquals("calendar", selectedTabRoute("calendar"))
     }
 }

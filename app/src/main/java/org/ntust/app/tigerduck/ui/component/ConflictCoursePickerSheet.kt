@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.shared.Course
+import org.ntust.app.tigerduck.shared.blockClassroomFrom
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 
@@ -35,6 +36,8 @@ fun ConflictCoursePickerSheet(
     courseA: Course,
     courseB: Course,
     weekday: Int,
+    /** The tapped tile's first period, which picks each course's block and so its room. */
+    periodId: String? = null,
     onPick: (Course) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -46,15 +49,15 @@ fun ConflictCoursePickerSheet(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
             Spacer(Modifier.height(4.dp))
-            ConflictCourseRow(courseA, weekday, onPick)
+            ConflictCourseRow(courseA, weekday, periodId, onPick)
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-            ConflictCourseRow(courseB, weekday, onPick)
+            ConflictCourseRow(courseB, weekday, periodId, onPick)
         }
     }
 }
 
 @Composable
-private fun ConflictCourseRow(course: Course, weekday: Int, onPick: (Course) -> Unit) {
+private fun ConflictCourseRow(course: Course, weekday: Int, periodId: String?, onPick: (Course) -> Unit) {
     val swatch = TigerDuckTheme.courseColor(course.courseNo)
     Row(
         modifier = Modifier
@@ -78,7 +81,7 @@ private fun ConflictCourseRow(course: Course, weekday: Int, onPick: (Course) -> 
             val subtitle = buildString {
                 append(course.courseNo)
                 if (course.instructor.isNotBlank()) append(" · ${course.instructor}")
-                val room = course.classroom(weekday)
+                val room = if (periodId != null) course.blockClassroomFrom(weekday, periodId) else course.classroom(weekday)
                 if (room.isNotBlank()) append(" · $room")
             }
             Text(

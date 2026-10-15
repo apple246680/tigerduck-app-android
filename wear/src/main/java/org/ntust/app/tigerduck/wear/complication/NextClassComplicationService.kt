@@ -66,7 +66,7 @@ class NextClassComplicationService : SuspendingComplicationDataSourceService() {
                 ).setTitle(PlainComplicationText.Builder("NOW").build()).setTapAction(tap).build()
 
                 ComplicationType.LONG_TEXT -> LongTextComplicationData.Builder(
-                    text = PlainComplicationText.Builder(r.course.classroom(r.weekday)).build(),
+                    text = PlainComplicationText.Builder(r.classroom).build(),
                     contentDescription = PlainComplicationText.Builder(r.course.displayName)
                         .build(),
                 ).setTitle(
@@ -85,14 +85,14 @@ class NextClassComplicationService : SuspendingComplicationDataSourceService() {
             }
 
             is NextClassResult.NextToday -> shortOrLong(
-                type, r.course.displayName, r.course.classroom(r.weekday),
+                type, r.course.displayName, r.classroom,
                 titleShort = formatHm(r.startMinute),
                 titleLong = "${formatHm(r.startMinute)} · ${truncate(r.course.displayName, 7)}",
                 tap = tap,
             )
 
             is NextClassResult.NextFuture -> shortOrLong(
-                type, r.course.displayName, r.course.classroom(r.weekday),
+                type, r.course.displayName, r.classroom,
                 titleShort = formatHm(r.startMinute),
                 titleLong = laterDayTitle(this, r.daysAhead, r.weekday, formatHm(r.startMinute)),
                 tap = tap,

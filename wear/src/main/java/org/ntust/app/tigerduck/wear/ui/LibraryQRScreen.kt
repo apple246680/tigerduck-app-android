@@ -58,6 +58,7 @@ import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
 import androidx.wear.remote.interactions.RemoteActivityHelper
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.shared.LibraryApi
 import org.ntust.app.tigerduck.shared.LibraryService
@@ -155,9 +156,11 @@ private fun LoggedInState(username: String?) {
     val store = remember(context) { WatchLibraryCredentialStore.get(context) }
     val service = remember(store) { LibraryService(store, isDebugBuild = BuildConfig.DEBUG) }
     val scope = rememberCoroutineScope()
-    val controller = remember(service) {
-        LibraryQRController(service, scope)
+    val accountChanged = stringResource(R.string.watch_open_phone_to_sync)
+    val controller = remember(service, accountChanged) {
+        LibraryQRController(service::generateQRCode, scope, accountChanged)
     }
+    val accounts = remember(store) { store.state.map { it.username } }
 
     val bitmap by controller.qrBitmap.collectAsState()
     val patternBounds by controller.qrPatternBounds.collectAsState()
@@ -168,7 +171,7 @@ private fun LoggedInState(username: String?) {
     // Re-render the bitmap at the new size when the user toggles fullscreen,
     // otherwise the upscaled small QR is mushy under a scanner.
     DisposableEffect(controller, qrSidePx) {
-        controller.start(qrSidePx)
+        controller.start(qrSidePx, accounts)
         onDispose { controller.stop() }
     }
 
@@ -265,14 +268,17 @@ private fun NormalQR(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = error,
-                    textAlign = TextAlign.Center,
-                    color = Color.Gray,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                // Empty when the failure gave no reason; the line above says enough.
+                if (error.isNotEmpty()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = error,
+                        textAlign = TextAlign.Center,
+                        color = Color.Gray,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
 
             else -> Text(

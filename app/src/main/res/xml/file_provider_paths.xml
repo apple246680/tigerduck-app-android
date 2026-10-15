@@ -3,6 +3,8 @@
 <paths>
     <!-- Opened School Mail attachments (MailCache.attachmentsDir = cacheDir/mail/attachments). -->
     <cache-path name="mail_attachments" path="mail/attachments/" />
+    <!-- Opened Moodle attachments (DataCache.moodleOpenedFilesDir = cacheDir/TigerDuckCache/moodle_open). -->
+    <cache-path name="moodle_files" path="TigerDuckCache/moodle_open/" />
     <!-- Exported class table images (ClassTableExport.kt). -->
     <cache-path name="class_table_export" path="class_table_export/" />
 </paths>

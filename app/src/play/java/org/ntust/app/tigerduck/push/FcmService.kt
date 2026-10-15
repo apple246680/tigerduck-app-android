@@ -246,10 +246,9 @@ class FcmService : FirebaseMessagingService() {
      * that as well as five.
      */
     private fun showReauthNotification(title: String, body: String) {
-        // `tigerduck://home` is not a registered deep link — the manifest only
-        // declares the `announcement` host and MainActivity routes nothing for
-        // a `home` authority — so open the launcher entry point rather than
-        // mint a URI no one consumes.
+        // `tigerduck://home` is not a link the app opens — AppLink.parse takes
+        // only `announcement`, `assignment`, `classtable` and `library` — so
+        // open the launcher entry point rather than mint a URI no one consumes.
         val intent = packageManager.getLaunchIntentForPackage(packageName)
             ?: Intent(this, MainActivity::class.java)
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP

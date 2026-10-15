@@ -3,6 +3,10 @@ package org.ntust.app.tigerduck.mail
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.ntust.app.tigerduck.mail.imap.SpecialFolder
 import org.ntust.app.tigerduck.mail.model.MailAddress
 import org.ntust.app.tigerduck.mail.model.MailBody
@@ -19,6 +23,21 @@ import org.ntust.app.tigerduck.mail.sync.MailBackgroundScheduler
  */
 fun testApplicationScope(): CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+/**
+ * Stops what a test left running on a [testApplicationScope] and waits for it
+ * to end. Sign-out's cache wipe would otherwise outlive the test and race
+ * TemporaryFolder deleting the same folder, and what it throws then fails a
+ * later runTest, in any class, as UncaughtExceptionsBeforeTest. Call it from
+ * an @After, which runs before rules such as TemporaryFolder clean up. Gives
+ * up after ten seconds, failing that test, rather than hang the suite on work
+ * that never ends.
+ */
+fun CoroutineScope.cancelAndJoinBlocking() {
+    // Read here: inside runBlocking, coroutineContext is runBlocking's own.
+    val job = coroutineContext.job
+    runBlocking { withTimeout(10_000) { job.cancelAndJoin() } }
+}
+
 class InMemoryMailDevServerStore(
     override var settings: MailDevServerSettings = MailDevServerSettings.OFF,
 ) : MailDevServerStore
@@ -29,7 +48,11 @@ fun schoolMailSite(): MailSite = MailSite(InMemoryMailDevServerStore())
 class InMemoryCredentialStore : MailCredentialStore {
     override var mailStudentId: String? = null
     override var mailPassword: String? = null
+
+    /** Fires inside [clearMailCredentials], before anything is removed: lets a test act mid-sign-out. */
+    var beforeClear: (() -> Unit)? = null
     override fun clearMailCredentials() {
+        beforeClear?.invoke()
         mailStudentId = null
         mailPassword = null
     }
@@ -56,7 +79,14 @@ class RecordingNotifier : MailNotifier {
     }
     override fun postAuthFailure() { authFailures++ }
     override fun cancelMessage(uid: Long) { cancelledUids += uid }
-    override fun cancelAll() { cancelledAll++ }
+    val cancelledPosted = mutableListOf<List<MailSummary>>()
+    override fun cancelPosted(messages: List<MailSummary>) { cancelledPosted += messages }
+    /** Fires inside [cancelAll] -- lets a test wait for sign-out's own cleanup, which runs on its own. */
+    var onCancelAll: (() -> Unit)? = null
+    override fun cancelAll() {
+        cancelledAll++
+        onCancelAll?.invoke()
+    }
 }
 
 class FakeDemoGate(override var appDemoActive: Boolean = false) : MailDemoGate {

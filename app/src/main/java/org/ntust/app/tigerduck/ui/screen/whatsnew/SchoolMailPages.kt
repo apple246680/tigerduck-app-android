@@ -47,16 +47,14 @@ internal fun mailBottomBarPage(appState: AppState) = WhatsNewPage.OptIn(
     confirmLabel = WhatsNewText(en = "Apply Recommended Arrangement", zhHant = "套用建議排列"),
     declineLabel = WhatsNewText(en = "Keep Mine", zhHant = "保留目前設定"),
     apply = {
-        recommendedTabsWithMail(appState.visibleTabs())?.let { appState.configuredTabs = it }
+        recommendedTabsWithMail(appState.configuredTabs)?.let { appState.configuredTabs = it }
     },
-    isApplicable = { recommendedTabsWithMail(appState.visibleTabs()) != null },
+    isApplicable = { recommendedTabsWithMail(appState.configuredTabs) != null },
 )
 
 /**
  * The Mail pages — the introduction and the bottom-bar question — are only
  * for a bar without Mail; someone who already put it there has found it.
- * Mail is never hidden by an opt-in, so the stored list answers for the bar
- * on screen.
  */
 internal fun offersMailPages(configured: List<AppFeature>): Boolean =
     AppFeature.SCHOOL_MAIL !in configured
@@ -65,9 +63,6 @@ internal fun offersMailPages(configured: List<AppFeature>): Boolean =
  * The bar with Mail added: Calendar's slot taken over when [visible] has
  * Calendar, otherwise Mail appended when there's room. Null when Mail is
  * already there or there's nowhere to put it.
- *
- * Works on the bar the user sees (see [visibleBottomBarTabs]): a library tab
- * hidden by the library opt-in neither takes a slot nor survives the change.
  */
 internal fun recommendedTabsWithMail(visible: List<AppFeature>): List<AppFeature>? = when {
     !AppFeature.SCHOOL_MAIL.isImplemented || AppFeature.SCHOOL_MAIL in visible -> null
@@ -77,21 +72,9 @@ internal fun recommendedTabsWithMail(visible: List<AppFeature>): List<AppFeature
     else -> null
 }
 
-/**
- * The tabs the bottom bar actually shows for [configured]: library tabs
- * drop out while the library opt-in is off, as in `AppNavigation`.
- */
-internal fun visibleBottomBarTabs(
-    configured: List<AppFeature>,
-    libraryEnabled: Boolean,
-): List<AppFeature> = configured.filter { !it.isLibraryRelated || libraryEnabled }
-
-private fun AppState.visibleTabs(): List<AppFeature> =
-    visibleBottomBarTabs(configuredTabs, libraryFeatureEnabled)
-
 /** The user's bar above the one with Mail; captured once, so confirming doesn't redraw it mid-slide. */
 @Composable
 private fun MailBottomBarDemo(appState: AppState) {
-    val current = remember { appState.visibleTabs() }
+    val current = remember { appState.configuredTabs }
     BottomBarChangeDemo(before = current, after = recommendedTabsWithMail(current) ?: current)
 }

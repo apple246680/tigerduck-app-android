@@ -7,9 +7,13 @@ class InMemoryMailStateStore : MailStateStore {
     override var notificationsEnabled: Boolean = true
     override var authFailed: Boolean = false
     override var demoMailbox: Boolean = false
+    /** Fires on every [inboxUidValidity] read, after the value was read: lets a test act between the read and what follows it. */
+    var onUidValidityRead: (() -> Unit)? = null
     override var inboxUidValidity: Long = 0
+        get() = field.also { onUidValidityRead?.invoke() }
     override var inboxSeenUidNext: Long = 0
     override var lastForegroundCheckAt: Long = 0
+    override var inboxFetchedAt: Long = 0
     override var diagnostics: List<String> = emptyList()
         set(value) { field = value.take(10) }
     private val owned = mutableMapOf<Pair<String, Long>, Set<Long>>()
@@ -34,7 +38,8 @@ class InMemoryMailStateStore : MailStateStore {
 
     override fun clear() {
         displayName = null; notificationsEnabled = true; authFailed = false; demoMailbox = false
-        inboxUidValidity = 0; inboxSeenUidNext = 0; lastForegroundCheckAt = 0; diagnostics = emptyList()
+        inboxUidValidity = 0; inboxSeenUidNext = 0; lastForegroundCheckAt = 0; inboxFetchedAt = 0
+        diagnostics = emptyList()
         owned.clear()
     }
 }

@@ -37,6 +37,11 @@ import org.ntust.app.tigerduck.data.OutstandingAssignments
 import org.ntust.app.tigerduck.data.RefreshPolicy
 import org.ntust.app.tigerduck.data.RefreshTriggers
 import org.ntust.app.tigerduck.data.cache.DataCache
+import org.ntust.app.tigerduck.data.sharing.ClassTableShare
+import org.ntust.app.tigerduck.data.sharing.ImportedClassTableChange
+import org.ntust.app.tigerduck.data.sharing.ImportedClassTableStore
+import org.ntust.app.tigerduck.data.sharing.ImportedClassTables
+import org.ntust.app.tigerduck.data.sharing.ImportedCourseLookup
 import org.ntust.app.tigerduck.debug.DebugFixtureStore
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.shared.computeOngoingCourses
@@ -82,6 +87,10 @@ class ClassTableViewModel @Inject constructor(
     private val notificationScheduler: org.ntust.app.tigerduck.notification.AssignmentNotificationScheduler,
     private val liveActivityManager: org.ntust.app.tigerduck.liveactivity.LiveActivityManager,
     private val courseIgnoreSync: CourseIgnoreSync,
+    private val localEdits: org.ntust.app.tigerduck.ui.screen.home.LocalEdits,
+    private val importedClassTableStore: ImportedClassTableStore,
+    private val importedCourseLookup: ImportedCourseLookup,
+    private val pendingCourseAdds: org.ntust.app.tigerduck.data.PendingCourseAdds,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
 
@@ -122,6 +131,9 @@ class ClassTableViewModel @Inject constructor(
     // opened again at once already reads the new value.
     private val ignoredCourses = ClassTableIgnoredCourses(dataCache.assignmentMarksVersion)
 
+    // A term's reset as far as files and the backend go; see resetCourses.
+    private val termReset = ClassTableTermReset(dataCache)
+
     /** What the course detail lists: see [OutstandingAssignments]. */
     val outstandingAssignments: StateFlow<List<Assignment>> = combine(
         _assignments,
@@ -144,6 +156,14 @@ class ClassTableViewModel @Inject constructor(
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
+
+    /**
+     * Whether the first load of the account's class table is done: its cache
+     * read and, when it fetches, that fetch. Until then an empty term is one
+     * not read yet; see [ShownClassTable.showsNoCourses].
+     */
+    private val _hasSettled = MutableStateFlow(false)
+    val hasSettled: StateFlow<Boolean> = _hasSettled
 
     val isLoggedIn: StateFlow<Boolean> = authService.authState
 
@@ -174,6 +194,12 @@ class ClassTableViewModel @Inject constructor(
     // it on logout so a stale map can't survive an account switch.
     private val _moodleCourseIdByIdnumber = MutableStateFlow<Map<String, Int>>(emptyMap())
 
+    /**
+     * The id map as it changes, so the course detail finds a course's Moodle id the moment a
+     * sync brings it (see [moodleCourseIdFor]), as iOS retries after the first sync.
+     */
+    val moodleCourseIdMap: StateFlow<Map<String, Int>> = _moodleCourseIdByIdnumber
+
     // Per-locale custom course names: courseNo → locale ("zh"/"en") → display name.
     // Loaded from DataCache.courseCustomNames on init; written on every rename.
     // The resolved value for the current locale is stamped onto
@@ -189,6 +215,10 @@ class ClassTableViewModel @Inject constructor(
 
     private val _selectedWeekday = MutableStateFlow<Int?>(null)
     private val _selectedPeriodId = MutableStateFlow<String?>(null)
+
+    // The block of periods the detail was opened on, for its time: a course
+    // meeting twice a day shows the times of the one tapped, not the day's.
+    private val _selectedPeriods = MutableStateFlow<List<String>?>(null)
 
     // The term the selected course belongs to. Not always the picker's: the
     // today carousel shows the live term's courses whatever term the grid
@@ -265,6 +295,63 @@ class ClassTableViewModel @Inject constructor(
     )
     val syncCompleteEvent: SharedFlow<Unit> = _syncCompleteEvent.asSharedFlow()
 
+    private val _resetFailedEvent = MutableSharedFlow<String>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+
+    /** A term whose reset the backend could not take, and which was left as it was. */
+    val resetFailedEvent: SharedFlow<String> = _resetFailedEvent.asSharedFlow()
+
+    /** The class tables imported from share codes, and whose the page shows. */
+    val importedTables: StateFlow<ImportedClassTables> = importedClassTableStore.tables
+
+    /**
+     * Whose class table the page shows and on which term, set together when the store switches,
+     * so the page redraws a switch once; see [followShownTable]. The store's copy of the person
+     * carries a rename or a new lookup.
+     */
+    private val _displayed = MutableStateFlow(DisplayedTable(personId = null, semester = null, switches = 0))
+
+    /**
+     * What the page draws: the user's own class table, or someone else's, read-only, on the terms
+     * they shared. Everything of the user's own (the fetch, the cache, the edits) keeps running on
+     * [courses] and [currentSemester] while someone else's shows, and shows again on the way back.
+     */
+    val shownTable: StateFlow<ShownClassTable> = combine(
+        _courses,
+        _currentSemester,
+        _availableSemesters,
+        importedTables,
+        _displayed,
+    ) { courses, semester, semesters, tables, displayed ->
+        shownTableOf(courses, semester, semesters, tables, displayed)
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        ShownClassTable(null, _currentSemester.value, _availableSemesters.value, emptyList(), 0),
+    )
+
+    private val _isRefreshingShownPerson = MutableStateFlow(false)
+
+    /** A pull to refresh on someone else's class table, which looks their term up again. */
+    val isRefreshingShownPerson: StateFlow<Boolean> = _isRefreshingShownPerson
+
+    private val _importedTableProblems = MutableSharedFlow<ImportedTableProblem>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    /** A lookup or a save for someone else's class table that did not go through. */
+    val importedTableProblems: SharedFlow<ImportedTableProblem> = _importedTableProblems.asSharedFlow()
+
+    // Double taps on the Class Table tab, for whether the next one swaps back or steps on.
+    private val tabDoubleTaps = ClassTableTabDoubleTaps(SystemClock::elapsedRealtime)
+
+    /** The user's terms the share sheet can offer; see [refreshShareTerms]. */
+    private val _shareTerms = MutableStateFlow<List<ClassTableShare.Term>>(emptyList())
+    val shareTerms: StateFlow<List<ClassTableShare.Term>> = _shareTerms
+
     private var hasLoaded = false
     private var loadJob: Job? = null
 
@@ -276,6 +363,11 @@ class ClassTableViewModel @Inject constructor(
         RefreshTriggers(ClassTableRefreshPolicy, SystemClock::elapsedRealtime)
 
     init {
+        viewModelScope.launch { importedClassTableStore.load() }
+        viewModelScope.launch {
+            // Another page, the tab's menu or a deletion may switch to someone else's class table.
+            importedTables.collect(::followShownTable)
+        }
         viewModelScope.launch {
             // Tick at 5s so transitions land within at most a few seconds of
             // the wall-clock minute boundary (e.g., the "現在課程" card appears
@@ -343,14 +435,16 @@ class ClassTableViewModel @Inject constructor(
                     fetchFlight.cancel()
                     loadJob?.cancel()
                     _courses.value = emptyList()
+                    _shareTerms.value = emptyList()
                     _assignments.value = emptyList()
                     _ignoredAssignmentIds.value = emptySet()
                     _markedCompletedIds.value = emptySet()
                     ignoredCourses.clear()
-                    _selectedCourse.value = null
+                    clearSelection()
                     _moodleCourseIdByIdnumber.value = emptyMap()
                     courseCustomNames = emptyMap()
                     hasLoaded = false
+                    _hasSettled.value = false
                     TigerDuckTheme.clearCourseColorMap()
                 } else if (signedIn) {
                     // As a launch, so the page counts as loaded. Launched, so
@@ -393,6 +487,73 @@ class ClassTableViewModel @Inject constructor(
 
     private fun currentDayTime(): ClassTableSelection.DayTime =
         ClassTableSelection.dayTimeFrom(AppClock.calendar())
+
+    // --- Someone else's class table ---
+
+    /** Someone else's class table is read-only, so every edit of the user's own checks this. */
+    private val isShowingSomeoneElse: Boolean get() = _displayed.value.personId != null
+
+    /** Moves the page to whoever the store shows now; see [nextDisplayedTable]. */
+    private fun followShownTable(tables: ImportedClassTables) {
+        val next = nextDisplayedTable(_displayed.value, tables, shownTable.value.semester) ?: return
+        _displayed.value = next
+        // A course of the class table just left.
+        clearSelection()
+    }
+
+    /** Shows [personId]'s class table, or the user's own for null. */
+    fun showTable(personId: String?) = importedClassTableStore.show(personId)
+
+    /**
+     * A double tap on the Class Table tab while it shows: back to the class table shown before,
+     * or within three seconds of the last double tap, the next one. Returns whether it switched.
+     */
+    fun tabDoubleTapped(): Boolean {
+        val before = importedTables.value.shownPersonId
+        if (tabDoubleTaps.stepsOn()) importedClassTableStore.showNext() else importedClassTableStore.showPrevious()
+        return importedTables.value.shownPersonId != before
+    }
+
+    fun renamePerson(personId: String, nickname: String) {
+        viewModelScope.launch {
+            val change = importedClassTableStore.rename(personId, nickname)
+            if (change == ImportedClassTableChange.FAILED) _importedTableProblems.tryEmit(ImportedTableProblem.SAVE_FAILED)
+        }
+    }
+
+    /** Deleting the shown person shows the user's own class table again, as any switch does. */
+    fun deletePerson(personId: String) {
+        viewModelScope.launch {
+            val change = importedClassTableStore.delete(personId)
+            if (change == ImportedClassTableChange.FAILED) _importedTableProblems.tryEmit(ImportedTableProblem.SAVE_FAILED)
+        }
+    }
+
+    /** Pull to refresh on someone else's class table: looks the term on screen up again. */
+    private fun refreshShownPerson() {
+        if (_isRefreshingShownPerson.value) return
+        val shown = shownTable.value
+        val person = shown.person ?: return
+        val term = person.terms.firstOrNull { it.semester == shown.semester } ?: return
+        _isRefreshingShownPerson.value = true
+        viewModelScope.launch {
+            try {
+                val refreshed = importedCourseLookup.refreshed(term.semester, term.courseNos, term.courses)
+                if (refreshed == null) {
+                    _importedTableProblems.tryEmit(ImportedTableProblem.LOOKUP_FAILED)
+                    return@launch
+                }
+                val change = importedClassTableStore.updateCourses(
+                    person.id, term.semester, term.courseNos, refreshed, person.importedAt,
+                )
+                if (change == ImportedClassTableChange.FAILED) {
+                    _importedTableProblems.tryEmit(ImportedTableProblem.SAVE_FAILED)
+                }
+            } finally {
+                _isRefreshingShownPerson.value = false
+            }
+        }
+    }
 
     private suspend fun loadAssignmentMarks() {
         val account = authService.storedStudentId
@@ -478,6 +639,12 @@ class ClassTableViewModel @Inject constructor(
     }
 
     fun setSemester(code: String) {
+        val displayed = _displayed.value
+        if (displayed.personId != null) {
+            // A term picked on someone else's class table is not the user's pick.
+            _displayed.value = displayed.copy(semester = code)
+            return
+        }
         if (code == _currentSemester.value) return
         appPreferences.classTableSelectedSemester = code
         _currentSemester.value = code
@@ -492,6 +659,29 @@ class ClassTableViewModel @Inject constructor(
     }
 
     val totalCredits: Float get() = _courses.value.fold(0f) { acc, c -> acc + c.credits }
+
+    /**
+     * Reads which of the user's terms a share code can carry, for the share sheet, newest first.
+     * The term on screen comes from the table, which a refresh can have made newer than its cache,
+     * an emptied term included; the others from the cache, so sharing needs no request.
+     */
+    fun refreshShareTerms() {
+        val shownSemester = _currentSemester.value
+        val shown = _courses.value
+        val semesters = _availableSemesters.value
+        viewModelScope.launch {
+            val account = authService.storedStudentId
+            val deleted = dataCache.loadDeletedCourseNos()
+            val terms = semesters.mapNotNull { semester ->
+                val courses = if (semester == shownSemester) shown else dataCache.loadCourses(semester)
+                ClassTableShare.shareable(semester, courses) { CourseTombstoneKeys.isHidden(it, semester, deleted) }
+                    .takeIf { it.isNotEmpty() }
+                    ?.let { ClassTableShare.Term(semester, it) }
+            }
+            // Read for an account that has since signed out: none of it is the next one's.
+            _shareTerms.value = if (authService.isStillSignedInAs(account)) terms else emptyList()
+        }
+    }
 
     /** The live term's roster, wherever it currently lives. */
     private val liveCourses: List<Course>
@@ -555,6 +745,8 @@ class ClassTableViewModel @Inject constructor(
         get() {
             val course = _selectedCourse.value ?: return null
             course.customCourseName?.let { return it }
+            // Someone else's course shows the name it was looked up with.
+            if (isShowingSomeoneElse) return null
             return courseService.cachedFullCourseName(_currentSemester.value, course.courseNo)
         }
 
@@ -573,7 +765,7 @@ class ClassTableViewModel @Inject constructor(
         get() {
             val course = _selectedCourse.value ?: return null
             val weekday = _selectedWeekday.value ?: return null
-            return ClassTableSelection.timeRange(course, weekday)
+            return ClassTableSelection.detailTimeRange(course, weekday, _selectedPeriods.value)
         }
 
     /**
@@ -620,12 +812,50 @@ class ClassTableViewModel @Inject constructor(
      * [fromLiveTerm] is for the today carousel, whose courses come from the
      * live term rather than the one the picker is showing.
      */
-    fun selectCourse(course: Course, weekday: Int, periodId: String, fromLiveTerm: Boolean = false) {
+    /**
+     * Whether the selected course is of a term other than the grid's: the live term, picked from
+     * the today strip while the grid shows another, whose copy is in [liveSemesterCourses].
+     */
+    val selectedFromAnotherTerm: Boolean
+        get() = selectedCourseSemester.let { it != null && it != _currentSemester.value }
+
+    fun selectCourse(
+        course: Course,
+        weekday: Int,
+        periodId: String,
+        fromLiveTerm: Boolean = false,
+        // The block a today card stands for; a grid tap opens the cell's, around [periodId].
+        periods: List<String>? = null,
+    ) {
         _selectedWeekday.value = weekday
         _selectedPeriodId.value = periodId
+        _selectedPeriods.value = periods ?: ClassTableSelection.block(
+            course,
+            weekday,
+            periodId,
+            ClassTableCellLayout.activePeriods(
+                shownTable.value.courses,
+                showAllPeriods = appPreferences.alwaysShowAllPeriods,
+            ).map { it.id },
+        )
         selectedCourseSemester = if (fromLiveTerm) liveCoursesTerm else _currentSemester.value
         _selectedCourse.value = course
     }
+
+    /**
+     * The course detail's title for [course], as it is now: a rename made from the detail shows
+     * at once, which [selectedCourseFullName], read off the course as it was selected, would not.
+     */
+    fun detailTitle(course: Course): String =
+        ClassTableSelection.detailTitle(
+            course,
+            // Someone else's course shows the name it was looked up with.
+            if (isShowingSomeoneElse) {
+                null
+            } else {
+                courseService.cachedFullCourseName(selectedCourseSemester ?: _currentSemester.value, course.courseNo)
+            },
+        )
 
     /**
      * Numeric Moodle course id for [course], or null when we have no entry
@@ -642,6 +872,8 @@ class ClassTableViewModel @Inject constructor(
      * carousel is the live term even while the grid shows another.
      */
     fun moodleCourseIdFor(course: Course): Int? {
+        // Someone else's class table opens nothing of theirs in the user's Moodle.
+        if (isShowingSomeoneElse) return null
         val semester = selectedCourseSemester ?: _currentSemester.value
         val idnumber = course.moodleIdNumber?.takeIf { it.isNotEmpty() }
             ?: "$semester${course.courseNo}"
@@ -652,6 +884,7 @@ class ClassTableViewModel @Inject constructor(
     private fun lookupMoodleCourseId(idnumber: String): Int? =
         _moodleCourseIdByIdnumber.value[MoodleCourseIds.normalizedIdnumber(idnumber)]
 
+    /** Closes the course detail, whose sheet shows only while a course is selected. */
     fun clearSelection() {
         _selectedCourse.value = null
         selectedCourseSemester = null
@@ -661,6 +894,7 @@ class ClassTableViewModel @Inject constructor(
         get() = _courses.value.map { it.courseNo }.toSet()
 
     fun addCourse(course: Course): Boolean {
+        if (isShowingSomeoneElse) return false
         wouldCauseTripleConflict(course)?.let {
             _tripleConflictEvent.tryEmit(it)
             return false
@@ -677,10 +911,12 @@ class ClassTableViewModel @Inject constructor(
                 )
             }
             dataCache.saveCourses(updated, _currentSemester.value)
-            val forceKey = "client:${_currentSemester.value}:${course.courseNo}"
-            runCatching { pushApiClient.uploadCourses(updated, _currentSemester.value, forceKeys = listOf(forceKey)) }
+            // Kept until it lands: in a term the server already has, no
+            // sync would send it again otherwise.
+            pendingCourseAdds.send(updated, semester, course.courseNo)
             widgetUpdater.requestUpdate()
         }
+        localEdits.noteEdit()
         TigerDuckTheme.buildCourseColorMap(updated)
         return true
     }
@@ -692,42 +928,52 @@ class ClassTableViewModel @Inject constructor(
      * — clears the override so the course re-follows the abbreviation toggle.
      */
     fun setCustomCourseName(courseNo: String, newName: String) {
+        if (isShowingSomeoneElse) return
         val trimmed = newName.trim()
         val locale = currentCourseLocale
-        val updated = _courses.value.map { course ->
-            if (course.courseNo != courseNo) return@map course
-            val defaultName = defaultNameFor(course)
-            val override = trimmed.takeIf {
-                it.isNotEmpty() && it != course.courseName && it != defaultName
-            }
-            courseCustomNames =
-                CourseNameOverrides.withOverride(courseCustomNames, courseNo, locale, override)
-            course.copy(customCourseName = override)
+        // The live term's copy for a course renamed from the today strip, while the grid shows
+        // another term: it may not be on the grid at all, or the grid's course of that number is
+        // another term's.
+        val course = ClassTableSelection.renameTarget(
+            courseNo, _courses.value, _liveSemesterCourses.value, selectedFromAnotherTerm,
+        ) ?: return
+        val defaultName = defaultNameFor(course)
+        val override = trimmed.takeIf {
+            it.isNotEmpty() && it != course.courseName && it != defaultName
         }
+        courseCustomNames =
+            CourseNameOverrides.withOverride(courseCustomNames, courseNo, locale, override)
+        val updated = ClassTableSelection.renamed(_courses.value, courseNo, override)
         _courses.value = updated
+        _liveSemesterCourses.value = ClassTableSelection.renamed(_liveSemesterCourses.value, courseNo, override)
         viewModelScope.launch {
             dataCache.saveCourseCustomNames(courseCustomNames)
             dataCache.saveCourses(updated, _currentSemester.value)
             widgetUpdater.requestUpdate()
         }
-        syncCourseOverride(courseNo, customName = trimmed.ifEmpty { "" }, locale = locale)
+        syncCourseOverride(course, customName = trimmed.ifEmpty { "" }, locale = locale)
+        localEdits.noteEdit()
     }
 
     /** Clears any user override for [courseNo], restoring the default name. */
     fun revertCourseName(courseNo: String) {
+        if (isShowingSomeoneElse) return
         val locale = currentCourseLocale
+        val course = ClassTableSelection.renameTarget(
+            courseNo, _courses.value, _liveSemesterCourses.value, selectedFromAnotherTerm,
+        )
         courseCustomNames =
             CourseNameOverrides.withOverride(courseCustomNames, courseNo, locale, null)
-        val updated = _courses.value.map { course ->
-            if (course.courseNo == courseNo) course.copy(customCourseName = null) else course
-        }
+        val updated = ClassTableSelection.renamed(_courses.value, courseNo, null)
         _courses.value = updated
+        _liveSemesterCourses.value = ClassTableSelection.renamed(_liveSemesterCourses.value, courseNo, null)
         viewModelScope.launch {
             dataCache.saveCourseCustomNames(courseCustomNames)
             dataCache.saveCourses(updated, _currentSemester.value)
             widgetUpdater.requestUpdate()
         }
-        syncCourseOverride(courseNo, customName = "", locale = locale)
+        course?.let { syncCourseOverride(it, customName = "", locale = locale) }
+        localEdits.noteEdit()
     }
 
     /**
@@ -739,6 +985,7 @@ class ClassTableViewModel @Inject constructor(
      * [CourseIgnoreSync] in the order they were made.
      */
     fun toggleIgnoreAssignments(course: Course) {
+        if (isShowingSomeoneElse) return
         val semester = _currentSemester.value
         if (semester != liveSemesterCode) return
         val key = CourseIgnores.key(semester, course.courseNo)
@@ -760,9 +1007,11 @@ class ClassTableViewModel @Inject constructor(
                 ignoredCoursesSaved(edit)
             }
         }
+        localEdits.noteEdit()
     }
 
     fun deleteCourse(courseNo: String) {
+        if (isShowingSomeoneElse) return
         val updated = _courses.value.filter { it.courseNo != courseNo }
         _courses.value = updated
         val semester = _currentSemester.value
@@ -783,47 +1032,55 @@ class ClassTableViewModel @Inject constructor(
             dataCache.saveCourses(updated, semester)
             widgetUpdater.requestUpdate()
             val courseKey = "client:$semester:$courseNo"
-            runCatching { pushApiClient.deleteCourse(courseKey) }
-                .onFailure { e -> Log.w("ClassTable", "deleteCourse backend failed: ${e.logSummary()}") }
+            // After an add of it already being sent, which landing later
+            // would bring it back; see PendingCourseAdds.removing.
+            pendingCourseAdds.removing {
+                runCatching { pushApiClient.deleteCourse(courseKey) }
+                    .onFailure { e -> Log.w("ClassTable", "deleteCourse backend failed: ${e.logSummary()}") }
+            }
             runCatching { pushApiClient.uploadCourses(updated, semester) }
                 .onFailure { e -> Log.w("ClassTable", "uploadCourses after delete failed: ${e.logSummary()}") }
         }
+        localEdits.noteEdit()
         TigerDuckTheme.buildCourseColorMap(updated)
     }
 
     /**
-     * Assigns [newHex] to [courseNo]. Pass null to clear the user-picked color
-     * and fall back to hash-based assignment. Any other course whose custom
-     * color matches [newHex] is automatically cleared so it gets reassigned
-     * through the palette probe logic.
+     * Assigns [newHex] to [courseNo]. Pass null to go back to the palette's
+     * colour for it, which is then pinned so the server can be sent it. Any
+     * other course pinned to [newHex] moves to a free colour, pinned and
+     * synced — see [CourseColorPick].
      */
     fun updateCourseColor(courseNo: String, newHex: String?) {
-        val normalized = newHex?.uppercase()
-        val updated = _courses.value.map { course ->
-            when {
-                course.courseNo == courseNo -> course.copy(customColorHex = normalized)
-                normalized != null && course.customColorHex?.uppercase() == normalized ->
-                    course.copy(customColorHex = null)
-
-                else -> course
-            }
-        }
+        if (isShowingSomeoneElse) return
+        val pick = CourseColorPick.assign(
+            courses = _courses.value,
+            courseNo = courseNo,
+            hex = newHex,
+            shown = TigerDuckTheme::courseColorVibrant,
+        )
+        val updated = pick.courses
         _courses.value = updated
         TigerDuckTheme.buildCourseColorMap(updated)
         viewModelScope.launch {
             dataCache.saveCourses(updated, _currentSemester.value)
             widgetUpdater.requestUpdate()
         }
-        syncCourseOverride(courseNo, colorHex = normalized)
+        // A concrete hex each, a default included: the backend reads a
+        // missing one as "unchanged".
+        for ((no, hex) in pick.toSync) {
+            updated.firstOrNull { it.courseNo == no }?.let { syncCourseOverride(it, colorHex = hex) }
+        }
+        localEdits.noteEdit()
     }
 
+    /** Sends [course]'s colour or name to the backend, keyed by that course's own term. */
     private fun syncCourseOverride(
-        courseNo: String,
+        course: Course,
         colorHex: String? = null,
         customName: String? = null,
         locale: String? = null,
     ) {
-        val course = _courses.value.find { it.courseNo == courseNo } ?: return
         val moodleId = course.moodleIdNumber ?: return
         viewModelScope.launch {
             try {
@@ -872,6 +1129,9 @@ class ClassTableViewModel @Inject constructor(
             }
             refreshLiveSemesterCourses()
             if (fetch) fetchFlight.join(::fetchData)
+            // Not in a finally: a sign-out cancels this job and has just
+            // cleared the flag for the next account.
+            _hasSettled.value = true
         }
     }
 
@@ -901,10 +1161,12 @@ class ClassTableViewModel @Inject constructor(
      * to go for this term to actually come back.
      */
     fun resetCourses() {
+        if (isShowingSomeoneElse) return
         val semester = _currentSemester.value
         // One at a time per term, and latched for the syncs that can run
         // in the middle — see DataCache.beginReset.
         if (!dataCache.beginReset(semester)) return
+        localEdits.noteEdit()
         viewModelScope.launch {
             // Released once, whichever way the reset ends: a second reset of
             // the term may already hold the latch by the time this one's
@@ -920,12 +1182,14 @@ class ClassTableViewModel @Inject constructor(
                 // rows back after it, hand-added courses included, and the
                 // fetch below would then keep them.
                 fetchFlight.runAlone {
-                    try {
+                    val wiped = try {
                         wipeTerm(semester)
                     } finally {
                         release()
                     }
-                    fetchData()
+                    // Left as it was, and said so, as iOS does; a refetch
+                    // over it would change nothing.
+                    if (wiped) fetchData() else _resetFailedEvent.tryEmit(semester)
                 }
             } finally {
                 release()
@@ -933,51 +1197,36 @@ class ClassTableViewModel @Inject constructor(
         }
     }
 
-    /** [resetCourses]' part that forgets the term, here and on the server. */
-    private suspend fun wipeTerm(semester: String) {
-        val stored = dataCache.loadDeletedCourseNos()
-        val lifted = CourseTombstoneKeys.entriesResetting(semester, stored)
-        if (lifted.isNotEmpty()) dataCache.saveDeletedCourseNos(stored - lifted)
-        val deleted = runCatching { pushApiClient.deleteAllCourses(semester) }
-            .onFailure { Log.w("ClassTableVM", "deleteAllCourses failed (non-fatal): ${it.logSummary()}") }
-            .isSuccess
-        if (deleted) {
-            // Only once the server has forgotten the term. Wiping
-            // first and then failing the DELETE would leave an
-            // empty grid with the server still full, to be merged
-            // back as hand-added rows.
-            //
-            // The stamp is taken after the DELETE landed: a
-            // snapshot fetched before this instant still carries
-            // the pre-reset roster — see DataCache.saveSemesterResetAt.
-            dataCache.saveSemesterResetAt(semester, System.currentTimeMillis())
-            // The server has forgotten every number in this term,
-            // so a hand-typed course re-added later is unknown to
-            // it again — see CourseSyncReconciler.reconcileSemester.
-            dataCache.saveServerKnownNos(dataCache.loadServerKnownNos() - semester)
-            // The term's cache goes too, hand-typed courses
-            // included: a reset means "start this term over", and
-            // the roster the portal returns next is the whole of
-            // it. Load-bearing for sync as well — with the old
-            // roster still on disk next to an empty server term, a
-            // sync would push it back up, and this device's upload
-            // releases its own reset tombstones, so the reset would
-            // undo itself.
-            dataCache.saveCourses(emptyList(), semester)
-            if (_currentSemester.value == semester) _courses.value = emptyList()
-            val inTerm = { key: String -> CourseIgnores.semesterOf(key) == semester }
-            val edit = ignoredCourses.edit { keys -> keys.filterNotTo(mutableSetOf(), inTerm) }
-            try {
-                courseIgnoreSync.forget(inTerm)
-            } finally {
-                ignoredCoursesSaved(edit)
-            }
-            widgetUpdater.requestUpdate()
+    /**
+     * [resetCourses]' part that forgets the term, on the server and then
+     * here; see [ClassTableTermReset]. False, with nothing changed, when the
+     * server could not be told.
+     */
+    private suspend fun wipeTerm(semester: String): Boolean {
+        // With no course add sent between the DELETE and the wipe; see PendingCourseAdds.removing.
+        val held = pendingCourseAdds.removing {
+            termReset.run(semester) { pushApiClient.deleteAllCourses(semester) }
+        } ?: return false
+        if (_currentSemester.value == semester) _courses.value = emptyList()
+        // Their names went from the file with the term.
+        courseCustomNames = courseCustomNames - held
+        val inTerm = { key: String -> CourseIgnores.semesterOf(key) == semester }
+        val edit = ignoredCourses.edit { keys -> keys.filterNotTo(mutableSetOf(), inTerm) }
+        try {
+            courseIgnoreSync.forget(inTerm)
+        } finally {
+            ignoredCoursesSaved(edit)
         }
+        widgetUpdater.requestUpdate()
+        return true
     }
 
     /** A pull to refresh: what the schools have now, not an answer kept for sharing. */
     fun refresh() {
+        if (isShowingSomeoneElse) {
+            refreshShownPerson()
+            return
+        }
         moodleService.expireSharedResults()
         courseService.expireSharedResults()
         requestRefresh(rerun = false)

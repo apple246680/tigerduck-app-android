@@ -16,7 +16,7 @@ class AppFeatureSchoolMailTest {
         assertTrue(AppFeature.SCHOOL_MAIL in AppFeature.moreFeatures)
         assertFalse(AppFeature.SCHOOL_MAIL in AppFeature.unfinishedFeatures)
         assertEquals(
-            listOf(AppFeature.HOME, AppFeature.CLASS_TABLE, AppFeature.SCHOOL_MAIL),
+            listOf(AppFeature.HOME, AppFeature.CLASS_TABLE, AppFeature.SCHOOL_MAIL, AppFeature.LIBRARY),
             AppFeature.defaultTabs,
         )
     }

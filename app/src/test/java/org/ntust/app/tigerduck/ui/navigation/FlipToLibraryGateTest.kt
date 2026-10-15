@@ -1,0 +1,96 @@
+package org.ntust.app.tigerduck.ui.navigation
+
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.ntust.app.tigerduck.mail.MailRoutes
+
+/**
+ * Flip-to-library while no library account is signed in (tigerduck-app/tigerduck-app#495), and
+ * over a page the user is in the middle of. A face-down flip used to jump to Library whatever was
+ * open, dropping a half-typed rename, the colour sheet, a confirmation or a mail draft with the
+ * screen that held it. The iPhone ignores the flip while a sheet or alert is up.
+ */
+class FlipToLibraryGateTest {
+
+    @Test
+    fun `the flip does not listen while signed out of the library`() {
+        assertFalse(FlipToLibraryGate.isArmed(enabled = true, signedInToLibrary = false))
+    }
+
+    @Test
+    fun `the flip listens with the switch on and a library account signed in`() {
+        assertTrue(FlipToLibraryGate.isArmed(enabled = true, signedInToLibrary = true))
+        assertFalse(FlipToLibraryGate.isArmed(enabled = false, signedInToLibrary = true))
+    }
+
+    @Test
+    fun `signed out, the switch reads off and takes no input`() {
+        assertFalse(FlipToLibraryGate.switchReadsOn(enabled = true, signedInToLibrary = false))
+        assertFalse(FlipToLibraryGate.switchTakesInput(signedInToLibrary = false))
+    }
+
+    @Test
+    fun `signed in, the switch shows the choice it holds`() {
+        assertTrue(FlipToLibraryGate.switchReadsOn(enabled = true, signedInToLibrary = true))
+        assertFalse(FlipToLibraryGate.switchReadsOn(enabled = false, signedInToLibrary = true))
+        assertTrue(FlipToLibraryGate.switchTakesInput(signedInToLibrary = true))
+    }
+
+    @Test
+    fun `the gesture is offered once signed in to the library, with the switch off and never asked`() {
+        assertTrue(FlipToLibraryGate.offersGesture(signedInToLibrary = true, enabled = false, asked = false, onLibraryPage = false))
+    }
+
+    @Test
+    fun `the gesture is not offered signed out, already on, or once answered`() {
+        assertFalse(FlipToLibraryGate.offersGesture(signedInToLibrary = false, enabled = false, asked = false, onLibraryPage = false))
+        assertFalse(FlipToLibraryGate.offersGesture(signedInToLibrary = true, enabled = true, asked = false, onLibraryPage = false))
+        assertFalse(FlipToLibraryGate.offersGesture(signedInToLibrary = true, enabled = false, asked = true, onLibraryPage = false))
+    }
+
+    /** It would cover the code someone just signed in to show (tigerduck-app/tigerduck-app#529). */
+    @Test
+    fun `the gesture is not offered over the Library page, and leaving it asks`() {
+        assertFalse(FlipToLibraryGate.offersGesture(signedInToLibrary = true, enabled = false, asked = false, onLibraryPage = true))
+        assertTrue(FlipToLibraryGate.offersGesture(signedInToLibrary = true, enabled = false, asked = false, onLibraryPage = false))
+    }
+
+    /**
+     * A cold start composes the effect before the back stack has a page, and the first page can
+     * be Library, as the first tab or from the library shortcut: the offer waits for it.
+     */
+    @Test
+    fun `the offer waits while no page is shown yet, and on the Library page`() {
+        assertTrue(FlipToLibraryGate.offerWaitsForPage(currentRoute = null, startRoutePending = false))
+        assertTrue(FlipToLibraryGate.offerWaitsForPage(currentRoute = Screen.Library.route, startRoutePending = false))
+        assertFalse(FlipToLibraryGate.offerWaitsForPage(currentRoute = Screen.Home.route, startRoutePending = false))
+    }
+
+    /**
+     * The library shortcut opens the app on its first tab and then on Library: the offer waits
+     * out that first page too, rather than being made for the frame before Library opens.
+     */
+    @Test
+    fun `the offer waits while a page the app was opened on is still to open`() {
+        assertTrue(FlipToLibraryGate.offerWaitsForPage(currentRoute = Screen.Home.route, startRoutePending = true))
+    }
+
+    @Test
+    fun `a flip on an ordinary page goes to Library`() {
+        assertTrue(FlipToLibraryGate.mayNavigate(windowFocused = true, currentRoute = Screen.ClassTable.route))
+        assertTrue(FlipToLibraryGate.mayNavigate(windowFocused = true, currentRoute = Screen.Settings.route))
+    }
+
+    @Test
+    fun `a flip while a dialog, sheet or menu has the focus does nothing`() {
+        // Each of those is a window of its own, which takes the focus from the app's.
+        assertFalse(FlipToLibraryGate.mayNavigate(windowFocused = false, currentRoute = Screen.ClassTable.route))
+    }
+
+    @Test
+    fun `a flip with a mail draft on screen does nothing`() {
+        // The iPhone writes mail in a sheet, which the flip already leaves alone.
+        assertFalse(FlipToLibraryGate.mayNavigate(windowFocused = true, currentRoute = MailRoutes.COMPOSE))
+    }
+}

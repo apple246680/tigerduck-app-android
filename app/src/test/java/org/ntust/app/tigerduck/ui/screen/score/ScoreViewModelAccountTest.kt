@@ -39,7 +39,7 @@ class ScoreViewModelAccountTest {
         authState = signedIn,
         storedStudentId = { studentId },
         storedPassword = { studentId?.let { "password" } },
-        cachedReport = { null },
+        cachedSnapshot = { null },
         fetchReport = { id, _, _ ->
             fetches += id
             // Like the school's page load, which cancelling does not stop once it is on the wire.

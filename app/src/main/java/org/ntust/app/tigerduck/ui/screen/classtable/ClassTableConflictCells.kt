@@ -33,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,7 +50,7 @@ import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.ui.component.ConflictLOrientation
 import org.ntust.app.tigerduck.ui.component.ConflictLShape
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
-import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
+import org.ntust.app.tigerduck.ui.theme.LocalVisualStylePolicy
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -61,23 +62,27 @@ internal fun ConflictCourseCell(
     y: androidx.compose.ui.unit.Dp,
     weekday: Int,
     periodId: String,
+    /**
+     * The period of each of the cluster's rows, from its first, so each course's label names
+     * the period its own block starts at and that period's room. Empty names [periodId] for both.
+     */
+    clusterPeriods: List<String> = emptyList(),
     hasAssignmentA: Boolean,
     hasAssignmentB: Boolean,
     assignmentsIgnoredA: Boolean,
     assignmentsIgnoredB: Boolean,
     onPickConflict: (Course, Course, Int, String) -> Unit,
-    onLongPress: () -> Unit,
+    /** Null on someone else's class table, which is read-only and has no menu. */
+    onLongPress: (() -> Unit)?,
     onRename: (Course) -> Unit,
     onPickColor: (Course) -> Unit,
     onToggleIgnoreAssignments: ((Course) -> Unit)?,
     onDelete: (Course) -> Unit,
 ) {
-    val textColor = if (TigerDuckTheme.isDarkMode) Color.White else Color(0xFF1C1C1E)
-    fun bgFor(course: Course) = if (TigerDuckTheme.isDarkMode) {
-        TigerDuckTheme.courseColor(course.courseNo)
-    } else {
-        TigerDuckTheme.courseColorVibrant(course.courseNo).copy(alpha = 0.50f)
-    }
+    val style = LocalVisualStylePolicy.current
+    val textColor = style.courseTextColor
+    val markColor = style.courseSecondaryTextColor
+    fun bgFor(course: Course) = style.courseFill(course.courseNo)
 
     val overlapStart = maxOf(cellRole.offsetA, cellRole.offsetB)
     val overlapEnd = minOf(cellRole.offsetA + cellRole.spanA, cellRole.offsetB + cellRole.spanB)
@@ -143,36 +148,19 @@ internal fun ConflictCourseCell(
                 .coerceAtLeast(0.1f)
             val bBarFraction = (soloBelowB + 0.5f * (1f - soloAboveB - soloBelowB))
                 .coerceAtLeast(0.1f)
-            val conflictPrefix = stringResource(R.string.a11y_class_table_conflict_prefix)
-            val assignmentLabel =
-                stringResource(R.string.a11y_class_table_cell_assignment_indicator)
-            val ignoredLabel = stringResource(R.string.a11y_class_table_cell_assignments_ignored)
+            val labels = classTableCellLabels()
+            fun cellLabel(course: Course, offset: Int, hasAssignment: Boolean, assignmentsIgnored: Boolean) =
+                labels.label(
+                    course,
+                    weekday,
+                    clusterPeriods.getOrNull(offset) ?: periodId,
+                    hasAssignment,
+                    assignmentsIgnored,
+                    conflict = true,
+                )
 
-            fun cellLabel(
-                course: Course,
-                hasAssignment: Boolean,
-                assignmentsIgnored: Boolean,
-            ): String = buildString {
-                append(conflictPrefix)
-                append(": ")
-                append(course.displayName)
-                val room = course.classroom(weekday)
-                if (room.isNotBlank()) {
-                    append(", ")
-                    append(room)
-                }
-                if (hasAssignment) {
-                    append(". ")
-                    append(assignmentLabel)
-                }
-                if (assignmentsIgnored) {
-                    append(". ")
-                    append(ignoredLabel)
-                }
-            }
-
-            val labelA = cellLabel(cellRole.courseA, hasAssignmentA, assignmentsIgnoredA)
-            val labelB = cellLabel(cellRole.courseB, hasAssignmentB, assignmentsIgnoredB)
+            val labelA = cellLabel(cellRole.courseA, cellRole.offsetA, hasAssignmentA, assignmentsIgnoredA)
+            val labelB = cellLabel(cellRole.courseB, cellRole.offsetB, hasAssignmentB, assignmentsIgnoredB)
 
             Box(
                 modifier = Modifier
@@ -199,7 +187,7 @@ internal fun ConflictCourseCell(
                         // The app vibrates for this long press itself, through the Vibration setting;
                         // Compose's own buzz would land on top of it and ignore that setting.
                         hapticFeedbackEnabled = false,
-                        onLongClick = { onLongPress(); showMenu = true },
+                        onLongClick = onLongPress?.let { press -> { press(); showMenu = true } },
                     ),
             ) {
                 // Course name uses the full width of the bar rectangle.
@@ -220,7 +208,7 @@ internal fun ConflictCourseCell(
                 CourseCellBadge(
                     hasAssignment = hasAssignmentA,
                     assignmentsIgnored = assignmentsIgnoredA,
-                    tint = textColor.copy(alpha = 0.7f),
+                    tint = markColor,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(3.dp)
@@ -253,7 +241,7 @@ internal fun ConflictCourseCell(
                         // The app vibrates for this long press itself, through the Vibration setting;
                         // Compose's own buzz would land on top of it and ignore that setting.
                         hapticFeedbackEnabled = false,
-                        onLongClick = { onLongPress(); showMenu = true },
+                        onLongClick = onLongPress?.let { press -> { press(); showMenu = true } },
                     ),
             ) {
                 // Course name uses the full width of the bar rectangle.
@@ -274,7 +262,7 @@ internal fun ConflictCourseCell(
                 CourseCellBadge(
                     hasAssignment = hasAssignmentB,
                     assignmentsIgnored = assignmentsIgnoredB,
-                    tint = textColor.copy(alpha = 0.7f),
+                    tint = markColor,
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .padding(3.dp)
@@ -331,44 +319,19 @@ internal fun MultiConflictCourseCell(
     hasAssignment: (String) -> Boolean,
     assignmentsIgnored: (String) -> Boolean,
     onSelect: (Course, String) -> Unit,
-    onLongPress: () -> Unit,
+    /** Null on someone else's class table, which is read-only and has no menu. */
+    onLongPress: (() -> Unit)?,
     onRename: (Course) -> Unit,
     onPickColor: (Course) -> Unit,
     onToggleIgnoreAssignments: ((Course) -> Unit)?,
     onDelete: (Course) -> Unit,
 ) {
-    val textColor = if (TigerDuckTheme.isDarkMode) Color.White else Color(0xFF1C1C1E)
-    fun bgFor(course: Course) = if (TigerDuckTheme.isDarkMode) {
-        TigerDuckTheme.courseColor(course.courseNo)
-    } else {
-        TigerDuckTheme.courseColorVibrant(course.courseNo).copy(alpha = 0.50f)
-    }
+    val style = LocalVisualStylePolicy.current
+    val textColor = style.courseTextColor
+    val markColor = style.courseSecondaryTextColor
+    fun bgFor(course: Course) = style.courseFill(course.courseNo)
 
-    val conflictPrefix = stringResource(R.string.a11y_class_table_conflict_prefix)
-    val assignmentLabel = stringResource(R.string.a11y_class_table_cell_assignment_indicator)
-    val ignoredLabel = stringResource(R.string.a11y_class_table_cell_assignments_ignored)
-    fun cellLabel(
-        course: Course,
-        hasAssignmentForCourse: Boolean,
-        ignoredForCourse: Boolean,
-    ): String = buildString {
-        append(conflictPrefix)
-        append(": ")
-        append(course.displayName)
-        val room = course.classroom(weekday)
-        if (room.isNotBlank()) {
-            append(", ")
-            append(room)
-        }
-        if (hasAssignmentForCourse) {
-            append(". ")
-            append(assignmentLabel)
-        }
-        if (ignoredForCourse) {
-            append(". ")
-            append(ignoredLabel)
-        }
-    }
+    val labels = classTableCellLabels()
 
     var menuForCourse by remember { mutableStateOf<Course?>(null) }
 
@@ -379,7 +342,8 @@ internal fun MultiConflictCourseCell(
             .absoluteOffset(x = x, y = y)
             .padding(1.dp),
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        // Lanes offset from the left in either direction, as the grid's blocks are.
+        BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = AbsoluteAlignment.TopLeft) {
             val rowHeight = maxHeight / cellRole.combinedSpan
             val laneWidth = maxWidth / cellRole.laneCount
 
@@ -399,8 +363,14 @@ internal fun MultiConflictCourseCell(
                         .clip(RoundedCornerShape(4.dp))
                         .background(bgFor(member.course))
                         .semantics(mergeDescendants = true) {
-                            contentDescription =
-                                cellLabel(member.course, hasAssignmentForMember, ignoredForMember)
+                            contentDescription = labels.label(
+                                member.course,
+                                weekday,
+                                member.firstPeriodId,
+                                hasAssignmentForMember,
+                                ignoredForMember,
+                                conflict = true,
+                            )
                             role = Role.Button
                         }
                         .combinedClickable(
@@ -408,9 +378,11 @@ internal fun MultiConflictCourseCell(
                             // The app vibrates for this long press itself, through the Vibration setting;
                             // Compose's own buzz would land on top of it and ignore that setting.
                             hapticFeedbackEnabled = false,
-                            onLongClick = {
-                                onLongPress()
-                                menuForCourse = member.course
+                            onLongClick = onLongPress?.let { press ->
+                                {
+                                    press()
+                                    menuForCourse = member.course
+                                }
                             },
                         ),
                 ) {
@@ -425,7 +397,7 @@ internal fun MultiConflictCourseCell(
                     CourseCellBadge(
                         hasAssignment = hasAssignmentForMember,
                         assignmentsIgnored = ignoredForMember,
-                        tint = textColor.copy(alpha = 0.7f),
+                        tint = markColor,
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(3.dp)

@@ -79,9 +79,6 @@ enum class AppFeature(val id: String) {
             else -> null
         }
 
-    val isLibraryRelated: Boolean
-        get() = this == LIBRARY || this == DISCUSSION_ROOM || this == LIBRARY_LECTURE
-
     val isSchoolMail: Boolean
         get() = this == SCHOOL_MAIL
 
@@ -100,7 +97,7 @@ enum class AppFeature(val id: String) {
      */
     val isImplemented: Boolean
         get() = when (this) {
-            HOME, CLASS_TABLE, CALENDAR, ANNOUNCEMENTS, LIBRARY, SCORE, SCHOOL_MAIL -> true
+            HOME, CLASS_TABLE, CALENDAR, ANNOUNCEMENTS, LIBRARY, SCORE, SCHOOL_MAIL, EMPTY_CLASSROOM -> true
             else -> false
         }
 
@@ -110,8 +107,11 @@ enum class AppFeature(val id: String) {
          * restores. Calendar until 2.3.0, when Mail took its place — an
          * existing user who never customized keeps Calendar (see
          * [previousDefaultTabs]) and is asked about Mail in What's New.
+         * Library joined when its opt-in switch went away;
+         * [org.ntust.app.tigerduck.data.preferences.LibraryTabAddMigration]
+         * adds it to a stored bar with room.
          */
-        val defaultTabs = listOf(HOME, CLASS_TABLE, SCHOOL_MAIL)
+        val defaultTabs = listOf(HOME, CLASS_TABLE, SCHOOL_MAIL, LIBRARY)
 
         /** [defaultTabs] before 2.3.0, kept for installs that never customized. */
         val previousDefaultTabs = listOf(HOME, CLASS_TABLE, CALENDAR)

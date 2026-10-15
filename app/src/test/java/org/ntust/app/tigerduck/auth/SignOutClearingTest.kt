@@ -64,9 +64,13 @@ class SignOutClearingTest {
     @Test
     fun `the departing session is the one the sign-out wipes, taken as it moves the generation`() {
         // Taken before, a refresh landing in between would store a pair the unregister does not
-        // hold, and the token it holds would have been replaced.
+        // hold, and the token it holds would have been replaced. In the same step as the school
+        // credentials go, under the lock a sign-in under way checks the generation with.
         val logout = body("fun logout()")
-        assertTrue(logout, Regex("""val departing = authTokenManager\.logout\(\)""").containsMatchIn(logout))
+        val takenAsItDrops = Regex(
+            """val departing = synchronized\(accountLock\) \{\s*credentials\.signOutSchoolAccount\(\)\s*authTokenManager\.logout\(\)\s*\}""",
+        )
+        assertTrue(logout, takenAsItDrops.containsMatchIn(logout))
         assertFalse(logout, "departingSession()" in logout)
     }
 

@@ -11,6 +11,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.ntust.app.tigerduck.MainActivity
+import org.ntust.app.tigerduck.StartRoute
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.mail.MailRoutes
 import org.ntust.app.tigerduck.mail.model.MailSummary
@@ -22,7 +23,7 @@ import org.ntust.app.tigerduck.util.replaceIosArg
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Posts what [MailNotificationPlanner] decides. Taps open the mail through MainActivity's `start_route`. */
+/** Posts what [MailNotificationPlanner] decides. Taps open the mail through MainActivity's [StartRoute] extra. */
 @Singleton
 class AndroidMailNotifier @Inject constructor(
     @param:ApplicationContext private val context: Context,
@@ -40,7 +41,7 @@ class AndroidMailNotifier @Inject constructor(
         context,
         requestCode,
         Intent(context, MainActivity::class.java)
-            .putExtra("start_route", route)
+            .putExtra(StartRoute.EXTRA, route)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
@@ -107,6 +108,15 @@ class AndroidMailNotifier @Inject constructor(
     }
 
     override fun cancelMessage(uid: Long) = NotificationGroup.MAIL.cancel(context, MailNotificationPlanner.notificationId(uid))
+
+    override fun cancelPosted(messages: List<MailSummary>) {
+        // By id, not from activeNotifications as cancelAll goes: the system lists a notification
+        // only some time after it was posted, and this runs right after the post. Every id the
+        // post may have used, as it was one by one or one count.
+        messages.forEach { manager.cancel(MailNotificationPlanner.notificationId(it.uid)) }
+        manager.cancel(MailNotificationPlanner.SUMMARY_ID)
+        NotificationGroup.MAIL.cancelSummary(context)
+    }
 
     override fun cancelAll() {
         // By id as well as group: an auth failure posted before it joined the stack has no group.

@@ -13,6 +13,8 @@ interface MailStateStore {
     /** The seen marker: the INBOX UID from which new mail counts as new. 0 = no baseline yet. */
     var inboxSeenUidNext: Long
     var lastForegroundCheckAt: Long
+    /** When the inbox last answered, epoch ms; 0 = never. See [org.ntust.app.tigerduck.mail.sync.MailChecker.inboxFetchedAt]. */
+    var inboxFetchedAt: Long
     /** Newest first, at most 10, `"<epochMillis>|<source>|<outcome>"`. */
     var diagnostics: List<String>
     fun ownedDeleted(folder: String, uidValidity: Long): Set<Long>
@@ -67,6 +69,10 @@ class SharedPrefsMailStateStore(context: Context) : MailStateStore {
         get() = prefs.getLong(K_FOREGROUND, 0L)
         set(value) = prefs.edit().putLong(K_FOREGROUND, value).apply()
 
+    override var inboxFetchedAt: Long
+        get() = prefs.getLong(K_FETCHED, 0L)
+        set(value) = prefs.edit().putLong(K_FETCHED, value).apply()
+
     override var diagnostics: List<String>
         get() = prefs.getString(K_DIAG, null)?.split('\n')?.filter { it.isNotBlank() }.orEmpty()
         set(value) = prefs.edit().putString(K_DIAG, value.take(10).joinToString("\n")).apply()
@@ -97,6 +103,7 @@ class SharedPrefsMailStateStore(context: Context) : MailStateStore {
         const val K_VALIDITY = "inbox_uid_validity"
         const val K_MARKER = "inbox_seen_uid_next"
         const val K_FOREGROUND = "last_foreground_check_at"
+        const val K_FETCHED = "inbox_fetched_at"
         const val K_DIAG = "diagnostics"
         const val K_OWNED = "owned_deleted"
     }

@@ -56,6 +56,7 @@ import org.ntust.app.tigerduck.ui.component.PageHeader
 import org.ntust.app.tigerduck.ui.component.ServerKind
 import org.ntust.app.tigerduck.ui.component.SyncStatusDot
 import org.ntust.app.tigerduck.ui.component.TigerPullToRefresh
+import org.ntust.app.tigerduck.ui.screen.signin.AutoSignInFailedBanner
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
 import org.ntust.app.tigerduck.util.formatCredits
 
@@ -71,6 +72,7 @@ fun ScoreScreen(
     val isLoggedIn by viewModel.isLoggedIn.collectAsStateWithLifecycle()
     val rankingScope by viewModel.rankingScope.collectAsStateWithLifecycle()
     val collapsedTerms by viewModel.collapsedTerms.collectAsStateWithLifecycle()
+    val syncedAtMs by viewModel.syncedAtMs.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { viewModel.load() }
 
@@ -108,8 +110,10 @@ fun ScoreScreen(
                     SyncStatusDot(
                         servers = listOf(ServerKind.COURSE_SELECTION),
                         isLoading = isRefreshing,
+                        syncedAtMs = syncedAtMs,
                     )
                 }
+                AutoSignInFailedBanner()
 
                 when {
                     !isLoggedIn -> EmptyStateView(
@@ -117,7 +121,8 @@ fun ScoreScreen(
                         title = stringResource(R.string.common_not_signed_in),
                         message = stringResource(R.string.score_not_signed_in_message),
                         modifier = Modifier.padding(top = 32.dp),
-                        onIconClick = onOpenSignInSettings,
+                        actionLabel = stringResource(R.string.onboarding_sign_in_button),
+                        onAction = onOpenSignInSettings,
                     )
 
                     !viewModel.hasContent && !isRefreshing -> EmptyStateView(

@@ -1,9 +1,6 @@
 package org.ntust.app.tigerduck.ui.screen.mail
 
-import android.content.Context
-import android.content.Intent
 import androidx.annotation.StringRes
-import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -12,9 +9,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.mail.MailError
+import org.ntust.app.tigerduck.ui.openLink
 
 /** Where students reset the mail password (spec §7.1). */
 const val WEBMAIL_URL = "https://mail.ntust.edu.tw"
@@ -39,23 +36,11 @@ fun MailError.messageRes(): Int = when (this) {
     -> R.string.school_mail_error_generic
 }
 
-/** Opens a URL the way the rest of the app does: Custom Tabs for "inApp", the browser otherwise. */
-fun openMailLink(context: Context, url: String, browserPreference: String) {
-    val uri = url.toUri()
-    runCatching {
-        if (browserPreference == "inApp") {
-            CustomTabsIntent.Builder().build().launchUrl(context, uri)
-        } else {
-            context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }
-    }
-}
-
 @Composable
 fun ForgotMailPasswordLink(browserPreference: String) {
     val context = LocalContext.current
     TextButton(
-        onClick = { openMailLink(context, WEBMAIL_URL, browserPreference) },
+        onClick = { openLink(context, WEBMAIL_URL, browserPreference) },
         contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp),
     ) {
         Text(stringResource(R.string.school_mail_forgot_password), style = MaterialTheme.typography.labelMedium)

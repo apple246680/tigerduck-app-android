@@ -21,6 +21,7 @@ import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.demo.DemoAccount
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.auth.AuthService
+import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.model.CourseGrade
 import org.ntust.app.tigerduck.data.model.ScoreReport
 import org.ntust.app.tigerduck.network.NetworkChecker
@@ -34,7 +35,8 @@ class ScoreViewModel internal constructor(
     authState: StateFlow<Boolean>,
     private val storedStudentId: () -> String?,
     private val storedPassword: () -> String?,
-    private val cachedReport: suspend (studentId: String) -> ScoreReport?,
+    /** The student's cached grades, with when they were fetched; see [NtustScoreService.cachedScoreReport]. */
+    private val cachedSnapshot: suspend (studentId: String) -> DataCache.ScoreReportSnapshot?,
     private val fetchReport: suspend (studentId: String, password: String, force: Boolean) -> ScoreReport,
     private val isOnline: () -> Boolean,
     private val isDemo: () -> Boolean,
@@ -52,8 +54,7 @@ class ScoreViewModel internal constructor(
         authState = authService.authState,
         storedStudentId = { authService.storedStudentId },
         storedPassword = { authService.storedPassword },
-        // report is nullable (Gson Unsafe defense): a degraded snapshot reads as none.
-        cachedReport = { scoreService.cachedScoreReport(it)?.report },
+        cachedSnapshot = scoreService::cachedScoreReport,
         fetchReport = { id, password, force -> scoreService.fetchScoreReport(id, password, forceRefresh = force) },
         isOnline = networkChecker::isAvailable,
         isDemo = { demoAccount.isActive },
@@ -82,6 +83,11 @@ class ScoreViewModel internal constructor(
     val collapsedTerms: StateFlow<Set<String>> = _collapsedTerms.asStateFlow()
 
     val isLoggedIn: StateFlow<Boolean> = authState
+
+    private val syncedAt = ScoreSyncedAt(viewModelScope, authState, cachedSnapshot)
+
+    /** For the sync dot's "Last synced" row; see [ScoreSyncedAt]. */
+    val syncedAtMs: StateFlow<Long> = syncedAt.value
 
     private var hasSeededCollapse = false
 
@@ -120,7 +126,11 @@ class ScoreViewModel internal constructor(
         loadedFor = studentId
 
         viewModelScope.launch(accountJob) {
-            cachedReport(studentId)?.let {
+            val cached = cachedSnapshot(studentId)
+            syncedAt.show(cached)
+            // report is nullable (Gson Unsafe defense) — skip the instant
+            // paint on a degraded snapshot and let refresh() repopulate.
+            cached?.report?.let {
                 _report.value = it
                 applyDefaultCollapseRule()
             }
@@ -179,7 +189,7 @@ class ScoreViewModel internal constructor(
         _isRefreshing.value = true
         _errorMessage.value = null
         try {
-            val fresh = fetchReport(studentId, password, force)
+            val fresh = syncedAt.afterRefresh(studentId) { fetchReport(studentId, password, force) }
             // The student signed out while the school answered; cancelled with
             // the account's work, unless the fetch could not be stopped.
             if (studentId != reportStudentId) return
