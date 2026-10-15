@@ -236,7 +236,7 @@ private fun CourseTimeCard(
                     state.slots.forEach { slot ->
                         SlotCard(
                             slot = slot,
-                            alpha = 1f,
+                            muted = false,
                             // isSkipped = isSkippedFor(slot),
                             // onSkipToggle = { onSkipCourse(slot.course, slot.date) },
                             onClick = { onSelect(slot.course, slot.classroom) },
@@ -247,7 +247,7 @@ private fun CourseTimeCard(
                 is CourseState.Between -> {
                     state.previous?.let {
                         SlotCard(
-                            slot = it, alpha = 0.8f,
+                            slot = it, muted = true,
                             // isSkipped = isSkippedFor(it),
                             // onSkipToggle = { onSkipCourse(it.course, it.date) },
                             onClick = { onSelect(it.course, it.classroom) },
@@ -255,7 +255,7 @@ private fun CourseTimeCard(
                     }
                     state.next?.let {
                         SlotCard(
-                            slot = it, alpha = 0.8f,
+                            slot = it, muted = true,
                             // isSkipped = isSkippedFor(it),
                             // onSkipToggle = { onSkipCourse(it.course, it.date) },
                             onClick = { onSelect(it.course, it.classroom) },
@@ -265,7 +265,7 @@ private fun CourseTimeCard(
 
                 is CourseState.BeforeFirst -> {
                     SlotCard(
-                        slot = state.next, alpha = 0.8f,
+                        slot = state.next, muted = true,
                         // isSkipped = isSkippedFor(state.next),
                         // onSkipToggle = { onSkipCourse(state.next.course, state.next.date) },
                         onClick = { onSelect(state.next.course, state.next.classroom) },
@@ -274,7 +274,7 @@ private fun CourseTimeCard(
 
                 is CourseState.AfterLast -> {
                     SlotCard(
-                        slot = state.previous, alpha = 0.8f,
+                        slot = state.previous, muted = true,
                         // isSkipped = isSkippedFor(state.previous),
                         // onSkipToggle = { onSkipCourse(state.previous.course, state.previous.date) },
                         onClick = { onSelect(state.previous.course, state.previous.classroom) },
@@ -348,7 +348,8 @@ private fun Modifier.fillBoundedHeight(): Modifier = layout { measurable, constr
 @Composable
 private fun SlotCard(
     slot: CourseTimeSlot,
-    alpha: Float,
+    // Beside the class the slider is on, rather than on it: a fainter card.
+    muted: Boolean,
     isSkipped: Boolean = false,
     onSkipToggle: (() -> Unit)? = null,
     onClick: () -> Unit,
@@ -464,8 +465,6 @@ private fun SlotCard(
 
         val style = LocalVisualStylePolicy.current
         val isDark = TigerDuckTheme.isDarkMode
-        // Below full alpha the card is beside the class the slider is on.
-        val muted = alpha < 1f
         val slotContainer = style.courseCardFill(
             courseColor = color,
             tintAlpha = when {
@@ -476,11 +475,13 @@ private fun SlotCard(
             surface = MaterialTheme.colorScheme.surface,
             isDark = isDark,
         )
+        // Also the card's content colour, so its press ripple reads on the fill.
+        val nameColor = style.courseCardTextColor(LocalContentColor.current)
         Card(
             onClick = onClick,
             modifier = cardModifier,
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = slotContainer)
+            colors = CardDefaults.cardColors(containerColor = slotContainer, contentColor = nameColor)
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
                 val metaStyle = MaterialTheme.typography.labelSmall
@@ -502,11 +503,7 @@ private fun SlotCard(
                 Text(
                     courseNameForDisplay(slot.course.displayName, maxChars = 30),
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = if (isSkipped) {
-                        Color(0xFFFF2D55)
-                    } else {
-                        style.courseCardTextColor(LocalContentColor.current)
-                    },
+                    color = if (isSkipped) Color(0xFFFF2D55) else nameColor,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )

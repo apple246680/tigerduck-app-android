@@ -194,7 +194,9 @@ class VisualStylePolicyTest {
     }
 
     @Test
-    fun `TAT card text reads at 7 to 1 and its details and mark at 4_5 to 1, muted or not`() {
+    fun `TAT card text reads at 7 to 1 and its details and mark at 4_5 to 1 on a card or a muted one`() {
+        // As they are: the slider's muted cards draw them so. A class already
+        // over fades them on top, under either style, and reads as faded.
         val onSurface = Color(0xFFF5F5F5)
         assertEquals(VisualStylePolicy.TextOnPastel, tat.courseCardTextColor(onSurface))
         colours.forEach { colour ->
