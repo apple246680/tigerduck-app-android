@@ -222,7 +222,8 @@ private const val GLANCE_MAX_CHILDREN = 10
 /**
  * A column of one child per item, which, past [GLANCE_MAX_CHILDREN] items,
  * nests them in runs of that many so none is dropped: a grid of more than ten
- * periods would otherwise lose its last rows.
+ * periods would otherwise lose its last rows, and a course run of more than
+ * ten its last period tiles.
  */
 @Composable
 private fun <T> GlanceStack(
@@ -373,19 +374,20 @@ private fun SoloCell(
         ClassTableGridStyle.PeriodTiles -> {
             val tileHeight = blockHeight / length
             val fontScale = LocalContext.current.resources.configuration.fontScale
-            Column(modifier = GlanceModifier.fillMaxWidth().height(blockHeight)) {
-                repeat(length) {
-                    CourseTile(
-                        name = course.displayName,
-                        fill = cellBg,
-                        textColor = textColor,
-                        height = tileHeight,
-                        // A period tile's corners, tighter than a block's.
-                        cornerRadius = 4.dp,
-                        maxLines = tileNameLines(tileHeight, courseNameScale, fontScale),
-                        courseNameScale = courseNameScale,
-                    )
-                }
+            GlanceStack(
+                items = List(length) { it },
+                modifier = GlanceModifier.fillMaxWidth().height(blockHeight),
+            ) {
+                CourseTile(
+                    name = course.displayName,
+                    fill = cellBg,
+                    textColor = textColor,
+                    height = tileHeight,
+                    // A period tile's corners, tighter than a block's.
+                    cornerRadius = 4.dp,
+                    maxLines = tileNameLines(tileHeight, courseNameScale, fontScale),
+                    courseNameScale = courseNameScale,
+                )
             }
         }
     }
