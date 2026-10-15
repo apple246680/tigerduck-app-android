@@ -8,9 +8,7 @@ import org.ntust.app.tigerduck.BuildConfig
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.liveactivity.LiveActivityManager
-import org.ntust.app.tigerduck.liveactivity.LiveActivityPreferences
 import org.ntust.app.tigerduck.notification.AssignmentNotificationScheduler
-import org.ntust.app.tigerduck.notification.ClassPreparingNotificationScheduler
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.shared.clock.ClockOverride
 import org.ntust.app.tigerduck.widget.WidgetBoundaryScheduler
@@ -26,10 +24,8 @@ class DebugClockController @Inject constructor(
     private val wearBridge: WearDebugClockBridge,
     private val dataCache: DataCache,
     private val appPreferences: AppPreferences,
-    private val liveActivityPreferences: LiveActivityPreferences,
     private val liveActivityManager: LiveActivityManager,
     private val assignmentScheduler: AssignmentNotificationScheduler,
-    private val classPreparingScheduler: ClassPreparingNotificationScheduler,
     private val widgetBoundaryScheduler: WidgetBoundaryScheduler,
     private val widgetUpdater: WidgetUpdater,
     private val scheduleBridge: WearScheduleBridge,
@@ -81,27 +77,15 @@ class DebugClockController @Inject constructor(
             }
         }
         val courses = dataCache.loadCourses()
-        if (liveActivityPreferences.isEnabled && liveActivityPreferences.showClassPreparing &&
-            courses.isNotEmpty()
-        ) {
-            // 翹課 parked — see DataCache's skipped-dates section.
-            val skipped = emptyMap<String, List<String>>()
-            // val skipped = dataCache.loadSkippedDates()
-            classPreparingScheduler.scheduleAll(
-                courses = courses,
-                skippedDates = skipped,
-                leadTimeSec = liveActivityPreferences.classPreparingLeadTimeSec,
-            )
-        }
         widgetBoundaryScheduler.scheduleForToday(courses)
         // The boundary scheduler arms the *next* alarm, but the user has
         // already moved the clock past the previous boundary — so the
         // widgets must repaint right now or they'd still show the time
         // before the override until the next alarm fires.
         widgetUpdater.updateAll()
-        if (liveActivityPreferences.isEnabled) {
-            liveActivityManager.refreshAndWait()
-        }
+        // Re-arms the class reminders from their own settings, and the Live
+        // Update; see BootReceiver.
+        liveActivityManager.refreshAndWait()
     }
 
     fun currentOverride(): ClockOverride? = AppClock.currentOverride()

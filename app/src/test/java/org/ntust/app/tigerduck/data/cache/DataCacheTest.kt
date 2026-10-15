@@ -25,6 +25,7 @@ import org.ntust.app.tigerduck.data.CourseIgnores
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.model.PendingCourseIgnore
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
+import org.ntust.app.tigerduck.shared.Course
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
@@ -213,8 +214,56 @@ class DataCacheTest {
         assertEquals(before + 2, cache.assignmentMarksVersion.value)
     }
 
+    @Test
+    fun `marks a re-enable answer adopts are written and announced, a swipe's are not`() = runTest {
+        // Home re-reads its marks on the announcement, before its next swipe
+        // can write the old ones back (tigerduck-app-android#189). Its own
+        // writes must not set that off: reading them back could undo a newer
+        // swipe.
+        val before = cache.marksAdoptedVersion.value
+
+        cache.adoptAssignmentMarks(ignored = setOf("a"), completed = setOf("b"))
+        cache.saveIgnoredAssignments(setOf("c"))
+        cache.saveMarkedCompletedAssignments(setOf("d"))
+
+        assertEquals(before + 1, cache.marksAdoptedVersion.value)
+        cache.adoptAssignmentMarks(ignored = setOf("a"), completed = setOf("b"))
+        assertEquals(setOf("a"), cache.loadIgnoredAssignments())
+        assertEquals(setOf("b"), cache.loadMarkedCompletedAssignments())
+    }
+
+    @Test
+    fun `the closed assignments round-trip and go with the account`() = runTest {
+        cache.saveClosedAssignments(mapOf(7 to 1_800_000_000_000L))
+
+        assertEquals(mapOf(7 to 1_800_000_000_000L), cache.loadClosedAssignments())
+        cache.clearAllUserData()
+        assertEquals(emptyMap<Int, Long>(), cache.loadClosedAssignments())
+    }
+
     private companion object {
         // Only a broken lock waits this long; it fails the test instead of hanging the suite.
         const val WAIT_SECONDS = 5L
+    }
+
+    @Test
+    fun `a term's portal courses count as cached only while their file holds some`() = runTest {
+        assertFalse("nothing cached", cache.hasPortalCourses("1151"))
+
+        cache.saveCourses(listOf(Course(courseNo = "MY1", courseName = "Mine", isManual = true)), "1151")
+        assertFalse("hand-typed alone", cache.hasPortalCourses("1151"))
+
+        cache.saveCourses(
+            listOf(
+                Course(courseNo = "CS1", courseName = "CS1"),
+                Course(courseNo = "MY1", courseName = "Mine", isManual = true),
+            ),
+            "1151",
+        )
+        assertTrue(cache.hasPortalCourses("1151"))
+
+        // What the system evicting cacheDir leaves.
+        File(context.cacheDir, "TigerDuckCache/courses_1151.json").delete()
+        assertFalse(cache.hasPortalCourses("1151"))
     }
 }

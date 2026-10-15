@@ -8,6 +8,7 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
@@ -194,7 +195,12 @@ fun buildCourseColorAssignments(courses: List<Course>): Map<String, Color> {
     return map
 }
 
-private fun pickFreeCourseColor(courseNo: String, taken: Set<Color>): Color {
+/**
+ * The colour [courseNo] is given when it has no pick of its own: its hash's
+ * palette slot, probing on past every colour in [taken], then a colour derived
+ * from the course number once the palette is used up.
+ */
+internal fun pickFreeCourseColor(courseNo: String, taken: Set<Color>): Color {
     val base = courseHashIndex(courseNo)
     var idx = base
     var probes = 0
@@ -385,6 +391,8 @@ private val TigerDuckTypography: Typography = Typography().let { default ->
 fun TigerDuckAppTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     accentColor: Color = Color(0xFF007AFF),
+    /** The interface style, provided to the content as [LocalVisualStylePolicy]. */
+    visualPreset: VisualPreset = VisualPreset.Default,
     content: @Composable () -> Unit
 ) {
     val colorScheme = if (darkTheme) {
@@ -396,6 +404,10 @@ fun TigerDuckAppTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = TigerDuckTypography,
-        content = content
-    )
+    ) {
+        CompositionLocalProvider(
+            LocalVisualStylePolicy provides VisualStylePolicy(visualPreset),
+            content = content,
+        )
+    }
 }

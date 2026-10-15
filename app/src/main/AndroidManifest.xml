@@ -12,6 +12,21 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- The class table import's QR scanner, which asks for it when its page opens and reads
+         each frame on the device. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- A phone without a camera, or without a back one or autofocus, can still import a share
+         code, from a picture or with whichever camera it has. -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false" />
 
     <!-- enableOnBackInvokedCallback: Android 16 turns predictive back on by
          itself for targetSdk 36; this extends it to Android 13–15, so on 14
@@ -46,9 +61,13 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data
-                    android:host="announcement"
-                    android:scheme="tigerduck" />
+                <!-- What each link opens, and the checks a link must pass,
+                     are AppLink.parse's. -->
+                <data android:scheme="tigerduck" />
+                <data android:host="announcement" />
+                <data android:host="assignment" />
+                <data android:host="classtable" />
+                <data android:host="library" />
             </intent-filter>
         </activity>
 

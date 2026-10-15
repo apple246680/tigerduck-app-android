@@ -49,7 +49,7 @@ import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.ui.component.ConflictLOrientation
 import org.ntust.app.tigerduck.ui.component.ConflictLShape
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
-import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
+import org.ntust.app.tigerduck.ui.theme.LocalVisualStylePolicy
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -71,18 +71,17 @@ internal fun ConflictCourseCell(
     assignmentsIgnoredA: Boolean,
     assignmentsIgnoredB: Boolean,
     onPickConflict: (Course, Course, Int, String) -> Unit,
-    onLongPress: () -> Unit,
+    /** Null on someone else's class table, which is read-only and has no menu. */
+    onLongPress: (() -> Unit)?,
     onRename: (Course) -> Unit,
     onPickColor: (Course) -> Unit,
     onToggleIgnoreAssignments: ((Course) -> Unit)?,
     onDelete: (Course) -> Unit,
 ) {
-    val textColor = if (TigerDuckTheme.isDarkMode) Color.White else Color(0xFF1C1C1E)
-    fun bgFor(course: Course) = if (TigerDuckTheme.isDarkMode) {
-        TigerDuckTheme.courseColor(course.courseNo)
-    } else {
-        TigerDuckTheme.courseColorVibrant(course.courseNo).copy(alpha = 0.50f)
-    }
+    val style = LocalVisualStylePolicy.current
+    val textColor = style.courseTextColor
+    val markColor = style.courseSecondaryTextColor
+    fun bgFor(course: Course) = style.courseFill(course.courseNo)
 
     val overlapStart = maxOf(cellRole.offsetA, cellRole.offsetB)
     val overlapEnd = minOf(cellRole.offsetA + cellRole.spanA, cellRole.offsetB + cellRole.spanB)
@@ -187,7 +186,7 @@ internal fun ConflictCourseCell(
                         // The app vibrates for this long press itself, through the Vibration setting;
                         // Compose's own buzz would land on top of it and ignore that setting.
                         hapticFeedbackEnabled = false,
-                        onLongClick = { onLongPress(); showMenu = true },
+                        onLongClick = onLongPress?.let { press -> { press(); showMenu = true } },
                     ),
             ) {
                 // Course name uses the full width of the bar rectangle.
@@ -208,7 +207,7 @@ internal fun ConflictCourseCell(
                 CourseCellBadge(
                     hasAssignment = hasAssignmentA,
                     assignmentsIgnored = assignmentsIgnoredA,
-                    tint = textColor.copy(alpha = 0.7f),
+                    tint = markColor,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(3.dp)
@@ -241,7 +240,7 @@ internal fun ConflictCourseCell(
                         // The app vibrates for this long press itself, through the Vibration setting;
                         // Compose's own buzz would land on top of it and ignore that setting.
                         hapticFeedbackEnabled = false,
-                        onLongClick = { onLongPress(); showMenu = true },
+                        onLongClick = onLongPress?.let { press -> { press(); showMenu = true } },
                     ),
             ) {
                 // Course name uses the full width of the bar rectangle.
@@ -262,7 +261,7 @@ internal fun ConflictCourseCell(
                 CourseCellBadge(
                     hasAssignment = hasAssignmentB,
                     assignmentsIgnored = assignmentsIgnoredB,
-                    tint = textColor.copy(alpha = 0.7f),
+                    tint = markColor,
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .padding(3.dp)
@@ -319,18 +318,17 @@ internal fun MultiConflictCourseCell(
     hasAssignment: (String) -> Boolean,
     assignmentsIgnored: (String) -> Boolean,
     onSelect: (Course, String) -> Unit,
-    onLongPress: () -> Unit,
+    /** Null on someone else's class table, which is read-only and has no menu. */
+    onLongPress: (() -> Unit)?,
     onRename: (Course) -> Unit,
     onPickColor: (Course) -> Unit,
     onToggleIgnoreAssignments: ((Course) -> Unit)?,
     onDelete: (Course) -> Unit,
 ) {
-    val textColor = if (TigerDuckTheme.isDarkMode) Color.White else Color(0xFF1C1C1E)
-    fun bgFor(course: Course) = if (TigerDuckTheme.isDarkMode) {
-        TigerDuckTheme.courseColor(course.courseNo)
-    } else {
-        TigerDuckTheme.courseColorVibrant(course.courseNo).copy(alpha = 0.50f)
-    }
+    val style = LocalVisualStylePolicy.current
+    val textColor = style.courseTextColor
+    val markColor = style.courseSecondaryTextColor
+    fun bgFor(course: Course) = style.courseFill(course.courseNo)
 
     val labels = classTableCellLabels()
 
@@ -378,9 +376,11 @@ internal fun MultiConflictCourseCell(
                             // The app vibrates for this long press itself, through the Vibration setting;
                             // Compose's own buzz would land on top of it and ignore that setting.
                             hapticFeedbackEnabled = false,
-                            onLongClick = {
-                                onLongPress()
-                                menuForCourse = member.course
+                            onLongClick = onLongPress?.let { press ->
+                                {
+                                    press()
+                                    menuForCourse = member.course
+                                }
                             },
                         ),
                 ) {
@@ -395,7 +395,7 @@ internal fun MultiConflictCourseCell(
                     CourseCellBadge(
                         hasAssignment = hasAssignmentForMember,
                         assignmentsIgnored = ignoredForMember,
-                        tint = textColor.copy(alpha = 0.7f),
+                        tint = markColor,
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(3.dp)

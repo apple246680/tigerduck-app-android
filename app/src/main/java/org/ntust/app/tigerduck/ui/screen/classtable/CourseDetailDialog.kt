@@ -80,6 +80,8 @@ internal fun CourseDetailDialog(
     onRename: () -> Unit,
     onOpenInMoodle: (Int) -> Unit,
     onDismiss: () -> Unit,
+    /** Someone else's class table, which offers no rename. */
+    readOnly: Boolean = false,
 ) {
     val courseColor = TigerDuckTheme.courseColor(course.courseNo)
     val dash = "—"
@@ -142,12 +144,14 @@ internal fun CourseDetailDialog(
                             style = MaterialTheme.typography.headlineSmall,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
-                        IconButton(onClick = onRename) {
-                            Icon(
-                                imageVector = Icons.Filled.Edit,
-                                contentDescription = stringResource(R.string.class_table_rename_title),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                        if (!readOnly) {
+                            IconButton(onClick = onRename) {
+                                Icon(
+                                    imageVector = Icons.Filled.Edit,
+                                    contentDescription = stringResource(R.string.class_table_rename_title),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                         if (moodleCourseId != null) {
                             IconButton(onClick = { onOpenInMoodle(moodleCourseId) }) {

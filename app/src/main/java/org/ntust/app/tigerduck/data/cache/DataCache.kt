@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.model.CalendarEvent
 import org.ntust.app.tigerduck.data.model.PendingCourseIgnore
+import org.ntust.app.tigerduck.data.model.UnsentMark
 import org.ntust.app.tigerduck.data.model.SyncConflict
 import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.data.model.ScoreReport
@@ -86,6 +87,25 @@ class DataCache @Inject constructor(
      */
     class Generation(val value: Int) : AbstractCoroutineContextElement(Generation) {
         companion object Key : CoroutineContext.Key<Generation>
+    }
+
+    private val _marksAdoptedVersion = MutableStateFlow(0)
+
+    /**
+     * Bumped after [adoptAssignmentMarks], for Home to read the marks again
+     * before its next swipe writes the ones it holds back over them.
+     */
+    val marksAdoptedVersion: StateFlow<Int> = _marksAdoptedVersion.asStateFlow()
+
+    /**
+     * Replaces the ignored and marked-done sets with the ones a re-enable
+     * answer took (Use Server), and says so on [marksAdoptedVersion]. Not for
+     * Home's own writes: reading those back could undo a newer swipe.
+     */
+    suspend fun adoptAssignmentMarks(ignored: Set<String>, completed: Set<String>) {
+        saveIgnoredAssignments(ignored)
+        saveMarkedCompletedAssignments(completed)
+        _marksAdoptedVersion.update { it + 1 }
     }
 
     suspend fun replaceIgnoredAssignments(ids: Set<String>) = saveIgnoredAssignments(ids)
@@ -158,6 +178,19 @@ class DataCache @Inject constructor(
         if (manual.isEmpty()) return remote
         val manualNos = manual.map { it.courseNo }.toSet()
         return remote.filter { it.courseNo !in manualNos } + manual
+    }
+
+    /**
+     * Whether [semester]'s portal rows are cached: `courses_<semester>.json`
+     * lives in the evictable cacheDir, and once the system evicts it,
+     * [loadCourses] returns the hand-typed courses alone.
+     */
+    suspend fun hasPortalCourses(semester: String): Boolean {
+        absorbLegacyCourseCache()
+        val type = object : TypeToken<List<Course>>() {}.type
+        return load<List<Course>>(type, coursesFilename(semester), requireContent = COURSE_NO_TOKEN)
+            ?.let(::usableRows)
+            ?.any { !it.isManual } == true
     }
 
     private fun manualCoursesFilename(semester: String): String = "manual_courses_$semester.json"
@@ -506,6 +539,22 @@ class DataCache @Inject constructor(
             ?: emptyList()
     }
 
+    // --- Course rows seen (course key -> server row id) ---
+    // The rows the last full sync that took the course ignores listed; see
+    // CourseIgnoreReconciler.recreated. CourseIgnoreSync is the only writer.
+
+    /** False, and nothing written, when the data was wiped since [generation]. */
+    suspend fun saveCourseRowsSeen(rows: Map<String, Long>, generation: Int? = null): Boolean =
+        saveToUserDataIf(rows, "course_rows_seen.json", generation ?: writeGeneration())
+
+    suspend fun loadCourseRowsSeen(): Map<String, Long> {
+        val type = object : TypeToken<Map<String, Long?>>() {}.type
+        return loadFromUserData<Map<String, Long?>>(type, "course_rows_seen.json")
+            .orEmpty()
+            .mapNotNull { (key, id) -> id?.let { key to it } }
+            .toMap()
+    }
+
     // --- Marked-Completed Assignments (set of assignmentIds) ---
     // Independent from Moodle's `isCompleted`: lets the user manually flag a
     // homework as done from the swipe gesture even when Moodle hasn't (or
@@ -521,6 +570,23 @@ class DataCache @Inject constructor(
         val type = object : TypeToken<List<String>>() {}.type
         return loadFromUserData<List<String>>(type, "marked_completed_assignments.json")?.toSet()
             ?: emptySet()
+    }
+
+    // --- Unsent assignment marks (assignmentId → status) ---
+    // Marks tapped here whose PATCH the backend has not confirmed; see
+    // UnsentMarks, the only writer. In filesDir with the marks themselves.
+
+    /** False, and nothing written, when the data was wiped since [generation]. */
+    suspend fun saveUnsentMarks(marks: List<UnsentMark>, generation: Int? = null): Boolean =
+        saveToUserDataIf(marks, "unsent_marks.json", generation ?: writeGeneration())
+
+    /** Rows without an id or a status are left out. */
+    suspend fun loadUnsentMarks(): List<UnsentMark> {
+        val type = object : TypeToken<List<UnsentMark?>>() {}.type
+        return loadFromUserData<List<UnsentMark?>>(type, "unsent_marks.json")
+            ?.filterNotNull()
+            ?.filter { it.assignmentId != null && it.status != null }
+            ?: emptyList()
     }
 
     // --- Score Report (per studentId) ---
@@ -587,6 +653,22 @@ class DataCache @Inject constructor(
         return load<Map<String, Int>>(type, "moodle_course_ids.json") ?: emptyMap()
     }
 
+    // --- Assignments closed unsubmitted (assignment id -> when Moodle said so, epoch ms) ---
+    // Past their cutoff with nothing handed in, which cannot change, so a
+    // round does not ask Moodle about them again; see
+    // MoodleService.assignmentsToAsk. Moodle's own data, so in the cache.
+
+    suspend fun saveClosedAssignments(closed: Map<Int, Long>) =
+        save(closed.mapKeys { it.key.toString() }, "closed_assignments.json")
+
+    suspend fun loadClosedAssignments(): Map<Int, Long> {
+        val type = object : TypeToken<Map<String, Long?>>() {}.type
+        return load<Map<String, Long?>>(type, "closed_assignments.json")
+            .orEmpty()
+            .mapNotNull { (id, at) -> id.toIntOrNull()?.let { key -> at?.let { key to it } } }
+            .toMap()
+    }
+
     // --- Calendar Events ---
 
     suspend fun saveCalendarEvents(events: List<CalendarEvent>) =
@@ -641,6 +723,7 @@ class DataCache @Inject constructor(
                     "calendar_events.json",
                     "course_lookups.json",
                     "moodle_course_ids.json",
+                    "closed_assignments.json",
                 ).forEach { name ->
                     runCatching { File(cacheDir, name).delete() }
                 }
@@ -664,11 +747,13 @@ class DataCache @Inject constructor(
                     "ignored_courses.json",
                     "pending_course_ignores.json",
                     "marked_completed_assignments.json",
+                    "unsent_marks.json",
                     "deleted_courses.json",
                     "course_custom_names.json",
                     "selection_dropped.json",
                     "server_known_courses.json",
                     "semester_reset_at.json",
+                    "course_rows_seen.json",
                 ).forEach { name ->
                     runCatching { File(userDataDir, name).delete() }
                 }

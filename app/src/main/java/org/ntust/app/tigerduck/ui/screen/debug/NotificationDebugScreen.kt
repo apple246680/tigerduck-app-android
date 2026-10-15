@@ -35,6 +35,8 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import org.ntust.app.tigerduck.MainActivity
+import org.ntust.app.tigerduck.StartRoute
+import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.liveactivity.LiveActivityNotifier
 import org.ntust.app.tigerduck.liveactivity.LiveActivityScenario
 import org.ntust.app.tigerduck.liveactivity.LiveActivitySnapshot
@@ -75,6 +77,7 @@ fun NotificationDebugScreen(onBack: () -> Unit) {
         val now = System.currentTimeMillis()
         ClassPreparingNotificationReceiver.post(
             context,
+            deps.appPreferences().appLanguage,
             notificationId = DEBUG_CLASS_ID_BASE + sent.incrementAndGet(),
             courseName = "Preview Course",
             classroom = "TR-412",
@@ -88,6 +91,7 @@ fun NotificationDebugScreen(onBack: () -> Unit) {
         deps.notificationChannels().ensureRegistered()
         AssignmentNotificationReceiver.post(
             context,
+            deps.appPreferences().appLanguage,
             title = "Preview Assignment",
             courseName = "Preview Course",
             assignmentId = "debug-${sent.incrementAndGet()}",
@@ -104,7 +108,7 @@ fun NotificationDebugScreen(onBack: () -> Unit) {
             context,
             id,
             Intent(context, MainActivity::class.java)
-                .putExtra("start_route", MailRoutes.LIST)
+                .putExtra(StartRoute.EXTRA, MailRoutes.LIST)
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
@@ -218,6 +222,7 @@ private fun previewInClassSnapshot(): LiveActivitySnapshot {
         progress = 0.32,
         accentHex = 0xF5A623,
         sourceId = "debug-preview",
+        duringClass = true,
     )
 }
 
@@ -226,6 +231,7 @@ private fun previewInClassSnapshot(): LiveActivitySnapshot {
 internal interface NotificationDebugEntryPoint {
     fun liveActivityNotifier(): LiveActivityNotifier
     fun notificationChannels(): NotificationChannelRegistrar
+    fun appPreferences(): AppPreferences
 }
 
 // A new notification on every press rather than a replacement, so pressing

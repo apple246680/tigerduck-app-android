@@ -43,6 +43,7 @@ import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.ui.component.isEnglishUiLanguage
 import org.ntust.app.tigerduck.ui.component.middleEllipsize
+import org.ntust.app.tigerduck.ui.theme.LocalVisualStylePolicy
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -65,19 +66,19 @@ internal fun SoloCourseCell(
     hasAssignment: Boolean,
     assignmentsIgnored: Boolean,
     onTap: () -> Unit,
-    onLongPress: () -> Unit,
+    /** Null on someone else's class table, which is read-only and has no menu. */
+    onLongPress: (() -> Unit)?,
     onRename: (Course) -> Unit,
     onPickColor: (Course) -> Unit,
     /** Null where the menu does not offer it; see [ClassTableViewModel.canIgnoreAssignments]. */
     onToggleIgnoreAssignments: ((Course) -> Unit)?,
     onDelete: (Course) -> Unit,
 ) {
-    val cellBg = if (TigerDuckTheme.isDarkMode) {
-        TigerDuckTheme.courseColor(course.courseNo)
-    } else {
-        TigerDuckTheme.courseColorVibrant(course.courseNo).copy(alpha = 0.50f)
-    }
-    val cellTextColor = if (TigerDuckTheme.isDarkMode) Color.White else Color(0xFF1C1C1E)
+    val style = LocalVisualStylePolicy.current
+    val tiles = style.drawsPeriodTiles
+    val cellBg = style.courseFill(course.courseNo)
+    val cellTextColor = style.courseTextColor
+    val cellSecondaryColor = style.courseSecondaryTextColor
     var showMenu by remember { mutableStateOf(false) }
     val cellLabel = classTableCellLabels()
         .label(course, weekday, periodId, hasAssignment, assignmentsIgnored)
@@ -96,16 +97,19 @@ internal fun SoloCourseCell(
             .height(cellHeight * spanCount)
             .absoluteOffset(x = x, y = y)
             .padding(1.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(cellBg)
+            .clip(RoundedCornerShape(if (tiles) PERIOD_TILE_CORNER else 6.dp))
+            // Period tiles fill themselves, leaving the gaps between them bare.
+            .then(if (tiles) Modifier else Modifier.background(cellBg))
             .combinedClickable(
                 onClick = onTap,
                 // The app vibrates for this long press itself, through the Vibration setting;
                 // Compose's own buzz would land on top of it and ignore that setting.
                 hapticFeedbackEnabled = false,
-                onLongClick = {
-                    onLongPress()
-                    showMenu = true
+                onLongClick = onLongPress?.let { press ->
+                    {
+                        press()
+                        showMenu = true
+                    }
                 },
             )
             // The label stands for the name, room hint and badge drawn inside.
@@ -117,23 +121,40 @@ internal fun SoloCourseCell(
                 role = Role.Button
             },
     ) {
-        ClassTableCourseNameText(
-            text = course.displayName,
-            color = cellTextColor,
-            maxLines = if (spanCount >= 2) 3 else 2,
-            modifier = Modifier
-                .padding(2.dp)
-                // Hand the hint's line back to it. Without this the centred
-                // name keeps the whole cell, and a two-line name in a
-                // one-period cell prints straight through the room.
-                .padding(bottom = hintSpace)
-                .align(Alignment.Center),
-        )
+        if (tiles) {
+            ClassTablePeriodTiles(
+                name = course.displayName,
+                spanCount = spanCount,
+                cellHeight = cellHeight,
+                fill = cellBg,
+                textColor = cellTextColor,
+                // A tile's third line reaches the bottom corners, so the last
+                // tile also leaves its line to the mark, not only to the hint.
+                lastTileBottomSpace = if (hasAssignment || assignmentsIgnored) {
+                    maxOf(hintSpace, CORNER_MARK_SPACE)
+                } else {
+                    hintSpace
+                },
+            )
+        } else {
+            ClassTableCourseNameText(
+                text = course.displayName,
+                color = cellTextColor,
+                maxLines = if (spanCount >= 2) 3 else 2,
+                modifier = Modifier
+                    .padding(2.dp)
+                    // Hand the hint's line back to it. Without this the centred
+                    // name keeps the whole cell, and a two-line name in a
+                    // one-period cell prints straight through the room.
+                    .padding(bottom = hintSpace)
+                    .align(Alignment.Center),
+            )
+        }
         if (roomHint != null) {
             Text(
                 text = roomHint,
                 style = MaterialTheme.typography.labelSmall,
-                color = cellTextColor.copy(alpha = 0.7f),
+                color = cellSecondaryColor,
                 fontSize = hintFontSize,
                 lineHeight = hintLineHeight,
                 maxLines = 1,
@@ -152,7 +173,7 @@ internal fun SoloCourseCell(
         CourseCellBadge(
             hasAssignment = hasAssignment,
             assignmentsIgnored = assignmentsIgnored,
-            tint = cellTextColor.copy(alpha = 0.7f),
+            tint = cellSecondaryColor,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(3.dp)
@@ -189,6 +210,13 @@ internal fun SoloCourseCell(
         }
     }
 }
+
+/**
+ * What a period tile's name leaves below it for the corner mark: the mark's
+ * 12dp and 3dp inset, less the 2dp the name already keeps around itself. Any
+ * more and a two-line name no longer fits a one-period tile.
+ */
+private val CORNER_MARK_SPACE = 13.dp
 
 /** The long-press action that ignores a course's assignments, or stops ignoring them. */
 @Composable
