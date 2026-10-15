@@ -6,6 +6,9 @@ import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -46,5 +49,11 @@ class SentCopyNoticeBannerTest {
         composeRule.setContent { SentCopyNoticeBanner(SentCopyNotice.NoFolder, onDismiss = { dismissed++ }) }
         composeRule.onNodeWithText(text(R.string.settings_acknowledged)).performClick()
         assertEquals(1, dismissed)
+    }
+
+    @Test
+    fun `TalkBack reads it out when it appears`() {
+        composeRule.setContent { SentCopyNoticeBanner(SentCopyNotice.NoFolder, onDismiss = {}) }
+        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite)).assertExists()
     }
 }

@@ -18,6 +18,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.mail.SentCopyNotice
@@ -34,12 +37,14 @@ internal fun sentCopyNoticeText(notice: SentCopyNotice): String = when (notice) 
 /**
  * A mail went out, but its copy did not reach the sent folder. A card like the sign-in-failed
  * banner, not the load-failed state -- nothing failed to load -- and it stays until "Got it",
- * since it is about one send and asks nothing urgent.
+ * since it is about one send and asks nothing urgent. A polite live region, so TalkBack says it.
  */
 @Composable
 internal fun SentCopyNoticeBanner(notice: SentCopyNotice, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
     Card(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        // Polite: it appears as compose closes, with nothing focused on it, so TalkBack reads it
+        // once the screen has settled rather than leaving it unannounced.
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).semantics { liveRegion = LiveRegionMode.Polite },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
