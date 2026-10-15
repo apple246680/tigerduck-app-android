@@ -94,6 +94,22 @@ class SyncWiringTest {
     }
 
     @Test
+    fun `a hand-added course's upload is kept until it lands, and every full sync sends what waits first`() {
+        assertCalls("ui/screen/classtable/ClassTableViewModel.kt", "addCourse", "pendingCourseAdds.send(")
+        for ((rel, name) in listOf(
+            "ui/screen/home/HomeBackendSync.kt" to "pull",
+            "notification/BackgroundSyncWorker.kt" to "syncOverridesFromBackend",
+        )) {
+            val body = body(rel, name)
+            val retry = body.indexOf("pendingCourseAdds.retry()")
+            val fetch = body.indexOf("syncApiClient.fetchFullSync()")
+            val listed = body.indexOf("pendingCourseAdds.listed(result.serverCourses)")
+            assertTrue("$rel $name no longer sends the waiting course adds before the snapshot", retry in 0 until fetch)
+            assertTrue("$rel $name no longer lets go of the course adds the snapshot lists", listed > fetch)
+        }
+    }
+
+    @Test
     fun `the closed assignments are written only for the account that asked`() {
         val body = body("network/MoodleService.kt", "fetchAssignmentsRound")
         val guard = body.indexOf("if (tokenService.currentToken() == askedWith && closedNow != closedBefore) {")

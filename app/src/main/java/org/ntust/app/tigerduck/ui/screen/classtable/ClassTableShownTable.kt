@@ -19,6 +19,14 @@ data class ShownClassTable(
     val switches: Int,
 ) {
     val isSomeoneElses: Boolean get() = person != null
+
+    /**
+     * Whether the page says the term has no courses. Someone else's says so whenever it is empty.
+     * The user's own only once its first load has [settled] and while no fetch [isLoading]:
+     * before, the list is one not read yet, and the state would flash ahead of the courses.
+     */
+    fun showsNoCourses(settled: Boolean, isLoading: Boolean): Boolean =
+        courses.isEmpty() && (person != null || (settled && !isLoading))
 }
 
 /** Whose class table the page shows and on which term, which a switch sets together. */
