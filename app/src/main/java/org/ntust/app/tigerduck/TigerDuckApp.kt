@@ -24,6 +24,7 @@ import org.ntust.app.tigerduck.notification.NotificationChannelRegistrar
 import org.ntust.app.tigerduck.analytics.AnalyticsLogger
 import org.ntust.app.tigerduck.push.FcmBootstrap
 import org.ntust.app.tigerduck.wear.WearScheduleBridge
+import org.ntust.app.tigerduck.widget.WidgetUpdater
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -70,6 +71,11 @@ class TigerDuckApp : Application(), Configuration.Provider {
 
     @Inject
     lateinit var notificationChannels: NotificationChannelRegistrar
+
+    // Injected so it exists from launch: it redraws the widgets on a change
+    // of language itself, which no other launch path would start.
+    @Inject
+    lateinit var widgetUpdater: WidgetUpdater
 
     // The DI singleton, not a private scope: it carries a logging
     // CoroutineExceptionHandler (see CoroutineModule) so a failure in the
@@ -153,9 +159,10 @@ class TigerDuckApp : Application(), Configuration.Provider {
         // without this the channel names in system Settings would stay in the
         // old language until the next cold start. One collector, so renames
         // run one after another and each reads the language as it is when it
-        // runs; conflated, because only the last of a burst matters.
+        // runs; conflated, because only the last of a burst matters. The
+        // widgets follow the language in WidgetUpdater.
         appScope.launch {
-            uiLanguage.changes.conflate().collect { relocalizeNotifications() }
+            uiLanguage.changes.conflate().collect { relocalizeSystemSurfaces() }
         }
         // Mirror the debug screen-capture override so flipping the toggle
         // takes effect on the paired watch's LibraryQR window without a
@@ -178,11 +185,11 @@ class TigerDuckApp : Application(), Configuration.Provider {
 
     /**
      * Rename the notification channels and redraw the Live Update, the two
-     * system-drawn surfaces that keep whatever language they were last given.
-     * Quietly: a new language is no reason to chime, see
-     * [org.ntust.app.tigerduck.liveactivity.LiveActivityNotifier.apply].
+     * system-drawn surfaces besides the widgets that keep whatever language
+     * they were last given. Quietly: a new language is no reason to chime,
+     * see [org.ntust.app.tigerduck.liveactivity.LiveActivityNotifier.apply].
      */
-    private fun relocalizeNotifications() {
+    private fun relocalizeSystemSurfaces() {
         notificationChannels.register()
         liveActivityManager.refresh(quiet = true)
     }

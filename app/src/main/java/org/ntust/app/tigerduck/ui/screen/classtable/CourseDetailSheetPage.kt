@@ -170,7 +170,7 @@ internal fun CourseDetailSheetPage(
 
 /** Everything above the Moodle section. */
 @Composable
-private fun CourseDetailContent(
+internal fun CourseDetailContent(
     course: Course,
     title: String,
     classroom: String,

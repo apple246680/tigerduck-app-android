@@ -49,6 +49,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -203,6 +206,25 @@ internal fun SwipeableAssignmentRow(
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val ignoreColor = Color(0xFF8E8E93)
     val completeColor = Color(0xFF34C759)
+    // The swipes are drags TalkBack, Switch Access and a keyboard cannot
+    // perform, so the same two actions are offered as accessibility actions,
+    // named as the icon the swipe reveals: what it is about to do.
+    val markLabel = stringResource(
+        if (isMarkedCompleted) R.string.assignment_mark_complete_undo else R.string.assignment_mark_complete
+    )
+    val ignoreLabel = stringResource(
+        if (isIgnored) R.string.assignment_ignore_undo else R.string.assignment_ignore
+    )
+    val swipeActions = remember(swipeEnabled, markLabel, ignoreLabel) {
+        if (!swipeEnabled) {
+            emptyList()
+        } else {
+            listOf(
+                CustomAccessibilityAction(markLabel) { latestOnMarkCompleted(); true },
+                CustomAccessibilityAction(ignoreLabel) { latestOnToggleIgnore(); true },
+            )
+        }
+    }
 
     Box(modifier = Modifier.fillMaxWidth()) {
         val progress = (abs(swipeOffset.value) / thresholdPx).coerceIn(0f, 1f)
@@ -308,6 +330,9 @@ internal fun SwipeableAssignmentRow(
         ) {
             AssignmentItem(
                 assignment = assignment,
+                // On the row's own clickable node, so the actions belong to
+                // the single element TalkBack focuses.
+                modifier = Modifier.semantics { customActions = swipeActions },
                 course = course,
                 showAbsoluteTime = showAbsoluteTime,
                 markedCompleted = isMarkedCompleted,

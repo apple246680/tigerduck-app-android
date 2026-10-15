@@ -200,6 +200,8 @@ internal fun TimetableGrid(
                                     role = slot.role,
                                     weekday = weekday,
                                     periodId = period.id,
+                                    periods = periods,
+                                    periodIndex = periodIndex,
                                     roomHint = slot.roomHint,
                                     dayColWidth = dayColWidth,
                                     cellHeight = cellHeight,
@@ -239,6 +241,9 @@ private fun CourseSlot(
     role: CellRole,
     weekday: Int,
     periodId: String,
+    /** The table's periods and the slot's place in them, which a 衝堂 cluster reads its rows from. */
+    periods: List<org.ntust.app.tigerduck.data.model.TimetablePeriod>,
+    periodIndex: Int,
     roomHint: String?,
     dayColWidth: Dp,
     cellHeight: Dp,
@@ -262,6 +267,7 @@ private fun CourseSlot(
             x = 0.dp,
             y = 0.dp,
             weekday = weekday,
+            periodId = periodId,
             hasAssignment = role.course.courseNo in courseNosWithAssignments,
             assignmentsIgnored = role.course.courseNo in courseNosIgnoringAssignments,
             onTap = { viewModel.selectCourse(role.course, weekday, periodId) },
@@ -280,6 +286,10 @@ private fun CourseSlot(
             y = 0.dp,
             weekday = weekday,
             periodId = periodId,
+            clusterPeriods = periods
+                .drop(periodIndex)
+                .take(role.combinedSpan)
+                .map { it.id },
             hasAssignmentA = role.courseA.courseNo in courseNosWithAssignments,
             hasAssignmentB = role.courseB.courseNo in courseNosWithAssignments,
             assignmentsIgnoredA = role.courseA.courseNo in courseNosIgnoringAssignments,

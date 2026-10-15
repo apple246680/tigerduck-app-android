@@ -61,6 +61,11 @@ internal fun ConflictCourseCell(
     y: androidx.compose.ui.unit.Dp,
     weekday: Int,
     periodId: String,
+    /**
+     * The period of each of the cluster's rows, from its first, so each course's label names
+     * the period its own block starts at and that period's room. Empty names [periodId] for both.
+     */
+    clusterPeriods: List<String> = emptyList(),
     hasAssignmentA: Boolean,
     hasAssignmentB: Boolean,
     assignmentsIgnoredA: Boolean,
@@ -142,36 +147,19 @@ internal fun ConflictCourseCell(
                 .coerceAtLeast(0.1f)
             val bBarFraction = (soloBelowB + 0.5f * (1f - soloAboveB - soloBelowB))
                 .coerceAtLeast(0.1f)
-            val conflictPrefix = stringResource(R.string.a11y_class_table_conflict_prefix)
-            val assignmentLabel =
-                stringResource(R.string.a11y_class_table_cell_assignment_indicator)
-            val ignoredLabel = stringResource(R.string.a11y_class_table_cell_assignments_ignored)
+            val labels = classTableCellLabels()
+            fun cellLabel(course: Course, offset: Int, hasAssignment: Boolean, assignmentsIgnored: Boolean) =
+                labels.label(
+                    course,
+                    weekday,
+                    clusterPeriods.getOrNull(offset) ?: periodId,
+                    hasAssignment,
+                    assignmentsIgnored,
+                    conflict = true,
+                )
 
-            fun cellLabel(
-                course: Course,
-                hasAssignment: Boolean,
-                assignmentsIgnored: Boolean,
-            ): String = buildString {
-                append(conflictPrefix)
-                append(": ")
-                append(course.displayName)
-                val room = course.classroom(weekday)
-                if (room.isNotBlank()) {
-                    append(", ")
-                    append(room)
-                }
-                if (hasAssignment) {
-                    append(". ")
-                    append(assignmentLabel)
-                }
-                if (assignmentsIgnored) {
-                    append(". ")
-                    append(ignoredLabel)
-                }
-            }
-
-            val labelA = cellLabel(cellRole.courseA, hasAssignmentA, assignmentsIgnoredA)
-            val labelB = cellLabel(cellRole.courseB, hasAssignmentB, assignmentsIgnoredB)
+            val labelA = cellLabel(cellRole.courseA, cellRole.offsetA, hasAssignmentA, assignmentsIgnoredA)
+            val labelB = cellLabel(cellRole.courseB, cellRole.offsetB, hasAssignmentB, assignmentsIgnoredB)
 
             Box(
                 modifier = Modifier
@@ -342,31 +330,7 @@ internal fun MultiConflictCourseCell(
     val markColor = style.courseSecondaryTextColor
     fun bgFor(course: Course) = style.courseFill(course.courseNo)
 
-    val conflictPrefix = stringResource(R.string.a11y_class_table_conflict_prefix)
-    val assignmentLabel = stringResource(R.string.a11y_class_table_cell_assignment_indicator)
-    val ignoredLabel = stringResource(R.string.a11y_class_table_cell_assignments_ignored)
-    fun cellLabel(
-        course: Course,
-        hasAssignmentForCourse: Boolean,
-        ignoredForCourse: Boolean,
-    ): String = buildString {
-        append(conflictPrefix)
-        append(": ")
-        append(course.displayName)
-        val room = course.classroom(weekday)
-        if (room.isNotBlank()) {
-            append(", ")
-            append(room)
-        }
-        if (hasAssignmentForCourse) {
-            append(". ")
-            append(assignmentLabel)
-        }
-        if (ignoredForCourse) {
-            append(". ")
-            append(ignoredLabel)
-        }
-    }
+    val labels = classTableCellLabels()
 
     var menuForCourse by remember { mutableStateOf<Course?>(null) }
 
@@ -397,8 +361,14 @@ internal fun MultiConflictCourseCell(
                         .clip(RoundedCornerShape(4.dp))
                         .background(bgFor(member.course))
                         .semantics(mergeDescendants = true) {
-                            contentDescription =
-                                cellLabel(member.course, hasAssignmentForMember, ignoredForMember)
+                            contentDescription = labels.label(
+                                member.course,
+                                weekday,
+                                member.firstPeriodId,
+                                hasAssignmentForMember,
+                                ignoredForMember,
+                                conflict = true,
+                            )
                             role = Role.Button
                         }
                         .combinedClickable(

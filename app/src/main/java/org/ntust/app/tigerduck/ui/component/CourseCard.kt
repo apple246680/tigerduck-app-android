@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.shared.Course
+import org.ntust.app.tigerduck.shared.blockClassroom
 import org.ntust.app.tigerduck.ui.theme.LocalVisualStylePolicy
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 
@@ -54,6 +55,8 @@ fun CourseCard(
     hasAssignment: Boolean = false,
     isFinished: Boolean = false,
     weekday: Int? = null,
+    /** The block of [weekday] the card stands for; its room is the one shown. */
+    periods: List<String>? = null,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -106,8 +109,7 @@ fun CourseCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                val room = if (weekday != null) course.classroom(weekday)
-                else Course.dedupRooms(course.classroom)
+                val room = cardRoom(course, weekday, periods)
                 if (room.isNotEmpty()) {
                     Spacer(Modifier.height(4.dp))
                     Text(
@@ -153,6 +155,8 @@ fun CurrentClassCard(
     currentMinute: Int,
     hasAssignment: Boolean = false,
     weekday: Int? = null,
+    /** The periods of the block going on; its room is the one shown. */
+    periods: List<String>? = null,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -208,8 +212,7 @@ fun CurrentClassCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                val room = if (weekday != null) course.classroom(weekday)
-                else Course.dedupRooms(course.classroom)
+                val room = cardRoom(course, weekday, periods)
                 if (room.isNotEmpty()) {
                     Text(
                         text = room,
@@ -258,3 +261,13 @@ private fun Color.fadedBy(share: Float): Color = copy(alpha = alpha * share)
 
 private fun formatHm(minuteOfDay: Int): String =
     "%02d:%02d".format(minuteOfDay / 60, minuteOfDay % 60)
+
+/**
+ * The room a course card shows: its block's when the card stands for one, so a course meeting in
+ * two rooms that day shows the one it is in; else the day's rooms, or the week's.
+ */
+internal fun cardRoom(course: Course, weekday: Int?, periods: List<String>?): String = when {
+    weekday == null -> Course.dedupRooms(course.classroom)
+    periods.isNullOrEmpty() -> course.classroom(weekday)
+    else -> course.blockClassroom(weekday, periods)
+}

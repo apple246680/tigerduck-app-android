@@ -10,6 +10,7 @@ package org.ntust.app.tigerduck.ui.screen.classtable
 import org.ntust.app.tigerduck.AppConstants
 import org.ntust.app.tigerduck.academic.QuietDays
 import org.ntust.app.tigerduck.shared.Course
+import org.ntust.app.tigerduck.shared.contiguousPeriodRuns
 import java.time.LocalDate
 import java.util.Calendar
 
@@ -102,6 +103,19 @@ object ClassTableSelection {
         val first = AppConstants.PeriodTimes.mapping[periods.first()] ?: return null
         val last = AppConstants.PeriodTimes.mapping[periods.last()] ?: return null
         return "${first.first} - ${last.second}"
+    }
+
+    /**
+     * The block of [course] on [weekday] a today-carousel card stands for at [minuteOfDay]: the
+     * first not yet over, or the last once all are. A course meeting twice a day shows the
+     * afternoon block's times and room once the morning one ends. Null when it does not meet.
+     */
+    fun carouselBlock(course: Course, weekday: Int, minuteOfDay: Int): List<String>? {
+        val runs = contiguousPeriodRuns(course.schedule[weekday].orEmpty())
+        return runs.firstOrNull { run ->
+            val end = AppConstants.PeriodTimes.mapping[run.last()]?.second?.let(::minuteOfDay)
+            end == null || minuteOfDay <= end
+        } ?: runs.lastOrNull()
     }
 
     /**

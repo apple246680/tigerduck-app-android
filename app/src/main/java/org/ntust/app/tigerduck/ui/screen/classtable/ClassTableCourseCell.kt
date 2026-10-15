@@ -34,7 +34,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -59,6 +58,11 @@ internal fun SoloCourseCell(
     x: androidx.compose.ui.unit.Dp,
     y: androidx.compose.ui.unit.Dp,
     weekday: Int,
+    /**
+     * The period the tile starts at, which its TalkBack label names. Null reads the label
+     * without it, as before tiles named their period.
+     */
+    periodId: String? = null,
     hasAssignment: Boolean,
     assignmentsIgnored: Boolean,
     onTap: () -> Unit,
@@ -76,24 +80,8 @@ internal fun SoloCourseCell(
     val cellTextColor = style.courseTextColor
     val cellSecondaryColor = style.courseSecondaryTextColor
     var showMenu by remember { mutableStateOf(false) }
-    val assignmentLabel = stringResource(R.string.a11y_class_table_cell_assignment_indicator)
-    val ignoredLabel = stringResource(R.string.a11y_class_table_cell_assignments_ignored)
-    val cellRoom = course.classroom(weekday)
-    val cellLabel = buildString {
-        append(course.displayName)
-        if (cellRoom.isNotBlank()) {
-            append(", ")
-            append(cellRoom)
-        }
-        if (hasAssignment) {
-            append(". ")
-            append(assignmentLabel)
-        }
-        if (assignmentsIgnored) {
-            append(". ")
-            append(ignoredLabel)
-        }
-    }
+    val cellLabel = classTableCellLabels()
+        .label(course, weekday, periodId, hasAssignment, assignmentsIgnored)
     // A notch under the course name, so the name keeps the visual weight:
     // the room is a reminder, not a second title.
     val hintFontSize = 10.sp * TigerDuckTheme.courseNameScale * 0.85f
@@ -112,10 +100,6 @@ internal fun SoloCourseCell(
             .clip(RoundedCornerShape(if (tiles) PERIOD_TILE_CORNER else 6.dp))
             // Period tiles fill themselves, leaving the gaps between them bare.
             .then(if (tiles) Modifier else Modifier.background(cellBg))
-            .semantics(mergeDescendants = true) {
-                contentDescription = cellLabel
-                role = Role.Button
-            }
             .combinedClickable(
                 onClick = onTap,
                 // The app vibrates for this long press itself, through the Vibration setting;
@@ -127,7 +111,15 @@ internal fun SoloCourseCell(
                         showMenu = true
                     }
                 },
-            ),
+            )
+            // The label stands for the name, room hint and badge drawn inside.
+            // Cleared here, after the clickable, rather than on a child: a child
+            // that clears its own semantics leaves this node unclickable to
+            // TalkBack, and a clear before the clickable would drop its actions.
+            .clearAndSetSemantics {
+                contentDescription = cellLabel
+                role = Role.Button
+            },
     ) {
         if (tiles) {
             ClassTablePeriodTiles(
@@ -175,9 +167,7 @@ internal fun SoloCourseCell(
                         start = 3.dp,
                         bottom = 2.dp,
                         end = if (hasAssignment || assignmentsIgnored) 18.dp else 3.dp,
-                    )
-                    // Already in the cell's own label, which reads the room.
-                    .clearAndSetSemantics {},
+                    ),
             )
         }
         CourseCellBadge(

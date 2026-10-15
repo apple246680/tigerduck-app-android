@@ -8,8 +8,9 @@ import android.os.Build
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.ntust.app.tigerduck.AppConstants
 import org.ntust.app.tigerduck.academic.AcademicCalendar
-import org.ntust.app.tigerduck.shared.collapseContiguousPeriods
 import org.ntust.app.tigerduck.shared.Course
+import org.ntust.app.tigerduck.shared.blockClassroom
+import org.ntust.app.tigerduck.shared.contiguousPeriodRuns
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import java.time.LocalTime
 import java.time.ZonedDateTime
@@ -189,8 +190,11 @@ class ClassPreparingNotificationScheduler @Inject constructor(
         val endMs: Long,
         val id: String,
         val weekday: Int,
+        /** This block's periods, not every period of the course that day. */
+        val periods: List<String>,
     ) {
-        val classroom: String get() = course.classroom(weekday)
+        /** This block's room: a course meeting twice a day can switch rooms in between. */
+        val classroom: String get() = course.blockClassroom(weekday, periods)
     }
 
     private fun upcomingSlots(
@@ -223,8 +227,9 @@ class ClassPreparingNotificationScheduler @Inject constructor(
                 val periods = course.schedule[weekdayIdx] ?: continue
                 if (periods.isEmpty()) continue
                 if (skippedDates[course.courseNo]?.contains(isoDate) == true) continue
-                val ranges = collapseContiguousPeriods(periods)
-                for ((first, last) in ranges) {
+                for (block in contiguousPeriodRuns(periods)) {
+                    val first = block.first()
+                    val last = block.last()
                     val start = periodStart(first) ?: continue
                     val end = periodEnd(last) ?: continue
                     val startZdt = ZonedDateTime.of(date, start, AppConstants.TAIPEI_ZONE)
@@ -237,6 +242,7 @@ class ClassPreparingNotificationScheduler @Inject constructor(
                         endMs = endMs,
                         id = "${course.courseNo}@${isoDate}#${first}-${last}",
                         weekday = weekdayIdx,
+                        periods = block,
                     )
                 }
             }

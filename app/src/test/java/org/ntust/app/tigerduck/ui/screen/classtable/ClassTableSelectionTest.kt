@@ -276,4 +276,22 @@ class ClassTableSelectionTest {
         val afterFirstOnly = ClassTableSelection.DayTime(weekday = 1, minuteOfDay = 12 * 60)
         assertFalse(ClassTableSelection.isFinishedAt(c, afterFirstOnly))
     }
+
+    // ---- the today carousel's card for a course meeting twice ----
+
+    private val twiceOnMonday = Course.fromSchedule(
+        "CS3005301", "Data Structures",
+        schedule = mapOf(1 to listOf("1", "2", "6", "7")),
+    )
+
+    @Test
+    fun `a carousel card stands for the next block, then the last one`() {
+        assertEquals(listOf("1", "2"), ClassTableSelection.carouselBlock(twiceOnMonday, 1, 7 * 60))
+        // After the morning block (08:10–10:00): the afternoon one.
+        assertEquals(listOf("6", "7"), ClassTableSelection.carouselBlock(twiceOnMonday, 1, 11 * 60))
+        // After both: still the afternoon one, finished.
+        assertEquals(listOf("6", "7"), ClassTableSelection.carouselBlock(twiceOnMonday, 1, 18 * 60))
+        assertNull(ClassTableSelection.carouselBlock(twiceOnMonday, 2, 7 * 60))
+    }
 }
+

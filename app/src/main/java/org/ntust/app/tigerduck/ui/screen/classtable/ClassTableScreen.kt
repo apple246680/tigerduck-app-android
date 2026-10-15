@@ -504,6 +504,7 @@ fun ClassTableScreen(
                                     currentMinute = currentMinute,
                                     hasAssignment = course.courseNo in courseNosWithAssignments,
                                     weekday = ongoing.weekday,
+                                    periods = ongoing.periods,
                                     onClick = {
                                         viewModel.selectCourse(
                                             ongoing.course,
@@ -515,12 +516,17 @@ fun ClassTableScreen(
                                     modifier = Modifier.fillMaxHeight()
                                 )
                             } else {
-                                val timeRange = remember(course, dayIndex) {
-                                    val periods = course.schedule[dayIndex]
-                                        ?.sortedBy { AppConstants.Periods.chronologicalOrder.indexOf(it) }
-                                    if (!periods.isNullOrEmpty()) {
-                                        val first = AppConstants.PeriodTimes.mapping[periods.first()]
-                                        val last = AppConstants.PeriodTimes.mapping[periods.last()]
+                                // The block the card stands for: the next one,
+                                // or the last once the day's are over, so a
+                                // course meeting twice shows its afternoon
+                                // times and room after the morning block.
+                                val block = remember(course, dayIndex, currentMinute) {
+                                    ClassTableSelection.carouselBlock(course, dayIndex, currentMinute)
+                                }
+                                val timeRange = remember(block) {
+                                    if (!block.isNullOrEmpty()) {
+                                        val first = AppConstants.PeriodTimes.mapping[block.first()]
+                                        val last = AppConstants.PeriodTimes.mapping[block.last()]
                                         if (first != null && last != null) "${first.first}-${last.second}" else null
                                     } else null
                                 }
@@ -530,17 +536,12 @@ fun ClassTableScreen(
                                     hasAssignment = course.courseNo in courseNosWithAssignments,
                                     isFinished = viewModel.isCourseFinishedToday(course),
                                     weekday = dayIndex,
+                                    periods = block,
                                     onClick = {
-                                        val firstPeriod = course.schedule[dayIndex]
-                                            ?.minByOrNull {
-                                                AppConstants.Periods.chronologicalOrder.indexOf(
-                                                    it
-                                                )
-                                            } ?: ""
                                         viewModel.selectCourse(
                                             course,
                                             dayIndex,
-                                            firstPeriod,
+                                            block?.first() ?: "",
                                             fromLiveTerm = true,
                                         )
                                     },
@@ -739,6 +740,7 @@ fun ClassTableScreen(
             courseA = target.courseA,
             courseB = target.courseB,
             weekday = target.weekday,
+            periodId = target.periodId,
             onPick = { picked ->
                 viewModel.selectCourse(picked, target.weekday, target.periodId)
                 conflictPicker = null
