@@ -510,6 +510,21 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
+    fun `the sign-in-failed banner can be closed, and comes back with the next sign-in or failure`() {
+        assertFalse(vm.showAuthFailedBanner.value)
+        account.onAuthFailure()
+        assertTrue(vm.showAuthFailedBanner.value)
+        vm.dismissAuthFailedBanner()
+        assertFalse(vm.showAuthFailedBanner.value)
+        // Closing it changes nothing about the account.
+        assertTrue(account.authFailed.value)
+        runBlocking { account.signIn("b10000001", "pw") }
+        assertFalse(vm.showAuthFailedBanner.value)
+        account.onAuthFailure()
+        assertTrue(vm.showAuthFailedBanner.value)
+    }
+
+    @Test
     fun `a rejected password marks the account and shows the failure`() {
         repo.loadError = MailError.AuthFailed()
         vm.load()

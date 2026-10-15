@@ -7,8 +7,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -135,6 +138,22 @@ class SchoolMailListViewModel @Inject constructor(
     val signedIn: StateFlow<Boolean> = account.signedIn
     val authFailed: StateFlow<Boolean> = account.authFailed
 
+    /** The user closed the sign-in-failed banner; cleared each time [authFailed] changes. */
+    private val authBannerClosed = MutableStateFlow(false)
+
+    /**
+     * Whether the sign-in-failed banner shows: while the server rejects the password, until it is
+     * closed. It comes back with the next change of [authFailed] -- a new sign-in that fails
+     * again, or the next rejection -- as on the iPhone. Closing it changes nothing about the account.
+     */
+    val showAuthFailedBanner: StateFlow<Boolean> =
+        combine(account.authFailed, authBannerClosed) { failed, closed -> failed && !closed }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, account.authFailed.value)
+
+    fun dismissAuthFailedBanner() {
+        authBannerClosed.value = true
+    }
+
     /**
      * A new mail or a draft sent from compose went out without its copy reaching the sent folder
      * (a reply's notice is the replied mail's to show, not this list's). Kept out of
@@ -189,6 +208,7 @@ class SchoolMailListViewModel @Inject constructor(
     private var firstPageAt: Long? = null
 
     init {
+        viewModelScope.launch { account.authFailed.collect { authBannerClosed.value = false } }
         // Signing out must not leave the previous account's mail on screen for
         // whoever signs in next (spec §7.5).
         viewModelScope.launch {

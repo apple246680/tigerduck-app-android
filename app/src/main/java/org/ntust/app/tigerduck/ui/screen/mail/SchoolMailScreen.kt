@@ -32,6 +32,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.FilterAltOff
@@ -144,6 +145,7 @@ fun SchoolMailScreen(
     val authFailed by viewModel.authFailed.collectAsStateWithLifecycle()
     val state by viewModel.state.collectAsStateWithLifecycle()
     val sentCopyNotice by viewModel.sentCopyNotice.collectAsStateWithLifecycle()
+    val showAuthFailedBanner by viewModel.showAuthFailedBanner.collectAsStateWithLifecycle()
     val signingIn by accountViewModel.signingIn.collectAsStateWithLifecycle()
     val signInError by accountViewModel.error.collectAsStateWithLifecycle()
     var showReauthSheet by remember { mutableStateOf(false) }
@@ -367,11 +369,14 @@ fun SchoolMailScreen(
                     }
                 }
                 DevMailServerBanner(accountViewModel.devServer)
-                if (authFailed) {
-                    AuthFailedBanner(onSignInAgain = {
-                        accountViewModel.clearError()
-                        showReauthSheet = true
-                    })
+                if (showAuthFailedBanner) {
+                    AuthFailedBanner(
+                        onSignInAgain = {
+                            accountViewModel.clearError()
+                            showReauthSheet = true
+                        },
+                        onClose = viewModel::dismissAuthFailedBanner,
+                    )
                 }
                 sentCopyNotice?.let { SentCopyNoticeBanner(it, onDismiss = viewModel::dismissSentCopyNotice) }
                 SearchDrawer(searchReveal) {
@@ -611,13 +616,14 @@ private fun SwipeableMailCard(
     }
 }
 
+/** [onClose] hides it until the account signs in again or fails again; the mail already loaded stays readable. */
 @Composable
-private fun AuthFailedBanner(onSignInAgain: () -> Unit) {
+internal fun AuthFailedBanner(onSignInAgain: () -> Unit, onClose: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
     ) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 stringResource(R.string.school_mail_auth_failed_banner),
                 style = MaterialTheme.typography.bodySmall,
@@ -625,6 +631,13 @@ private fun AuthFailedBanner(onSignInAgain: () -> Unit) {
                 modifier = Modifier.weight(1f),
             )
             TextButton(onClick = onSignInAgain) { Text(stringResource(R.string.action_sign_in_again)) }
+            IconButton(onClick = onClose) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.action_close),
+                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
         }
     }
 }
