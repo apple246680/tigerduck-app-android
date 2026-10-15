@@ -64,6 +64,16 @@ class SyncWiringTest {
     }
 
     @Test
+    fun `an answered re-enable dialog keeps what it did not cover pending and checks it after`() {
+        assertCalls(
+            "ui/screen/settings/SettingsViewModel.kt", "resolveReenableConflict",
+            "unanswered(prefs.pendingConflictCategories, conflict.categories)",
+            "prefs.pendingConflictCategories = held + left",
+            "if (left.isNotEmpty()) checkPendingConflicts()",
+        )
+    }
+
+    @Test
     fun `a registration crossing the TigerSync switch registers again`() {
         assertCalls("push/PushRegistrationService.kt", "endRegistration", "leftSwitchBehind(appPreferences.cloudSyncEnabled)")
         assertCalls(
