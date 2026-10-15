@@ -466,7 +466,9 @@ fun MainNavigation(
                     browserPreference = appState.browserPreference,
                     onBack = { navController.popBackStack() },
                     onCompose = { mode, folder, uid -> navController.navigate(Screen.SchoolMailCompose.route(mode, folder, uid)) },
-                    onComposeMailto = { href -> navController.navigate(Screen.SchoolMailCompose.route(ComposeMode.NEW, mailto = href)) },
+                    onComposeMailto = { folder, uid, href ->
+                        navController.navigate(Screen.SchoolMailCompose.route(ComposeMode.NEW, folder, uid, mailto = href))
+                    },
                 )
             }
             page(

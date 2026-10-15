@@ -4,6 +4,9 @@ import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.Assert.assertEquals
@@ -24,6 +27,7 @@ import org.ntust.app.tigerduck.mail.MailAccount
 import org.ntust.app.tigerduck.mail.MailError
 import org.ntust.app.tigerduck.mail.SentCopyNotice
 import org.ntust.app.tigerduck.mail.SentCopyNotices
+import org.ntust.app.tigerduck.mail.SentCopyOrigin
 import org.ntust.app.tigerduck.mail.MainDispatcherRule
 import org.ntust.app.tigerduck.mail.RecordingNotifier
 import org.ntust.app.tigerduck.mail.RecordingScheduler
@@ -67,8 +71,8 @@ class SchoolMailComposeViewModelTest {
     private fun handle(mode: ComposeMode, folder: String = "", uid: Long = -1, mailto: String = "") =
         SavedStateHandle(mapOf("mode" to mode.name, "folder" to folder, "uid" to uid, "mailto" to mailto))
 
-    private fun vm(mode: ComposeMode, folder: String = "", uid: Long = -1) =
-        SchoolMailComposeViewModel(handle(mode, folder, uid), repo, account, cache, noPicks, notices, main.dispatcher)
+    private fun vm(mode: ComposeMode, folder: String = "", uid: Long = -1, mailto: String = "") =
+        SchoolMailComposeViewModel(handle(mode, folder, uid, mailto), repo, account, cache, noPicks, notices, main.dispatcher)
             .also { it.prefill(labels) }
 
     @Test
@@ -222,7 +226,7 @@ class SchoolMailComposeViewModelTest {
             vm.setTo("a@x.tw")
             vm.send()
             assertTrue(vm.state.value.done)
-            assertNull("$outcome", notices.notice.value)
+            assertNull("$outcome", notices.posted.value?.notice)
         }
     }
 
@@ -242,9 +246,44 @@ class SchoolMailComposeViewModelTest {
             val s = vm.state.value
             assertTrue("$outcome still sent the mail", s.done)
             assertEquals("$outcome must never read as a failed send", null, s.error)
-            assertEquals("$outcome must say why the copy is missing", notice, notices.notice.value)
+            assertEquals("$outcome must say why the copy is missing", notice, notices.posted.value?.notice)
         }
         assertEquals(3, repo.sent.size)
+    }
+
+    @Test
+    fun `a sent-copy notice names the screen the mail goes back to`() {
+        repo.sentCopy = SentCopy.NotAttempted
+        repo.add("INBOX", mailSummary(5, subject = "期中考"))
+        repo.bodies[5] = MailBody(null, "line1", emptyList(), emptyMap())
+        fun originAfterSending(vm: SchoolMailComposeViewModel): SentCopyOrigin? {
+            notices.dismiss()
+            if (vm.state.value.to.entries.isEmpty()) vm.setTo("a@x.tw")
+            vm.send()
+            return notices.posted.value?.origin
+        }
+        assertEquals(SentCopyOrigin.List, originAfterSending(vm(ComposeMode.NEW)))
+        assertEquals(SentCopyOrigin.Message("INBOX", 5), originAfterSending(vm(ComposeMode.REPLY, "INBOX", 5)))
+        assertEquals(SentCopyOrigin.Message("INBOX", 5), originAfterSending(vm(ComposeMode.FORWARD, "INBOX", 5)))
+        // A mailto: link tapped in a mail goes back to that mail.
+        assertEquals(
+            SentCopyOrigin.Message("INBOX", 5),
+            originAfterSending(vm(ComposeMode.NEW, "INBOX", 5, mailto = "mailto:office@mail.ntust.edu.tw")),
+        )
+    }
+
+    @Test
+    fun `a send the account left during reports nothing to the next one`() {
+        repo.sentCopy = SentCopy.NotAttempted
+        // Unconfined, so the sign-out's cleanup has run by the time the send comes back.
+        val notices = SentCopyNotices(account, CoroutineScope(SupervisorJob() + Dispatchers.Unconfined))
+        val vm = SchoolMailComposeViewModel(handle(ComposeMode.NEW), repo, account, cache, noPicks, notices, main.dispatcher)
+        vm.prefill(labels)
+        vm.setTo("a@x.tw")
+        repo.onSend = { account.signOut() }
+        vm.send()
+        assertTrue(vm.state.value.done)
+        assertNull(notices.posted.value)
     }
 
     @Test
@@ -258,7 +297,7 @@ class SchoolMailComposeViewModelTest {
         assertTrue(account.authFailed.value)
         assertTrue("the send still succeeded", vm.state.value.done)
         assertEquals(null, vm.state.value.error)
-        assertTrue(notices.notice.value is SentCopyNotice.Failed)
+        assertTrue(notices.posted.value?.notice is SentCopyNotice.Failed)
     }
 
     @Test

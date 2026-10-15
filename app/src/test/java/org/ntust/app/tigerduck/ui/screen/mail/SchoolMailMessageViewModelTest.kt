@@ -18,7 +18,9 @@ import org.ntust.app.tigerduck.mail.InMemoryMailStateStore
 import org.ntust.app.tigerduck.mail.MailAccount
 import org.ntust.app.tigerduck.mail.MailError
 import org.ntust.app.tigerduck.mail.MailLimits
+import org.ntust.app.tigerduck.mail.SentCopyNotice
 import org.ntust.app.tigerduck.mail.SentCopyNotices
+import org.ntust.app.tigerduck.mail.SentCopyOrigin
 import org.ntust.app.tigerduck.mail.MainDispatcherRule
 import org.ntust.app.tigerduck.mail.RecordingNotifier
 import org.ntust.app.tigerduck.mail.RecordingScheduler
@@ -70,12 +72,14 @@ class SchoolMailMessageViewModelTest {
     private val credentials = InMemoryCredentialStore()
     private lateinit var account: MailAccount
     private lateinit var cache: MailCache
+    private lateinit var notices: SentCopyNotices
 
     @Before
     fun setUp() {
         cache = MailCache(tmp.newFolder("cache"))
         account = MailAccount(credentials, InMemoryMailStateStore(), FakeMailServer().factory(), cache,
             FakeDemoGate(), schoolMailSite(), RecordingScheduler(), RecordingNotifier(), testApplicationScope())
+        notices = SentCopyNotices(account, testApplicationScope())
     }
 
     // The same TestDispatcher backs both Dispatchers.Main and the injected @IoDispatcher, so a
@@ -84,7 +88,7 @@ class SchoolMailMessageViewModelTest {
     private fun vm(folder: String = "INBOX", uid: Long = 5, io: CoroutineDispatcher = main.dispatcher) =
         SchoolMailMessageViewModel(
             SavedStateHandle(mapOf("folder" to folder, "uid" to uid)), repo, account, notifier, cache, schoolMailSite(),
-            SentCopyNotices(account, testApplicationScope()), io,
+            notices, io,
         )
 
     private fun ready(vm: SchoolMailMessageViewModel) = vm.state.value.content as Content.Ready
@@ -1075,5 +1079,17 @@ class SchoolMailMessageViewModelTest {
         // A lone high surrogate at the very end (its low half was cut off) means a pair got
         // split; ending on a low surrogate is fine -- that IS a pair's completed second half.
         assertFalse(stem.isNotEmpty() && Character.isHighSurrogate(stem.last()))
+    }
+
+    @Test
+    fun `a sent-copy notice shows on the mail it was a reply to, and on no other`() {
+        val vm = vm("INBOX", 5)
+        notices.report(SentCopyNotice.NoFolder, SentCopyOrigin.Message("INBOX", 5), notices.accountGeneration)
+        assertEquals(SentCopyNotice.NoFolder, vm.sentCopyNotice.value)
+        val other = vm("INBOX", 6)
+        assertNull(other.sentCopyNotice.value)
+        // A new mail from the list is the list's to say.
+        notices.report(SentCopyNotice.Unknown, SentCopyOrigin.List, notices.accountGeneration)
+        assertNull(vm.sentCopyNotice.value)
     }
 }

@@ -24,6 +24,7 @@ import org.ntust.app.tigerduck.mail.InMemoryMailStateStore
 import org.ntust.app.tigerduck.mail.MailAccount
 import org.ntust.app.tigerduck.mail.MailError
 import org.ntust.app.tigerduck.mail.SentCopyNotice
+import org.ntust.app.tigerduck.mail.SentCopyOrigin
 import org.ntust.app.tigerduck.mail.SentCopyNotices
 import org.ntust.app.tigerduck.mail.MainDispatcherRule
 import org.ntust.app.tigerduck.mail.RecordingNotifier
@@ -567,7 +568,7 @@ class SchoolMailListViewModelTest {
     fun `a sent-copy notice outlives the reload after compose and goes only when dismissed`() {
         repo.add("INBOX", mailSummary(1))
         vm.load()
-        notices.report(SentCopyNotice.NoFolder)
+        notices.report(SentCopyNotice.NoFolder, SentCopyOrigin.List, notices.accountGeneration)
         vm.refresh()
         vm.load()
         assertEquals(SentCopyNotice.NoFolder, vm.sentCopyNotice.value)
@@ -576,11 +577,18 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
+    fun `a notice about a reply sent from a mail is that mail's, not the list's`() {
+        notices.report(SentCopyNotice.NoFolder, SentCopyOrigin.Message("INBOX", 1), notices.accountGeneration)
+        assertNull(vm.sentCopyNotice.value)
+    }
+
+    @Test
     fun `signing out takes the sent-copy notice with it`() {
-        notices.report(SentCopyNotice.Unknown)
+        notices.report(SentCopyNotice.Unknown, SentCopyOrigin.List, notices.accountGeneration)
         account.signOut()
         main.dispatcher.scheduler.runCurrent()
-        assertNull(notices.notice.value)
+        assertNull(notices.posted.value)
+        assertNull(vm.sentCopyNotice.value)
     }
 
     @Test

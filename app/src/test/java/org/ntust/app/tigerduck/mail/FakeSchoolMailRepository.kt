@@ -270,7 +270,11 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         out.write("attachment $partId".toByteArray())
     }
 
+    /** Runs at the start of every [send], before [sendError] -- for a test that changes things while a mail goes out. */
+    var onSend: (() -> Unit)? = null
+
     override suspend fun send(mail: OutgoingMail, answered: Pair<String, Long>?): SentCopy {
+        onSend?.invoke()
         sendError?.let { throw it }
         sentAttachments += mail.attachments.map { it.fileName to it.open().use { s -> s.readBytes().decodeToString() } }
         sent += mail to answered

@@ -118,8 +118,11 @@ fun SchoolMailMessageScreen(
     browserPreference: String,
     onBack: () -> Unit,
     onCompose: (mode: ComposeMode, folder: String, uid: Long) -> Unit,
-    /** A confirmed `mailto:` link, for School Mail's own compose to start from. */
-    onComposeMailto: (href: String) -> Unit,
+    /**
+     * A confirmed `mailto:` link, for School Mail's own compose to start from; [folder] and [uid]
+     * name this mail, which compose closes back to.
+     */
+    onComposeMailto: (folder: String, uid: Long, href: String) -> Unit,
     viewModel: SchoolMailMessageViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -431,7 +434,10 @@ fun SchoolMailMessageScreen(
             onOpen = {
                 pendingLink = null
                 pendingPlainLink = null
-                openLink(context, linkTarget.href, browserPreference, if (signedIn) onComposeMailto else null)
+                openLink(
+                    context, linkTarget.href, browserPreference,
+                    if (signedIn) { href -> onComposeMailto(viewModel.folder, viewModel.uid, href) } else null,
+                )
             },
             onDismiss = {
                 pendingLink = null

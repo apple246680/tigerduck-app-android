@@ -20,6 +20,7 @@ import org.ntust.app.tigerduck.mail.SchoolMailRepository
 import org.ntust.app.tigerduck.mail.SearchOutcome
 import org.ntust.app.tigerduck.mail.SentCopyNotice
 import org.ntust.app.tigerduck.mail.SentCopyNotices
+import org.ntust.app.tigerduck.mail.SentCopyOrigin
 import org.ntust.app.tigerduck.mail.matchesLoadedMail
 import org.ntust.app.tigerduck.mail.imap.FolderSelection
 import org.ntust.app.tigerduck.mail.imap.SpecialFolder
@@ -135,11 +136,12 @@ class SchoolMailListViewModel @Inject constructor(
     val authFailed: StateFlow<Boolean> = account.authFailed
 
     /**
-     * A mail sent from compose went out without its copy reaching the sent folder. Kept out of
+     * A new mail or a draft sent from compose went out without its copy reaching the sent folder
+     * (a reply's notice is the replied mail's to show, not this list's). Kept out of
      * [UiState] on purpose: no load clears it, only [dismissSentCopyNotice] (or signing out), so
      * the reload that follows the compose screen closing cannot wipe it before it is seen.
      */
-    val sentCopyNotice: StateFlow<SentCopyNotice?> = sentCopyNotices.notice
+    val sentCopyNotice: StateFlow<SentCopyNotice?> = sentCopyNotices.noticeFor(SentCopyOrigin.List, viewModelScope)
 
     fun dismissSentCopyNotice() = sentCopyNotices.dismiss()
 

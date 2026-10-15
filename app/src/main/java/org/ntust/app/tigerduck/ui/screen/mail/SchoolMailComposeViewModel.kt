@@ -22,6 +22,7 @@ import org.ntust.app.tigerduck.mail.MailErrors
 import org.ntust.app.tigerduck.mail.SchoolMailRepository
 import org.ntust.app.tigerduck.mail.SentCopyNotice
 import org.ntust.app.tigerduck.mail.SentCopyNotices
+import org.ntust.app.tigerduck.mail.SentCopyOrigin
 import org.ntust.app.tigerduck.mail.compose.ComposeRules
 import org.ntust.app.tigerduck.mail.compose.MailtoLink
 import org.ntust.app.tigerduck.mail.compose.OutgoingAttachment
@@ -75,6 +76,14 @@ class SchoolMailComposeViewModel @Inject constructor(
         .getOrDefault(ComposeMode.NEW)
     private val sourceFolder: String = savedStateHandle.get<String>("folder").orEmpty()
     private val sourceUid: Long = savedStateHandle.get<Long>("uid") ?: -1L
+
+    /**
+     * The screen this compose closes back to, which is where a missing sent copy is told: the mail
+     * being answered or forwarded, the mail a `mailto:` link was tapped in (it rides along as the
+     * source), or the list for a new mail and a draft.
+     */
+    private val sentCopyOrigin: SentCopyOrigin =
+        if (sourceUid >= 0 && mode != ComposeMode.DRAFT) SentCopyOrigin.Message(sourceFolder, sourceUid) else SentCopyOrigin.List
 
     /** A new mail started from a `mailto:` link tapped in a mail. */
     private val mailto: MailtoLink.Draft? =
@@ -369,6 +378,9 @@ class SchoolMailComposeViewModel @Inject constructor(
         val to = ComposeRules.parseRecipients(s.to.entries)
         val cc = ComposeRules.parseRecipients(s.cc.entries)
         val bcc = ComposeRules.parseRecipients(s.bcc.entries)
+        // Read before the mail goes out: an account that changes while it does must not leave
+        // its notice to the next one.
+        val accountGeneration = sentCopyNotices.accountGeneration
         withStaged(onError = { ComposeError.SendFailed(it) }) { attachments ->
             val mail = OutgoingMail(repository.selfAddress(), to.addresses, cc.addresses, bcc.addresses,
                 s.subject.trim(), s.body, attachments, inReplyTo, references)
@@ -383,7 +395,7 @@ class SchoolMailComposeViewModel @Inject constructor(
             // [UiState.error]: the send succeeded, so failing the screen over it would tell the
             // user the opposite of what happened. It is reported before the screen closes, to
             // stay on the screens it goes back to until the user dismisses it.
-            SentCopyNotice.of(copy)?.let(sentCopyNotices::report)
+            SentCopyNotice.of(copy)?.let { sentCopyNotices.report(it, sentCopyOrigin, accountGeneration) }
             _state.update { it.copy(done = true) }
         }
     }

@@ -23,6 +23,7 @@ import org.ntust.app.tigerduck.mail.MailSite
 import org.ntust.app.tigerduck.mail.SchoolMailRepository
 import org.ntust.app.tigerduck.mail.SentCopyNotice
 import org.ntust.app.tigerduck.mail.SentCopyNotices
+import org.ntust.app.tigerduck.mail.SentCopyOrigin
 import org.ntust.app.tigerduck.mail.imap.ResolvedFolders
 import org.ntust.app.tigerduck.mail.imap.SpecialFolder
 import org.ntust.app.tigerduck.mail.mime.TextCleaning
@@ -142,8 +143,11 @@ class SchoolMailMessageViewModel @Inject constructor(
     /** Whether a confirmed `mailto:` link can open this app's own compose, which sends as the school account. */
     val signedIn: StateFlow<Boolean> = account.signedIn
 
-    /** A reply or forward sent from this mail went out without its copy reaching the sent folder. */
-    val sentCopyNotice: StateFlow<SentCopyNotice?> = sentCopyNotices.notice
+    /**
+     * A reply or forward of this mail, or a mail started from a link in it, went out without its
+     * copy reaching the sent folder. Only this mail's: a notice about any other send is not shown.
+     */
+    val sentCopyNotice: StateFlow<SentCopyNotice?> = sentCopyNotices.noticeFor(SentCopyOrigin.Message(folder, uid), viewModelScope)
 
     fun dismissSentCopyNotice() = sentCopyNotices.dismiss()
 

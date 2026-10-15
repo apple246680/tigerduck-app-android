@@ -57,6 +57,17 @@ class MailAccount @Inject constructor(
     )
     val signOuts: SharedFlow<Unit> = _signOuts.asSharedFlow()
 
+    /**
+     * One event each time [signIn] puts another student in place of the signed-in one without a
+     * [signOut] in between, as the sign-in sheet shown after a rejected password allows. Cleanup
+     * that must not carry one student's state over to the next listens to this beside [signOuts].
+     */
+    private val _studentChanges = MutableSharedFlow<Unit>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val studentChanges: SharedFlow<Unit> = _studentChanges.asSharedFlow()
+
     private val _authFailed = MutableStateFlow(state.authFailed)
     val authFailed: StateFlow<Boolean> = _authFailed.asStateFlow()
 
@@ -83,8 +94,11 @@ class MailAccount @Inject constructor(
         val sameStudent = credentials.mailStudentId?.equals(creds.studentId, ignoreCase = true) == true
         val keptName = if (sameStudent) state.displayName else null
 
+        val replacing = !sameStudent && !credentials.mailStudentId.isNullOrBlank()
+
         if (demo.matches(creds.studentId, password)) {
             if (!sameStudent) cache.clearAll()
+            if (replacing) _studentChanges.tryEmit(Unit)
             state.clear()
             state.demoMailbox = true
             state.displayName = keptName ?: demo.mailbox().displayName
@@ -101,6 +115,7 @@ class MailAccount @Inject constructor(
                     runCatching { session.newestSenderName(sent, creds.address, window = 20) }.getOrNull()
                 }
                 if (!sameStudent) cache.clearAll()
+                if (replacing) _studentChanges.tryEmit(Unit)
                 state.clear()
                 state.inboxUidValidity = status.uidValidity
                 state.inboxSeenUidNext = status.uidNext
