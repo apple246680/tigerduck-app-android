@@ -19,6 +19,8 @@ import javax.inject.Singleton
 class BulletinRepository @Inject constructor() {
 
     private val summaries = HashMap<Int, BulletinSummary>()
+    // The list rows' own summaries, apart from what a detail later stores over them.
+    private val listSummaries = HashMap<Int, String>()
     private val details = HashMap<Int, BulletinDetail>()
 
     @Volatile
@@ -69,7 +71,11 @@ class BulletinRepository @Inject constructor() {
 
     @Synchronized
     fun putSummaries(items: List<BulletinSummary>) {
-        for (item in items) summaries[item.id] = item
+        for (item in items) {
+            summaries[item.id] = item
+            val summary = item.summary?.takeIf { it.isNotBlank() }
+            if (summary != null) listSummaries[item.id] = summary else listSummaries.remove(item.id)
+        }
     }
 
     @Synchronized
@@ -78,8 +84,9 @@ class BulletinRepository @Inject constructor() {
     @Synchronized
     fun putDetail(detail: BulletinDetail) {
         details[detail.id] = detail
-        // A detail without a summary keeps the list row's, which its page falls back to.
-        val listSummary = summaries[detail.id]?.summary?.takeIf { it.isNotBlank() }
+        // A detail without a summary keeps the list row's, which its page falls back to; never an
+        // earlier detail's, which the server has since cleared.
+        val listSummary = listSummaries[detail.id]
         summaries[detail.id] = detail.toSummary().let {
             if (it.summary.isNullOrBlank() && listSummary != null) it.copy(summary = listSummary) else it
         }

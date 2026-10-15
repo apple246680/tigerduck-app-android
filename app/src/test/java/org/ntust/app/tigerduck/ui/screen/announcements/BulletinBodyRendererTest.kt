@@ -34,6 +34,21 @@ class BulletinBodyRendererTest {
     )
 
     @Test
+    fun `fences close only on their own kind, and literals hold their exact shape`() {
+        val mixed = "~~~\n+ value\n```\n+ still code\n~~~"
+        assertEquals(mixed, BulletinBodyRenderer.normalize(mixed))
+        val doubled = "見 ``a ` **重點**：b`` 一節"
+        assertEquals(doubled, BulletinBodyRenderer.normalize(doubled))
+        val nested = "[文件](path(part)**重點**：v1)"
+        assertEquals(nested, BulletinBodyRenderer.normalize(nested))
+        // A URL ends at full-width punctuation, and the prose after it is still fixed up.
+        assertEquals(
+            "https://example.com。說明**截止日期：** 10/31",
+            BulletinBodyRenderer.normalize("https://example.com。說明**截止日期：**10/31"),
+        )
+    }
+
+    @Test
     fun `code, link destinations, URLs and thematic breaks are left as written`() {
         val fenced = "```\n+ value\n**重點**：時間\n```"
         assertEquals(fenced, BulletinBodyRenderer.normalize(fenced))

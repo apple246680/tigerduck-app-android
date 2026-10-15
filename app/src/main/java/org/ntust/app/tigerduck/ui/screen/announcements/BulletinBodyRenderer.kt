@@ -29,12 +29,19 @@ internal object BulletinBodyRenderer {
      * bare `*` cannot pull the line below it up into a list item.
      */
     fun normalize(source: String): String {
-        var inFence = false
+        // The open fence's character and length: only a run of the same character, at least as
+        // long, closes it.
+        var fence: String? = null
         return source.split('\n').joinToString("\n") { line ->
+            val run = FENCE.find(line)?.groupValues?.get(1)
+            val open = fence
             when {
-                FENCE.containsMatchIn(line) -> line.also { inFence = !inFence }
-                // Code is shown as written, and a `* * *` line is a thematic break, not a list.
-                inFence || THEMATIC_BREAK.matches(line) -> line
+                open != null -> line.also {
+                    if (run != null && run[0] == open[0] && run.length >= open.length && line.trim() == run) fence = null
+                }
+                run != null -> line.also { fence = run }
+                // A `* * *` line is a thematic break, not a list.
+                THEMATIC_BREAK.matches(line) -> line
                 else -> outsideLiterals(line.replace(LIST_MARKER, "$1- "))
             }
         }
@@ -58,9 +65,11 @@ internal object BulletinBodyRenderer {
         .replace(BOLD_AFTER_OPENING_BRACKET, "$1 **$2**")
 
     private val LIST_MARKER = Regex("""^([ \t]*)[*+][ \t]+""")
-    private val FENCE = Regex("""^[ \t]{0,3}(```|~~~)""")
+    private val FENCE = Regex("""^[ \t]{0,3}(`{3,}|~{3,})""")
     private val THEMATIC_BREAK = Regex("""[ \t]{0,3}([*_-])([ \t]*\1){2,}[ \t]*""")
-    private val LITERAL = Regex("""`[^`]*`|\]\([^)]*\)|<https?://[^>]*>|https?://\S+""")
+    private val LITERAL = Regex(
+        """(`+)[\s\S]*?(?<!`)\1(?!`)|\]\((?:[^()\\]|\\.|\([^()]*\))*\)|<https?://[^>]*>|https?://[^\s、。，．：；！？「」『』（）]+""",
+    )
     private val BOLD_BEFORE_PUNCTUATION = Regex("""\*\*([^*\n]+)\*\*([、。，．：；！？」』）])""")
     private val BOLD_ENDING_IN_PUNCTUATION = Regex("""\*\*([^*\n]*?[、。，．：；！？])\*\*(\S)""")
     private val BOLD_AFTER_OPENING_BRACKET = Regex("""([「『（])\*\*([^*\n]+)\*\*""")
