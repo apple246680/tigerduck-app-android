@@ -1,7 +1,5 @@
 package org.ntust.app.tigerduck.ui.screen.announcements
 
-import android.content.Intent
-import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,7 +38,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mikepenz.markdown.m3.Markdown
@@ -51,6 +48,7 @@ import org.ntust.app.tigerduck.network.model.localizedTagLabel
 import org.ntust.app.tigerduck.network.model.orgLabel
 import org.ntust.app.tigerduck.ui.component.NoTopBarInsets
 import org.ntust.app.tigerduck.ui.component.scrollbar
+import org.ntust.app.tigerduck.ui.openLink
 
 @OptIn(
     ExperimentalLayoutApi::class,
@@ -58,6 +56,7 @@ import org.ntust.app.tigerduck.ui.component.scrollbar
 )
 @Composable
 fun AnnouncementDetailScreen(
+    browserPreference: String,
     onBack: () -> Unit,
     viewModel: AnnouncementDetailViewModel = hiltViewModel(),
 ) {
@@ -89,17 +88,7 @@ fun AnnouncementDetailScreen(
         floatingActionButton = {
             if (!sourceUrl.isNullOrEmpty()) {
                 ExtendedFloatingActionButton(
-                    onClick = {
-                        try {
-                            CustomTabsIntent.Builder().build().launchUrl(context, sourceUrl.toUri())
-                        } catch (_: Exception) {
-                            runCatching {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, sourceUrl.toUri())
-                                )
-                            }
-                        }
-                    },
+                    onClick = { openLink(context, sourceUrl, browserPreference) },
                     icon = {
                         Icon(Icons.Filled.OpenInBrowser, contentDescription = null)
                     },

@@ -89,7 +89,8 @@ internal class PushCourseSyncBackend(
  *
  * Every request is awaited and a failure is thrown, for the caller to ask
  * again. Once [isCurrent] turns false, as at a sign-out, nothing more is sent
- * and it throws [CancellationException].
+ * and it throws [CancellationException]. [onReset] hears of each term reset
+ * once its upload has landed.
  */
 internal suspend fun keepLocalCourses(
     terms: List<Pair<String, List<Course>>>,
@@ -98,6 +99,7 @@ internal suspend fun keepLocalCourses(
     customNames: Map<String, Map<String, String>> = emptyMap(),
     portalCached: (semester: String) -> Boolean = { true },
     isCurrent: () -> Boolean = { true },
+    onReset: (semester: String) -> Unit = {},
 ) {
     fun ensureCurrent() {
         if (!isCurrent()) throw CancellationException("signed out during Use Local")
@@ -117,6 +119,7 @@ internal suspend fun keepLocalCourses(
         }
         ensureCurrent()
         backend.uploadCourses(courses + stubs, semester)
+        if (reset) onReset(semester)
         for (courseNo in hiddenNos.sorted()) {
             ensureCurrent()
             backend.deleteCourse("client:$semester:$courseNo")
@@ -198,7 +201,9 @@ internal fun handOverCourseHold(
  * upload lands, the server holds none of its courses, and the reset's
  * tombstones hide them on every other device. Stopped by a sign-out, it asks
  * and stamps nothing for the next account; the [latch], taken on the tap by
- * [handOverCourseHold], goes either way.
+ * [handOverCourseHold], goes either way. Returns the terms it reset and
+ * uploaded again, a failure's included, for the course ignores to follow
+ * (`CourseIgnoreSync.pushLocal`).
  */
 internal suspend fun useLocalCourses(
     terms: List<Pair<String, List<Course>>>,
@@ -210,10 +215,11 @@ internal suspend fun useLocalCourses(
     host: UseLocalHost,
     now: () -> Long,
     isCurrent: () -> Boolean,
-) {
+): Set<String> {
+    val reset = mutableSetOf<String>()
     try {
         try {
-            keepLocalCourses(terms, hiding, backend, customNames, portalCached, isCurrent)
+            keepLocalCourses(terms, hiding, backend, customNames, portalCached, isCurrent, onReset = reset::add)
         } catch (e: CancellationException) {
             throw e
         } catch (e: CourseSyncOffException) {
@@ -230,4 +236,5 @@ internal suspend fun useLocalCourses(
     } finally {
         latch.release()
     }
+    return reset
 }

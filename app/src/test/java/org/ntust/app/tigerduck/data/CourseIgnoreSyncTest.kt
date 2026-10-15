@@ -543,4 +543,136 @@ class CourseIgnoreSyncTest {
 
         assertEquals(listOf(Sent("1141AAA", true, null)), sent)
     }
+
+    // ---- Use Local's clears in the terms it reset (tigerduck-app-android#307) ----
+
+    private suspend fun cacheTerm(vararg courseNos: String) =
+        cache.saveCourses(courseNos.map { Course(courseNo = it, courseName = it, moodleIdNumber = "1141$it") }, "1141")
+
+    @Test
+    fun `Use Local clears a course only the check's snapshot ignored in a term it reset`() = runTest {
+        // The check saw BBB ignored on the server. Use Local reset 1141, which
+        // took that override with it, and the server read after it has none:
+        // without a clear, another device's resend would bring it back.
+        cacheTerm("AAA", "BBB")
+        cache.saveSemesterResetAt("1141", 2_000L)
+
+        sync.pushLocal(
+            snapshot(fetchedAtMs = 3_000L),
+            sync.currentGeneration(),
+            resetTerms = setOf("1141"),
+            checked = snapshot(fetchedAtMs = 1_000L, "BBB" to true),
+        )
+
+        assertEquals(listOf(Sent("1141BBB", false, null)), sent)
+    }
+
+    @Test
+    fun `the clear goes out too when Use Local falls back to the check's snapshot`() = runTest {
+        cacheTerm("AAA", "BBB")
+        cache.saveSemesterResetAt("1141", 2_000L)
+        val checked = snapshot(fetchedAtMs = 1_000L, "BBB" to true)
+
+        sync.pushLocal(checked, sync.currentGeneration(), resetTerms = setOf("1141"), checked = checked)
+
+        assertEquals(listOf(Sent("1141BBB", false, null)), sent)
+    }
+
+    @Test
+    fun `no clear for a course the reset term no longer has on the server, or that this phone ignores`() = runTest {
+        // AAA is ignored here and goes up as ignored; BBB was not put back by
+        // the upload, so there is no row to clear.
+        cacheTerm("AAA")
+        cache.saveIgnoredCourses(setOf("1141:AAA"))
+        cache.saveSemesterResetAt("1141", 2_000L)
+
+        sync.pushLocal(
+            snapshot(fetchedAtMs = 3_000L),
+            sync.currentGeneration(),
+            resetTerms = setOf("1141"),
+            checked = snapshot(fetchedAtMs = 1_000L, "AAA" to true, "BBB" to true),
+        )
+
+        assertEquals(listOf(Sent("1141AAA", true, null)), sent)
+    }
+
+    // ---- a course another device deleted and added back (tigerduck-app-android#182) ----
+
+    /** A snapshot listing AAA and BBB under the row ids given, with no settings. */
+    private fun rows(fetchedAtMs: Long, aaa: Long, bbb: Long) = snapshot(fetchedAtMs).copy(
+        serverCourses = listOf(
+            ServerCourse(courseNo = "AAA", courseName = "A", semester = "1141", id = aaa),
+            ServerCourse(courseNo = "BBB", courseName = "B", semester = "1141", id = bbb),
+        ),
+    )
+
+    @Test
+    fun `a course re-added elsewhere takes the server's setting, not this device's old one`() = runTest {
+        cache.saveIgnoredCourses(setOf("1141:AAA"))
+        sync.applySnapshot(snapshot(fetchedAtMs = 1_000L, "AAA" to true).copy(serverCourses = rows(0, 1, 2).serverCourses), sync.currentGeneration())
+        sent.clear()
+
+        // Another device deleted AAA and added it back: a new row, no setting.
+        val applied = sync.applySnapshot(rows(fetchedAtMs = 2_000L, aaa = 9, bbb = 2), sync.currentGeneration())
+
+        assertEquals(emptySet<String>(), applied)
+        assertEquals(emptyList<Sent>(), sent)
+    }
+
+    @Test
+    fun `settings the backend dropped with every row still go up again`() = runTest {
+        cache.saveIgnoredCourses(setOf("1141:AAA"))
+        sync.applySnapshot(snapshot(fetchedAtMs = 1_000L, "AAA" to true).copy(serverCourses = rows(0, 1, 2).serverCourses), sync.currentGeneration())
+        sent.clear()
+
+        // No row kept its id: the backend dropped them all while no device synced courses.
+        sync.applySnapshot(rows(fetchedAtMs = 2_000L, aaa = 9, bbb = 10), sync.currentGeneration())
+
+        assertEquals(setOf("1141:AAA"), cache.loadIgnoredCourses())
+        assertEquals(listOf(Sent("1141AAA", true, null)), sent)
+    }
+
+    @Test
+    fun `a term this device reset is not read as re-added elsewhere`() = runTest {
+        cache.saveIgnoredCourses(setOf("1141:AAA"))
+        val other = ServerCourse(courseNo = "CCC", courseName = "C", semester = "1142", id = 3)
+        sync.applySnapshot(
+            snapshot(fetchedAtMs = 1_000L, "AAA" to true).copy(serverCourses = rows(0, 1, 2).serverCourses + other),
+            sync.currentGeneration(),
+        )
+        sent.clear()
+
+        // Use Local reset 1141 here; 1142 kept its row.
+        sync.forgetRowsSeen(setOf("1141"))
+        sync.applySnapshot(
+            rows(fetchedAtMs = 2_000L, aaa = 9, bbb = 10).let { it.copy(serverCourses = it.serverCourses + other) },
+            sync.currentGeneration(),
+        )
+
+        assertEquals(setOf("1141:AAA"), cache.loadIgnoredCourses())
+        assertEquals(listOf(Sent("1141AAA", true, null)), sent)
+    }
+
+    @Test
+    fun `a term another device reset with Use Local keeps this device's ignores there and sends them again`() = runTest {
+        // An iPhone with assignment sync off, which lacks AAA's ignore, used
+        // Use Local: it reset 1141, so every 1141 row is new and has no
+        // setting, while 1142 kept its row. Its upload put nothing back for
+        // AAA's setting, so dropping it here would lose it for good.
+        cache.saveIgnoredCourses(setOf("1141:AAA"))
+        val other = ServerCourse(courseNo = "CCC", courseName = "C", semester = "1142", id = 3)
+        sync.applySnapshot(
+            snapshot(fetchedAtMs = 1_000L, "AAA" to true).copy(serverCourses = rows(0, 1, 2).serverCourses + other),
+            sync.currentGeneration(),
+        )
+        sent.clear()
+
+        sync.applySnapshot(
+            rows(fetchedAtMs = 2_000L, aaa = 9, bbb = 10).let { it.copy(serverCourses = it.serverCourses + other) },
+            sync.currentGeneration(),
+        )
+
+        assertEquals(setOf("1141:AAA"), cache.loadIgnoredCourses())
+        assertEquals(listOf(Sent("1141AAA", true, null)), sent)
+    }
 }
