@@ -49,14 +49,26 @@ class ClassTableImportViewModel @Inject constructor(
      */
     fun start() {
         if (_session.value != null) return
-        _session.value = ClassTableImportModel(
-            store = store,
-            signedInStudentId = { authService.storedStudentId },
-            isCurrent = sameSignIn({ authService.authState.value }, { authService.storedStudentId }),
-            lookup = lookup::courses,
-            scope = viewModelScope,
-        )
+        _session.value = newSession()
     }
+
+    /**
+     * Reads [text], the share code a link opened, as a scanned code: the same prompts, the
+     * nickname, and nothing saved without the confirm step. Any web page or app can open such a
+     * link. An import already open is replaced (decided for both apps): its code is dropped, and
+     * this one is read in a new import, under whoever is signed in now.
+     */
+    fun openLink(text: String) {
+        viewModelScope.launch { _session.value = linkedImport(store, { _session.value }, ::newSession, text) }
+    }
+
+    private fun newSession() = ClassTableImportModel(
+        store = store,
+        signedInStudentId = { authService.storedStudentId },
+        isCurrent = sameSignIn({ authService.authState.value }, { authService.storedStudentId }),
+        lookup = lookup::courses,
+        scope = viewModelScope,
+    )
 
     internal companion object {
         /**
@@ -66,6 +78,28 @@ class ClassTableImportViewModel @Inject constructor(
         fun sameSignIn(signedIn: () -> Boolean, studentId: () -> String?): () -> Boolean {
             val startedAs = signedIn() to studentId()
             return { (signedIn() to studentId()) == startedAs }
+        }
+
+        /**
+         * The import that reads [text], the share code a link opened: [next], in place of [open],
+         * the import on screen if any. That one is called off as its Cancel does: its code and
+         * prompt are dropped, and a lookup under way saves nothing, though a person already being
+         * written still ends saved, which Cancel cannot stop either. Unlike a scan, the link's code
+         * is never passed over for what was on screen.
+         *
+         * Waits for [store]'s first read: a link can start the app, and so this view model, before
+         * it is done, and the prompts ask it who is imported already. Read sooner, a person the
+         * store holds would get the new person's confirm step instead of the update prompt.
+         */
+        suspend fun linkedImport(
+            store: ImportedClassTableStore,
+            open: () -> ClassTableImportModel?,
+            next: () -> ClassTableImportModel,
+            text: String,
+        ): ClassTableImportModel {
+            store.load()
+            open()?.cancel()
+            return next().also { it.scanned(text) }
         }
     }
 
