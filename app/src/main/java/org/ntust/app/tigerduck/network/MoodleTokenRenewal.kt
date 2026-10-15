@@ -42,37 +42,11 @@ internal class MoodleTokenRenewal(
     /** The last failure that was not the network's, with when and for which credentials. */
     private var lastFailure: Failure? = null
 
-    /** The last token a sign-in got, with when and for which credentials. */
-    private var lastHarvest: Harvest? = null
-
     private class Failure(val atMs: Long, val error: Throwable, val credentials: String)
-
-    private class Harvest(val token: String, val atMs: Long, val credentials: String)
-
-    /**
-     * A token fresh enough for another service to check with Moodle: the stored one when a
-     * sign-in got it for the stored credentials less than [pauseMs] ago and no renewal is
-     * replacing it, else one in its place by the rules [renew] keeps.
-     */
-    suspend fun refresh(): String {
-        val stored = storedToken()
-        lock.withLock {
-            val harvest = lastHarvest
-            if (inFlight?.isActive != true && harvest != null && !stored.isNullOrEmpty() &&
-                harvest.token == stored && harvest.credentials == credentials()?.let(::fingerprint) &&
-                now() - harvest.atMs in 0 until pauseMs
-            ) {
-                return stored
-            }
-        }
-        return renew(rejected = stored)
-    }
 
     /** A token in place of [rejected], which is null when none was stored. */
     suspend fun renew(rejected: String?): String {
         val pending = lock.withLock {
-            // Moodle refused it, so it is no longer a token just got, whatever its renewal brings.
-            if (rejected != null && lastHarvest?.token == rejected) lastHarvest = null
             inFlight?.takeIf { it.isActive } ?: run {
                 val stored = storedToken()
                 if (!stored.isNullOrEmpty() && stored != rejected) return stored
@@ -98,26 +72,15 @@ internal class MoodleTokenRenewal(
         return pending.await().getOrThrow()
     }
 
-    /**
-     * Forgets what failed and what was got, for a sign-in the user made by hand, which got
-     * [harvested] with [credentials].
-     */
-    suspend fun reset(harvested: String? = null, credentials: Pair<String, String>? = null) = lock.withLock {
+    /** Forgets what failed, for a sign-in the user made by hand. */
+    suspend fun reset() = lock.withLock {
         lastFailure = null
         refusal.clear()
-        lastHarvest = if (harvested != null && credentials != null) {
-            Harvest(harvested, now(), fingerprint(credentials))
-        } else {
-            null
-        }
     }
 
     private suspend fun signIn(key: String, rejected: String?): String = try {
-        harvest(rejected).also { token ->
-            lock.withLock {
-                lastFailure = null
-                lastHarvest = Harvest(token, now(), key)
-            }
+        harvest(rejected).also {
+            lock.withLock { lastFailure = null }
         }
     } catch (e: CancellationException) {
         throw e
@@ -147,10 +110,9 @@ internal class MoodleTokenRenewal(
  * Which stored credentials NTUST's SSO refused, so they are not sent again until they change.
  * Each is named by a fingerprint of the student ID and password, never the password itself.
  *
- * The fingerprint is an unsalted SHA-256, fit only to compare in memory. An implementation that
- * persists the refusal must not write it: it keys an HMAC with a secret held in the Android
- * Keystore or generated per install, keeps the result in the encrypted credential store, and
- * is cleared on sign-out and on a full reset.
+ * The fingerprint is an unsalted SHA-256, fit only to compare in memory, and never written
+ * anywhere. The app keeps the refusal in the app-wide StoredPasswordLatch, a flag
+ * ([LatchedRefusal]); [InMemory] is for tests.
  */
 internal interface StoredPasswordRefusal {
     fun isRefused(fingerprint: String): Boolean

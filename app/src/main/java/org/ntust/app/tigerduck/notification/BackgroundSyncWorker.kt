@@ -27,6 +27,7 @@ import kotlinx.coroutines.coroutineScope
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
+import org.ntust.app.tigerduck.auth.StoredPasswordLatch
 import org.ntust.app.tigerduck.data.UnsentMarks
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.push.BackendSyncResult
@@ -68,6 +69,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
     private val fcmBootstrap: org.ntust.app.tigerduck.push.FcmBootstrap,
     private val notificationSettingsSync: org.ntust.app.tigerduck.push.NotificationSettingsSync,
     private val courseIgnoreSync: CourseIgnoreSync,
+    private val storedPasswordLatch: StoredPasswordLatch,
     private val unsentMarks: UnsentMarks,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) : CoroutineWorker(context, params) {
@@ -148,7 +150,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
         }
 
         if (coursesOk && assignmentsOk) return Result.success()
-        return resultForFailedSync(triggered, runAttemptCount)
+        return resultForFailedSync(triggered, runAttemptCount, passwordRejected = storedPasswordLatch.isRejected)
     }
 
     private suspend fun syncOverridesFromBackend() {
@@ -599,8 +601,15 @@ class BackgroundSyncWorker @AssistedInject constructor(
          * every trigger in the meantime is dropped behind it (requestSync
          * drops one that finds a sync queued).
          */
-        internal fun resultForFailedSync(triggered: Boolean, runAttemptCount: Int): ListenableWorker.Result =
-            if (triggered && runAttemptCount >= TRIGGERED_RETRIES) {
+        internal fun resultForFailedSync(
+            triggered: Boolean,
+            runAttemptCount: Int,
+            passwordRejected: Boolean = false,
+        ): ListenableWorker.Result =
+            // A retry could only fail the same way: once the school refused
+            // the stored password, no automatic sign-in posts it until the
+            // user signs in again (StoredPasswordLatch).
+            if (passwordRejected || (triggered && runAttemptCount >= TRIGGERED_RETRIES)) {
                 ListenableWorker.Result.success()
             } else {
                 ListenableWorker.Result.retry()

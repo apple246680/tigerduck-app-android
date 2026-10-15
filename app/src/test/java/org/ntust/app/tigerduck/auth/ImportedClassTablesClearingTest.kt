@@ -58,7 +58,9 @@ class ImportedClassTablesClearingTest {
 
     @Test
     fun `the NTUST sign-in and the demo account's both name the student ID that signed in`() {
-        assertEquals(2, body("suspend fun login(").uses("""accountDidSignIn\(normalizedId\)"""))
+        // Once, in the step TypedAccountSignIn runs for both as the account shows as signed in;
+        // TypedAccountSignInTest sees both run it.
+        assertEquals(1, body("suspend fun login(").uses("""accountDidSignIn\(normalizedId\)"""))
     }
 
     @Test

@@ -9,8 +9,11 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import kotlinx.coroutines.CoroutineScope
 import org.ntust.app.tigerduck.auth.SIGN_IN_PAUSE_MS
+import org.ntust.app.tigerduck.auth.PasswordPosting
+import org.ntust.app.tigerduck.auth.StoredPasswordLatch
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.di.ApplicationScope
 import java.net.SocketTimeoutException
@@ -38,11 +41,39 @@ import javax.inject.Singleton
  *       `signature:::wstoken:::privatetoken`)
  */
 @Singleton
-class MoodleTokenService @Inject constructor(
-    private val sessionManager: NtustSessionManager,
-    private val credentialManager: CredentialManager,
-    @param:ApplicationScope appScope: CoroutineScope,
+class MoodleTokenService internal constructor(
+    /** The client the OIDC flow builds on; the session manager's, so it shares its cookie jar. */
+    private val clientFor: () -> OkHttpClient,
+    /** Where the token and the account it is harvested with are stored. */
+    private val tokens: MoodleTokenCoordinator.Tokens,
+    passwordLatch: StoredPasswordLatch,
+    scope: CoroutineScope,
+    now: () -> Long,
 ) {
+    @Inject
+    constructor(
+        sessionManager: NtustSessionManager,
+        credentialManager: CredentialManager,
+        @ApplicationScope appScope: CoroutineScope,
+        passwordLatch: StoredPasswordLatch,
+    ) : this(
+        clientFor = { sessionManager.client },
+        tokens = object : MoodleTokenCoordinator.Tokens {
+            override var token: String?
+                get() = credentialManager.moodleToken
+                set(value) {
+                    credentialManager.moodleToken = value
+                }
+            override val studentId: String? get() = credentialManager.ntustStudentId
+            override val password: String? get() = credentialManager.ntustPassword
+            override fun storeIfSignedIn(studentId: String, token: String): Boolean =
+                credentialManager.storeMoodleTokenIfSignedIn(studentId, token)
+        },
+        passwordLatch = passwordLatch,
+        scope = appScope,
+        now = System::currentTimeMillis,
+    )
+
     private val moodleBaseUrl = "https://moodle2.ntust.edu.tw".toHttpUrl()
 
     private val moodleUa =
@@ -57,7 +88,7 @@ class MoodleTokenService @Inject constructor(
      * NetScaler doesn't serve an anti-bot challenge mid-redirect.
      */
     private val tokenClient: OkHttpClient by lazy {
-        sessionManager.client.newBuilder()
+        clientFor().newBuilder()
             .addNetworkInterceptor { chain ->
                 val req = chain.request().newBuilder()
                     .header("User-Agent", moodleUa)
@@ -72,36 +103,20 @@ class MoodleTokenService @Inject constructor(
             .build()
     }
 
-    fun currentToken(): String? = credentialManager.moodleToken
+    fun currentToken(): String? = tokens.token
 
     private val coordinator = MoodleTokenCoordinator(
-        tokens = object : MoodleTokenCoordinator.Tokens {
-            override var token: String?
-                get() = credentialManager.moodleToken
-                set(value) {
-                    credentialManager.moodleToken = value
-                }
-            override val studentId: String? get() = credentialManager.ntustStudentId
-            override val password: String? get() = credentialManager.ntustPassword
-            override fun storeIfSignedIn(studentId: String, token: String): Boolean =
-                credentialManager.storeMoodleTokenIfSignedIn(studentId, token)
-        },
-        login = { studentId, password ->
-            performOidcLogin(studentId, password).wstoken.also {
+        tokens = tokens,
+        login = { studentId, password, posting ->
+            performOidcLogin(studentId, password, posting).wstoken.also {
                 Log.i("MoodleTokenService", "harvested wstoken (len=${it.length})")
             }
         },
-        scope = appScope,
-        now = System::currentTimeMillis,
+        scope = scope,
+        now = now,
         pauseMs = SIGN_IN_PAUSE_MS,
+        passwordLatch = passwordLatch,
     )
-
-    /**
-     * A fresh token with the stored NTUST credentials, for the backend to check with Moodle: the
-     * stored one when a sign-in got it moments ago, else a new one. It shares the renewals'
-     * sign-in, pause and stop at a refused password; see [MoodleTokenRenewal].
-     */
-    suspend fun refreshToken(): String = coordinator.refresh()
 
     /**
      * A token in place of [rejected], which is null when none was stored, for a Moodle call that
@@ -112,7 +127,11 @@ class MoodleTokenService @Inject constructor(
      */
     suspend fun renewToken(rejected: String?): String = coordinator.renew(rejected)
 
-    /** Fetch a fresh token using the supplied credentials (first-time login). */
+    /**
+     * Fetch a fresh token using the supplied credentials (first-time login). It is stored only
+     * while [studentId] is still the stored account, so a sign-out during the sign-in leaves none
+     * of the departing student's; then this throws.
+     */
     suspend fun obtainToken(studentId: String, password: String): String = coordinator.obtain(studentId, password)
 
     private data class TokenTriple(
@@ -121,9 +140,11 @@ class MoodleTokenService @Inject constructor(
         val privatetoken: String?,
     )
 
+    /** [posting] posts the password to SSO and reads its answer; it may refuse to post it. */
     private suspend fun performOidcLogin(
         studentId: String,
         password: String,
+        posting: PasswordPosting,
     ): TokenTriple = withContext(Dispatchers.IO) {
         // The exact string form sent to the server is what Moodle HMACs against,
         // so keep this one copy and reuse it for both the query param and the
@@ -152,6 +173,7 @@ class MoodleTokenService @Inject constructor(
             studentId = studentId,
             password = password,
             passport = passport,
+            posting = posting,
             remainingSteps = 6,
         )
     }
@@ -163,6 +185,7 @@ class MoodleTokenService @Inject constructor(
         studentId: String,
         password: String,
         passport: String,
+        posting: PasswordPosting,
         remainingSteps: Int,
     ): TokenTriple {
         if (remainingSteps <= 0) {
@@ -199,6 +222,7 @@ class MoodleTokenService @Inject constructor(
                 studentId = studentId,
                 password = password,
                 passport = passport,
+                posting = posting,
                 remainingSteps = remainingSteps - 1,
             )
         }
@@ -208,12 +232,17 @@ class MoodleTokenService @Inject constructor(
             val fields = parseSSOLoginFields(html)
             if (fields.antiforgery.isEmpty()) {
                 if (responseUrl.encodedPath.contains("/account/login")) {
-                    throw MoodleWebserviceError.SsoLoginRejected(extractLoginError(html))
+                    // Nothing was posted, so this is no refusal of the password.
+                    throw MoodleWebserviceError.SsoLoginFormUnavailable(extractLoginError(html))
                 }
                 throw MoodleWebserviceError.MalformedResponse("SSO login form missing anti-forgery token")
             }
             val postUrl = responseUrl.resolve(fields.action)
                 ?: throw MoodleWebserviceError.MalformedResponse("Invalid SSO action: ${fields.action}")
+            // The credentials go to the school's sign-in host and nowhere else.
+            if (!isSignInHost(postUrl)) {
+                throw MoodleWebserviceError.MalformedResponse("SSO action outside the sign-in host")
+            }
             val payload = linkedMapOf(
                 "__RequestVerificationToken" to fields.antiforgery,
                 "Username" to studentId,
@@ -226,21 +255,26 @@ class MoodleTokenService @Inject constructor(
                 "ReturnUrl" to fields.returnUrl,
                 "Uri" to fields.uri,
             )
-            Log.i("MoodleTokenService", "posting SSO login → ${postUrl.redactForLog()}")
-            val (nextHtml, nextUrl) = postForm(
-                url = postUrl,
-                fields = payload,
-                referer = responseUrl.toString(),
-                origin = "https://ssoam2.ntust.edu.tw",
-            )
-
-            // If we're still at /account/login and neither a token nor an OIDC
-            // bridge is in sight, the credentials were rejected.
-            if (nextUrl.encodedPath.contains("/account/login") &&
-                extractMoodleMobileToken(nextHtml) == null &&
-                parseOIDCBridge(nextHtml) == null
-            ) {
-                throw MoodleWebserviceError.SsoLoginRejected(extractLoginError(nextHtml))
+            // The post and SSO's answer to it are one step for the latch: an automatic harvest
+            // posts under the lock every automatic post takes, and latches a refusal before it
+            // lets go.
+            val (nextHtml, nextUrl) = posting.post {
+                Log.i("MoodleTokenService", "posting SSO login → ${postUrl.redactForLog()}")
+                val answer = postLoginForm(
+                    url = postUrl,
+                    fields = payload,
+                    referer = responseUrl.toString(),
+                    origin = "https://ssoam2.ntust.edu.tw",
+                )
+                // If we're still at /account/login and neither a token nor an OIDC
+                // bridge is in sight, the credentials were rejected.
+                if (answer.second.encodedPath.contains("/account/login") &&
+                    extractMoodleMobileToken(answer.first) == null &&
+                    parseOIDCBridge(answer.first) == null
+                ) {
+                    throw MoodleWebserviceError.SsoLoginRejected(extractLoginError(answer.first))
+                }
+                answer
             }
             return resolveTokenTriple(
                 html = nextHtml,
@@ -249,6 +283,7 @@ class MoodleTokenService @Inject constructor(
                 studentId = studentId,
                 password = password,
                 passport = passport,
+                posting = posting,
                 remainingSteps = remainingSteps - 1,
             )
         }
@@ -289,14 +324,41 @@ class MoodleTokenService @Inject constructor(
         return executeAndReadBody(reqBuilder.build())
     }
 
-    private fun executeAndReadBody(request: Request): Pair<String, HttpUrl> {
-        val response = try {
-            tokenClient.newCall(request).execute()
-        } catch (e: SocketTimeoutException) {
-            throw MoodleWebserviceError.TransientNetwork("timeout: ${e.message}")
-        } catch (e: java.io.IOException) {
-            throw MoodleWebserviceError.TransientNetwork(e.message ?: "io error")
-        }
+    /**
+     * The SSO sign-in form's POST, which carries the password: no redirect sends the form on to
+     * another address, and one that would ends the sign-in ([executeCredentialPost]).
+     */
+    private fun postLoginForm(
+        url: HttpUrl,
+        fields: Map<String, String>,
+        referer: String,
+        origin: String,
+    ): Pair<String, HttpUrl> {
+        val body = FormBody.Builder().apply {
+            fields.forEach { (k, v) -> add(k, v) }
+        }.build()
+        val request = Request.Builder().url(url).post(body)
+            .header("Referer", referer)
+            .header("Origin", origin)
+            .build()
+        return readBody(
+            execute { tokenClient.executeCredentialPost(request) }
+                ?: throw MoodleWebserviceError.MalformedResponse("SSO sign-in redirect not followed"),
+        )
+    }
+
+    private fun executeAndReadBody(request: Request): Pair<String, HttpUrl> =
+        readBody(execute { tokenClient.newCall(request).execute() })
+
+    private fun <T> execute(call: () -> T): T = try {
+        call()
+    } catch (e: SocketTimeoutException) {
+        throw MoodleWebserviceError.TransientNetwork("timeout: ${e.message}")
+    } catch (e: java.io.IOException) {
+        throw MoodleWebserviceError.TransientNetwork(e.message ?: "io error")
+    }
+
+    private fun readBody(response: Response): Pair<String, HttpUrl> {
         response.use { r ->
             if (!r.isSuccessful) {
                 throw MoodleWebserviceError.HttpStatus(r.code)
@@ -409,29 +471,7 @@ class MoodleTokenService @Inject constructor(
         )
     }
 
-    private fun extractLoginError(html: String): String? {
-        val classes = listOf(
-            "field-validation-error",
-            "validation-summary-errors",
-            "alert-danger",
-            "text-danger",
-        )
-        for (cls in classes) {
-            val re = Regex(
-                """<[^>]*class=["'][^"']*\b$cls\b[^"']*["'][^>]*>([\s\S]*?)</[^>]+>""",
-                RegexOption.IGNORE_CASE,
-            )
-            val match = re.find(html) ?: continue
-            val fragment = match.groupValues[1]
-            val text = fragment
-                .replace(Regex("<[^>]+>"), " ")
-                .let(::decodeHtmlEntities)
-                .replace(Regex("\\s+"), " ")
-                .trim()
-            if (text.isNotEmpty()) return text
-        }
-        return null
-    }
+    private fun extractLoginError(html: String): String? = HtmlParser.loginErrorMessage(html)
 
     // Named `redactForLog` so it doesn't shadow OkHttp's HttpUrl.redact() member.
     private fun HttpUrl.redactForLog(): String {

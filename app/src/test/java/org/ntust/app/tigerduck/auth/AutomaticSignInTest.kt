@@ -321,6 +321,61 @@ class AutomaticSignInTest {
         assertEquals(1, backend.received(LOGIN).size)
     }
 
+    // What the TigerSync status reads (issue #203)
+
+    @Test
+    fun `a failed sign-in is reported until one succeeds`() = runTest {
+        backend.answer(LOGIN, 503)
+        val manager = manager()
+        assertFalse(manager.lastSignInFailed.value)
+
+        assertFalse(manager.signInIfSignedOut())
+        assertTrue(manager.lastSignInFailed.value)
+
+        clock += 300_000
+        assertTrue(manager.signInIfSignedOut())
+        assertFalse(manager.lastSignInFailed.value)
+    }
+
+    @Test
+    fun `a sign-in under way is not reported as failed, as it may yet succeed`() = runTest {
+        backend.answer(LOGIN, 503)
+        val manager = manager()
+        manager.signInIfSignedOut()
+        clock += 300_000
+        val held = backend.hold(LOGIN)
+
+        val signIn = async { manager.signInIfSignedOut() }
+        held.arrived.await()
+        assertFalse(manager.lastSignInFailed.value)
+
+        held.release(503)
+        assertFalse(signIn.await())
+        assertTrue(manager.lastSignInFailed.value)
+    }
+
+    @Test
+    fun `an interactive sign-in that fails is reported too, and a sign-out clears it`() = runTest {
+        backend.answer(LOGIN, 503)
+        val manager = manager()
+        assertFalse(manager.signInInteractively { manager.loginAsTheUser(it) })
+        assertTrue(manager.lastSignInFailed.value)
+
+        manager.logout()
+
+        assertFalse(manager.lastSignInFailed.value)
+    }
+
+    @Test
+    fun `a sign-in with nothing to send is no failure`() = runTest {
+        accountStored = false
+        val manager = manager()
+
+        assertFalse(manager.signInIfSignedOut())
+
+        assertFalse(manager.lastSignInFailed.value)
+    }
+
     private fun manager() = AuthTokenManager(tokens, backend.client, prefs, "device-1", now = { clock }).apply {
         // Stands in for AuthService's, which sends the stored account through login().
         signInWithStoredAccount = { signIn ->
