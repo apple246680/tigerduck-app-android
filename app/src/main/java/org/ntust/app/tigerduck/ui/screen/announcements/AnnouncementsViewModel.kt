@@ -23,6 +23,7 @@ import org.ntust.app.tigerduck.data.BulletinRepository
 import org.ntust.app.tigerduck.data.RefreshPolicy
 import org.ntust.app.tigerduck.data.cache.BulletinCache
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
+import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.demo.DemoAccount
 import org.ntust.app.tigerduck.notification.SyncSource
 import org.ntust.app.tigerduck.network.BulletinApiClient
@@ -53,6 +54,7 @@ class AnnouncementsViewModel @Inject constructor(
     private val readState: BulletinReadStateStore,
     private val prefs: AppPreferences,
     private val demoAccount: DemoAccount,
+    private val credentials: CredentialManager,
 ) : ViewModel() {
 
 
@@ -214,6 +216,8 @@ class AnnouncementsViewModel @Inject constructor(
             // can't desync the fetch filter from the UI state.
             val includeDeleted = _state.value.showDeleted
             _state.update { it.copy(loadState = LoadState.Loading, isPaginating = false) }
+            // The school account as it is now; a page that arrives for another is dropped.
+            val account = credentials.schoolAccountGeneration
             try {
                 val response = api.fetchList(
                     cursor = null,
@@ -223,6 +227,7 @@ class AnnouncementsViewModel @Inject constructor(
                 // call: writing nextCursor / items here would overwrite the
                 // newer refresh that triggered our cancellation.
                 coroutineContext.ensureActive()
+                if (droppedAfterSignOut(account)) return@launch
                 // Wall clock, for the "Last synced" row and across restarts;
                 // the session's elapsedRealtime below is neither.
                 val fetchedAt = System.currentTimeMillis()
@@ -239,8 +244,7 @@ class AnnouncementsViewModel @Inject constructor(
                         )
                     )
                 }
-                cache.save(merged)
-                cache.saveFetchedAt(fetchedAt)
+                if (!saveUnlessSignedOut(merged, fetchedAt, account)) return@launch
                 repository.listRefreshed(
                     SystemClock.elapsedRealtime(), includeDeleted, response.nextCursor,
                 )
@@ -283,6 +287,7 @@ class AnnouncementsViewModel @Inject constructor(
             // legitimately a "load more" tap.
             var pages = 0
             var latest: List<BulletinSummary>? = null
+            val account = credentials.schoolAccountGeneration
             while (pages < 5 && nextCursor != null) {
                 pages++
                 delay(150)
@@ -295,6 +300,7 @@ class AnnouncementsViewModel @Inject constructor(
                     break
                 }
                 coroutineContext.ensureActive()
+                if (droppedAfterSignOut(account)) return@launch
                 val merged = sortedUnique(_state.value.items + response.items)
                 nextCursor = response.nextCursor
                 repository.putSummaries(merged)
@@ -312,8 +318,7 @@ class AnnouncementsViewModel @Inject constructor(
             // Persist the final merged snapshot once when the prefetch chain
             // settles, instead of rewriting summaries.json on every page.
             latest?.let {
-                cache.save(it)
-                repository.listAdvanced(includeDeleted, nextCursor)
+                if (saveUnlessSignedOut(it, null, account)) repository.listAdvanced(includeDeleted, nextCursor)
             }
         }
     }
@@ -333,9 +338,11 @@ class AnnouncementsViewModel @Inject constructor(
         prefetch?.cancel()
         _state.update { it.copy(isPaginating = true) }
         loadMoreJob = viewModelScope.launch {
+            val account = credentials.schoolAccountGeneration
             try {
                 val response = api.fetchList(cursor = cursor, includeDeleted = s.showDeleted)
                 coroutineContext.ensureActive()
+                if (droppedAfterSignOut(account)) return@launch
                 val merged = sortedUnique(_state.value.items + response.items)
                 nextCursor = response.nextCursor
                 repository.putSummaries(merged)
@@ -348,7 +355,7 @@ class AnnouncementsViewModel @Inject constructor(
                         )
                     )
                 }
-                cache.save(merged)
+                if (!saveUnlessSignedOut(merged, null, account)) return@launch
                 repository.listAdvanced(s.showDeleted, response.nextCursor)
                 if (response.nextCursor == null) {
                     val ids = merged.map { it.id }
@@ -361,6 +368,47 @@ class AnnouncementsViewModel @Inject constructor(
             } catch (_: Exception) {
                 _state.update { it.copy(isPaginating = false) }
             }
+        }
+    }
+
+    /**
+     * Whether a school sign-out has come since [account] was read from
+     * [CredentialManager.schoolAccountGeneration], before a fetch. The sign-out clears the cached
+     * list and its date ([org.ntust.app.tigerduck.auth.AuthService.logout]); a page that arrives
+     * after it would write them back, and the departing student's list would be the next one's
+     * first paint. Bulletins are public, but the sign-out is still where the list is let go of.
+     * So the page is dropped and the list starts over: the next visit reads the cleared cache,
+     * then the feed, as on the iPhone. The write to the cache that follows a page let through
+     * asks again, under the cache's lock; see [saveUnlessSignedOut].
+     */
+    private fun droppedAfterSignOut(account: Int): Boolean {
+        if (credentials.isSchoolAccount(account)) return false
+        startOver()
+        return true
+    }
+
+    /**
+     * Writes the list, and its date when given, unless a sign-out has come since [account] was
+     * read -- asked under the cache's lock, which the sign-out's clear takes too, so the check
+     * [droppedAfterSignOut] made a moment earlier cannot be overtaken between it and the write.
+     * Refused, the list starts over as there.
+     */
+    private suspend fun saveUnlessSignedOut(items: List<BulletinSummary>, fetchedAt: Long?, account: Int): Boolean {
+        if (cache.saveIf(items, fetchedAt) { credentials.isSchoolAccount(account) }) return true
+        startOver()
+        return false
+    }
+
+    /** Back to before the first visit: nothing in memory, and [load] seeds from the cache again. */
+    private fun startOver() {
+        prefetch?.cancel()
+        loadMoreJob?.cancel()
+        nextCursor = null
+        hasLoaded = false
+        _state.update {
+            applyFilters(
+                it.copy(items = emptyList(), loadState = LoadState.Idle, isPaginating = false, hasMore = true, syncedAtMs = 0L)
+            )
         }
     }
 
