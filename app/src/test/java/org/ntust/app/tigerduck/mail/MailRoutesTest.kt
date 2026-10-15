@@ -8,8 +8,8 @@ class MailRoutesTest {
     fun `folder names are percent-encoded in routes`() {
         assertEquals("schoolMail/message/INBOX/42", MailRoutes.message("INBOX", 42))
         assertEquals("schoolMail/message/Moodle%20%E8%AA%B2%E7%A8%8B/7", MailRoutes.message("Moodle 課程", 7))
-        assertEquals("schoolMail/compose?mode=REPLY&folder=INBOX&uid=42&mailto=", MailRoutes.compose(ComposeMode.REPLY, "INBOX", 42))
-        assertEquals("schoolMail/compose?mode=NEW&folder=&uid=-1&mailto=", MailRoutes.compose(ComposeMode.NEW))
+        assertEquals("schoolMail/compose?mode=REPLY&folder=INBOX&uid=42", MailRoutes.compose(ComposeMode.REPLY, "INBOX", 42))
+        assertEquals("schoolMail/compose?mode=NEW&folder=&uid=-1", MailRoutes.compose(ComposeMode.NEW))
     }
 
     @Test
@@ -26,5 +26,13 @@ class MailRoutesTest {
         // kilobytes would overflow that when the app goes to the background.
         val route = MailRoutes.compose(ComposeMode.NEW, mailto = "mailto:a@x.tw?body=" + "x".repeat(300_000))
         assertEquals("schoolMail/compose?mode=NEW&folder=&uid=-1&mailto=mailto%3Aa%40x.tw", route)
+    }
+
+    @Test
+    fun `a new message can name its recipient`() {
+        assertEquals(
+            "schoolMail/compose?mode=NEW&folder=&uid=-1&to=b11300001%40mail.ntust.edu.tw",
+            MailRoutes.compose(ComposeMode.NEW, to = "b11300001@mail.ntust.edu.tw"),
+        )
     }
 }

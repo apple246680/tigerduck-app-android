@@ -9,7 +9,7 @@ enum class ComposeMode { NEW, REPLY, REPLY_ALL, FORWARD, DRAFT }
 object MailRoutes {
     const val LIST = "schoolMail"
     const val MESSAGE = "schoolMail/message/{folder}/{uid}"
-    const val COMPOSE = "schoolMail/compose?mode={mode}&folder={folder}&uid={uid}&mailto={mailto}"
+    const val COMPOSE = "schoolMail/compose?mode={mode}&folder={folder}&uid={uid}&mailto={mailto}&to={to}"
     const val GUIDE = "schoolMail/guide"
     const val SETTINGS = "schoolMail/settings"
 
@@ -19,9 +19,13 @@ object MailRoutes {
 
     /**
      * [mailto] is a whole `mailto:` link for a new mail to start from, cut down by
-     * [MailtoLink.capped] when it is too long to carry in a route.
+     * [MailtoLink.capped] when it is too long to carry in a route. [to] prefills a new message's
+     * recipients, as a course member's email does. Either rides along only when given.
      */
-    fun compose(mode: ComposeMode, folder: String? = null, uid: Long? = null, mailto: String? = null) =
-        "schoolMail/compose?mode=${mode.name}&folder=${encode(folder.orEmpty())}&uid=${uid ?: -1}" +
-            "&mailto=${encode(mailto?.let(MailtoLink::capped).orEmpty())}"
+    fun compose(mode: ComposeMode, folder: String? = null, uid: Long? = null, mailto: String? = null, to: String? = null): String {
+        var route = "schoolMail/compose?mode=${mode.name}&folder=${encode(folder.orEmpty())}&uid=${uid ?: -1}"
+        if (!mailto.isNullOrBlank()) route += "&mailto=${encode(MailtoLink.capped(mailto))}"
+        if (!to.isNullOrBlank()) route += "&to=${encode(to)}"
+        return route
+    }
 }

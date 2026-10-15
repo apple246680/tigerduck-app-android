@@ -55,7 +55,11 @@ class MailChecker @Inject constructor(
 ) {
     private val mutex = Mutex()
 
+    // Held around each read-and-write of the inbox marker: a check's and the list's.
+    private val markerLock = Any()
+
     suspend fun check(source: CheckSource): CheckOutcome {
+        val generation = account.accountGeneration
         val outcome = if (!mutex.tryLock()) {
             CheckOutcome.Busy
         } else {
@@ -65,12 +69,34 @@ class MailChecker @Inject constructor(
                 mutex.unlock()
             }
         }
+        // The inbox answered, whatever it held -- unless the account it answered has signed out
+        // since, and the date would land in the state its sign-out just cleared.
+        val reached = outcome is CheckOutcome.Baseline || outcome is CheckOutcome.NoChange || outcome is CheckOutcome.NewMail
+        if (reached && account.accountGeneration == generation) {
+            state.inboxFetchedAt = clock.now()
+        }
         record(source, outcome)
         return outcome
     }
 
+    /**
+     * When the inbox last answered this account, epoch ms, or 0: a check that reached it, or the
+     * list page reading it ([noteFetchedByPage]). What the School Mail page's "Last synced" row
+     * dates; cleared with the rest of the mail state at sign-out.
+     */
+    val inboxFetchedAt: Long get() = state.inboxFetchedAt
+
+    /**
+     * The list page read the inbox from the server. Not the demo mailbox, which has no server:
+     * like every other page on the demo account, it was never synced. Nor once the account has
+     * signed out, as a fetch that was under way would date the cleared state.
+     */
+    fun noteFetchedByPage() {
+        if (!account.isDemo && account.signedIn.value) state.inboxFetchedAt = clock.now()
+    }
+
     /** The list page showed the inbox up to [status]; those mails must never notify later. */
-    fun noteSeenByPage(status: FolderStatus) {
+    fun noteSeenByPage(status: FolderStatus) = synchronized(markerLock) {
         if (status.uidValidity != state.inboxUidValidity) {
             state.inboxUidValidity = status.uidValidity
             state.inboxSeenUidNext = status.uidNext
@@ -80,7 +106,11 @@ class MailChecker @Inject constructor(
     }
 
     private suspend fun run(source: CheckSource): CheckOutcome = withContext(Dispatchers.IO) {
-        val credentials = account.credentialsOrNull() ?: return@withContext CheckOutcome.NotSignedIn
+        // The account with its generation, read together: a sign-out or a sign-in from here on,
+        // even the same student's again, makes this check's results the sign-in before's.
+        val signedIn = account.snapshot() ?: return@withContext CheckOutcome.NotSignedIn
+        val generation = signedIn.generation
+        val credentials = signedIn.credentials
         if (state.authFailed || !state.notificationsEnabled) return@withContext CheckOutcome.Disabled
         if (source == CheckSource.FOREGROUND) {
             val now = clock.now()
@@ -88,14 +118,22 @@ class MailChecker @Inject constructor(
             state.lastForegroundCheckAt = now
         }
         if (account.isDemo) return@withContext CheckOutcome.Demo
+        // The state, the cache and the notifications belong to whoever is signed in now. A check
+        // that outlives its account -- a sign-out, or another student signing in meanwhile --
+        // writes, files and posts nothing more, so it asks again right before each of those.
+        val stillSignedIn = { account.accountGeneration == generation }
         try {
             sessions.open(credentials).use { session ->
                 val status = session.status(INBOX)
-                val marker = state.inboxSeenUidNext
-                if (status.uidValidity != state.inboxUidValidity || marker <= 0) {
-                    state.inboxUidValidity = status.uidValidity
-                    state.inboxSeenUidNext = status.uidNext
-                    return@withContext CheckOutcome.Baseline(status.uidNext)
+                val marker = synchronized(markerLock) {
+                    if (!stillSignedIn()) return@withContext CheckOutcome.NotSignedIn
+                    val stored = state.inboxSeenUidNext
+                    if (status.uidValidity != state.inboxUidValidity || stored <= 0) {
+                        state.inboxUidValidity = status.uidValidity
+                        state.inboxSeenUidNext = status.uidNext
+                        return@withContext CheckOutcome.Baseline(status.uidNext)
+                    }
+                    stored
                 }
                 if (status.uidNext <= marker) return@withContext CheckOutcome.NoChange
                 val fresh = session.fetchSince(INBOX, marker).filter { it.uid >= marker }
@@ -103,17 +141,32 @@ class MailChecker @Inject constructor(
                 // the two commands is then neither skipped nor notified twice.
                 val advanced = fresh.maxOfOrNull { it.uid + 1 } ?: status.uidNext
                 val toNotify = fresh.filter { !it.flags.seen && !it.flags.deleted }
-                if (toNotify.isNotEmpty()) notifier.postNewMail(INBOX, toNotify)
+                // Posted after the sign-out, the departing student's sender and subject would
+                // stay on the lock screen.
+                if (!stillSignedIn()) return@withContext CheckOutcome.NotSignedIn
+                if (toNotify.isNotEmpty()) {
+                    notifier.postNewMail(INBOX, toNotify)
+                    // A sign-out during the post may have run its cleanup before it landed.
+                    if (!stillSignedIn()) {
+                        notifier.cancelPosted(toNotify)
+                        return@withContext CheckOutcome.NotSignedIn
+                    }
+                }
                 // Spec §8.5 order: notify, then advance -- and never backwards. The page
                 // poll's noteSeenByPage can move the marker further while this check runs;
-                // overwriting it would re-notify mail the list has already shown.
-                state.inboxSeenUidNext = maxOf(state.inboxSeenUidNext, advanced)
+                // overwriting it would re-notify mail the list has already shown. It can also
+                // adopt a new UIDVALIDITY, whose marker this check's UIDs say nothing about.
+                synchronized(markerLock) {
+                    if (stillSignedIn() && state.inboxUidValidity == status.uidValidity) {
+                        state.inboxSeenUidNext = maxOf(state.inboxSeenUidNext, advanced)
+                    }
+                }
                 // Last, and deliberately after the marker. Warming bodies is a convenience the
                 // check's real job does not depend on, and it is the slowest thing here -- up to
                 // five fetches on a connection that may be on a train. Run before the advance, a
                 // process death anywhere in it would leave the marker where it was and notify
                 // every one of these mails again on the next check.
-                prefetchBodies(session, status.uidValidity, toNotify)
+                prefetchBodies(session, status.uidValidity, toNotify, stillSignedIn)
                 CheckOutcome.NewMail(toNotify.size)
             }
         } catch (e: CancellationException) {
@@ -122,6 +175,8 @@ class MailChecker @Inject constructor(
             // surrounding withContext rethrew it anyway.
             throw e
         } catch (e: Exception) {
+            // A rejection of an account that has signed out would stop the next one's checks.
+            if (!stillSignedIn()) return@withContext CheckOutcome.NotSignedIn
             val error = MailErrors.classify(e)
             if (error is MailError.AuthFailed) {
                 account.onAuthFailure()
@@ -147,10 +202,20 @@ class MailChecker @Inject constructor(
      * moving the marker -- has already succeeded by the time it runs; a body that will not come
      * down means only that opening that mail is as slow as it used to be.
      */
-    private fun prefetchBodies(session: MailSession, uidValidity: Long, arrivals: List<MailSummary>) {
+    private fun prefetchBodies(
+        session: MailSession,
+        uidValidity: Long,
+        arrivals: List<MailSummary>,
+        stillSignedIn: () -> Boolean,
+    ) {
         arrivals.sortedByDescending { it.uid }.take(BODY_PREFETCH_LIMIT).forEach { summary ->
+            // Filed after the sign-out emptied the cache, the departing student's mail would
+            // stay on disk for whoever signs in next.
+            if (!stillSignedIn()) return
             try {
-                cache.saveBody(INBOX, summary.uid, uidValidity, session.fetchBody(INBOX, summary.uid))
+                val body = session.fetchBody(INBOX, summary.uid)
+                // Asked under the cache's lock, which the sign-out's clear takes too.
+                if (!cache.saveBodyIf(INBOX, summary.uid, uidValidity, body, stillSignedIn)) return
             } catch (e: CancellationException) {
                 // Not runCatching: that catches Throwable, so a cancellation would be swallowed
                 // here and the loop would carry on fetching for a check nobody is waiting for.

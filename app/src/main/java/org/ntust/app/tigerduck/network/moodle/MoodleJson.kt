@@ -1,0 +1,239 @@
+package org.ntust.app.tigerduck.network.moodle
+
+import com.google.gson.JsonArray
+import com.google.gson.JsonElement
+import com.google.gson.JsonObject
+import org.ntust.app.tigerduck.network.MoodleWebserviceError
+import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseSummary
+import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussion
+import org.ntust.app.tigerduck.network.model.moodle.MoodleFile
+import org.ntust.app.tigerduck.network.model.moodle.MoodleForum
+import org.ntust.app.tigerduck.network.model.moodle.MoodleGradeItem
+import org.ntust.app.tigerduck.network.model.moodle.MoodleMember
+import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberField
+import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberRole
+
+/**
+ * Moodle's answers read into the app's models. Gson's tree API rather than reflection, so R8 has
+ * no field names to keep and a field of an unexpected type drops that field, not the answer: a
+ * malformed row is skipped rather than failing the whole list.
+ */
+object MoodleJson {
+
+    fun siteInfo(json: JsonElement): MoodleSiteInfo {
+        val o = json.objOrNull() ?: throw MoodleWebserviceError.MalformedResponse("site_info not an object")
+        val userId = o.int("userid")
+            ?: throw MoodleWebserviceError.MalformedResponse("userid missing from site_info")
+        val functions = o.array("functions")
+            ?.mapNotNull { it.objOrNull()?.str("name") }
+            ?.toSet()
+            .orEmpty()
+        return MoodleSiteInfo(
+            userId = userId,
+            functions = functions,
+            privateAccessKey = o.str("userprivateaccesskey")?.takeIf { it.isNotEmpty() },
+        )
+    }
+
+    /** `mod_forum_get_forums_by_courses`. */
+    fun forums(json: JsonElement): List<MoodleForum> =
+        json.arrayOrThrow("forums").mapNotNull { el ->
+            val o = el.objOrNull() ?: return@mapNotNull null
+            val id = o.int("id") ?: return@mapNotNull null
+            val intro = o.str("intro")?.let(MoodleHtmlText::plainText).orEmpty()
+            MoodleForum(
+                id = id,
+                courseId = o.int("course") ?: return@mapNotNull null,
+                type = o.str("type").orEmpty(),
+                name = MoodleHtmlText.plainText(o.str("name").orEmpty()),
+                cmid = o.int("cmid") ?: 0,
+                discussionCount = o.int("numdiscussions") ?: 0,
+                unreadPostCount = o.int("unreadpostscount") ?: 0,
+                intro = intro.ifEmpty { null },
+            )
+        }
+
+    /** `mod_forum_get_forum_discussions`. */
+    fun discussions(json: JsonElement): List<MoodleDiscussion> {
+        val list = json.objOrNull()?.array("discussions")
+            ?: throw MoodleWebserviceError.MalformedResponse("discussions missing")
+        return list.mapNotNull { el ->
+            val o = el.objOrNull() ?: return@mapNotNull null
+            val message = o.str("message").orEmpty()
+            MoodleDiscussion(
+                id = o.int("discussion") ?: return@mapNotNull null,
+                postId = o.int("id") ?: 0,
+                title = MoodleHtmlText.plainText(o.str("name").orEmpty()),
+                message = message,
+                preview = MoodleHtmlText.plainText(message),
+                created = o.long("created") ?: 0,
+                modified = o.long("timemodified") ?: 0,
+                isPinned = o.bool("pinned") ?: false,
+                unreadCount = o.int("numunread") ?: 0,
+                replyCount = o.int("numreplies") ?: 0,
+                authorName = o.str("userfullname"),
+                authorId = o.int("userid"),
+                attachments = o.array("attachments")?.mapNotNull(::file).orEmpty(),
+            )
+        }
+    }
+
+    /**
+     * A file in a Moodle answer: a post's attachment or a module's content. Moodle's file
+     * exporter names the link `url`; `external_files` names it `fileurl`.
+     */
+    fun file(json: JsonElement): MoodleFile? {
+        val o = json.objOrNull() ?: return null
+        val name = o.str("filename") ?: return null
+        val url = o.str("fileurl") ?: o.str("url") ?: return null
+        return MoodleFile(
+            name = name,
+            size = o.long("filesize") ?: 0,
+            url = url,
+            mimeType = o.str("mimetype"),
+            modified = o.long("timemodified")?.takeIf { it > 0 },
+            path = o.str("filepath"),
+        )
+    }
+
+    /**
+     * `gradereport_user_get_grade_items` for [userId]. Moodle writes "-" for an item not graded
+     * yet, puts a pass mark's icon as HTML before a grade, and sends no `graderaw` for a grade it
+     * keeps from the student, such as one hidden until a date.
+     */
+    fun gradeItems(json: JsonElement, userId: Int): List<MoodleGradeItem> {
+        val users = json.objOrNull()?.array("usergrades")
+            ?: throw MoodleWebserviceError.MalformedResponse("usergrades missing")
+        val mine = users.mapNotNull { it.objOrNull() }.firstOrNull { it.int("userid") == userId }
+            ?: return emptyList()
+        return mine.array("gradeitems").orEmpty().mapNotNull { el ->
+            val o = el.objOrNull() ?: return@mapNotNull null
+            val formatted = MoodleHtmlText.plainText(o.str("gradeformatted").orEmpty())
+            val raw = o.double("graderaw")
+            MoodleGradeItem(
+                id = o.int("id") ?: return@mapNotNull null,
+                name = MoodleHtmlText.plainText(o.str("itemname").orEmpty()),
+                type = o.str("itemtype").orEmpty(),
+                module = o.str("itemmodule"),
+                cmid = o.int("cmid"),
+                grade = if (raw == null || formatted.isEmpty() || formatted == "-") null else formatted,
+                maxGrade = o.double("grademax"),
+                isHidden = o.bool("gradeishidden") ?: false,
+                feedback = MoodleHtmlText.markdown(o.str("feedback").orEmpty()),
+            )
+        }
+    }
+
+    /** `core_enrol_get_enrolled_users`. */
+    fun members(json: JsonElement): List<MoodleMember> =
+        json.arrayOrThrow("members").mapNotNull { el ->
+            val o = el.objOrNull() ?: return@mapNotNull null
+            val picture = o.str("profileimageurl")
+            MoodleMember(
+                id = o.int("id") ?: return@mapNotNull null,
+                fullName = o.str("fullname").orEmpty(),
+                idNumber = nonEmpty(o.str("idnumber")),
+                department = nonEmpty(o.str("department")),
+                email = nonEmpty(o.str("email")),
+                groups = o.array("groups").orEmpty().mapNotNull { g ->
+                    nonEmpty(g.objOrNull()?.str("name")?.let(MoodleHtmlText::plainText))
+                },
+                roles = o.array("roles").orEmpty().mapNotNull { r ->
+                    val role = r.objOrNull() ?: return@mapNotNull null
+                    MoodleMemberRole(
+                        shortName = role.str("shortname") ?: return@mapNotNull null,
+                        name = role.str("name").orEmpty(),
+                        sortOrder = role.int("sortorder") ?: 0,
+                    )
+                },
+                pictureUrl = picture?.takeIf { isOwnPicture(it) },
+                description = o.str("description")?.let(MoodleHtmlText::plainText).orEmpty(),
+                interests = o.str("interests").orEmpty().split(',').mapNotNull { nonEmpty(it) },
+                fields = o.array("customfields").orEmpty().mapNotNull(::memberField),
+            )
+        }
+
+    /** A checkbox's or a date's raw value, `1` or a Unix time, does not read as text. */
+    private fun memberField(json: JsonElement): MoodleMemberField? {
+        val o = json.objOrNull() ?: return null
+        if (o.str("type") in setOf("checkbox", "datetime")) return null
+        val label = nonEmpty(MoodleHtmlText.plainText(o.str("name").orEmpty())) ?: return null
+        val value = nonEmpty(o.str("value")?.let(MoodleHtmlText::plainText)) ?: return null
+        return MoodleMemberField(label, value)
+    }
+
+    /**
+     * A picture the member uploaded is a file of theirs under `pluginfile.php`; Moodle's default
+     * picture is a theme image, such as `/theme/image.php/moove/core/1/u/f1`.
+     */
+    fun isOwnPicture(url: String): Boolean {
+        val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return false
+        if (uri.scheme?.lowercase() != "https" || uri.host?.lowercase() != MoodleWebservice.SITE_HOST) return false
+        val path = uri.rawPath.orEmpty()
+        return (path.startsWith("/pluginfile.php/") || path.startsWith("/webservice/pluginfile.php/")) &&
+            path.contains("/user/icon/")
+    }
+
+    /** `core_course_get_courses_by_field` for [courseId]; empty when Moodle does not list it. */
+    fun summary(json: JsonElement, courseId: Int): MoodleCourseSummary {
+        val courses = json.objOrNull()?.array("courses")
+            ?: throw MoodleWebserviceError.MalformedResponse("courses missing")
+        val course = courses.mapNotNull { it.objOrNull() }.firstOrNull { it.int("id") == courseId }
+            ?: return MoodleCourseSummary.EMPTY
+        val html = course.str("summary").orEmpty()
+        return MoodleCourseSummary(
+            html = html,
+            text = MoodleHtmlText.plainText(html),
+            names = listOf("fullname", "displayname", "shortname", "idnumber")
+                .mapNotNull { course.str(it) }
+                .map(MoodleHtmlText::plainText)
+                .filter { it.isNotEmpty() },
+        )
+    }
+
+    private fun nonEmpty(text: String?): String? = text?.trim()?.takeIf { it.isNotEmpty() }
+
+    // --- tree helpers ---
+
+    private fun JsonElement.objOrNull(): JsonObject? = if (isJsonObject) asJsonObject else null
+
+    private fun JsonElement.arrayOrThrow(what: String): JsonArray =
+        if (isJsonArray) asJsonArray else throw MoodleWebserviceError.MalformedResponse("$what not a list")
+
+    private fun JsonObject.array(key: String): JsonArray? =
+        get(key)?.takeIf { it.isJsonArray }?.asJsonArray
+
+    private fun JsonArray?.orEmpty(): List<JsonElement> = this?.toList() ?: emptyList()
+
+    private fun JsonObject.str(key: String): String? {
+        val el = get(key) ?: return null
+        if (!el.isJsonPrimitive) return null
+        return el.asString
+    }
+
+    private fun JsonObject.long(key: String): Long? {
+        val el = get(key) ?: return null
+        if (!el.isJsonPrimitive) return null
+        return runCatching { el.asLong }.getOrNull()
+            ?: el.asString.toDoubleOrNull()?.toLong()
+    }
+
+    private fun JsonObject.int(key: String): Int? = long(key)?.toInt()
+
+    private fun JsonObject.double(key: String): Double? {
+        val el = get(key) ?: return null
+        if (!el.isJsonPrimitive) return null
+        return runCatching { el.asDouble }.getOrNull()
+    }
+
+    private fun JsonObject.bool(key: String): Boolean? {
+        val el = get(key) ?: return null
+        if (!el.isJsonPrimitive) return null
+        val p = el.asJsonPrimitive
+        return when {
+            p.isBoolean -> p.asBoolean
+            p.isNumber -> p.asInt != 0
+            else -> p.asString.lowercase().let { it == "true" || it == "1" }
+        }
+    }
+}

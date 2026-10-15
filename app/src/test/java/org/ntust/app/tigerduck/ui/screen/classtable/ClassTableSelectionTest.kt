@@ -42,6 +42,80 @@ class ClassTableSelectionTest {
             set(Calendar.MINUTE, minute)
         }
 
+    // --- the course detail -------------------------------------------------
+
+    @Test
+    fun `the course detail shows the course as it is now, renamed from the detail included`() {
+        val picked = course("CS1", emptyMap())
+        val renamed = picked.copy(customCourseName = "Algorithms I")
+
+        assertEquals("Algorithms I", ClassTableSelection.detailCourse(picked, listOf(renamed), emptyList(), fromAnotherTerm = false)?.customCourseName)
+        assertEquals(
+            "a carousel course of the live term is found there",
+            "Algorithms I",
+            ClassTableSelection.detailCourse(picked, emptyList(), listOf(renamed), fromAnotherTerm = true)?.customCourseName,
+        )
+        assertEquals("one no longer listed keeps what was picked", picked, ClassTableSelection.detailCourse(picked, emptyList(), emptyList(), fromAnotherTerm = false))
+        assertNull("nothing selected, nothing to show", ClassTableSelection.detailCourse(null, listOf(renamed), emptyList(), fromAnotherTerm = false))
+    }
+
+    @Test
+    fun `a course of one number in two terms is shown from the term it was picked in`() {
+        val shown = course("CS1", emptyMap()).copy(instructor = "Old term")
+        val live = course("CS1", emptyMap()).copy(instructor = "This term")
+
+        assertEquals(
+            "picked from the today strip while the grid shows an older term",
+            live,
+            ClassTableSelection.detailCourse(live, listOf(shown), listOf(live), fromAnotherTerm = true),
+        )
+        assertEquals(
+            "picked from the grid",
+            shown,
+            ClassTableSelection.detailCourse(shown, listOf(shown), listOf(live), fromAnotherTerm = false),
+        )
+    }
+
+    @Test
+    fun `a rename reaches the live term's copy, even of a course the grid's term does not list`() {
+        val live = course("CS9", emptyMap())
+
+        assertEquals(
+            live,
+            ClassTableSelection.renameTarget("CS9", courses = emptyList(), liveCourses = listOf(live), fromAnotherTerm = false),
+        )
+        assertEquals(
+            listOf(live.copy(customCourseName = "Compilers")),
+            ClassTableSelection.renamed(listOf(live), "CS9", "Compilers"),
+        )
+        assertNull(ClassTableSelection.renameTarget("CS0", listOf(live), listOf(live), fromAnotherTerm = false))
+    }
+
+    @Test
+    fun `a rename from the today strip targets the live term's course, not the grid's of the same number`() {
+        val shown = course("CS1", emptyMap()).copy(moodleIdNumber = "1142CS1")
+        val live = course("CS1", emptyMap()).copy(moodleIdNumber = "1151CS1")
+
+        assertEquals(
+            "picked from the today strip",
+            live,
+            ClassTableSelection.renameTarget("CS1", listOf(shown), listOf(live), fromAnotherTerm = true),
+        )
+        assertEquals(
+            "picked from the grid",
+            shown,
+            ClassTableSelection.renameTarget("CS1", listOf(shown), listOf(live), fromAnotherTerm = false),
+        )
+    }
+
+    @Test
+    fun `the detail's title is the custom name, else the full name, else the course name`() {
+        val plain = course("CS1", emptyMap())
+        assertEquals("Mine", ClassTableSelection.detailTitle(plain.copy(customCourseName = "Mine"), fullName = "Full"))
+        assertEquals("Full", ClassTableSelection.detailTitle(plain, fullName = "Full"))
+        assertEquals(plain.displayName, ClassTableSelection.detailTitle(plain, fullName = null))
+    }
+
     // --- dayTimeFrom -------------------------------------------------------
 
     @Test
@@ -222,4 +296,58 @@ class ClassTableSelectionTest {
         val afterFirstOnly = ClassTableSelection.DayTime(weekday = 1, minuteOfDay = 12 * 60)
         assertFalse(ClassTableSelection.isFinishedAt(c, afterFirstOnly))
     }
+
+    // ---- the today carousel's card for a course meeting twice ----
+
+    private val twiceOnMonday = Course.fromSchedule(
+        "CS3005301", "Data Structures",
+        schedule = mapOf(1 to listOf("1", "2", "6", "7")),
+    )
+
+    @Test
+    fun `a carousel card stands for the next block, then the last one`() {
+        assertEquals(listOf("1", "2"), ClassTableSelection.carouselBlock(twiceOnMonday, 1, 7 * 60))
+        // After the morning block (08:10–10:00): the afternoon one.
+        assertEquals(listOf("6", "7"), ClassTableSelection.carouselBlock(twiceOnMonday, 1, 11 * 60))
+        // After both: still the afternoon one, finished.
+        assertEquals(listOf("6", "7"), ClassTableSelection.carouselBlock(twiceOnMonday, 1, 18 * 60))
+        assertNull(ClassTableSelection.carouselBlock(twiceOnMonday, 2, 7 * 60))
+    }
+
+    // ---- the block the course detail opens on (tigerduck-app-android#243) ----
+
+    private val morningAndAfternoon = course("CS4", mapOf(1 to listOf("3", "4", "7", "8")))
+
+    @Test
+    fun `a tapped period opens its own block, not the whole day`() {
+        assertEquals(listOf("3", "4"), ClassTableSelection.block(morningAndAfternoon, 1, "4"))
+        assertEquals(listOf("7", "8"), ClassTableSelection.block(morningAndAfternoon, 1, "8"))
+        assertEquals("14:20 - 16:20", ClassTableSelection.timeRange(listOf("7", "8")))
+    }
+
+    @Test
+    fun `a period the course does not take opens the next block, as a conflict pick names the cluster's first`() {
+        assertEquals(listOf("7", "8"), ClassTableSelection.block(morningAndAfternoon, 1, "6"))
+        assertNull("nothing after the last block", ClassTableSelection.block(morningAndAfternoon, 1, "9"))
+        assertNull("no block on a day it does not meet", ClassTableSelection.block(morningAndAfternoon, 2, "3"))
+    }
+
+    @Test
+    fun `blocks either side of a row the grid leaves out are one cell, and open together`() {
+        val c = course("CS5", mapOf(1 to listOf("3", "4", "6", "7")))
+        val drawn = listOf("1", "2", "3", "4", "6", "7", "8", "9", "10")
+
+        assertEquals(listOf("3", "4", "6", "7"), ClassTableSelection.block(c, 1, "6", drawn))
+        assertEquals("with period 5 drawn", listOf("6", "7"), ClassTableSelection.block(c, 1, "6"))
+    }
+
+    @Test
+    fun `the detail's time is the opened block's, else the whole day's`() {
+        assertEquals(
+            "10:20 - 12:10",
+            ClassTableSelection.detailTimeRange(morningAndAfternoon, 1, block = listOf("3", "4")),
+        )
+        assertEquals("10:20 - 16:20", ClassTableSelection.detailTimeRange(morningAndAfternoon, 1, block = null))
+    }
 }
+

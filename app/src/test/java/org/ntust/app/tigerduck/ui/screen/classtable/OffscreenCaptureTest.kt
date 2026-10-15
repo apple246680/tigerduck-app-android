@@ -18,7 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals

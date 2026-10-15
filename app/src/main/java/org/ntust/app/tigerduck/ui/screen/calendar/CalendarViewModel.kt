@@ -40,6 +40,7 @@ import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.util.SingleFlight
 import org.ntust.app.tigerduck.util.logSummary
 import org.ntust.app.tigerduck.widget.WidgetUpdater
+import java.time.LocalDate
 import java.util.Calendar
 import java.util.Date
 import javax.inject.Inject
@@ -281,11 +282,14 @@ class CalendarViewModel @Inject constructor(
         }
     }
 
+    /** [events] by Taipei date, grouped once per change; see [groupByTaipeiDay]. */
+    val eventsByDay: StateFlow<Map<LocalDate, List<CalendarEvent>>> =
+        _events.map(::groupByTaipeiDay)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
     val selectedDateEvents: StateFlow<List<CalendarEvent>> =
-        combine(_events, _selectedDate) { events, selectedDate ->
-            events
-                .filter { it.date.isSameDay(selectedDate) }
-                .sortedBy { it.date }
+        combine(eventsByDay, _selectedDate) { days, selectedDate ->
+            days[selectedDate.taipeiDate()].orEmpty().sortedBy { it.date }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun eventsOnDate(date: Date): List<CalendarEvent> =

@@ -20,14 +20,14 @@ class MailtoLinkRoutingTest {
     @Test
     fun `signed in, a confirmed mailto link opens School Mail compose and no other app`() {
         val composed = mutableListOf<String>()
-        openLink(context, "mailto:office@mail.ntust.edu.tw?subject=Hi", "inApp", composeMailto = { composed += it })
+        openBodyLink(context, "mailto:office@mail.ntust.edu.tw?subject=Hi", "inApp", composeMailto = { composed += it })
         assertEquals(listOf("mailto:office@mail.ntust.edu.tw?subject=Hi"), composed)
         assertNull(shadowOf(context).nextStartedActivity)
     }
 
     @Test
     fun `with no school account to send from, it goes to another mail app`() {
-        openLink(context, "mailto:office@mail.ntust.edu.tw", "inApp", composeMailto = null)
+        openBodyLink(context, "mailto:office@mail.ntust.edu.tw", "inApp", composeMailto = null)
         val started = shadowOf(context).nextStartedActivity
         assertEquals(Intent.ACTION_SENDTO, started.action)
         assertEquals("mailto:office@mail.ntust.edu.tw", started.dataString)

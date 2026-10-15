@@ -52,6 +52,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -304,6 +305,7 @@ fun AnnouncementsScreen(
                         SyncStatusDot(
                             servers = listOf(ServerKind.BACKEND),
                             isLoading = isLoading,
+                            syncedAtMs = state.syncedAtMs,
                         )
                         if (state.unreadOnly && state.hasUnread) {
                             IconButton(onClick = viewModel::markAllRead) {
@@ -473,7 +475,20 @@ private fun ChipRow(
             color = MaterialTheme.colorScheme.outline,
             modifier = Modifier.padding(horizontal = 16.dp),
         )
+        // A row that always opened at its left edge left a chip selected
+        // further along it (a remembered department) off screen: the list
+        // filtered, with no selected chip in view. Once per visit, so a
+        // return from a bulletin keeps the row where it was scrolled to.
+        val rowState = rememberLazyListState()
+        var revealedSelection by rememberSaveable { mutableStateOf(false) }
+        LaunchedEffect(Unit) {
+            if (revealedSelection) return@LaunchedEffect
+            revealedSelection = true
+            val first = items.indexOfFirst { (id, _) -> id in selected }
+            if (first > 0) rowState.scrollToItem(first)
+        }
         LazyRow(
+            state = rowState,
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(horizontal = 16.dp),

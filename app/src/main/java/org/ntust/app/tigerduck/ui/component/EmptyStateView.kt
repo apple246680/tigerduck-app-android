@@ -8,11 +8,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,7 +32,11 @@ fun EmptyStateView(
     message: String?,
     modifier: Modifier = Modifier,
     onIconClick: (() -> Unit)? = null,
-    /** A button under the message, such as Retry on a failed load; shown only with [onAction]. */
+    /**
+     * A labelled button under the message, such as a signed-out page's "Sign in" or Retry on a
+     * failed load: something that reads as tappable, as the iPhone's `LoginRequiredView` does.
+     * Shown when [onAction] is set.
+     */
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
 ) {
@@ -43,9 +47,9 @@ fun EmptyStateView(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // When the icon is interactive (signed-out lock → tap to go to
-        // Settings), wrap it in an IconButton so it picks up a ripple and
-        // an enlarged touch target without changing its visual weight.
+        // When the icon is interactive, wrap it in an IconButton so it picks
+        // up a ripple and an enlarged touch target without changing its
+        // visual weight.
         if (onIconClick != null) {
             IconButton(
                 onClick = onIconClick,
@@ -83,8 +87,8 @@ fun EmptyStateView(
             )
         }
         if (actionLabel != null && onAction != null) {
-            Spacer(Modifier.height(8.dp))
-            TextButton(onClick = onAction) { Text(actionLabel) }
+            Spacer(Modifier.height(16.dp))
+            Button(onClick = onAction) { Text(actionLabel) }
         }
     }
 }

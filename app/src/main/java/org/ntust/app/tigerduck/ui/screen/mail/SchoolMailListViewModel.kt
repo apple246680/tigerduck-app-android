@@ -99,6 +99,8 @@ class SchoolMailListViewModel @Inject constructor(
         val searchResults: List<MailRow>? = null,
         val searchLocalOnly: Boolean = false,
         val isSearching: Boolean = false,
+        /** For the sync dot's "Last synced" row; see [MailChecker.inboxFetchedAt]. */
+        val inboxFetchedAt: Long = 0L,
     ) {
         val displayed: List<MailRow>
             get() = (searchResults ?: messages).let { list -> if (unreadOnly) list.filter { !it.summary.flags.seen } else list }
@@ -232,6 +234,7 @@ class SchoolMailListViewModel @Inject constructor(
     fun load() {
         if (!account.signedIn.value) return
         if (loadJob?.isActive == true) return
+        showFetchedAt()
         // At once, not when the first page is asked for: the folder list comes first, and a failed
         // state left up meanwhile is a Retry button that starts a second load.
         _state.update { it.copy(loadState = LoadState.Loading) }
@@ -380,6 +383,8 @@ class SchoolMailListViewModel @Inject constructor(
      * the list again, and the load that starts as it appears lands just after this call.
      */
     fun startPolling() {
+        // A background check may have reached the inbox while the page was away.
+        showFetchedAt()
         if (account.authFailed.value) return
         repository.acquire()
         // Pausing cancels the warm along with the poll, and nothing used to start it again: only
@@ -454,6 +459,7 @@ class SchoolMailListViewModel @Inject constructor(
             // Was "only for Inbox itself"; All mail shows the inbox's own mail too, so it must
             // move the notification seen marker exactly as viewing Inbox always did.
             if (_state.value.inboxInView) {
+                inboxFetched()
                 runCatching { checker.noteSeenByPage(repository.inboxStatus()) }
             }
         } catch (e: MailError) {
@@ -716,6 +722,7 @@ class SchoolMailListViewModel @Inject constructor(
                 fetchFirstPage()
                 prefetchArrivedBodies(newest)
             } else {
+                inboxFetched()
                 checker.noteSeenByPage(status)
             }
         } catch (e: MailError) {
@@ -778,6 +785,14 @@ class SchoolMailListViewModel @Inject constructor(
             }
         }
     }
+
+    /** The inbox answered the page: the "Last synced" row moves to now. */
+    private fun inboxFetched() {
+        checker.noteFetchedByPage()
+        showFetchedAt()
+    }
+
+    private fun showFetchedAt() = _state.update { it.copy(inboxFetchedAt = checker.inboxFetchedAt) }
 
     /** Keyed by (folder, uid), never by UID alone -- the same UID in two folders is two mails. */
     private fun updateMessage(key: String, transform: (MailSummary) -> MailSummary) = _state.update { st ->

@@ -146,8 +146,21 @@ class SchoolMailComposeViewModel @Inject constructor(
         val dirty: Boolean get() = fields != baseline
     }
 
-    private val _state = MutableStateFlow(UiState())
+    /** Who a new message is to when the screen was opened for someone, such as a course member. */
+    private val prefilledTo: String = savedStateHandle.get<String>("to").orEmpty()
+
+    private val _state = MutableStateFlow(initialState())
     val state: StateFlow<UiState> = _state.asStateFlow()
+
+    /**
+     * A new message opened for someone starts addressed to them, and that address is its
+     * baseline: backing out untouched asks nothing about a draft.
+     */
+    private fun initialState(): UiState {
+        if (mode != ComposeMode.NEW || prefilledTo.isBlank()) return UiState()
+        val to = RecipientField.of(prefilledTo)
+        return UiState(to = to, baseline = Fields(to = to.entries))
+    }
 
     private var prefillStarted = false
     private var inReplyTo: String? = null

@@ -75,15 +75,14 @@ private const val EXPORT_RETENTION_MS = 24 * 60 * 60 * 1000L
  * term above, then the same grid the screen draws.
  *
  * The grid is the live [TimetableGrid], not a copy, so the image keeps
- * whatever the screen shows — colours, custom and abbreviated names, the
- * start / period / end column, the room hint when it is switched on. Only
+ * whatever the screen shows — the interface style's grid, colours, custom
+ * and abbreviated names, the room hint when it is switched on. Only
  * the corner marks stay out: they mark work still due, or a course whose
  * work the user ignores, notes for whoever is looking at the screen today,
  * not part of the timetable someone is being shown.
  */
 @Composable
 internal fun ClassTableExportCard(
-    viewModel: ClassTableViewModel,
     courses: List<Course>,
     semesterLabel: String,
     studentId: String?,
@@ -120,7 +119,6 @@ internal fun ClassTableExportCard(
         }
         Spacer(Modifier.height(12.dp))
         TimetableGrid(
-            viewModel = viewModel,
             courses = courses,
             showRoomHints = showRoomHints,
             weekdays = weekdays,

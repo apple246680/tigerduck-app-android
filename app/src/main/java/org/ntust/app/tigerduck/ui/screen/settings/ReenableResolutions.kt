@@ -23,11 +23,13 @@ internal class ReenableResolutions {
      * Null when [check] has to wait for the answers being applied: the last
      * check to wait runs when they have all finished, from the screen that
      * asked. Otherwise the token [isCurrent] takes when the check is done.
+     * One that does not [waits] is dropped instead, and leaves the check
+     * already waiting, whose screen shows the dialog, in place.
      */
     @Synchronized
-    fun checkStarting(check: () -> Unit): Int? {
+    fun checkStarting(waits: Boolean = true, check: () -> Unit): Int? {
         if (running == 0) return started
-        waitingCheck = check
+        if (waits) waitingCheck = check
         return null
     }
 

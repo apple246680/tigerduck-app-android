@@ -15,6 +15,7 @@ import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
+import org.ntust.app.tigerduck.library.libraryCredentialsForWatch
 import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.shared.WearProtocol
 import org.ntust.app.tigerduck.shared.clock.AppClock
@@ -119,12 +120,14 @@ class WearScheduleBridge @Inject constructor(
      * Push the current library credentials to the watch over the Data Layer so
      * it can independently call `api.lib.ntust.edu.tw` for the rotating QR.
      * Sends a `hasCredentials=false` packet when the user is logged out so the
-     * watch wipes its local copy rather than holding stale creds.
+     * watch wipes its local copy rather than holding stale creds — and while
+     * the library has refused the stored password; see [libraryCredentialsForWatch].
      */
     suspend fun publishLibraryCredentials() {
-        val username = credentials.libraryUsername
-        val password = credentials.libraryPassword
-        val hasCredentials = username != null && password != null
+        val account = libraryCredentialsForWatch(credentials)
+        val username = account?.first
+        val password = account?.second
+        val hasCredentials = account != null
 
         val request = PutDataMapRequest.create(WearProtocol.LibraryCredentials.PATH).apply {
             dataMap.putBoolean(WearProtocol.LibraryCredentials.KEY_HAS_CREDENTIALS, hasCredentials)

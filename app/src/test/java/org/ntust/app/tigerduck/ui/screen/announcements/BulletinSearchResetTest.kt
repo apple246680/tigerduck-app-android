@@ -49,7 +49,10 @@ class BulletinSearchResetTest {
         val tokens = V3TokenStore(context.getSharedPreferences("tokens", Context.MODE_PRIVATE))
         val api = BulletinApiClient(OkHttpClient(), prefs, AuthTokenManager(tokens, OkHttpClient(), prefs, "device-1"))
         val returns = AppReturns(now = { clock }, register = { observer = it as DefaultLifecycleObserver })
-        vm = AnnouncementsViewModel(api, BulletinCache(context), BulletinRepository(), BulletinReadStateStore(context), prefs, returns)
+        val cache = BulletinCache(context)
+        vm = AnnouncementsViewModel(
+            api, cache, BulletinRepository(), BulletinReadStateStore(context), prefs, testDemoAccount(context, prefs, cache), returns,
+        )
     }
 
     private fun away(ms: Long) {

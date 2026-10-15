@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Bundle
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import dagger.hilt.EntryPoint
@@ -14,10 +15,13 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import org.ntust.app.tigerduck.AppConstants
+import org.ntust.app.tigerduck.AppLink
 import org.ntust.app.tigerduck.academic.AcademicCalendarStore
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
+import org.ntust.app.tigerduck.pendingIntent
+import org.ntust.app.tigerduck.shared.clock.AppClock
 import java.time.Instant
 import java.time.ZoneId
 
@@ -64,25 +68,14 @@ class ClassPreparingNotificationReceiver : BroadcastReceiver() {
         // cancel via auto-cancel-on-tap, matching the original behaviour.
         val leadTimeMs = intent.getLongExtra(EXTRA_LEAD_TIME_MS, 0L)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(rawContext, Manifest.permission.POST_NOTIFICATIONS)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            return
-        }
+        if (!mayPost(rawContext, deps.appPreferences())) return
 
-        // Receiver contexts carry the SYSTEM locale, not the user's in-app
-        // language choice (AppCompat per-app locales don't reach broadcast
-        // contexts when the alarm wakes a dead process). Resolve the chosen
-        // language explicitly so the notification text matches the rest of the
-        // app.
-        val context = AppLanguageManager.localizedContext(
-            rawContext,
-            deps.appPreferences().appLanguage,
-        )
         // One shot: if the channel is missing, the reminder is dropped for good.
         deps.notificationChannels().ensureRegistered()
-        post(context, notificationId, courseName, classroom, instructor, startMs, endMs, leadTimeMs)
+        post(
+            rawContext, deps.appPreferences().appLanguage,
+            notificationId, courseName, classroom, instructor, startMs, endMs, leadTimeMs,
+        )
     }
 
     companion object {
@@ -97,12 +90,39 @@ class ClassPreparingNotificationReceiver : BroadcastReceiver() {
         const val EXTRA_LEAD_TIME_MS = "lead_time_ms"
 
         /**
+         * On the posted banner, not the alarm: the class's start, epoch ms,
+         * which LiveActivityNotifier.clearStartedClassBanners reads to clear
+         * the banner once the class has begun.
+         */
+        const val EXTRA_CLASS_START_MS = "org.ntust.app.tigerduck.class_start_ms"
+
+        /**
+         * The class reminder switch is on, and the app may post
+         * notifications. Read when the alarm fires: turning reminders off
+         * cancels the alarms already armed, but one armed in a race with that
+         * cancel would still land here, and the switch has the last word.
+         */
+        internal fun mayPost(context: Context, prefs: AppPreferences): Boolean =
+            prefs.classReminderEnabled &&
+                (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+                    PackageManager.PERMISSION_GRANTED)
+
+        /**
          * Post the reminder, past every check onReceive makes first; the
-         * developer menu's preview posts through here too. [context] must
-         * already carry the app's language, and the channels must exist.
+         * developer menu's preview posts through here too. The channels must
+         * exist.
+         *
+         * In [appLanguage]: receiver contexts carry the system locale, not
+         * the in-app choice (AppCompat per-app locales don't reach broadcast
+         * contexts when the alarm wakes a dead process), so the chosen
+         * language is resolved here, where no caller can skip it.
+         *
+         * A tap opens the class table, through `tigerduck://classtable`.
          */
         fun post(
-            context: Context,
+            baseContext: Context,
+            appLanguage: String,
             notificationId: Int,
             courseName: String,
             classroom: String,
@@ -111,6 +131,7 @@ class ClassPreparingNotificationReceiver : BroadcastReceiver() {
             endMs: Long,
             leadTimeMs: Long,
         ) {
+            val context = AppLanguageManager.localizedContext(baseContext, appLanguage)
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
             val timeRange = formatTimeRange(startMs, endMs)
@@ -123,9 +144,11 @@ class ClassPreparingNotificationReceiver : BroadcastReceiver() {
             // Anchor the auto-dismiss to actual class-start time rather than
             // post-time + leadTimeMs. When the alarm is delivered via the inexact
             // fallback, post-time can drift up to ~5 min late, which would leave
-            // the banner up past class start.
+            // the banner up past class start. A duration on the app's clock, as
+            // the class times are: under the developer menu's clock the real
+            // one is days away from them.
             val timeout = when {
-                startMs > 0L -> (startMs - System.currentTimeMillis()).coerceAtLeast(1_000L)
+                startMs > 0L -> (startMs - AppClock.nowMillis()).coerceAtLeast(1_000L)
                 leadTimeMs > 0L -> leadTimeMs
                 else -> 0L
             }
@@ -143,7 +166,9 @@ class ClassPreparingNotificationReceiver : BroadcastReceiver() {
                 .setCategory(NotificationCompat.CATEGORY_REMINDER)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setAutoCancel(true)
+                .setContentIntent(AppLink.ClassTable.pendingIntent(context))
                 .setGroup(NotificationGroup.CLASS.key)
+                .apply { if (startMs > 0L) addExtras(Bundle().apply { putLong(EXTRA_CLASS_START_MS, startMs) }) }
                 .apply { if (timeout > 0L) setTimeoutAfter(timeout) }
                 .build()
 

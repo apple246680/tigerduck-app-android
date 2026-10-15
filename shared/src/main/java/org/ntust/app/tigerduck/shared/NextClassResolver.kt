@@ -8,20 +8,35 @@ sealed class NextClassResult {
         val nextToday: NextToday?,
         /** Calendar weekday (1=Mon..7=Sun) — pass to [Course.classroom] for the right room. */
         val weekday: Int,
-    ) : NextClassResult()
+        /** The periods of the block going on. */
+        val periods: List<String>,
+    ) : NextClassResult() {
+        /** The room of the block going on, not every room the course meets in that day. */
+        val classroom: String get() = course.blockClassroom(weekday, periods)
+    }
 
     data class NextToday(
         val course: Course,
         val startMinute: Int,
         val weekday: Int,
-    ) : NextClassResult()
+        /** The periods of the block that starts next. */
+        val periods: List<String>,
+    ) : NextClassResult() {
+        /** The room of the block that starts next. */
+        val classroom: String get() = course.blockClassroom(weekday, periods)
+    }
 
     data class NextFuture(
         val course: Course,
         val daysAhead: Int,        // 1 = tomorrow
         val startMinute: Int,
         val weekday: Int,
-    ) : NextClassResult()
+        /** The periods of that day's first block. */
+        val periods: List<String>,
+    ) : NextClassResult() {
+        /** The room of that day's first block. */
+        val classroom: String get() = course.blockClassroom(weekday, periods)
+    }
 
     object Empty : NextClassResult()
 }
@@ -36,7 +51,12 @@ data class TodayClassEntry(
     val endMinute: Int,
     val status: TodayClassStatus,
     val weekday: Int,
-)
+    /** Every period of this block, from [firstPeriodId] to [lastPeriodId]. */
+    val periods: List<String>,
+) {
+    /** This block's room, not every room the course meets in that day. */
+    val classroom: String get() = course.blockClassroom(weekday, periods)
+}
 
 object NextClassResolver {
 
@@ -69,25 +89,24 @@ object NextClassResolver {
                 startMinute = ongoing.startMinute,
                 endMinute = ongoing.endMinute,
                 nextToday = nextToday?.let {
-                    NextClassResult.NextToday(
-                        it.first,
-                        it.second,
-                        weekday
-                    )
+                    NextClassResult.NextToday(it.course, it.startMinute, weekday, it.periods)
                 },
                 weekday = weekday,
+                periods = ongoing.periods,
             )
         }
         val next = nextStartingToday(todaysCourses, weekday, minuteOfDay, excluding = null)
         if (next != null) {
-            return NextClassResult.NextToday(next.first, next.second, weekday)
+            return NextClassResult.NextToday(next.course, next.startMinute, weekday, next.periods)
         }
         // Walk forward up to 7 days.
         for (offset in 1..7) {
             if (isQuietDay(offset)) continue
             val futureWeekday = ((weekday - 1 + offset) % 7) + 1
             val first = firstClassOfDay(courses, futureWeekday) ?: continue
-            return NextClassResult.NextFuture(first.first, offset, first.second, futureWeekday)
+            return NextClassResult.NextFuture(
+                first.course, offset, first.startMinute, futureWeekday, first.periods,
+            )
         }
         return NextClassResult.Empty
     }
@@ -119,7 +138,9 @@ object NextClassResolver {
                         minuteOfDay in start..end -> TodayClassStatus.Ongoing
                         else -> TodayClassStatus.Upcoming
                     }
-                    entries += TodayClassEntry(course, first, last, start, end, status, weekday)
+                    entries += TodayClassEntry(
+                        course, first, last, start, end, status, weekday, periods.subList(i, j + 1),
+                    )
                 }
                 i = j + 1
             }
@@ -127,33 +148,41 @@ object NextClassResolver {
         return entries.sortedBy { it.startMinute }
     }
 
+    /** A course's class starting at [startMinute], in the block of [periods]. */
+    private data class Pick(val course: Course, val startMinute: Int, val periods: List<String>)
+
+    /** The run of [course]'s periods on [weekday] that holds [periodId]. */
+    private fun blockHolding(course: Course, weekday: Int, periodId: String): List<String> =
+        contiguousPeriodRuns(course.schedule[weekday].orEmpty()).firstOrNull { periodId in it }
+            ?: listOf(periodId)
+
     private fun nextStartingToday(
         courses: List<Course>,
         weekday: Int,
         minuteOfDay: Int,
         excluding: String?,
-    ): Pair<Course, Int>? {
+    ): Pick? {
         return courses
             .filter { it.courseNo != excluding && it.schedule.containsKey(weekday) }
             .mapNotNull { course ->
-                val firstFutureMinute = course.schedule[weekday]!!
-                    .mapNotNull { pid -> parseHm(PeriodTimes.mapping[pid]?.first) }
-                    .filter { it > minuteOfDay }
-                    .minOrNull()
-                firstFutureMinute?.let { course to it }
+                course.schedule[weekday]!!
+                    .mapNotNull { pid -> parseHm(PeriodTimes.mapping[pid]?.first)?.let { pid to it } }
+                    .filter { it.second > minuteOfDay }
+                    .minByOrNull { it.second }
+                    ?.let { (pid, start) -> Pick(course, start, blockHolding(course, weekday, pid)) }
             }
-            .minByOrNull { it.second }
+            .minByOrNull { it.startMinute }
     }
 
-    private fun firstClassOfDay(courses: List<Course>, weekday: Int): Pair<Course, Int>? {
+    private fun firstClassOfDay(courses: List<Course>, weekday: Int): Pick? {
         return courses
             .filter { it.schedule.containsKey(weekday) }
             .mapNotNull { course ->
-                val firstMinute = course.schedule[weekday]!!
-                    .mapNotNull { pid -> parseHm(PeriodTimes.mapping[pid]?.first) }
-                    .minOrNull()
-                firstMinute?.let { course to it }
+                course.schedule[weekday]!!
+                    .mapNotNull { pid -> parseHm(PeriodTimes.mapping[pid]?.first)?.let { pid to it } }
+                    .minByOrNull { it.second }
+                    ?.let { (pid, start) -> Pick(course, start, blockHolding(course, weekday, pid)) }
             }
-            .minByOrNull { it.second }
+            .minByOrNull { it.startMinute }
     }
 }

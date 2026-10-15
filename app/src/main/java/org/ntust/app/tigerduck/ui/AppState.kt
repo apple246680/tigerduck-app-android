@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.BuildConfig
 import org.ntust.app.tigerduck.auth.AuthService
+import org.ntust.app.tigerduck.auth.StoredPasswordLatch
 import org.ntust.app.tigerduck.data.DataMigration
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.model.AppFeature
@@ -27,13 +28,18 @@ import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CourseNameScale
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
+import org.ntust.app.tigerduck.data.preferences.LibraryTabAddMigration
 import org.ntust.app.tigerduck.data.preferences.effectiveCloudSyncEnabled
+import org.ntust.app.tigerduck.library.FlipToLibraryDefaultOffMigration
+import org.ntust.app.tigerduck.library.FlipToLibrarySetting
+import org.ntust.app.tigerduck.library.LibrarySession
 import org.ntust.app.tigerduck.network.CalendarService
 import org.ntust.app.tigerduck.network.NtustSessionManager
 import org.ntust.app.tigerduck.notification.AssignmentReminderOffset
 import org.ntust.app.tigerduck.notification.SystemPermissions
 import org.ntust.app.tigerduck.ui.haptics.HapticScenario
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
+import org.ntust.app.tigerduck.ui.theme.VisualPreset
 import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -80,6 +86,8 @@ class AppState @Inject constructor(
     private val pushRegistration: org.ntust.app.tigerduck.push.PushRegistrationService,
     private val demoAccount: org.ntust.app.tigerduck.demo.DemoAccount,
     private val mailAccount: org.ntust.app.tigerduck.mail.MailAccount,
+    val librarySession: LibrarySession,
+    private val wearBridge: org.ntust.app.tigerduck.wear.WearScheduleBridge,
 ) {
     /**
      * Whether the demo account was signed in when this process started.
@@ -146,6 +154,12 @@ class AppState @Inject constructor(
         if (cleaned != saved) {
             prefs.configuredTabs = cleaned.ifEmpty { AppFeature.defaultTabs }
         }
+        // After the pin and the clean-up above, so a pre-2.3.0 bar the pin
+        // stores gets Library too, and a slot the clean-up frees counts.
+        LibraryTabAddMigration.runIfNeeded(prefs)
+        // Before flipToLibraryEnabled is read below, so the switch it may
+        // store is the one this process starts with.
+        FlipToLibraryDefaultOffMigration.runIfNeeded(prefs)
     }
 
     private var hasCompletedOnboardingState by mutableStateOf(prefs.hasCompletedOnboarding)
@@ -210,6 +224,19 @@ class AppState @Inject constructor(
         }
         return Color(0xFF000000L or (hex.toLong() and 0xFFFFFFL))
     }
+
+    private val visualPresetSetting =
+        VisualPresetSetting(prefs, onChange = { widgetUpdater.requestUpdate() })
+
+    /**
+     * The interface style picked in Settings > Display. The app root provides
+     * it to every screen through [org.ntust.app.tigerduck.ui.theme.LocalVisualStylePolicy].
+     */
+    var visualPreset: VisualPreset
+        get() = visualPresetSetting.value
+        set(value) {
+            visualPresetSetting.value = value
+        }
 
     private var showAbsoluteAssignmentTimeState by mutableStateOf(prefs.showAbsoluteAssignmentTime)
 
@@ -389,26 +416,17 @@ class AppState @Inject constructor(
     fun setNotifyAssignmentOffsetEnabled(offset: AssignmentReminderOffset, enabled: Boolean) =
         assignmentReminderSettings.setOffsetEnabled(offset, enabled)
 
-    private var libraryFeatureEnabledState by mutableStateOf(prefs.libraryFeatureEnabled)
-
-    var libraryFeatureEnabled: Boolean
-        get() = libraryFeatureEnabledState
-        set(value) {
-            if (libraryFeatureEnabledState == value) return
-            libraryFeatureEnabledState = value
-            prefs.libraryFeatureEnabled = value
-        }
-
-
-    private var flipToLibraryEnabledState by mutableStateOf(prefs.flipToLibraryEnabled)
+    /** The flip-to-library switch; read after the migrations above. */
+    val flipToLibrary = FlipToLibrarySetting(prefs)
 
     var flipToLibraryEnabled: Boolean
-        get() = flipToLibraryEnabledState
+        get() = flipToLibrary.enabled
         set(value) {
-            if (flipToLibraryEnabledState == value) return
-            flipToLibraryEnabledState = value
-            prefs.flipToLibraryEnabled = value
+            flipToLibrary.enabled = value
         }
+
+    /** The flip switch in Settings; see [FlipToLibrarySetting.setFromSettings]. */
+    fun setFlipToLibraryFromSettings(enabled: Boolean) = flipToLibrary.setFromSettings(enabled)
 
     private var cloudSyncEnabledState by mutableStateOf(prefs.cloudSyncEnabled)
 
@@ -432,18 +450,22 @@ class AppState @Inject constructor(
             prefs.disableScreenCaptureProtection = value
         }
 
-    // Transient signal from the library-shortcut widget: when the user taps
-    // the widget while the library feature is disabled, we navigate to
-    // Settings and flip this so SettingsScreen surfaces an "enable first"
-    // dialog. Not persisted — lives only within the process.
-    var pendingLibraryEnablePrompt by mutableStateOf(false)
-
     // Transient signal from signed-out empty states (Home, ClassTable,
-    // Calendar, Score): when the user taps the lock icon we navigate to
+    // Calendar, Score): when the user taps "Sign in" we navigate to
     // Settings and flip this so the NTUST account row pulses, drawing the
     // user's attention to the action they need to take. Consumed (cleared)
     // by SettingsScreen after the animation finishes.
     var pendingNtustSignInHighlight by mutableStateOf(false)
+
+    // "Sign in again", after the automatic sign-in failed: opens the school
+    // sign-in over whatever page asked (NtustSignInSheetHost), as the iPhone
+    // does. Not persisted.
+    var ntustSignInSheetRequested by mutableStateOf(false)
+
+    // The refusal whose "Automatic sign-in failed" banner the user closed. It
+    // stays closed on every page for the rest of this run; a later refusal is
+    // another object and shows again. Not persisted.
+    var dismissedPasswordRejection by mutableStateOf<StoredPasswordLatch.Rejection?>(null)
 
     private var configuredTabsState by mutableStateOf(prefs.configuredTabs)
 
@@ -500,8 +522,8 @@ class AppState @Inject constructor(
     // this name must mean "signed in", not "has a warm SSO cookie".
     val isNtustLoggedIn: Boolean get() = authService.authState.value
 
-    @Suppress("unused")
-    val isLibraryLoggedIn: Boolean get() = credentials.isLibraryTokenValid
+    /** Whether a library account is signed in, as Settings shows it; see [LibrarySession]. */
+    val isLibraryLoggedIn: Boolean get() = librarySession.signedIn.value
 
     fun completeOnboarding() {
         hasCompletedOnboarding = true
@@ -519,41 +541,36 @@ class AppState @Inject constructor(
     }
 
     /**
+     * The steps of a full reset, in [FullReset]. [DataCache.clearEverything],
+     * not `clearAllUserData`: a logout keeps device-wide caches on purpose,
+     * but this is a factory reset and a leftover cache is precisely what makes
+     * the "fresh start" it promises not one.
+     */
+    private val fullReset = FullReset(
+        // Its password, caches, alarms and posted notifications.
+        signOutMail = { mailAccount.signOut() },
+        signOutSchool = { authService.logout() },
+        clearCaches = { dataCache.clearEverything() },
+        credentials = credentials,
+        prefs = prefs,
+        publishLibraryCredentialsToWatch = wearBridge::publishLibraryCredentials,
+    )
+
+    /**
      * Wipe every piece of on-device user state (prefs, credentials, JSON
      * cache) and return the user to onboarding. Called from the reset
      * dialog after migration returns [DataMigration.Outcome.NeedsUserReset].
-     *
-     * [DataCache.clearEverything], not `clearAllUserData`: a logout keeps
-     * device-wide caches on purpose, but this is a factory reset and a
-     * leftover cache is precisely what makes the "fresh start" it promises
-     * not one. [CredentialManager.clearAll] and [AppPreferences.clearAllPrefs]
-     * both clear their whole store, so the library account and every library
-     * preference (feature toggle, flip-to-open consent) go with them —
-     * neither needs naming here, and neither should be, since a named list
-     * silently stops being complete.
+     * The steps are [FullReset]'s.
      */
     fun performFullReset() {
-        // The mail account is separate from the NTUST sign-in (spec §7.5), but a full reset wipes
-        // everything: its password, caches, alarms and posted notifications.
-        mailAccount.signOut()
-        authService.logout()
-        scope.launch {
-            runCatching { dataCache.clearEverything() }
-            credentials.clearAll()
-            prefs.clearAllPrefs()
-            // Re-stamp the schema so the dialog doesn't re-fire on next launch.
-            prefs.dataSchemaVersion = DataMigration.CURRENT_SCHEMA
-            // Same for the pre-2.3.0 bottom-bar check: once the user onboards
-            // again, the next launch would otherwise pin the old Calendar bar
-            // on what is now a fresh start.
-            prefs.previousDefaultTabsChecked = true
-
+        fullReset.start(scope) {
             // The mutableState caches above were seeded from prefs at init
             // time. Re-read so the UI shows defaults instead of ghost values
             // from the wiped store.
             hasCompletedOnboardingState = prefs.hasCompletedOnboarding
             onboardingVersionState = prefs.onboardingVersion
             accentColorHexState = prefs.accentColorHex
+            visualPresetSetting.reload()
             showAbsoluteAssignmentTimeState = prefs.showAbsoluteAssignmentTime
             alwaysShowAllPeriodsState = prefs.alwaysShowAllPeriods
             showClassroomInClassTableState = prefs.showClassroomInClassTable
@@ -570,8 +587,7 @@ class AppState @Inject constructor(
             }
             rotationModeState = prefs.rotationMode
             assignmentReminderSettings.reload()
-            libraryFeatureEnabledState = prefs.libraryFeatureEnabled
-            flipToLibraryEnabledState = prefs.flipToLibraryEnabled
+            flipToLibrary.reload()
             cloudSyncEnabledState = prefs.cloudSyncEnabled
             disableScreenCaptureProtectionState = prefs.disableScreenCaptureProtection
             configuredTabsState = prefs.configuredTabs
@@ -579,7 +595,11 @@ class AppState @Inject constructor(
                 hapticStrengthStates[scenario] = prefs.hapticStrength(scenario)
                 hapticDurationStates[scenario] = prefs.hapticDurationMs(scenario)
             }
+            // The widgets draw the wiped courses, accent and interface style,
+            // and redraw only when asked; reload() above does not ask.
+            widgetUpdater.requestUpdate()
 
+            librarySession.refresh()
             _needsUserReset.value = false
         }
     }

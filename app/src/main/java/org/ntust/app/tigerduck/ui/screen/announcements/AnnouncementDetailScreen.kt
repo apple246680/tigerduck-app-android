@@ -1,8 +1,6 @@
 package org.ntust.app.tigerduck.ui.screen.announcements
 
 import android.content.Context
-import android.content.Intent
-import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +33,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -52,6 +51,7 @@ import org.ntust.app.tigerduck.network.model.localizedTagLabel
 import org.ntust.app.tigerduck.network.model.orgLabel
 import org.ntust.app.tigerduck.ui.component.NoTopBarInsets
 import org.ntust.app.tigerduck.ui.component.scrollbar
+import org.ntust.app.tigerduck.ui.openLink
 
 @OptIn(
     ExperimentalLayoutApi::class,
@@ -116,8 +116,7 @@ fun AnnouncementDetailScreen(
                     if (s.summary != null) {
                         DetailBody(
                             chrome = s.summary,
-                            bodyMd = null,
-                            bodyClean = null,
+                            body = s.summary.summary,
                             bodyState = BodyState.Failed(onRetry = viewModel::reload),
                             taxonomy = s.taxonomy,
                         )
@@ -140,16 +139,14 @@ fun AnnouncementDetailScreen(
 
                 is AnnouncementDetailViewModel.State.Partial -> DetailBody(
                     chrome = s.summary,
-                    bodyMd = null,
-                    bodyClean = null,
+                    body = null,
                     bodyState = BodyState.Loading,
                     taxonomy = s.taxonomy,
                 )
 
                 is AnnouncementDetailViewModel.State.Loaded -> DetailBody(
                     chrome = s.detail.toSummary(),
-                    bodyMd = s.detail.bodyMd,
-                    bodyClean = s.detail.bodyClean,
+                    body = BulletinBodyRenderer.bodyMarkdown(s.detail, viewModel.listSummary),
                     bodyState = BodyState.Ready,
                     taxonomy = s.taxonomy,
                 )
@@ -164,12 +161,15 @@ private sealed interface BodyState {
     data class Failed(val onRetry: () -> Unit) : BodyState
 }
 
+/**
+ * [body] is the markdown to show under the title: the body once it has loaded, or the summary
+ * under the error when it could not.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DetailBody(
     chrome: BulletinSummary,
-    bodyMd: String?,
-    bodyClean: String?,
+    body: String?,
     bodyState: BodyState,
     taxonomy: TaxonomyResponse?,
 ) {
@@ -222,20 +222,9 @@ private fun DetailBody(
             style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
         )
         // Body content stays in Mandarin (server-side, original language).
-        // Render the markdown source when available so headings, lists, and
-        // links carry their formatting; fall back to the cleaned plain text.
+        // Which field it comes from is BulletinBodyRenderer.bodyMarkdown's call.
         when (bodyState) {
-            BodyState.Ready -> {
-                val md = bodyMd?.takeIf { it.isNotBlank() }
-                val plain = bodyClean?.takeIf { it.isNotBlank() }
-                when {
-                    md != null -> Markdown(content = md)
-                    plain != null -> Text(
-                        text = plain,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            }
+            BodyState.Ready -> body?.let { BodyMarkdown(it) }
 
             BodyState.Loading -> {
                 Row(
@@ -268,6 +257,8 @@ private fun DetailBody(
                         Text(stringResource(R.string.action_retry))
                     }
                 }
+                // The summary stands in for the body it could not load, as on the iPhone.
+                body?.let { BodyMarkdown(it) }
             }
         }
         // Footer: hashtag strip — wraps multi-line for posts with many tags.
@@ -299,25 +290,25 @@ private fun DetailBody(
     }
 }
 
+/** Server markdown with [BulletinBodyRenderer.normalize]'s fix-ups applied; nothing when blank. */
+@Composable
+private fun BodyMarkdown(markdown: String) {
+    if (markdown.isBlank()) return
+    val normalized = remember(markdown) { BulletinBodyRenderer.normalize(markdown) }
+    Markdown(content = normalized)
+}
+
 /**
- * Opens a bulletin's source page the way the link-opening setting says: in an in-app browser tab,
- * or in the system's default browser. A tab that cannot be launched falls back to the browser.
+ * Opens a bulletin's source page through [openLink], the way the link-opening setting says: in an
+ * in-app browser tab, or in the system's default browser.
  *
- * Only a web page: the address comes from the bulletin feed, and handed to the system as it is,
- * any other scheme could start whatever app claims it.
+ * Only a web page: the address comes from the bulletin feed, and [openLink] would also hand a
+ * `mailto:` link to a mail app -- handed to the system as it is, any other scheme could start
+ * whatever app claims it.
  */
 internal fun openBulletinSource(context: Context, url: String, browserPreference: String) {
-    val uri = url.toUri()
-    if (uri.scheme?.lowercase() !in WEB_SCHEMES) return
-    if (browserPreference == "inApp") {
-        try {
-            CustomTabsIntent.Builder().build().launchUrl(context, uri)
-            return
-        } catch (_: Exception) {
-            // The browser below instead.
-        }
-    }
-    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    if (url.toUri().scheme?.lowercase() !in WEB_SCHEMES) return
+    openLink(context, url, browserPreference)
 }
 
 private val WEB_SCHEMES = setOf("http", "https")

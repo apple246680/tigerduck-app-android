@@ -93,6 +93,19 @@ class SchoolMailComposeViewModelTest {
     }
 
     @Test
+    fun `a new message opened for someone starts addressed to them and is not dirty`() {
+        val vm = SchoolMailComposeViewModel(
+            SavedStateHandle(mapOf("mode" to "NEW", "folder" to "", "uid" to -1L, "to" to "amy@mail.ntust.edu.tw")),
+            repo, account, cache, noPicks, notices, main.dispatcher,
+        ).also { it.prefill(labels) }
+
+        assertEquals(listOf("amy@mail.ntust.edu.tw"), vm.state.value.to.entries)
+        assertFalse("backing out untouched asks nothing about a draft", vm.state.value.dirty)
+        vm.setBody("Hello")
+        assertTrue(vm.state.value.dirty)
+    }
+
+    @Test
     fun `reply prefills, sends with threading headers and marks the original answered`() {
         repo.add("INBOX", mailSummary(5, subject = "期中考"))
         repo.bodies[5] = MailBody(null, "line1", emptyList(), emptyMap())

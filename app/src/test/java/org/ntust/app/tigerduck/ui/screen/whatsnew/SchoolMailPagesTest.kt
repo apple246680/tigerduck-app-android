@@ -26,8 +26,8 @@ class SchoolMailPagesTest {
 
     @Test
     fun `mail takes calendar's slot`() {
-        // The pre-2.3.0 default becomes the current one.
-        assertEquals(AppFeature.defaultTabs, recommendedTabsWithMail(AppFeature.previousDefaultTabs))
+        // The pre-2.3.0 default becomes the 2.3.0 one.
+        assertEquals(listOf(HOME, CLASS_TABLE, SCHOOL_MAIL), recommendedTabsWithMail(AppFeature.previousDefaultTabs))
         assertEquals(
             listOf(SCHOOL_MAIL, HOME, SCORE, ANNOUNCEMENTS),
             recommendedTabsWithMail(listOf(CALENDAR, HOME, SCORE, ANNOUNCEMENTS)),
@@ -55,9 +55,8 @@ class SchoolMailPagesTest {
     }
 
     @Test
-    fun `a library tab the opt-in hides does not take a slot`() {
-        val visible = visibleBottomBarTabs(listOf(HOME, CLASS_TABLE, SCORE, LIBRARY), libraryEnabled = false)
-        assertEquals(listOf(HOME, CLASS_TABLE, SCORE, SCHOOL_MAIL), recommendedTabsWithMail(visible))
+    fun `a library tab takes a slot like any other`() {
+        assertNull(recommendedTabsWithMail(listOf(HOME, CLASS_TABLE, SCORE, LIBRARY)))
     }
 
     @Test
@@ -70,13 +69,6 @@ class SchoolMailPagesTest {
     fun `a bar that already has mail skips the mail pages`() {
         assertFalse(offersMailPages(AppFeature.defaultTabs))
         assertFalse(offersMailPages(listOf(HOME, SCORE, SCHOOL_MAIL, CALENDAR)))
-    }
-
-    @Test
-    fun `a library tab the opt-in hides drops out of the visible bar`() {
-        val stored = AppFeature.defaultTabs + LIBRARY
-        assertEquals(AppFeature.defaultTabs, visibleBottomBarTabs(stored, libraryEnabled = false))
-        assertEquals(stored, visibleBottomBarTabs(stored, libraryEnabled = true))
     }
 
     @Test
