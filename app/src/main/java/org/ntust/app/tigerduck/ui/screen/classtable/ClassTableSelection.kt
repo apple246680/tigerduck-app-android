@@ -35,11 +35,19 @@ object ClassTableSelection {
     }
 
     /**
-     * The course a rename of [courseNo] is measured against: the grid term's copy, else the live
-     * term's, for a course picked from the today strip that the grid's term does not list.
+     * The course a rename of [courseNo] is measured against and synced for: the copy of the term
+     * it was opened from, the live term's for a course picked from the today strip
+     * ([fromAnotherTerm]), else the grid term's; failing that, the other term's copy.
      */
-    fun renameTarget(courseNo: String, courses: List<Course>, liveCourses: List<Course>): Course? =
-        courses.firstOrNull { it.courseNo == courseNo } ?: liveCourses.firstOrNull { it.courseNo == courseNo }
+    fun renameTarget(
+        courseNo: String,
+        courses: List<Course>,
+        liveCourses: List<Course>,
+        fromAnotherTerm: Boolean,
+    ): Course? {
+        val (first, second) = if (fromAnotherTerm) liveCourses to courses else courses to liveCourses
+        return first.firstOrNull { it.courseNo == courseNo } ?: second.firstOrNull { it.courseNo == courseNo }
+    }
 
     /** [courses] with [courseNo]'s own name set to [name], or cleared with null. */
     fun renamed(courses: List<Course>, courseNo: String, name: String?): List<Course> =

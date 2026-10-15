@@ -80,12 +80,32 @@ class ClassTableSelectionTest {
     fun `a rename reaches the live term's copy, even of a course the grid's term does not list`() {
         val live = course("CS9", emptyMap())
 
-        assertEquals(live, ClassTableSelection.renameTarget("CS9", courses = emptyList(), liveCourses = listOf(live)))
+        assertEquals(
+            live,
+            ClassTableSelection.renameTarget("CS9", courses = emptyList(), liveCourses = listOf(live), fromAnotherTerm = false),
+        )
         assertEquals(
             listOf(live.copy(customCourseName = "Compilers")),
             ClassTableSelection.renamed(listOf(live), "CS9", "Compilers"),
         )
-        assertNull(ClassTableSelection.renameTarget("CS0", listOf(live), listOf(live)))
+        assertNull(ClassTableSelection.renameTarget("CS0", listOf(live), listOf(live), fromAnotherTerm = false))
+    }
+
+    @Test
+    fun `a rename from the today strip targets the live term's course, not the grid's of the same number`() {
+        val shown = course("CS1", emptyMap()).copy(moodleIdNumber = "1142CS1")
+        val live = course("CS1", emptyMap()).copy(moodleIdNumber = "1151CS1")
+
+        assertEquals(
+            "picked from the today strip",
+            live,
+            ClassTableSelection.renameTarget("CS1", listOf(shown), listOf(live), fromAnotherTerm = true),
+        )
+        assertEquals(
+            "picked from the grid",
+            shown,
+            ClassTableSelection.renameTarget("CS1", listOf(shown), listOf(live), fromAnotherTerm = false),
+        )
     }
 
     @Test

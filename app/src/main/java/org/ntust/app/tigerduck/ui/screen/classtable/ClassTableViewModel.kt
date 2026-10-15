@@ -889,9 +889,12 @@ class ClassTableViewModel @Inject constructor(
         if (isShowingSomeoneElse) return
         val trimmed = newName.trim()
         val locale = currentCourseLocale
-        // The live term's copy too: a course renamed from the today strip, while the grid shows
-        // another term, may not be on the grid at all.
-        val course = ClassTableSelection.renameTarget(courseNo, _courses.value, _liveSemesterCourses.value) ?: return
+        // The live term's copy for a course renamed from the today strip, while the grid shows
+        // another term: it may not be on the grid at all, or the grid's course of that number is
+        // another term's.
+        val course = ClassTableSelection.renameTarget(
+            courseNo, _courses.value, _liveSemesterCourses.value, selectedFromAnotherTerm,
+        ) ?: return
         val defaultName = defaultNameFor(course)
         val override = trimmed.takeIf {
             it.isNotEmpty() && it != course.courseName && it != defaultName
@@ -906,7 +909,7 @@ class ClassTableViewModel @Inject constructor(
             dataCache.saveCourses(updated, _currentSemester.value)
             widgetUpdater.requestUpdate()
         }
-        syncCourseOverride(courseNo, customName = trimmed.ifEmpty { "" }, locale = locale)
+        syncCourseOverride(course, customName = trimmed.ifEmpty { "" }, locale = locale)
         localEdits.noteEdit()
     }
 
@@ -914,6 +917,9 @@ class ClassTableViewModel @Inject constructor(
     fun revertCourseName(courseNo: String) {
         if (isShowingSomeoneElse) return
         val locale = currentCourseLocale
+        val course = ClassTableSelection.renameTarget(
+            courseNo, _courses.value, _liveSemesterCourses.value, selectedFromAnotherTerm,
+        )
         courseCustomNames =
             CourseNameOverrides.withOverride(courseCustomNames, courseNo, locale, null)
         val updated = ClassTableSelection.renamed(_courses.value, courseNo, null)
@@ -924,7 +930,7 @@ class ClassTableViewModel @Inject constructor(
             dataCache.saveCourses(updated, _currentSemester.value)
             widgetUpdater.requestUpdate()
         }
-        syncCourseOverride(courseNo, customName = "", locale = locale)
+        course?.let { syncCourseOverride(it, customName = "", locale = locale) }
         localEdits.noteEdit()
     }
 
@@ -1016,17 +1022,19 @@ class ClassTableViewModel @Inject constructor(
         }
         // A concrete hex each, a default included: the backend reads a
         // missing one as "unchanged".
-        for ((no, hex) in pick.toSync) syncCourseOverride(no, colorHex = hex)
+        for ((no, hex) in pick.toSync) {
+            updated.firstOrNull { it.courseNo == no }?.let { syncCourseOverride(it, colorHex = hex) }
+        }
         localEdits.noteEdit()
     }
 
+    /** Sends [course]'s colour or name to the backend, keyed by that course's own term. */
     private fun syncCourseOverride(
-        courseNo: String,
+        course: Course,
         colorHex: String? = null,
         customName: String? = null,
         locale: String? = null,
     ) {
-        val course = _courses.value.find { it.courseNo == courseNo } ?: return
         val moodleId = course.moodleIdNumber ?: return
         viewModelScope.launch {
             try {
