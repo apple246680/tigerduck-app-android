@@ -70,6 +70,7 @@ import org.ntust.app.tigerduck.ui.screen.whatsnew.WhatsNewFlow
 import org.ntust.app.tigerduck.ui.screen.whatsnew.WhatsNewSheet
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
+import org.ntust.app.tigerduck.ui.theme.VisualPreset
 import org.ntust.app.tigerduck.data.model.ManualCheckResult
 import org.ntust.app.tigerduck.update.UpdateChecker
 import org.ntust.app.tigerduck.update.WhatsNewGate
@@ -85,6 +86,7 @@ fun SettingsScreen(
     onNavigateToLiveActivity: () -> Unit = {},
     onNavigateToSchoolMailNotificationSettings: () -> Unit = {},
     onNavigateToNotificationPermissionSettings: () -> Unit = {},
+    onNavigateToClassReminders: () -> Unit = {},
     onNavigateToAssignmentReminders: () -> Unit = {},
     onNavigateToCloudSync: () -> Unit = {},
     onNavigateToLibrarySettings: () -> Unit = {},
@@ -128,6 +130,7 @@ fun SettingsScreen(
     }
 
     val accentColorHex = viewModel.appState.accentColorHex
+    val visualPreset = viewModel.appState.visualPreset
     val showAbsoluteTime = viewModel.appState.showAbsoluteAssignmentTime
     val alwaysShowAllPeriods = viewModel.appState.alwaysShowAllPeriods
     val showClassroomInClassTable = viewModel.appState.showClassroomInClassTable
@@ -356,6 +359,15 @@ fun SettingsScreen(
             item {
                 ContentCard {
                     Column {
+                        // The style names are not localized: they read the same in every language.
+                        SettingsPickerRow(
+                            label = stringResource(R.string.settings_visual_preset_label),
+                            value = visualPreset.displayName,
+                            options = VisualPreset.entries.map { it.rawValue to it.displayName },
+                            selectedKey = visualPreset.rawValue,
+                            onSelect = { viewModel.appState.visualPreset = VisualPreset.fromRawValue(it) },
+                        )
+                        HorizontalDivider()
                         SettingsToggleRow(
                             stringResource(R.string.settings_show_absolute_assignment_time),
                             showAbsoluteTime
@@ -478,6 +490,13 @@ fun SettingsScreen(
             item {
                 ContentCard {
                     Column {
+                        // First, as on iOS. This phone posts its own class
+                        // reminders, so unlike iOS's row this one works with
+                        // cloud sync off too.
+                        SettingsLinkRow(
+                            stringResource(R.string.settings_class_reminder)
+                        ) { onNavigateToClassReminders() }
+                        HorizontalDivider()
                         SettingsLinkRow(
                             stringResource(R.string.settings_assignment_due_reminder)
                         ) { onNavigateToAssignmentReminders() }

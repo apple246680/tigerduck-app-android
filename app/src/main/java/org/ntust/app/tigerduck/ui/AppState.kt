@@ -35,6 +35,7 @@ import org.ntust.app.tigerduck.notification.AssignmentReminderOffset
 import org.ntust.app.tigerduck.notification.SystemPermissions
 import org.ntust.app.tigerduck.ui.haptics.HapticScenario
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
+import org.ntust.app.tigerduck.ui.theme.VisualPreset
 import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -211,6 +212,19 @@ class AppState @Inject constructor(
         }
         return Color(0xFF000000L or (hex.toLong() and 0xFFFFFFL))
     }
+
+    private val visualPresetSetting =
+        VisualPresetSetting(prefs, onChange = { widgetUpdater.requestUpdate() })
+
+    /**
+     * The interface style picked in Settings > Display. The app root provides
+     * it to every screen through [org.ntust.app.tigerduck.ui.theme.LocalVisualStylePolicy].
+     */
+    var visualPreset: VisualPreset
+        get() = visualPresetSetting.value
+        set(value) {
+            visualPresetSetting.value = value
+        }
 
     private var showAbsoluteAssignmentTimeState by mutableStateOf(prefs.showAbsoluteAssignmentTime)
 
@@ -565,6 +579,7 @@ class AppState @Inject constructor(
             hasCompletedOnboardingState = prefs.hasCompletedOnboarding
             onboardingVersionState = prefs.onboardingVersion
             accentColorHexState = prefs.accentColorHex
+            visualPresetSetting.reload()
             showAbsoluteAssignmentTimeState = prefs.showAbsoluteAssignmentTime
             alwaysShowAllPeriodsState = prefs.alwaysShowAllPeriods
             showClassroomInClassTableState = prefs.showClassroomInClassTable
@@ -590,6 +605,9 @@ class AppState @Inject constructor(
                 hapticStrengthStates[scenario] = prefs.hapticStrength(scenario)
                 hapticDurationStates[scenario] = prefs.hapticDurationMs(scenario)
             }
+            // The widgets draw the wiped courses, accent and interface style,
+            // and redraw only when asked; reload() above does not ask.
+            widgetUpdater.requestUpdate()
 
             _needsUserReset.value = false
         }
