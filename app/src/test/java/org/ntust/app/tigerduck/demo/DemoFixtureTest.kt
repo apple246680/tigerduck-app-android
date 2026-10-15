@@ -178,10 +178,10 @@ class DemoFixtureTest {
             assertEquals(2, fixture.bulletins!!.size)
             assertEquals(3, fixture.calendar!!.size)
             assertTrue(fixture.libraryFakeSignedIn)
-            assertTrue(fixture.courses!!.all { it.courseName.isNotBlank() })
+            assertTrue(fixture.courses.all { it.courseName.isNotBlank() })
             val moodle = fixture.moodle!!
             assertEquals(3, moodle.courses.size)
-            val courseNos = fixture.courses!!.map { it.courseNo }
+            val courseNos = fixture.courses.map { it.courseNo }
             assertTrue("every Moodle course is a course on the timetable", moodle.courses.all { it.courseNo in courseNos })
             assertTrue(moodle.courses.all { c -> c.announcements.all { it.title.isNotBlank() && it.created > 0 } })
             assertTrue("the student is among each course's members",

@@ -1,7 +1,10 @@
+@file:OptIn(ExperimentalCoroutinesApi::class)
+
 package org.ntust.app.tigerduck.network
 
 import android.app.Application
 import android.content.Context
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType

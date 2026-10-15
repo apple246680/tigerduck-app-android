@@ -4,7 +4,7 @@ import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.performSemanticsAction
 import org.junit.Assert.assertEquals
 import org.junit.Rule

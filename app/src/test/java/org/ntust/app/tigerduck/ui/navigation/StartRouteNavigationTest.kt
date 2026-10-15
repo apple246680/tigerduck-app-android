@@ -2,7 +2,7 @@ package org.ntust.app.tigerduck.ui.navigation
 
 import android.app.Application
 import androidx.activity.ComponentActivity
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost

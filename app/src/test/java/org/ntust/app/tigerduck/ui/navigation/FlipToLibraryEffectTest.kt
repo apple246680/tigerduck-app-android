@@ -10,7 +10,7 @@ import android.hardware.Sensor
 import android.hardware.SensorManager
 import android.os.Looper
 import androidx.activity.ComponentActivity
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -27,8 +27,8 @@ import org.ntust.app.tigerduck.mail.ComposeMode
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.SensorBuilder
 import org.robolectric.shadows.SensorEventBuilder
-import org.robolectric.shadows.ShadowSensor
 import org.robolectric.util.ReflectionHelpers
 import org.robolectric.util.ReflectionHelpers.ClassParameter
 
@@ -47,7 +47,7 @@ class FlipToLibraryEffectTest {
 
     @Before
     fun setUp() {
-        sensor = ShadowSensor.newInstance(Sensor.TYPE_ROTATION_VECTOR)
+        sensor = SensorBuilder.newBuilder().setType(Sensor.TYPE_ROTATION_VECTOR).build()
         shadowOf(sensorManager()).addSensor(sensor)
     }
 
@@ -105,9 +105,7 @@ class FlipToLibraryEffectTest {
         composeRule.runOnUiThread {
             listOf(UPRIGHT, UPRIGHT, FACE_DOWN, FACE_DOWN).forEach { values ->
                 shadowOf(sensorManager()).sendSensorEventToListeners(
-                    SensorEventBuilder.newBuilder()
-                        .setSensor(sensor)
-                        .setValues(values.copyOf())
+                    SensorEventBuilder.newBuilder(sensor, values.copyOf())
                         .setTimestamp(nowNanos)
                         .build(),
                 )

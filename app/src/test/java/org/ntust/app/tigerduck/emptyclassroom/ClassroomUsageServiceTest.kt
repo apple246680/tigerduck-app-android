@@ -3,6 +3,7 @@ package org.ntust.app.tigerduck.emptyclassroom
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.test.runCurrent
@@ -22,6 +23,7 @@ import kotlin.coroutines.CoroutineContext
  * The cour01 client against made-up pages: the sign-in, the campus and date postbacks, the pages
  * of a day, the kept days, and what a sign-out leaves behind.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class ClassroomUsageServiceTest {
 
     private class Harness(var nowMs: Long = 1_000_000L, demo: (LocalDate) -> CampusUsage? = { null }) {
