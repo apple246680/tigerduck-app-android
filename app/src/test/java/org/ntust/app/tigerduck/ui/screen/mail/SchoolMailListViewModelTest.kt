@@ -282,6 +282,49 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
+    fun `a page of results still on its way when the search is cleared is dropped, and nothing more is fetched`() {
+        repo.pageSize = 2
+        // More than one page of matches left (a page is MailRepository.PAGE_SIZE), so there is a next one to not fetch.
+        repo.add("INBOX", *(1L..120L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        val gate = CompletableDeferred<Unit>()
+        repo.searchPageGate = gate
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        vm.setSearchText("")
+        repo.searchPageGate = null
+        gate.complete(Unit)
+        assertNull(vm.state.value.searchResults)
+        assertEquals(1, repo.searchPages.size)
+        assertFalse(vm.state.value.isPaginating)
+    }
+
+    @Test
+    fun `signing out while a page of results is on its way leaves nothing of the search behind`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..9L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        val gate = CompletableDeferred<Unit>()
+        repo.searchPageGate = gate
+        repo.searchPageError = MailError.Network()
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        account.signOut()
+        repo.searchPageGate = null
+        gate.complete(Unit)
+        val s = vm.state.value
+        assertNull(s.searchResults)
+        assertTrue(s.messages.isEmpty())
+        // The departed account's failure is not reported to whoever signs in next.
+        assertNull(s.actionError)
+        assertEquals(1, repo.searchPages.size)
+    }
+
+    @Test
     fun `clearing the search drops the matches it had left to fetch`() {
         repo.pageSize = 2
         repo.add("INBOX", *(1L..5L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())

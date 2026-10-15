@@ -34,6 +34,9 @@ class AttachmentShareIntentTest {
         assertEquals("content", stream.scheme)
         assertTrue(stream.toString().endsWith("notes.pdf"))
         assertTrue(send.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
+        // Read-only: the app picked can read the attachment, never write to the app's copy of it.
+        assertEquals(0, send.flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        assertEquals(0, chooser.flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         assertEquals(stream, send.clipData!!.getItemAt(0).uri)
     }
 }
