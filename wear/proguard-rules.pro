@@ -31,3 +31,7 @@
     public static int d(...) return 0;
     public static int i(...) return 0;
 }
+
+# As in :app, keep the exception class names those warnings and errors log;
+# no release keeps the mapping that would decode an obfuscated one.
+-keepnames class * extends java.lang.Throwable

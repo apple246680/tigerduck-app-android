@@ -44,6 +44,14 @@ data class PushDiagnostic(
 )
 
 /**
+ * [PushDiagnostic.lastError] for a failure: its message, or "" when it has
+ * none, which the status card shows as the generic "Failed" in the app's
+ * language at the time (latestErrorText). Never its class name, which a
+ * release build shortens to R8's name for it, such as "v44".
+ */
+internal fun Throwable.diagnosticText(): String = message?.takeUnless { it.isBlank() }.orEmpty()
+
+/**
  * Coalesces the two events that trigger a server-side device registration —
  * an FCM token arriving and the user signing in — and POSTs once both are
  * available. Mirrors the iOS PushRegistrationService actor. A registration
@@ -457,7 +465,7 @@ class PushRegistrationService @Inject constructor(
                     // Not isRegistered: no account row exists, and the settings
                     // screen reads that flag to mean cloud sync is live. Custom
                     // push reaches this device; user-scoped push does not.
-                    lastError = announceError?.let { e -> e.message ?: e::class.java.simpleName },
+                    lastError = announceError?.diagnosticText(),
                 )
             }
             recordRegistrationAttempt(landed = announceError == null)
@@ -491,7 +499,7 @@ class PushRegistrationService @Inject constructor(
             onFailure = { e ->
                 if (e is CancellationException) throw e
                 Log.w(TAG, "register failed: ${e.logSummary()}")
-                updateDiagnostic { it.copy(lastError = e.message ?: e::class.java.simpleName) }
+                updateDiagnostic { it.copy(lastError = e.diagnosticText()) }
                 false
             },
         ).let { landed ->
@@ -645,7 +653,7 @@ class PushRegistrationService @Inject constructor(
             }
             failure?.let {
                 Log.w(TAG, "server push preference update failed: ${it.logSummary()}")
-                it.message ?: it::class.java.simpleName
+                it.diagnosticText()
             }
         }
         // Clear stale errors on success, set them on failure — either way the

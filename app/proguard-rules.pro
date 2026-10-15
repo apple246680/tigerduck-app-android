@@ -83,3 +83,9 @@
     public static int d(...) return 0;
     public static int i(...) return 0;
 }
+
+# Those warnings and errors name a failure by its exception's class
+# (logSummary()), and neither the release workflow nor F-Droid keeps the
+# mapping.txt that would decode an obfuscated one such as "v44". -keepnames
+# still lets R8 drop unused exceptions and rename their members.
+-keepnames class * extends java.lang.Throwable

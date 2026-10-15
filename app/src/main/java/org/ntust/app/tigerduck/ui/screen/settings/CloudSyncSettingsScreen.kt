@@ -455,7 +455,7 @@ private fun SyncStatusCard(
                             Spacer(Modifier.height(4.dp))
                             LabeledText(
                                 label = stringResource(R.string.push_server_latest_error),
-                                value = msg,
+                                value = latestErrorText(msg),
                                 valueColor = MaterialTheme.colorScheme.error,
                             )
                         }
@@ -467,6 +467,15 @@ private fun SyncStatusCard(
         }
     }
 }
+
+/**
+ * The status card's latest error: the failure's own message or, for one that
+ * had none (stored as ""), the generic "Failed" in the app's language now,
+ * not the one it was recorded in.
+ */
+@Composable
+internal fun latestErrorText(lastError: String): String =
+    lastError.ifEmpty { stringResource(R.string.sync_status_failed) }
 
 /**
  * "Automatic sign-in failed", with the school sign-in a tap away; signing in there signs in to

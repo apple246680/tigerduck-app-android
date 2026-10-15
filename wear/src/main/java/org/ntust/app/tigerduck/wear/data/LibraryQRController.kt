@@ -137,9 +137,7 @@ class LibraryQRController(
             _error.value = if (e is LibraryServiceError.CredentialsNotFound) {
                 accountChangedMessage
             } else {
-                e.message?.takeUnless { it.isBlank() }
-                    ?: e::class.simpleName
-                    ?: "QR fetch failed"
+                qrErrorDetail(e)
             }
             _qrBitmap.value = null
             _qrPatternBounds.value = null
@@ -157,3 +155,11 @@ class LibraryQRController(
         }
     }
 }
+
+/**
+ * The reason under the page's generic "Failed to generate QR code": the
+ * failure's own message (a network error, the library server's reply), or
+ * nothing. Never the exception's class name, which a release build shortens.
+ */
+internal fun qrErrorDetail(e: Throwable): String =
+    e.message?.takeUnless { it.isBlank() }.orEmpty()
