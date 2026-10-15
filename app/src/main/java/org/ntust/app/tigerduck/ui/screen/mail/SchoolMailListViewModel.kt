@@ -197,7 +197,12 @@ class SchoolMailListViewModel @Inject constructor(
      */
     private var listGeneration = 0
 
-    /** Each real folder's UIDVALIDITY as its last first page from the server gave it. */
+    /**
+     * Each real folder's UIDVALIDITY as its last first page gave it -- the server's, or the cached
+     * one painted while the server is asked ([showCached]). Every cursor in [UiState.cursors] was
+     * taken under the validity recorded here for its folder, so [paginate] can tell an older page
+     * from a recreated folder apart from one of the mailbox the list is showing.
+     */
     private var folderValidity: Map<String, Long> = emptyMap()
 
     /**
@@ -431,6 +436,10 @@ class SchoolMailListViewModel @Inject constructor(
         val pages = _state.value.targets.mapNotNull { folder -> repository.cachedPage(folder)?.let { folder to it } }
         if (pages.isEmpty() || _state.value.selected != selection) return
         listGeneration++
+        // The validity the cached page was read under goes with its cursor: should the first page
+        // fail -- offline at startup -- this is the list that gets paged, and without it an older
+        // page from a folder recreated since would be merged in unchecked.
+        folderValidity = folderValidity + pages.associate { (folder, page) -> folder to page.uidValidity }
         _state.update { it.copy(messages = rowsOf(selection, pages), cursors = cursorsOf(pages)) }
     }
 
@@ -648,7 +657,11 @@ class SchoolMailListViewModel @Inject constructor(
             }
             failure?.let(::searchFail)
             // Nothing on screen means no last row to scroll to, however many matches are left.
-            if (_state.value.displayed.isEmpty()) loadMoreSearchResults()
+            // Unless the server's part of the search ended early: in All mail the inbox can have
+            // answered, with matches left to fetch, before Sent found the connection gone or the
+            // password rejected, and a page of them now would open the connection again -- for a
+            // rejected password, the LOGIN that was just decided against (spec §7.4).
+            if (!serverUnreachable && _state.value.displayed.isEmpty()) loadMoreSearchResults()
         } finally {
             _state.update { it.copy(isSearching = false) }
         }
@@ -662,7 +675,9 @@ class SchoolMailListViewModel @Inject constructor(
      * page it was fetching stays unfetched for the next scroll to try again.
      *
      * A page read under another UIDVALIDITY than the search's means the folder was recreated since:
-     * its matches, listed and unfetched alike, name other mail now. They go, and the list reloads.
+     * its matches, listed and unfetched alike, name other mail now. They go, the list reloads, and
+     * the query runs again over the recreated folder: the results are what the screen shows while
+     * searching, so a reloaded list alone would leave a search of that one folder empty.
      */
     private suspend fun loadMoreSearchResults() {
         val selection = _state.value.selected
@@ -687,6 +702,10 @@ class SchoolMailListViewModel @Inject constructor(
                         unfetchedMatches = unfetchedMatches - folder
                         _state.update { st -> st.copy(searchResults = st.searchResults?.filterNot { it.folder == folder }) }
                         fetchFirstPage()
+                        // Not if the search was cleared or replaced meanwhile: that one is the
+                        // user's, and this would be a second round trip for the same query.
+                        if (_state.value.selected != selection || generation != searchGeneration) return
+                        runSearch()
                         return
                     }
                     unfetchedMatches = unfetchedMatches + (folder to matches.copy(uids = matches.uids.drop(batch.size)))

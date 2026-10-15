@@ -231,9 +231,19 @@ class FakeSchoolMailRepository : SchoolMailRepository {
     /** Thrown by [search] for a folder, after it is recorded as touched. */
     var searchError: MailError? = null
 
+    /**
+     * When set, [searchError] is thrown for this folder alone: one folder answers the search and
+     * the next cannot be reached, the way a connection lost midway through All mail looks.
+     */
+    var searchErrorFolder: String? = null
+
+    /** How many times [search] was called, failed or not. */
+    var searchCalls = 0
+
     override suspend fun search(folder: String, query: String): SearchOutcome {
         foldersTouched += folder
-        searchError?.let { throw it }
+        searchCalls++
+        searchError?.takeIf { searchErrorFolder == null || searchErrorFolder == folder }?.let { throw it }
         val hits = sorted(folder).filter { query in it.subject }
         // Paged like the real repository: the newest [pageSize] matches, the rest left to fetch.
         return if (searchUnsupported) SearchOutcome.LoadedOnly(hits)

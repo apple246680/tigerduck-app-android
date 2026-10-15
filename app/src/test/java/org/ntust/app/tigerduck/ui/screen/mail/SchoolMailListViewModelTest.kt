@@ -186,6 +186,43 @@ class SchoolMailListViewModelTest {
         assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Loaded)
     }
 
+    /**
+     * All mail, with every match read: under unread only the first page shows nothing, which is the
+     * one case where a search fetches another page by itself. The inbox answers, and then [error]
+     * ends the server's part of the search at Sent.
+     */
+    private fun searchWhoseServerIsLostAfterTheInbox(error: MailError) {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..5L).map { mailSummary(it, subject = "期中考 $it", seen = true) }.toTypedArray())
+        repo.add(SENT, mailSummary(9, subject = "期中考 reply", seen = true))
+        vm.load()
+        vm.setUnreadOnly(true)
+        repo.searchError = error
+        repo.searchErrorFolder = SENT
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        assertTrue(vm.state.value.displayed.isEmpty())
+        assertTrue(vm.state.value.searchLocalOnly)
+        assertFalse(vm.state.value.isPaginating)
+    }
+
+    @Test
+    fun `a search that lost the connection fetches no more results on its own, even with nothing on screen`() {
+        searchWhoseServerIsLostAfterTheInbox(MailError.Network())
+        assertTrue(vm.state.value.actionError is MailError.Network)
+        // The inbox's remaining matches are left alone: fetching a page of them would open the
+        // connection again right after the search decided to stop trying it.
+        assertTrue(repo.searchPages.isEmpty())
+    }
+
+    @Test
+    fun `a search the password was rejected during fetches no more results on its own`() {
+        searchWhoseServerIsLostAfterTheInbox(MailError.AuthFailed())
+        assertTrue(account.authFailed.value)
+        // Spec §7.4: a page of results is one more LOGIN with the rejected password.
+        assertTrue(repo.searchPages.isEmpty())
+    }
+
     @Test
     fun `a certificate failure during a search stays on screen, as it does for the poll`() {
         repo.add("INBOX", mailSummary(1, subject = "期中考"))
@@ -264,7 +301,7 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
-    fun `search results from a recreated folder are dropped and the list reloads`() {
+    fun `search results from a recreated folder are dropped, the list reloads and the search runs again`() {
         repo.pageSize = 2
         repo.add("INBOX", *(1L..5L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())
         vm.load()
@@ -272,12 +309,20 @@ class SchoolMailListViewModelTest {
         vm.setSearchText("期中")
         vm.submitSearch()
         val firstPages = repo.pageLimits.size
+        val searches = repo.searchCalls
         repo.searchPageValidity = 2
         vm.loadMoreIfNeeded(vm.state.value.displayed.last())
-        // The matches were found under another UIDVALIDITY: none of them can be trusted now.
-        assertEquals(emptyList<Long>(), vm.state.value.searchResults?.map { it.uid })
+        // The matches were found under another UIDVALIDITY: none of them can be trusted now, so
+        // the page is not added, the list reloads, and the query runs again over the recreated
+        // folder. What is on screen is the new search's answer -- not an empty result left over
+        // a list that reloaded perfectly well, which is all a search of this one folder showed.
         assertEquals(firstPages + 1, repo.pageLimits.size)
         assertEquals(1, repo.searchPages.size)
+        assertEquals(searches + 1, repo.searchCalls)
+        assertEquals(listOf(5L, 4L), vm.state.value.displayed.map { it.uid })
+        assertEquals("期中", vm.state.value.searchText)
+        assertFalse(vm.state.value.isSearching)
+        assertFalse(vm.state.value.isPaginating)
     }
 
     @Test
@@ -446,6 +491,34 @@ class SchoolMailListViewModelTest {
         repo.olderPage = { _, _ -> MailPage(2, 4, listOf(mailSummary(9), mailSummary(8)), null) }
         vm.loadMoreIfNeeded(vm.state.value.displayed.last())
         assertEquals(listOf(4L, 3L), vm.state.value.displayed.map { it.uid })
+        // The older page, then the first page again.
+        assertEquals(firstPages + 2, repo.pageLimits.size)
+    }
+
+    @Test
+    fun `a list painted from the cache whose refresh failed still checks UIDVALIDITY before paging`() {
+        repo.pageSize = 2
+        repo.add("INBOX", mailSummary(1), mailSummary(2), mailSummary(3), mailSummary(4))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        // The app is opened again: a new view model paints the inbox from the cache, and the
+        // first refresh fails, so the cached page is all it knows about the folder.
+        val reopened = SchoolMailListViewModel(
+            repo, account, checker, schoolMailSite(),
+            { main.dispatcher.scheduler.currentTime }, notices,
+        )
+        repo.loadError = MailError.Network()
+        reopened.load()
+        reopened.selectFolder(FolderSelection.Real("INBOX"))
+        assertEquals(listOf(4L, 3L), reopened.state.value.displayed.map { it.uid })
+        assertTrue(reopened.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        // The folder was recreated meanwhile (UIDVALIDITY 2): the older page's UIDs name other
+        // mail than the cached rows, so merging them would mix two mailboxes into one list.
+        repo.loadError = null
+        val firstPages = repo.pageLimits.size
+        repo.olderPage = { _, _ -> MailPage(2, 4, listOf(mailSummary(9), mailSummary(8)), null) }
+        reopened.loadMoreIfNeeded(reopened.state.value.displayed.last())
+        assertEquals(listOf(4L, 3L), reopened.state.value.displayed.map { it.uid })
         // The older page, then the first page again.
         assertEquals(firstPages + 2, repo.pageLimits.size)
     }
@@ -790,7 +863,7 @@ class SchoolMailListViewModelTest {
         notices.report(SentCopyNotice.Unknown, SentCopyOrigin.List, notices.accountGeneration)
         account.signOut()
         main.dispatcher.scheduler.runCurrent()
-        assertNull(notices.posted.value)
+        assertNull(notices.posted)
         assertNull(vm.sentCopyNotice.value)
     }
 
