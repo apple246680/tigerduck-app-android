@@ -330,4 +330,22 @@ class BackgroundSyncWorkerTest {
             )
         }
     }
+
+    @Test
+    fun `the first run in a term fetches its courses, and only the first`() {
+        val termStart = 1_000_000_000L
+        val day = 24 * 60 * 60_000L
+        // Last fetched during the break: the new term's courses may never have been.
+        assertTrue(BackgroundSyncWorker.firstRunOfTerm(termStart - day, termStart, nowMs = termStart + 60_000L))
+        // Fetched since the term began.
+        assertTrue(!BackgroundSyncWorker.firstRunOfTerm(termStart + 60_000L, termStart, nowMs = termStart + day))
+    }
+
+    @Test
+    fun `a term yet to begin, or no calendar, fetches nothing extra`() {
+        val termStart = 1_000_000_000L
+        // The calendar's earliest term, before it starts.
+        assertTrue(!BackgroundSyncWorker.firstRunOfTerm(0L, termStart, nowMs = termStart - 60_000L))
+        assertTrue(!BackgroundSyncWorker.firstRunOfTerm(0L, termStartMs = null, nowMs = termStart))
+    }
 }

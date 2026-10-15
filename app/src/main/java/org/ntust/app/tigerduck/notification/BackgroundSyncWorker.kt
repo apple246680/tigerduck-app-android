@@ -24,6 +24,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import org.ntust.app.tigerduck.AppConstants
+import org.ntust.app.tigerduck.academic.AcademicCalendarStore
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
@@ -42,6 +44,7 @@ import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.network.CourseService
 import org.ntust.app.tigerduck.network.MoodleService
 import org.ntust.app.tigerduck.network.SemesterCatalog
+import org.ntust.app.tigerduck.shared.clock.AppClock
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
@@ -71,6 +74,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
     private val courseIgnoreSync: CourseIgnoreSync,
     private val storedPasswordLatch: StoredPasswordLatch,
     private val unsentMarks: UnsentMarks,
+    private val academicCalendar: AcademicCalendarStore,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) : CoroutineWorker(context, params) {
 
@@ -122,9 +126,15 @@ class BackgroundSyncWorker @AssistedInject constructor(
         // its fetch left a fresh stamp over nothing stored; its retry would
         // otherwise skip the fetch and report success.
         val retry = runAttemptCount > 0
-        val coursesDue = triggered || retry || RefreshPolicies.coursesEvery?.let {
-            RefreshPolicy.hasPassed(prefs.backgroundCoursesSyncedAtMs, now, it)
-        } == true
+        // And once a term, whatever the pages ask: see firstRunOfTerm.
+        val termStartMs = academicCalendar.current()
+            .currentTerm(AppClock.localDateTime().toLocalDate())
+            ?.start?.atStartOfDay(AppConstants.TAIPEI_ZONE)?.toInstant()?.toEpochMilli()
+        val coursesDue = triggered || retry ||
+            firstRunOfTerm(prefs.backgroundCoursesSyncedAtMs, termStartMs, now) ||
+            RefreshPolicies.coursesEvery?.let {
+                RefreshPolicy.hasPassed(prefs.backgroundCoursesSyncedAtMs, now, it)
+            } == true
         val assignmentsDue = triggered || retry || RefreshPolicies.assignmentsEvery?.let {
             RefreshPolicy.hasPassed(prefs.schoolDataSyncedAtMs.value, now, it)
         } == true
@@ -590,6 +600,19 @@ class BackgroundSyncWorker @AssistedInject constructor(
             WorkInfo.State.RUNNING in states -> ExistingWorkPolicy.APPEND_OR_REPLACE
             else -> ExistingWorkPolicy.KEEP
         }
+
+        /**
+         * Whether a run fetches the timetable though no page asks it to: the
+         * term the app is on began after the last time a run fetched it
+         * ([coursesFetchedAtMs]), so that term's courses may never have been
+         * fetched at all. The class reminders and the Live Update read each
+         * day's courses from its own term, and arm nothing for a term with
+         * none cached. Once a term: the fetch moves the stamp past
+         * [termStartMs]. Not for a term yet to begin, which the calendar
+         * gives before its first term starts.
+         */
+        internal fun firstRunOfTerm(coursesFetchedAtMs: Long, termStartMs: Long?, nowMs: Long): Boolean =
+            termStartMs != null && termStartMs <= nowMs && coursesFetchedAtMs < termStartMs
 
         /**
          * What a run that could not fetch courses or assignments reports.
