@@ -289,6 +289,7 @@ fun AnnouncementsScreen(
                         SyncStatusDot(
                             servers = listOf(ServerKind.BACKEND),
                             isLoading = isLoading,
+                            syncedAtMs = state.syncedAtMs,
                         )
                         if (state.unreadOnly && state.hasUnread) {
                             IconButton(onClick = viewModel::markAllRead) {
