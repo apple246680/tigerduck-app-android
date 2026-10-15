@@ -59,6 +59,7 @@ class MailChecker @Inject constructor(
     private val markerLock = Any()
 
     suspend fun check(source: CheckSource): CheckOutcome {
+        val generation = account.accountGeneration
         val outcome = if (!mutex.tryLock()) {
             CheckOutcome.Busy
         } else {
@@ -68,8 +69,30 @@ class MailChecker @Inject constructor(
                 mutex.unlock()
             }
         }
+        // The inbox answered, whatever it held -- unless the account it answered has signed out
+        // since, and the date would land in the state its sign-out just cleared.
+        val reached = outcome is CheckOutcome.Baseline || outcome is CheckOutcome.NoChange || outcome is CheckOutcome.NewMail
+        if (reached && account.accountGeneration == generation) {
+            state.inboxFetchedAt = clock.now()
+        }
         record(source, outcome)
         return outcome
+    }
+
+    /**
+     * When the inbox last answered this account, epoch ms, or 0: a check that reached it, or the
+     * list page reading it ([noteFetchedByPage]). What the School Mail page's "Last synced" row
+     * dates; cleared with the rest of the mail state at sign-out.
+     */
+    val inboxFetchedAt: Long get() = state.inboxFetchedAt
+
+    /**
+     * The list page read the inbox from the server. Not the demo mailbox, which has no server:
+     * like every other page on the demo account, it was never synced. Nor once the account has
+     * signed out, as a fetch that was under way would date the cleared state.
+     */
+    fun noteFetchedByPage() {
+        if (!account.isDemo && account.signedIn.value) state.inboxFetchedAt = clock.now()
     }
 
     /** The list page showed the inbox up to [status]; those mails must never notify later. */

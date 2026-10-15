@@ -13,6 +13,7 @@ class InMemoryMailStateStore : MailStateStore {
         get() = field.also { onUidValidityRead?.invoke() }
     override var inboxSeenUidNext: Long = 0
     override var lastForegroundCheckAt: Long = 0
+    override var inboxFetchedAt: Long = 0
     override var diagnostics: List<String> = emptyList()
         set(value) { field = value.take(10) }
     private val owned = mutableMapOf<Pair<String, Long>, Set<Long>>()
@@ -37,7 +38,8 @@ class InMemoryMailStateStore : MailStateStore {
 
     override fun clear() {
         displayName = null; notificationsEnabled = true; authFailed = false; demoMailbox = false
-        inboxUidValidity = 0; inboxSeenUidNext = 0; lastForegroundCheckAt = 0; diagnostics = emptyList()
+        inboxUidValidity = 0; inboxSeenUidNext = 0; lastForegroundCheckAt = 0; inboxFetchedAt = 0
+        diagnostics = emptyList()
         owned.clear()
     }
 }
