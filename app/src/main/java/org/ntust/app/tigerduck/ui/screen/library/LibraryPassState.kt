@@ -29,6 +29,8 @@ internal class LibraryPassState<Image : Any>(
     describe: (Exception) -> String,
     cache: LibraryQRCache<Image>,
     now: () -> Long,
+    /** A new code has landed; see [LibraryQRCycle]. */
+    onFetched: () -> Unit = {},
 ) {
     /** What failed, for the page to say; a sign-in on the page writes it too. */
     val errors = MutableStateFlow<String?>(null)
@@ -55,6 +57,7 @@ internal class LibraryPassState<Image : Any>(
         errors = errors,
         cache = cache,
         now = now,
+        onFetched = onFetched,
     )
 
     val image: StateFlow<Image?> = cycle.image

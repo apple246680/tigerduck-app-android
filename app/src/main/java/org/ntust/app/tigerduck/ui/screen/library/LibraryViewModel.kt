@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.ntust.app.tigerduck.R
+import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.debug.DebugFixtureStore
 import org.ntust.app.tigerduck.demo.DemoAccount
@@ -36,6 +37,7 @@ class LibraryViewModel @Inject constructor(
     private val librarySession: LibrarySession,
     private val pagePresence: LibraryPagePresence,
     qrCache: LibraryQRBitmapCache,
+    private val prefs: AppPreferences,
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -62,6 +64,8 @@ class LibraryViewModel @Inject constructor(
         describe = { e -> libraryErrorMessage(e, R.string.library_qr_generate_failed, context::getString) },
         cache = qrCache,
         now = SystemClock::elapsedRealtime,
+        // The demo library's code comes from the device, not the library.
+        onFetched = { if (fixtureQr == null) prefs.markLibrarySynced(System.currentTimeMillis()) },
     )
 
     private val _errorMessage = pass.errors
@@ -71,6 +75,9 @@ class LibraryViewModel @Inject constructor(
     val countdown: StateFlow<Int> = pass.countdown
     val isLoadingQR: StateFlow<Boolean> = pass.isLoading
     val isLoggedIn: StateFlow<Boolean> = pass.isLoggedIn
+
+    /** For the sync dot's "Last synced" row; see [AppPreferences.librarySyncedAtMs]. */
+    val syncedAtMs: StateFlow<Long> = prefs.librarySyncedAtMs
 
     /**
      * The demo account's QR payload, or null to ask the backend for a real

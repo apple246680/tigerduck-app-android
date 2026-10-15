@@ -47,6 +47,8 @@ internal class LibraryQRCycle<Image : Any>(
     private val cache: LibraryQRCache<Image>,
     /** A monotonic clock in ms, for how long the code on screen has left. */
     private val now: () -> Long,
+    /** A new code has landed and is on screen. */
+    private val onFetched: () -> Unit = {},
 ) {
     private val _image = MutableStateFlow<Image?>(null)
     val image: StateFlow<Image?> = _image.asStateFlow()
@@ -162,6 +164,7 @@ internal class LibraryQRCycle<Image : Any>(
             shownIssuedAt = issuedAt
             shownAccount = forAccount
             consecutiveErrors = 0
+            onFetched()
             return Outcome.SHOWN
         } catch (e: CancellationException) {
             throw e

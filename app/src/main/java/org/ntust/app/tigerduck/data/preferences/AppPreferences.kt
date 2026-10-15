@@ -754,6 +754,28 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
     }
 
     /**
+     * When the library last issued the signed-in library account a QR code,
+     * epoch ms; 0 for never, or not since that account signed out. The age of
+     * what the Library page shows, for its "Last synced" row. Forgotten with
+     * the kept code itself once no library account is signed in — see
+     * `LibrarySession` — not by [clearSyncStamps]: the library account is its
+     * own, and a school sign-out takes it only when it is the same student's.
+     */
+    private val _librarySyncedAtMs =
+        MutableStateFlow(prefs.getLong("librarySyncedAtMs", 0L))
+    val librarySyncedAtMs: StateFlow<Long> = _librarySyncedAtMs.asStateFlow()
+
+    fun markLibrarySynced(atMs: Long) {
+        prefs.edit().putLong("librarySyncedAtMs", atMs).apply()
+        _librarySyncedAtMs.value = atMs
+    }
+
+    fun forgetLibrarySynced() {
+        prefs.edit().remove("librarySyncedAtMs").apply()
+        _librarySyncedAtMs.value = 0L
+    }
+
+    /**
      * On sign-out, this stamp, the background worker's two below,
      * [syncedCategories], [assignmentMarksSyncedOnce],
      * [lastSeenCoursesResetAt] and the assignment upload ledger: what they record
@@ -879,6 +901,7 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
         _alwaysShowAllPeriods.value = false
         _showClassroomInClassTable.value = false
         _schoolDataSyncedAtMs.value = 0L
+        _librarySyncedAtMs.value = 0L
     }
 
     fun getString(key: String): String? = prefs.getString(key, null)
