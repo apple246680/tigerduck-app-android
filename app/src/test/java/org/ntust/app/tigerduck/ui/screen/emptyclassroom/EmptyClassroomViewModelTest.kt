@@ -104,6 +104,27 @@ class EmptyClassroomViewModelTest {
     }
 
     @Test
+    fun `coming back after today's period has ended moves to the current one, and a picked period still ahead stays`() {
+        // Pinned to the bottom bar, the finder keeps its model between visits.
+        val harness = Harness(time(14, 8, 30))
+        harness.serveDay(listOf(Pages.row("IB-508", "..............")))
+        harness.model.appear()
+        assertEquals(0, harness.state.selectedPeriod)
+        harness.model.disappear()
+
+        harness.env.now = time(14, 13, 40)
+        harness.model.appear()
+        assertEquals(day(14), harness.state.selectedDay)
+        assertEquals(5, harness.state.selectedPeriod)
+
+        harness.model.select(8)
+        harness.model.disappear()
+        harness.env.now = time(14, 14, 30)
+        harness.model.appear()
+        assertEquals(8, harness.state.selectedPeriod)
+    }
+
+    @Test
     fun `a weekend shows no data without asking the site, and offers the next teaching day`() {
         val harness = Harness(time(14, 10, 5))
         harness.model.select(day(17))

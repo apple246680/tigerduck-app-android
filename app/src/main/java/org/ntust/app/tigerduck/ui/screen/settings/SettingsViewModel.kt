@@ -221,6 +221,7 @@ class SettingsViewModel @Inject constructor(
         // and tied to this account: a sign-out ends it, and drops any write
         // still on its way.
         val held = heldUntilAnswered(conflict.categories)
+        val left = unanswered(prefs.pendingConflictCategories, conflict.categories)
         val holdsCourseIgnores = "assignments" in held
         // Use Local's terms are latched before the courses check lets the
         // course list go: a sync in between would un-hide a course deleted
@@ -230,10 +231,14 @@ class SettingsViewModel @Inject constructor(
             semesters = semesterCatalog::availableSemesters,
             host = useLocalHost,
         ) {
-            prefs.pendingConflictCategories = held
+            prefs.pendingConflictCategories = held + left
         }
         val generation = dataCache.userDataGeneration
         reenableCheck.resolutions.start()
+        // What the dialog did not cover is checked from this screen once the
+        // answer has been applied: the check waits for it, and then settles
+        // the hold in its place (ReenableResolutions.finish).
+        if (left.isNotEmpty()) checkPendingConflicts()
         appScope.launch(DataCache.Generation(generation)) {
             try {
                 coroutineScope {

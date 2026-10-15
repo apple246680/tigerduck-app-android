@@ -96,7 +96,7 @@ class FinderChipsSemanticsTest {
             }
         }
 
-        val chip = composeRule.onNodeWithContentDescription("研揚大樓, Free classrooms: 1").fetchSemanticsNode()
+        val chip = composeRule.onNodeWithContentDescription("AAEON Building, Free classrooms: 1").fetchSemanticsNode()
 
         assertEquals(true, chip.config.getOrNull(SemanticsProperties.Selected))
         assertNull(chip.config.getOrNull(SemanticsProperties.StateDescription))

@@ -31,6 +31,7 @@ import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
 import org.ntust.app.tigerduck.auth.StoredPasswordLatch
+import org.ntust.app.tigerduck.data.PendingCourseAdds
 import org.ntust.app.tigerduck.data.UnsentMarks
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.push.BackendSyncResult
@@ -75,6 +76,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
     private val courseIgnoreSync: CourseIgnoreSync,
     private val storedPasswordLatch: StoredPasswordLatch,
     private val unsentMarks: UnsentMarks,
+    private val pendingCourseAdds: PendingCourseAdds,
     private val academicCalendar: AcademicCalendarStore,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) : CoroutineWorker(context, params) {
@@ -186,9 +188,12 @@ class BackgroundSyncWorker @AssistedInject constructor(
             val account = authService.storedStudentId
             val generation = courseIgnoreSync.currentGeneration()
             courseIgnoreSync.retryPending()
-            // Marks whose PATCH failed go first, so the snapshot has them.
+            // Marks whose PATCH failed, and course adds whose upload did, go
+            // first, so the snapshot has them.
             unsentMarks.retry()
+            pendingCourseAdds.retry()
             val result = syncApiClient.fetchFullSync()
+            pendingCourseAdds.listed(result.serverCourses)
             // With the Assignments switch off, the re-enable check pending,
             // or marks the server lacks on the account's first sync here
             // (Home's sync sends those up), the marks stay as they are.

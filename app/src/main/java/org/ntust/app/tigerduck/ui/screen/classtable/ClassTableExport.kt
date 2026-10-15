@@ -83,7 +83,6 @@ private const val EXPORT_RETENTION_MS = 24 * 60 * 60 * 1000L
  */
 @Composable
 internal fun ClassTableExportCard(
-    viewModel: ClassTableViewModel,
     courses: List<Course>,
     semesterLabel: String,
     studentId: String?,
@@ -120,7 +119,6 @@ internal fun ClassTableExportCard(
         }
         Spacer(Modifier.height(12.dp))
         TimetableGrid(
-            viewModel = viewModel,
             courses = courses,
             showRoomHints = showRoomHints,
             weekdays = weekdays,

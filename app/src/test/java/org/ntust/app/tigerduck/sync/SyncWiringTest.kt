@@ -64,6 +64,16 @@ class SyncWiringTest {
     }
 
     @Test
+    fun `an answered re-enable dialog keeps what it did not cover pending and checks it after`() {
+        assertCalls(
+            "ui/screen/settings/SettingsViewModel.kt", "resolveReenableConflict",
+            "unanswered(prefs.pendingConflictCategories, conflict.categories)",
+            "prefs.pendingConflictCategories = held + left",
+            "if (left.isNotEmpty()) checkPendingConflicts()",
+        )
+    }
+
+    @Test
     fun `a registration crossing the TigerSync switch registers again`() {
         assertCalls("push/PushRegistrationService.kt", "endRegistration", "leftSwitchBehind(appPreferences.cloudSyncEnabled)")
         assertCalls(
@@ -81,6 +91,22 @@ class SyncWiringTest {
     fun `a full sync and a poll that reaches the server run an owed re-enable check`() {
         assertCalls("ui/screen/home/HomeBackendSync.kt", "pull", "reenableCheck.runIfOwed()")
         assertCalls("ui/screen/home/HomeViewModel.kt", "pollRevision", "reenableCheck.runIfOwed()")
+    }
+
+    @Test
+    fun `a hand-added course's upload is kept until it lands, and every full sync sends what waits first`() {
+        assertCalls("ui/screen/classtable/ClassTableViewModel.kt", "addCourse", "pendingCourseAdds.send(")
+        for ((rel, name) in listOf(
+            "ui/screen/home/HomeBackendSync.kt" to "pull",
+            "notification/BackgroundSyncWorker.kt" to "syncOverridesFromBackend",
+        )) {
+            val body = body(rel, name)
+            val retry = body.indexOf("pendingCourseAdds.retry()")
+            val fetch = body.indexOf("syncApiClient.fetchFullSync()")
+            val listed = body.indexOf("pendingCourseAdds.listed(result.serverCourses)")
+            assertTrue("$rel $name no longer sends the waiting course adds before the snapshot", retry in 0 until fetch)
+            assertTrue("$rel $name no longer lets go of the course adds the snapshot lists", listed > fetch)
+        }
     }
 
     @Test

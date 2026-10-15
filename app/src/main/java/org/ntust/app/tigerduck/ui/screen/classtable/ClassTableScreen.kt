@@ -167,6 +167,7 @@ fun ClassTableScreen(
     val shownPerson = shown.person
     val shownCourses = shown.courses
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val hasSettled by viewModel.hasSettled.collectAsStateWithLifecycle()
     val schoolDataSyncedAtMs by viewModel.schoolDataSyncedAtMs.collectAsStateWithLifecycle()
     val isLoggedIn by viewModel.isLoggedIn.collectAsStateWithLifecycle()
     val currentMinute by viewModel.currentMinute.collectAsStateWithLifecycle()
@@ -212,6 +213,8 @@ fun ClassTableScreen(
     var showMoreMenu by remember { mutableStateOf(false) }
     var showAddCourse by remember { mutableStateOf(false) }
     var showResetConfirm by remember { mutableStateOf(false) }
+    // The term whose reset the backend could not take.
+    var resetFailedSemester by remember { mutableStateOf<String?>(null) }
     var exporting by remember { mutableStateOf(false) }
     var sharing by remember { mutableStateOf<ClassTableShare?>(null) }
     val shareTerms by viewModel.shareTerms.collectAsStateWithLifecycle()
@@ -268,6 +271,9 @@ fun ClassTableScreen(
     }
     LaunchedEffect(viewModel) {
         viewModel.importedTableProblems.collect { importedTableProblem = it }
+    }
+    LaunchedEffect(viewModel) {
+        viewModel.resetFailedEvent.collect { resetFailedSemester = it }
     }
     // The tab's menu, a double tap or a deletion can switch class tables while one of the
     // user's own edits is open, and it must not save into someone else's.
@@ -511,6 +517,7 @@ fun ClassTableScreen(
                                             ongoing.weekday,
                                             ongoing.firstPeriodId,
                                             fromLiveTerm = true,
+                                            periods = ongoing.periods,
                                         )
                                     },
                                     modifier = Modifier.fillMaxHeight()
@@ -543,6 +550,7 @@ fun ClassTableScreen(
                                             dayIndex,
                                             block?.first() ?: "",
                                             fromLiveTerm = true,
+                                            periods = block,
                                         )
                                     },
                                     modifier = Modifier.fillMaxHeight()
@@ -587,13 +595,20 @@ fun ClassTableScreen(
                     )
                 }
 
-                if (shownPerson != null && shownCourses.isEmpty()) {
-                    // A shared term always has course codes, so someone else's is
-                    // empty only when none could be looked up.
+                // Under the picker, which stays to switch to a term that has courses.
+                if (shown.showsNoCourses(settled = hasSettled, isLoading = isLoading)) {
                     org.ntust.app.tigerduck.ui.component.EmptyStateView(
                         icon = Icons.AutoMirrored.Filled.MenuBook,
                         title = stringResource(R.string.home_time_slider_no_courses),
-                        message = stringResource(R.string.class_table_import_lookup_failed),
+                        // A shared term always has course codes, so someone else's is
+                        // empty only when none could be looked up, and it has no Add course.
+                        message = stringResource(
+                            if (shownPerson != null) {
+                                R.string.class_table_import_lookup_failed
+                            } else {
+                                R.string.class_table_empty_message
+                            }
+                        ),
                     )
                 }
 
@@ -601,7 +616,6 @@ fun ClassTableScreen(
                 if (!hasGrid) lastRowTops[0] = null
                 if (hasGrid) {
                     TimetableGrid(
-                        viewModel = viewModel,
                         courses = shownCourses,
                         showRoomHints = showClassroomInClassTable,
                         weekdays = activeWeekdays,
@@ -611,6 +625,9 @@ fun ClassTableScreen(
                         courseNosWithAssignments = if (shownPerson == null) courseNosWithAssignments else emptySet(),
                         courseNosIgnoringAssignments =
                             if (shownPerson == null) courseNosIgnoringAssignments else emptySet(),
+                        onSelect = { course, weekday, periodId ->
+                            viewModel.selectCourse(course, weekday, periodId)
+                        },
                         editable = shownPerson == null,
                         onRowsPlaced = { rows, rowHeightPx ->
                             val content = scrolledContent[0]
@@ -682,7 +699,6 @@ fun ClassTableScreen(
                 },
             ) {
                 ClassTableExportCard(
-                    viewModel = viewModel,
                     courses = shownCourses,
                     semesterLabel = semesterLabel,
                     studentId = studentId,
@@ -783,6 +799,19 @@ fun ClassTableScreen(
                 viewModel.resetCourses()
             },
             dismissText = stringResource(R.string.action_cancel),
+        )
+    }
+
+    // Nothing was reset: the term is as it was. iOS says the same.
+    resetFailedSemester?.let { semester ->
+        TigerDuckDialog(
+            onDismissRequest = { resetFailedSemester = null },
+            title = stringResource(
+                R.string.class_table_reset_title_with_semester,
+                viewModel.displayLabel(semester),
+            ),
+            message = stringResource(R.string.error_network_unavailable),
+            confirmText = stringResource(R.string.action_confirm),
         )
     }
 

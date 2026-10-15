@@ -137,6 +137,7 @@ class CredentialManager private constructor(
             .remove(V3TokenStore.KEY_ACCESS_TOKEN)
             .remove(V3TokenStore.KEY_REFRESH_TOKEN)
             .remove(V3TokenStore.KEY_EXPIRES_AT)
+            .remove(V3TokenStore.KEY_REFRESH_TOKEN_SENDS)
             .apply()
     }
 

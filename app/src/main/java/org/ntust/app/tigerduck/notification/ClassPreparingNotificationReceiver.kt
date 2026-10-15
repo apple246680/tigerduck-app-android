@@ -22,6 +22,7 @@ import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.pendingIntent
+import org.ntust.app.tigerduck.shared.clock.AppClock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -163,9 +164,11 @@ class ClassPreparingNotificationReceiver : BroadcastReceiver() {
             // Anchor the auto-dismiss to actual class-start time rather than
             // post-time + leadTimeMs. When the alarm is delivered via the inexact
             // fallback, post-time can drift up to ~5 min late, which would leave
-            // the banner up past class start.
+            // the banner up past class start. A duration on the app's clock, as
+            // the class times are: under the developer menu's clock the real
+            // one is days away from them.
             val timeout = when {
-                startMs > 0L -> (startMs - System.currentTimeMillis()).coerceAtLeast(1_000L)
+                startMs > 0L -> (startMs - AppClock.nowMillis()).coerceAtLeast(1_000L)
                 leadTimeMs > 0L -> leadTimeMs
                 else -> 0L
             }
