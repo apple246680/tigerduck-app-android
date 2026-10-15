@@ -35,6 +35,8 @@ import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.analytics.AnalyticsLogger
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.auth.AuthTokenManager
+import org.ntust.app.tigerduck.data.cache.DataCache
+import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.liveactivity.LiveActivityManager
 import org.ntust.app.tigerduck.network.ApiVersionGate
@@ -52,7 +54,9 @@ import org.ntust.app.tigerduck.ui.component.TigerDuckDialog
 import org.ntust.app.tigerduck.ui.firsttrigger.FirstTriggerPromptController
 import org.ntust.app.tigerduck.ui.firsttrigger.FirstTriggerPromptHost
 import org.ntust.app.tigerduck.ui.navigation.AppNavigation
+import org.ntust.app.tigerduck.ui.navigation.Screen
 import org.ntust.app.tigerduck.ui.openLink
+import org.ntust.app.tigerduck.ui.screen.home.openAssignmentInMoodle
 import org.ntust.app.tigerduck.ui.screen.update.UpdatePromptDialog
 import org.ntust.app.tigerduck.ui.screen.whatsnew.WhatsNewCatalog
 import org.ntust.app.tigerduck.ui.screen.whatsnew.WhatsNewFlow
@@ -62,6 +66,7 @@ import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.update.UpdateChecker
 import org.ntust.app.tigerduck.update.WhatsNewGate
 import org.ntust.app.tigerduck.update.WhatsNewRepository
+import org.ntust.app.tigerduck.widget.LibraryShortcutWidget
 
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
@@ -117,6 +122,9 @@ class MainActivity : AppCompatActivity() {
     @Inject
     lateinit var mailChecker: org.ntust.app.tigerduck.mail.sync.MailChecker
 
+    @Inject
+    lateinit var dataCache: DataCache
+
     private val widgetStartRoute = mutableStateOf<String?>(null)
     private val whatsNewFlow = mutableStateOf<WhatsNewFlow?>(null)
 
@@ -145,6 +153,7 @@ class MainActivity : AppCompatActivity() {
 
         widgetStartRoute.value = resolveStartRoute(intent)
         handleServerPushIntent(intent)
+        openLinkedAssignment(intent, restored = savedInstanceState != null)
 
         // Re-prompt for app updates only on a genuine fresh start, never on a
         // rotation/config-change recreation (issue #89).
@@ -192,7 +201,7 @@ class MainActivity : AppCompatActivity() {
                                 // route the user already consumed.
                                 intent?.let {
                                     it.data = null
-                                    it.removeExtra("start_route")
+                                    it.removeExtra(StartRoute.EXTRA)
                                     intent = it
                                 }
                             },
@@ -338,6 +347,7 @@ class MainActivity : AppCompatActivity() {
         setIntent(intent)
         widgetStartRoute.value = resolveStartRoute(intent)
         handleServerPushIntent(intent)
+        openLinkedAssignment(intent, restored = false)
     }
 
     /**
@@ -384,19 +394,34 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Map intent input — widget extras and `tigerduck://announcement/<id>`
-     * deep links from a tapped FCM bulletin notification — onto a NavHost
-     * route. `widgetStartRoute` then drives the LaunchedEffect that
-     * navigates once Compose is ready.
+     * The NavHost route [intent] asks for; see [startRouteOf].
+     * `widgetStartRoute` then drives the LaunchedEffect that navigates once
+     * Compose is ready. An assignment link has no route:
+     * [openLinkedAssignment] takes it.
      */
-    private fun resolveStartRoute(intent: Intent?): String? {
-        intent?.getStringExtra("start_route")?.let { return it }
-        val data = intent?.data ?: return null
-        if (data.scheme == "tigerduck" && data.host == "announcement") {
-            val id = data.lastPathSegment?.toIntOrNull() ?: return null
-            return "announcements/detail/$id"
+    private fun resolveStartRoute(intent: Intent?): String? = startRouteOf(intent)
+
+    /**
+     * Opens the assignment a `tigerduck://assignment/<id>` link names — from a
+     * reminder, the due-soon Live Update or another app — the way its Home
+     * row does: in the Moodle app, else in the browser. As on iOS, only an
+     * assignment this account has cached opens, so a link from elsewhere can
+     * open nothing but the user's own homework, at the address Moodle gave.
+     *
+     * Once per delivery: the link is dropped from the intent, and an Activity
+     * rebuilt from saved state or relaunched from Recents does not open it
+     * again.
+     */
+    private fun openLinkedAssignment(intent: Intent?, restored: Boolean) {
+        intent ?: return
+        val hadData = intent.data != null
+        val id = takeLinkedAssignmentId(intent, restored)
+        if (hadData && intent.data == null) setIntent(intent)
+        id ?: return
+        lifecycleScope.launch {
+            val assignment = linkedAssignment(id, dataCache.loadAssignments()) ?: return@launch
+            openAssignmentInMoodle(this@MainActivity, assignment)
         }
-        return null
     }
 
     /**
@@ -564,6 +589,54 @@ private fun UpdateRequiredHost() {
             }
         },
     )
+}
+
+/**
+ * The assignment id [intent]'s `tigerduck://assignment/<id>` link asks to open
+ * now, or null. The link is taken off [intent] either way, so it opens once
+ * per delivery; and none opens for an Activity rebuilt from saved state
+ * ([restored]) or relaunched from Recents, which hand back the intent it was
+ * first started with. A link of any other kind is left on [intent].
+ */
+internal fun takeLinkedAssignmentId(intent: Intent, restored: Boolean): String? {
+    val link = AppLink.parse(intent.data) as? AppLink.Assignment ?: return null
+    intent.data = null
+    val fromHistory = intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
+    return link.id.takeIf { !restored && !fromHistory }
+}
+
+/** The cached assignment [id] names, or null: as on iOS, only this account's own homework opens. */
+internal fun linkedAssignment(id: String, cached: List<Assignment>): Assignment? =
+    cached.firstOrNull { it.assignmentId == id }
+
+/**
+ * Map intent input — the [StartRoute] extra of the app's own notifications,
+ * and the `tigerduck://` links of [AppLink] — onto a NavHost route. An intent
+ * with a `tigerduck://` link, or one a browser marks
+ * [Intent.CATEGORY_BROWSABLE], opens that link alone: the app's own senders
+ * put neither on an intent with the extra. A URI of any other scheme does not
+ * count as a link, as Glance gives a widget's intent that has no data a
+ * `glance-action:` one of its own. An extra naming any other route is
+ * dropped.
+ */
+internal fun startRouteOf(intent: Intent?): String? {
+    intent ?: return null
+    val fromLink = intent.data?.scheme == AppLink.SCHEME || intent.hasCategory(Intent.CATEGORY_BROWSABLE)
+    if (!fromLink) StartRoute.accepted(intent.getStringExtra(StartRoute.EXTRA))?.let { return it }
+    return AppLink.parse(intent.data)?.let(::startRouteFor)
+}
+
+/**
+ * The NavHost route [link] opens, or null for an assignment, which opens in
+ * Moodle rather than on a screen of this app. Library goes through the
+ * widget's sentinel so the library feature switch is read when the link
+ * arrives.
+ */
+internal fun startRouteFor(link: AppLink): String? = when (link) {
+    AppLink.Library -> LibraryShortcutWidget.ROUTE_SENTINEL
+    AppLink.ClassTable -> Screen.ClassTable.route
+    is AppLink.Announcement -> Screen.AnnouncementDetail.route(link.id)
+    is AppLink.Assignment -> null
 }
 
 /** Page ids of a pending What's New sheet, kept across a config-change recreation. */

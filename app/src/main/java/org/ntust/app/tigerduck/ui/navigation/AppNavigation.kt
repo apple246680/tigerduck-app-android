@@ -1,6 +1,7 @@
 package org.ntust.app.tigerduck.ui.navigation
 
 import android.app.Activity
+import android.util.Log
 import android.content.Context
 import android.os.SystemClock
 import android.widget.Toast
@@ -48,6 +49,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
+import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -90,6 +92,7 @@ import org.ntust.app.tigerduck.ui.screen.settings.AboutOthersScreen
 import org.ntust.app.tigerduck.ui.screen.settings.LanguagePickerScreen
 import org.ntust.app.tigerduck.ui.screen.settings.LicenseDetailScreen
 import org.ntust.app.tigerduck.ui.screen.settings.AssignmentReminderSettingsScreen
+import org.ntust.app.tigerduck.ui.screen.settings.ClassReminderSettingsScreen
 import org.ntust.app.tigerduck.ui.screen.settings.CourseNameSizeSettingsScreen
 import org.ntust.app.tigerduck.ui.screen.settings.LibrarySettingsScreen
 import org.ntust.app.tigerduck.ui.screen.settings.LiveActivitySettingsScreen
@@ -126,6 +129,7 @@ sealed class Screen(val route: String) {
     object SchoolMailNotificationSettings : Screen("schoolMailNotificationSettings")
     object NotificationPermissionSettings : Screen("notificationPermissionSettings")
     object AssignmentReminderSettings : Screen("assignmentReminderSettings")
+    object ClassReminderSettings : Screen("classReminderSettings")
     object SourceCodePicker : Screen("sourceCodePicker")
     object OtherSettings : Screen("otherSettings")
     object AboutOthers : Screen("aboutOthers")
@@ -190,6 +194,20 @@ fun AppNavigation(
         )
     }
 }
+
+/**
+ * Opens the screen a widget, a notification or a link asked for, on top of
+ * the current one. Returns whether it opened.
+ *
+ * MainActivity only passes routes it accepts (`startRouteOf`), but a route
+ * the graph cannot take, or an argument it cannot read, must still leave the
+ * app where it is: thrown here, it would end the effect that called this,
+ * and the app with it, and come back with the intent from Recents.
+ */
+internal fun NavHostController.navigateToStartRoute(route: String): Boolean =
+    runCatching { navigate(route) { launchSingleTop = true } }
+        .onFailure { Log.w("StartRoute", "not opened: ${it.javaClass.simpleName}") }
+        .isSuccess
 
 @Composable
 fun MainNavigation(
@@ -567,6 +585,7 @@ fun MainNavigation(
                     onNavigateToNotificationPermissionSettings = {
                         navController.navigate(Screen.NotificationPermissionSettings.route)
                     },
+                    onNavigateToClassReminders = { navController.navigate(Screen.ClassReminderSettings.route) },
                     onNavigateToAssignmentReminders = { navController.navigate(Screen.AssignmentReminderSettings.route) },
                     onNavigateToCloudSync = { navController.navigate(Screen.CloudSync.route) },
                     onNavigateToLibrarySettings = { navController.navigate(Screen.LibrarySettings.route) },
@@ -713,6 +732,9 @@ fun MainNavigation(
             page(Screen.NotificationPermissionSettings.route) {
                 NotificationPermissionSettingsScreen(onBack = { navController.popBackStack() })
             }
+            page(Screen.ClassReminderSettings.route) {
+                ClassReminderSettingsScreen(onBack = { navController.popBackStack() })
+            }
             page(Screen.AssignmentReminderSettings.route) {
                 AssignmentReminderSettingsScreen(onBack = { navController.popBackStack() })
             }
@@ -760,14 +782,14 @@ internal fun selectedTabRoute(route: String?): String? = when {
  * Opens [target] from outside the app, a widget or a notification: a tab as the bottom bar opens
  * it, so a page pushed over it is cleared rather than covered by a second copy of the tab.
  */
-internal fun NavController.openStartRoute(target: String, tabRoutes: Set<String>, firstTab: String, tabTap: TabTap) {
+internal fun NavHostController.openStartRoute(target: String, tabRoutes: Set<String>, firstTab: String, tabTap: TabTap) {
     // As the bottom bar does: navigating to the page on screen pops it before singleTop applies,
     // which rebuilds the tab, or closes a mail being written without offering to save it.
     if (currentBackStackEntry?.destination?.route == target) return
     if (target in tabRoutes) {
         navigateToTab(target, firstTab, tabTap)
     } else {
-        navigate(target) { launchSingleTop = true }
+        navigateToStartRoute(target)
     }
 }
 
