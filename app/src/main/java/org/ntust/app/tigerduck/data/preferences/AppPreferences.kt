@@ -55,6 +55,11 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences("tigerduck_prefs", Context.MODE_PRIVATE)
+
+    // Where builds before the server-time course-reset check kept this
+    // phone's clock at its last full sync; see legacyLastCourseSyncAtMs.
+    private val legacySyncPrefs: SharedPreferences =
+        context.getSharedPreferences("tigerduck_sync", Context.MODE_PRIVATE)
     private val gson = Gson()
 
     // Language change forces a full network re-fetch so course names come
@@ -122,23 +127,34 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
     // getter anyway.
     var cloudSyncEnabled: Boolean
         get() = effectiveCloudSyncEnabled(prefs.getBoolean("cloudSyncEnabled", true))
-        set(value) = prefs.edit().putBoolean("cloudSyncEnabled", value).apply()
+        set(value) = setSyncSwitch("cloudSyncEnabled", value)
 
     var syncCourses: Boolean
         get() = prefs.getBoolean("syncCourses", true)
-        set(value) = prefs.edit().putBoolean("syncCourses", value).apply()
+        set(value) = setSyncSwitch("syncCourses", value)
 
     var syncCourseColors: Boolean
         get() = prefs.getBoolean("syncCourseColors", true)
-        set(value) = prefs.edit().putBoolean("syncCourseColors", value).apply()
+        set(value) = setSyncSwitch("syncCourseColors", value)
 
     var syncCourseNames: Boolean
         get() = prefs.getBoolean("syncCourseNames", true)
-        set(value) = prefs.edit().putBoolean("syncCourseNames", value).apply()
+        set(value) = setSyncSwitch("syncCourseNames", value)
 
     var syncAssignments: Boolean
         get() = prefs.getBoolean("syncAssignments", true)
-        set(value) = prefs.edit().putBoolean("syncAssignments", value).apply()
+        set(value) = setSyncSwitch("syncAssignments", value)
+
+    /**
+     * Stores a sync switch, and forgets the upload ledger ([forgetUploads])
+     * when it goes from off to on, wherever it is turned: the backend may
+     * have dropped the lists while it was off on every device.
+     */
+    private fun setSyncSwitch(key: String, value: Boolean) {
+        val wasOn = prefs.getBoolean(key, true)
+        prefs.edit().putBoolean(key, value).apply()
+        if (value && !wasOn) forgetUploads()
+    }
 
     // Flips so NotificationSettingsSync can reconcile: turning this switch
     // back on doesn't itself change notifyAssignments/notifyAssignmentOffsets,
@@ -193,6 +209,43 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
     var syncedCategories: Set<String>
         get() = prefs.getStringSet("syncedCategories", emptySet()) ?: emptySet()
         set(value) = prefs.edit().putStringSet("syncedCategories", value).apply()
+
+    /**
+     * Whether a full sync has taken the signed-in account's assignment marks
+     * on this phone, or sent them up as its first sync, so that from now on a
+     * server holding no marks is the truth — see
+     * `AssignmentOverrideReconciler.isFirstUpload`. False on an install that
+     * predates it, which therefore runs that first sync once more. Cleared at
+     * sign-out by [clearSyncStamps]. Turning sync off keeps it: turning it
+     * back on marks the category for the re-enable check, and syncs leave the
+     * marks alone until that is settled.
+     */
+    var assignmentMarksSyncedOnce: Boolean
+        get() = prefs.getBoolean("assignmentMarksSyncedOnce", false)
+        set(value) = prefs.edit().putBoolean("assignmentMarksSyncedOnce", value).apply()
+
+    /**
+     * The server's `courses_reset_at` as the last full sync read it, for the
+     * next one to tell a new reset from one already applied; empty once a
+     * sync found none, and null before the signed-in account's first sync
+     * here — see `CourseSyncReconciler.coursesReset`. Cleared at sign-out by
+     * [clearSyncStamps].
+     */
+    var lastSeenCoursesResetAt: String?
+        get() = prefs.getString("lastSeenCoursesResetAt", null)
+        set(value) = prefs.edit().putString("lastSeenCoursesResetAt", value).apply()
+
+    /**
+     * This phone's clock at an older build's last full sync, epoch ms, or 0:
+     * read by the first sync since the update, which then forgets it
+     * ([forgetLegacyLastCourseSyncAt]); see `CourseSyncReconciler.coursesReset`.
+     */
+    val legacyLastCourseSyncAtMs: Long
+        get() = legacySyncPrefs.getLong("last_course_sync_at", 0L)
+
+    fun forgetLegacyLastCourseSyncAt() {
+        legacySyncPrefs.edit().remove("last_course_sync_at").apply()
+    }
 
     var hasCompletedOnboarding: Boolean
         get() = prefs.getBoolean("hasCompletedOnboarding", false)
@@ -665,10 +718,11 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
     }
 
     /**
-     * On sign-out, this stamp, the background worker's two below and
-     * [syncedCategories]: what they record belonged to the account that
-     * left, and the next account's worker must not wait out the old one's
-     * hour before its first sync.
+     * On sign-out, this stamp, the background worker's two below,
+     * [syncedCategories], [assignmentMarksSyncedOnce],
+     * [lastSeenCoursesResetAt] and the assignment upload ledger: what they record
+     * belonged to the account that left, and the next account's worker must
+     * not wait out the old one's hour before its first sync.
      */
     fun clearSyncStamps() {
         prefs.edit()
@@ -676,8 +730,39 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
             .remove("backgroundOverridesSyncedAtMs")
             .remove("backgroundCoursesSyncedAtMs")
             .remove("syncedCategories")
+            .remove("assignmentMarksSyncedOnce")
+            .remove("lastSeenCoursesResetAt")
+            .remove("assignmentsUploadFingerprint")
+            .remove("assignmentsUploadedAtMs")
             .apply()
+        forgetLegacyLastCourseSyncAt()
         _schoolDataSyncedAtMs.value = 0L
+    }
+
+    /**
+     * The assignment list the backend last accepted from this phone, as a
+     * fingerprint, and when; see `push.UploadLedger`. Forgotten at sign-out
+     * by [clearSyncStamps] and when a sync switch comes back on by
+     * [forgetUploads].
+     */
+    var assignmentsUploadFingerprint: String?
+        get() = prefs.getString("assignmentsUploadFingerprint", null)
+        set(value) = prefs.edit().putString("assignmentsUploadFingerprint", value).apply()
+
+    var assignmentsUploadedAtMs: Long
+        get() = prefs.getLong("assignmentsUploadedAtMs", 0L)
+        set(value) = prefs.edit().putLong("assignmentsUploadedAtMs", value).apply()
+
+    /**
+     * Forgets the list the backend last accepted, so the next upload goes
+     * whatever it holds: the backend may have dropped it while a sync switch
+     * was off on every device.
+     */
+    fun forgetUploads() {
+        prefs.edit()
+            .remove("assignmentsUploadFingerprint")
+            .remove("assignmentsUploadedAtMs")
+            .apply()
     }
 
     /** When the background worker last synced with the backend, epoch ms. */
@@ -750,6 +835,7 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
     /** Wipe every pref key. Used by the full-reset flow only. */
     fun clearAllPrefs() {
         prefs.edit().clear().apply()
+        forgetLegacyLastCourseSyncAt()
         // `alwaysShowAllPeriods` and `showClassroomInClassTable` are read from
         // in-memory mirrors rather than the file, so clearing the file alone
         // leaves the class table pinned — and the Settings rows reading "on" —
@@ -789,6 +875,20 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
             val editor = prefs.edit()
             if (value == null) editor.remove("classTableSelectedSemester")
             else editor.putString("classTableSelectedSemester", value)
+            editor.apply()
+        }
+
+    /**
+     * The building the empty-classroom finder last showed at the user's pick, by the booking
+     * site's code (e.g. "TR"). Null until the first pick; cleared at sign-out, so the next
+     * account opens on its own building.
+     */
+    var emptyClassroomBuilding: String?
+        get() = prefs.getString("emptyClassroomBuilding", null)
+        set(value) {
+            val editor = prefs.edit()
+            if (value == null) editor.remove("emptyClassroomBuilding")
+            else editor.putString("emptyClassroomBuilding", value)
             editor.apply()
         }
 

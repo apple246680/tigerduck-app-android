@@ -46,12 +46,13 @@ import org.ntust.app.tigerduck.ui.navigation.Screen
 import org.ntust.app.tigerduck.ui.navigation.icon
 import org.ntust.app.tigerduck.ui.navigation.toRoute
 
-private val implementedFeatures = setOf(
-    AppFeature.HOME, AppFeature.CLASS_TABLE, AppFeature.CALENDAR,
-    AppFeature.ANNOUNCEMENTS, AppFeature.SCHOOL_MAIL,
-    AppFeature.LIBRARY, AppFeature.SCORE,
-    AppFeature.MORE, AppFeature.SETTINGS
-)
+/**
+ * The cards that open a page rather than "Coming soon". Derived from
+ * [AppFeature.isImplemented], the one place that decides, so shipping a
+ * feature is one edit and More cannot disagree with the tab bar.
+ */
+internal val implementedFeatures: Set<AppFeature> =
+    AppFeature.entries.filter { it.isImplemented }.toSet()
 
 @Composable
 fun MoreScreen(navController: NavController, appState: AppState) {

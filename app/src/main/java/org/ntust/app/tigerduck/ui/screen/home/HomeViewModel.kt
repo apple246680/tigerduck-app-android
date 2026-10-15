@@ -14,7 +14,6 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -46,6 +45,7 @@ import org.ntust.app.tigerduck.data.CourseTombstoneKeys
 import org.ntust.app.tigerduck.data.OutstandingAssignments
 import org.ntust.app.tigerduck.data.RefreshPolicy
 import org.ntust.app.tigerduck.data.RefreshTriggers
+import org.ntust.app.tigerduck.data.UnsentMarks
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.model.AssignmentFilter
@@ -63,6 +63,7 @@ import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.SingleFlight
 import org.ntust.app.tigerduck.util.logSummary
 import java.util.Date
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import kotlin.time.Duration.Companion.minutes
 
@@ -97,6 +98,9 @@ class HomeViewModel @Inject constructor(
     private val syncApiClient: SyncApiClient,
     private val authTokenManager: AuthTokenManager,
     private val backendSync: HomeBackendSync,
+    private val unsentMarks: UnsentMarks,
+    private val localEdits: LocalEdits,
+    private val reenableCheck: org.ntust.app.tigerduck.ui.screen.settings.ReenableCheck,
 ) : ViewModel() {
 
 
@@ -168,6 +172,11 @@ class HomeViewModel @Inject constructor(
     )
 
     val syncConflicts: StateFlow<List<AssignmentSyncConflict>> = syncState.conflicts
+
+    // Full syncs under way. A poll that finds the server ahead leaves the
+    // change to them rather than fetch it a second time — as on a return,
+    // when the poll and Home's own sync start together.
+    private val backendPullsInFlight = AtomicInteger(0)
 
     /**
      * Answer the sync-conflict dialog.
@@ -244,6 +253,9 @@ class HomeViewModel @Inject constructor(
 
     private val saveIgnoredChannel = Channel<Set<String>>(Channel.CONFLATED)
     private val saveMarkedCompletedChannel = Channel<Set<String>>(Channel.CONFLATED)
+
+    // Swipes on Home, counted on the main thread; see reloadAdoptedMarks.
+    private var markTaps = 0
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
@@ -391,6 +403,22 @@ class HomeViewModel @Inject constructor(
                 _ignoredCourseKeys.value = courseKeys
                 TigerDuckTheme.buildCourseColorMap(courses)
                 updateCoursesAndAssignments(courses, assignments)
+            }
+        }
+        viewModelScope.launch {
+            // Marks a re-enable answer took (Use Server): read now, or the
+            // next swipe writes the ones held here back over them.
+            dataCache.marksAdoptedVersion.drop(1).collect {
+                if (!authService.authState.value) return@collect
+                val account = authService.storedStudentId
+                reloadAdoptedMarks(
+                    read = { dataCache.loadIgnoredAssignments() to dataCache.loadMarkedCompletedAssignments() },
+                    tapsMade = { markTaps },
+                    stillSignedIn = { authService.isStillSignedInAs(account) },
+                ) { ignored, completed ->
+                    _ignoredAssignmentIds.value = ignored
+                    _markedCompletedIds.value = completed
+                }
             }
         }
         viewModelScope.launch {
@@ -555,50 +583,46 @@ class HomeViewModel @Inject constructor(
 
     // --- Foreground revision polling ---
 
-    private var revisionPollingJob: Job? = null
+    private val revisionPoller = RevisionPoller(
+        scope = viewModelScope,
+        poll = ::pollRevision,
+        relogin = authService::attemptRelogin,
+        now = SystemClock::elapsedRealtime,
+    )
 
-    fun startRevisionPolling() {
-        if (revisionPollingJob?.isActive == true) {
-            Log.d("RevisionPoll", "[poll] startRevisionPolling skipped — job already active")
-            return
-        }
-        Log.d("RevisionPoll", "[poll] startRevisionPolling — launching 10s loop")
-        revisionPollingJob = viewModelScope.launch {
-            while (true) {
-                delay(10_000)
-                // cloudSyncEnabled already reads false on fdroid at its
-                // source (AppPreferences.cloudSyncEnabled), so no separate
-                // flavor check is needed here.
-                if (!prefs.cloudSyncEnabled) {
-                    Log.d("RevisionPoll", "[poll] tick skipped — cloudSyncEnabled=false")
-                    continue
-                }
-                if (!networkChecker.isAvailable()) {
-                    Log.d("RevisionPoll", "[poll] tick skipped — no network")
-                    continue
-                }
-                if (!authTokenManager.signInIfSignedOut()) {
-                    Log.d("RevisionPoll", "[poll] tick skipped — not logged in")
-                    continue
-                }
-                Log.d("RevisionPoll", "[poll] tick — fetching revision (lastKnown=${syncState.lastKnownRevision})")
-                try {
-                    val revision = syncApiClient.fetchRevision()
-                    Log.d("RevisionPoll", "[poll] server revision=$revision lastKnown=${syncState.lastKnownRevision}")
-                    if (revision > syncState.lastKnownRevision) {
-                        Log.d("RevisionPoll", "[poll] revision changed — triggering full sync")
-                        syncAndRepublish()
-                    }
-                } catch (e: Exception) {
-                    Log.w("RevisionPoll", "[poll] tick failed: ${e.logSummary()}")
-                }
-            }
+    // The first start is the launch, whose own sync has just pulled.
+    private var revisionPollingStarted = false
+
+    init {
+        // After the poller above, which the edits reach.
+        viewModelScope.launch {
+            localEdits.edits.collect { revisionPoller.noteActivity() }
         }
     }
 
-    fun stopRevisionPolling() {
-        revisionPollingJob?.cancel()
-        revisionPollingJob = null
+    /** The app is in the foreground again; see [RevisionPoller.start]. */
+    fun startRevisionPolling() {
+        revisionPoller.start(pollNow = revisionPollingStarted)
+        revisionPollingStarted = true
+    }
+
+    fun stopRevisionPolling() = revisionPoller.stop()
+
+    // cloudSyncEnabled already reads false on fdroid at its source
+    // (AppPreferences.cloudSyncEnabled), so no separate flavor check is
+    // needed here.
+    private suspend fun pollRevision(): RevisionPollOutcome = pollRevisionOnce(
+        syncEnabled = { prefs.cloudSyncEnabled },
+        online = networkChecker::isAvailable,
+        signIn = authTokenManager::signInIfSignedOut,
+        fetchRevision = syncApiClient::fetchRevision,
+        lastKnownRevision = { syncState.lastKnownRevision },
+        fullSyncsInFlight = backendPullsInFlight::get,
+        fullSync = ::syncAndRepublish,
+    ).also { outcome ->
+        // Reached the server with nothing new: a re-enable check that failed
+        // runs again here, as after a full sync (which a change starts).
+        if (outcome == RevisionPollOutcome.UNCHANGED) reenableCheck.runIfOwed()
     }
 
     /**
@@ -621,8 +645,17 @@ class HomeViewModel @Inject constructor(
         dataCache.loadDeletedCourseNos(),
     )
 
+    private suspend fun pullFromBackend() {
+        backendPullsInFlight.incrementAndGet()
+        try {
+            backendSync.pull(syncState)
+        } finally {
+            backendPullsInFlight.decrementAndGet()
+        }
+    }
+
     private suspend fun syncAndRepublish() {
-        backendSync.pull(syncState)
+        pullFromBackend()
         val courses = dataCache.loadCourses().filterNot { it.courseNo in hiddenNow() }
         val assignments = dataCache.loadAssignments()
         TigerDuckTheme.buildCourseColorMap(courses)
@@ -643,7 +676,7 @@ class HomeViewModel @Inject constructor(
                 // Moodle-direct for the assignment/course list (proven,
                 // correct semester filtering). Backend handles override
                 // sync only (done/ignored marks across devices).
-                backendSync.pull(syncState)
+                pullFromBackend()
                 // Re-read after backend sync so server-merged courses and
                 // deletions are reflected even if the Moodle fetch below fails.
                 courses = dataCache.loadCourses().filterNot { it.courseNo in hiddenNow() }
@@ -893,7 +926,8 @@ class HomeViewModel @Inject constructor(
      * 已忽略 and 標示為完成 are mutually exclusive, so setting either clears
      * the other — that is what [secondary] is for. The UI updates before the
      * PATCH goes out and is never rolled back if it fails: the id stays in
-     * this device's cache and the next sync re-asserts it, which is a better
+     * this device's cache, [UnsentMarks] keeps it, and the next sync keeps
+     * this device's value for it and sends it again, which is a better
      * outcome than a row that silently springs back under the user's finger.
      */
     private fun toggleOverride(
@@ -905,6 +939,7 @@ class HomeViewModel @Inject constructor(
         statusWhenSet: String,
     ) {
         val id = assignment.assignmentId
+        markTaps++
         val wasSet = id in primary.value
         primary.update { if (wasSet) it - id else it + id }
         if (!wasSet) {
@@ -917,17 +952,15 @@ class HomeViewModel @Inject constructor(
         }
         val status = if (wasSet) AssignmentOverrideReconciler.STATUS_NONE else statusWhenSet
         pendingOverrides.add(id)
+        revisionPoller.noteActivity()
         viewModelScope.launch {
             try {
-                pushApiClient.patchAssignmentOverride(
-                    id.toIntOrNull() ?: return@launch, status,
-                )
-            } catch (e: Exception) {
-                Log.w("HomeViewModel", "override PATCH FAILED → $status: ${e.logSummary()}")
+                // Kept on disk until it lands; a failure is logged there.
+                unsentMarks.send(id, status)
             } finally {
-                // Always release the in-flight lock — a failed PATCH must not
-                // pin this id in pendingOverrides forever, which would block it
-                // from ever being reconciled from the server again.
+                // Always release the in-flight lock: from here on a PATCH
+                // that failed is protected by UnsentMarks, which lets the id
+                // go once the server has it, so it is not pinned for ever.
                 pendingOverrides.remove(id)
             }
         }
@@ -981,6 +1014,24 @@ class HomeViewModel @Inject constructor(
         _sections.value = sections
         prefs.homeSections = sections
     }
+}
+
+/**
+ * Home's take-up of marks a re-enable answer wrote (`DataCache.adoptAssignmentMarks`):
+ * [read] the files and [apply] them, unless a swipe was made meanwhile
+ * ([tapsMade] moved), which the read may predate and must not undo, or the
+ * account signed out, whose marks they were.
+ */
+internal suspend fun reloadAdoptedMarks(
+    read: suspend () -> Pair<Set<String>, Set<String>>,
+    tapsMade: () -> Int,
+    stillSignedIn: () -> Boolean,
+    apply: (ignored: Set<String>, completed: Set<String>) -> Unit,
+) {
+    val tapsBefore = tapsMade()
+    val (ignored, completed) = read()
+    if (tapsMade() != tapsBefore || !stillSignedIn()) return
+    apply(ignored, completed)
 }
 
 /**

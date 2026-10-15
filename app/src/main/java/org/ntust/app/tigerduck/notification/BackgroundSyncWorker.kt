@@ -27,10 +27,12 @@ import kotlinx.coroutines.coroutineScope
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
+import org.ntust.app.tigerduck.data.UnsentMarks
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.push.BackendSyncResult
-import org.ntust.app.tigerduck.ui.screen.home.AssignmentOverrideReconciler
+import org.ntust.app.tigerduck.ui.screen.home.BackgroundMarkStep
 import org.ntust.app.tigerduck.ui.screen.home.CourseSyncReconciler
+import org.ntust.app.tigerduck.ui.screen.home.sendMovedColors
 import org.ntust.app.tigerduck.data.CourseRosterMerge
 import org.ntust.app.tigerduck.data.RefreshPolicy
 import org.ntust.app.tigerduck.ui.RefreshPolicies
@@ -66,6 +68,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
     private val fcmBootstrap: org.ntust.app.tigerduck.push.FcmBootstrap,
     private val notificationSettingsSync: org.ntust.app.tigerduck.push.NotificationSettingsSync,
     private val courseIgnoreSync: CourseIgnoreSync,
+    private val unsentMarks: UnsentMarks,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) : CoroutineWorker(context, params) {
 
@@ -164,26 +167,28 @@ class BackgroundSyncWorker @AssistedInject constructor(
             return
         }
         try {
+            val account = authService.storedStudentId
             val generation = courseIgnoreSync.currentGeneration()
             courseIgnoreSync.retryPending()
+            // Marks whose PATCH failed go first, so the snapshot has them.
+            unsentMarks.retry()
             val result = syncApiClient.fetchFullSync()
-            val localIgnored = dataCache.loadIgnoredAssignments()
-            val localMarked = dataCache.loadMarkedCompletedAssignments()
-            val isFirstTimeMigration = result.ignoredIds.isEmpty() && result.completedIds.isEmpty()
-                && (localIgnored.isNotEmpty() || localMarked.isNotEmpty())
-            val held = AssignmentOverrideReconciler.isHeldForReenable(prefs.pendingConflictCategories)
-            if (!isFirstTimeMigration && !held) {
-                dataCache.replaceIgnoredAssignments(result.ignoredIds)
-                dataCache.replaceMarkedCompletedAssignments(result.completedIds)
-            }
-            val marksChanged = !isFirstTimeMigration && !held &&
-                (result.ignoredIds != localIgnored || result.completedIds != localMarked)
+            // With the Assignments switch off, the re-enable check pending,
+            // or marks the server lacks on the account's first sync here
+            // (Home's sync sends those up), the marks stay as they are.
+            val marks = BackgroundMarkStep.over(prefs, dataCache, unsentMarks).pull(result)
+            if (marks.taken && authService.isStillSignedInAs(account)) prefs.assignmentMarksSyncedOnce = true
+            val marksChanged = marks.changed
             courseIgnoreSync.applySnapshot(result, generation)
 
-            if (prefs.syncCourseColors && result.courseOverrides.isNotEmpty()) {
+            // Not over a colours re-enable check still waiting for the user.
+            val syncColors = CourseSyncReconciler.syncsCourseColors(
+                prefs.syncCourseColors, prefs.pendingConflictCategories,
+            )
+            if (syncColors && result.courseOverrides.isNotEmpty()) {
                 applyCourseOverridesBackground(result.courseOverrides)
             }
-            if (prefs.syncCourses) {
+            if (CourseSyncReconciler.syncsCourseList(prefs.syncCourses, prefs.pendingConflictCategories)) {
                 reconcileCurrentSemester(result)
             }
             prefs.setLastSyncSource(SyncSource.BACKEND)
@@ -281,22 +286,17 @@ class BackgroundSyncWorker @AssistedInject constructor(
         }
     }
 
+    /** Home's colour pass ([CourseSyncReconciler.applyColorOverrides]) over the cached term. */
     private suspend fun applyCourseOverridesBackground(overrides: List<org.ntust.app.tigerduck.push.CourseOverrideResult>) {
-        val courses = dataCache.loadCourses()
-        var changed = false
-        val updated = courses.map { course ->
-            val override = overrides.find { it.courseNo == course.courseNo }
-                ?: overrides.find { it.moodleCourseId == course.moodleIdNumber }
-                ?: return@map course
-            val newHex = override.colorHex ?: return@map course
-            if (newHex != course.customColorHex) {
-                changed = true
-                course.copy(customColorHex = newHex)
-            } else course
-        }
-        if (changed) {
-            dataCache.saveCourses(updated)
-            widgetUpdater.requestUpdate()
+        val outcome = CourseSyncReconciler.applyColorOverrides(
+            courses = dataCache.loadCourses(),
+            overrides = overrides,
+            syncColors = true,
+        ) ?: return
+        dataCache.saveCourses(outcome.courses)
+        widgetUpdater.requestUpdate()
+        sendMovedColors(outcome.courses, outcome.moved) { moodleId, hex ->
+            pushApiClient.patchCourseOverride(moodleId, colorHex = hex)
         }
     }
 

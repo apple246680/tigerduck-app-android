@@ -146,6 +146,14 @@ class NtustSessionManager @Inject constructor(
         invalidateSession()
     }
 
+    /**
+     * Drops one service's cookies and keeps the SSO session, so the next request to [host] signs
+     * in to it again through the bridge without resubmitting the credentials.
+     */
+    fun dropCookies(host: String) {
+        cookieStore.remove(host)
+    }
+
     fun invalidateSession() {
         // Clear the timestamp first so a concurrent cookiesValid read can't
         // observe ts > 0 AND cookies present after the clear. Reordering this

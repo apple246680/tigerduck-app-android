@@ -6,11 +6,87 @@ package org.ntust.app.tigerduck.shared
  * the watch keeps them in a DataStore that mirrors the phone via the Wearable
  * Data Layer. Both sides plug into [LibraryService] through this interface so
  * the request/response wire schema is defined exactly once.
+ *
+ * Read-only here: a sign-in stores its account through [saveLibrarySignIn],
+ * and each store's own sign-out removes it, so nothing writes around the
+ * [LibraryAccountGate] that keeps the two apart.
  */
 interface LibraryCredentialStore {
-    var libraryUsername: String?
-    var libraryPassword: String?
-    var libraryToken: String?
-    var libraryTokenExpiry: Long
+    val libraryUsername: String?
+    val libraryPassword: String?
+    val libraryToken: String?
+    val libraryTokenExpiry: Long
     val isLibraryTokenValid: Boolean
+
+    /**
+     * Moved by a sign-out of the library account and by another account being
+     * stored. A sign-in reads it before its request and passes it to
+     * [saveLibrarySignIn].
+     */
+    val libraryAccountGeneration: Int
+
+    /**
+     * Stores a sign-in's account and token, and says whether it did. Nothing is
+     * stored once the account has signed out since [generation] was read; a
+     * sign-in the app makes on its own ([byUser] false) also yields to another
+     * account stored meanwhile, while one the user asked for replaces it.
+     * Atomic with a sign-out, so one cannot fall between the check and the writes.
+     */
+    fun saveLibrarySignIn(
+        generation: Int,
+        username: String,
+        password: String,
+        token: String?,
+        tokenExpiry: Long,
+        byUser: Boolean,
+    ): Boolean
+}
+
+/**
+ * The lock and counters behind [LibraryCredentialStore.libraryAccountGeneration]:
+ * a store runs its sign-outs, the accounts handed to it and its saves of a
+ * sign-in through one of these.
+ */
+class LibraryAccountGate {
+    private var generation = 0
+
+    // The generation the last sign-out moved to.
+    private var signedOutAt = 0
+
+    val current: Int get() = synchronized(this) { generation }
+
+    /** A sign-out: [remove] runs with the generation already moved. */
+    fun <T> signOut(remove: () -> T): T = synchronized(this) {
+        generation++
+        signedOutAt = generation
+        remove()
+    }
+
+    /** Another account stored other than by a sign-in, as the phone hands one to the watch. */
+    fun <T> replaceAccount(store: () -> T): T = synchronized(this) {
+        generation++
+        store()
+    }
+
+    /**
+     * Runs [save], which stores [username]'s sign-in, unless the account has
+     * signed out since [read] was read, or, unless [byUser], another account
+     * was stored since; says whether it did. Replacing [storedUsername]'s
+     * account with another moves the generation. Student IDs are compared
+     * without case: the school sign-in upper-cases them, the library form
+     * keeps what was typed.
+     */
+    fun saveIfCurrent(
+        read: Int,
+        byUser: Boolean,
+        storedUsername: () -> String?,
+        username: String,
+        save: () -> Unit,
+    ): Boolean = synchronized(this) {
+        val refused = if (byUser) signedOutAt > read else generation != read
+        if (refused) return false
+        if (!storedUsername().equals(username, ignoreCase = true)) generation++
+        save()
+        true
+    }
 }

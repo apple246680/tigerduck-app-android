@@ -4,8 +4,6 @@
 
 package org.ntust.app.tigerduck.ui.screen.settings
 
-import android.content.Intent
-import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -25,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -45,22 +44,24 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import org.ntust.app.tigerduck.BuildConfig
+import org.ntust.app.tigerduck.AppUrls
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
+import org.ntust.app.tigerduck.ui.BrowserPreference
 import org.ntust.app.tigerduck.ui.component.ContentCard
 import org.ntust.app.tigerduck.ui.component.PageHeader
 import org.ntust.app.tigerduck.ui.component.SectionHeader
 import org.ntust.app.tigerduck.ui.component.TigerDuckDialog
 import org.ntust.app.tigerduck.ui.haptics.HapticScenario
 import org.ntust.app.tigerduck.ui.haptics.Haptics
+import org.ntust.app.tigerduck.ui.openLink
 import org.ntust.app.tigerduck.ui.screen.mail.ForgotMailPasswordLink
 import org.ntust.app.tigerduck.ui.screen.mail.MailAccountViewModel
 import org.ntust.app.tigerduck.ui.screen.mail.messageRes
@@ -115,6 +116,8 @@ fun SettingsScreen(
     }
 
     var showNtustLoginSheet by remember { mutableStateOf(false) }
+    var confirmNtustSignOut by remember { mutableStateOf(false) }
+    val importedClassTables by viewModel.importedClassTables.collectAsStateWithLifecycle()
     var showLibraryLoginSheet by remember { mutableStateOf(false) }
 
     // Auto-dismiss dialogs when login succeeds
@@ -140,7 +143,7 @@ fun SettingsScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val appVersion = remember { BuildConfig.VERSION_NAME }
+    val appVersion = remember { appVersionLabel(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE) }
 
     // About section dependencies: UpdateChecker for "Check for updates" and
     // WhatsNewRepository for the manual What's New entry point. Pulled via
@@ -242,7 +245,13 @@ fun SettingsScreen(
                             subtitle = if (isNtustLoggedIn) viewModel.ntustStudentId else null,
                             isLoggingIn = isNtustLoggingIn,
                             onLogin = { showNtustLoginSheet = true },
-                            onLogout = { viewModel.logoutNtust() },
+                            onLogout = {
+                                // The sign-out deletes the imported class tables, so it asks first.
+                                importedClassTables.requestSignOut(
+                                    confirm = { confirmNtustSignOut = true },
+                                    signOut = { viewModel.logoutNtust() },
+                                )
+                            },
                             actionMinWidth = accountButtonMinWidth,
                             highlight = highlightNtustRow,
                             onHighlightConsumed = { highlightNtustRow = false },
@@ -379,14 +388,14 @@ fun SettingsScreen(
                         // Link opening method
                         SettingsPickerRow(
                             label = stringResource(R.string.settings_link_opening_method),
-                            value = if (browserPreference == "inApp") {
+                            value = if (browserPreference == BrowserPreference.IN_APP) {
                                 stringResource(R.string.settings_browser_in_app)
                             } else {
                                 stringResource(R.string.settings_browser_system_default)
                             },
                             options = listOf(
-                                "system" to stringResource(R.string.settings_browser_system_default),
-                                "inApp" to stringResource(R.string.settings_browser_in_app)
+                                BrowserPreference.SYSTEM to stringResource(R.string.settings_browser_system_default),
+                                BrowserPreference.IN_APP to stringResource(R.string.settings_browser_in_app)
                             ),
                             selectedKey = browserPreference,
                             onSelect = { viewModel.appState.browserPreference = it }
@@ -581,7 +590,7 @@ fun SettingsScreen(
                         // into their browser mid-hop.
                         HorizontalDivider()
                         SettingsLinkRow(stringResource(R.string.settings_check_server_status)) {
-                            openUrl(context, "https://status.tigerduck.app/", browserPreference)
+                            openLink(context, AppUrls.SERVER_STATUS, browserPreference)
                         }
                         // What's New — only when pages or a summary are
                         // registered for the resolved locale. During early
@@ -596,7 +605,7 @@ fun SettingsScreen(
                         }
                         HorizontalDivider()
                         SettingsLinkRow(stringResource(R.string.settings_official_website)) {
-                            openUrl(context, "https://tigerduck.app/", browserPreference)
+                            openLink(context, AppUrls.WEBSITE, browserPreference)
                         }
                         HorizontalDivider()
                         SettingsLinkRow(stringResource(R.string.settings_about_others)) {
@@ -731,6 +740,24 @@ fun SettingsScreen(
         )
     }
 
+    if (confirmNtustSignOut) {
+        TigerDuckDialog(
+            onDismissRequest = { confirmNtustSignOut = false },
+            title = stringResource(R.string.action_sign_out),
+            message = stringResource(R.string.settings_sign_out_imported_tables),
+            confirmText = stringResource(R.string.action_sign_out),
+            confirmColors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.error,
+                contentColor = MaterialTheme.colorScheme.onError,
+            ),
+            onConfirm = {
+                confirmNtustSignOut = false
+                viewModel.logoutNtust()
+            },
+            dismissText = stringResource(R.string.action_cancel),
+        )
+    }
+
     if (viewModel.appState.pendingLibraryEnablePrompt) {
         TigerDuckDialog(
             onDismissRequest = { viewModel.appState.pendingLibraryEnablePrompt = false },
@@ -780,17 +807,16 @@ fun SettingsScreen(
         )
     }
 }
+/**
+ * The About section's version row: the version and, in brackets, the build
+ * number, which tells test builds of one version apart in a bug report. The
+ * iPhone shows "2.4.0 (Build 123)"; the bare number needs no translation.
+ */
+internal fun appVersionLabel(versionName: String, versionCode: Int): String = "$versionName ($versionCode)"
+
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 internal interface SettingsEntryPoint {
     fun updateChecker(): UpdateChecker
     fun whatsNewRepository(): WhatsNewRepository
-}
-private fun openUrl(context: android.content.Context, url: String, browserPreference: String) {
-    val uri = url.toUri()
-    if (browserPreference == "inApp") {
-        CustomTabsIntent.Builder().build().launchUrl(context, uri)
-    } else {
-        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-    }
 }
