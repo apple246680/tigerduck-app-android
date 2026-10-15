@@ -1032,8 +1032,12 @@ class ClassTableViewModel @Inject constructor(
             dataCache.saveCourses(updated, semester)
             widgetUpdater.requestUpdate()
             val courseKey = "client:$semester:$courseNo"
-            runCatching { pushApiClient.deleteCourse(courseKey) }
-                .onFailure { e -> Log.w("ClassTable", "deleteCourse backend failed: ${e.logSummary()}") }
+            // After an add of it already being sent, which landing later
+            // would bring it back; see PendingCourseAdds.removing.
+            pendingCourseAdds.removing {
+                runCatching { pushApiClient.deleteCourse(courseKey) }
+                    .onFailure { e -> Log.w("ClassTable", "deleteCourse backend failed: ${e.logSummary()}") }
+            }
             runCatching { pushApiClient.uploadCourses(updated, semester) }
                 .onFailure { e -> Log.w("ClassTable", "uploadCourses after delete failed: ${e.logSummary()}") }
         }
@@ -1199,7 +1203,10 @@ class ClassTableViewModel @Inject constructor(
      * server could not be told.
      */
     private suspend fun wipeTerm(semester: String): Boolean {
-        val held = termReset.run(semester) { pushApiClient.deleteAllCourses(semester) } ?: return false
+        // With no course add sent between the DELETE and the wipe; see PendingCourseAdds.removing.
+        val held = pendingCourseAdds.removing {
+            termReset.run(semester) { pushApiClient.deleteAllCourses(semester) }
+        } ?: return false
         if (_currentSemester.value == semester) _courses.value = emptyList()
         // Their names went from the file with the term.
         courseCustomNames = courseCustomNames - held

@@ -380,11 +380,15 @@ class PushApiClient @Inject constructor(
      * any course another device has tombstoned and says so in the body, and
      * a caller that took the status for "the server has seen these" would
      * retire a hand-typed course's protection on an upload that was refused.
+     *
+     * [signIn], when given, pins the request to that sign-in, as
+     * [patchAssignmentOverride]'s is.
      */
     suspend fun uploadCourses(
         courses: List<Course>,
         semester: String,
         forceKeys: List<String> = emptyList(),
+        signIn: Int? = null,
     ): List<String>? = withContext(Dispatchers.IO) {
         if (!isSyncCapable || !prefs.syncCourses) return@withContext null
         val payload = CourseUploadPayload.build(courses, semester, forceKeys)
@@ -392,7 +396,7 @@ class PushApiClient @Inject constructor(
         val request = Request.Builder()
             .url("$baseUrl/sync/courses/upload")
             .post(body)
-            .addAuthHeader()
+            .addAuthHeader(signIn)
             .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {

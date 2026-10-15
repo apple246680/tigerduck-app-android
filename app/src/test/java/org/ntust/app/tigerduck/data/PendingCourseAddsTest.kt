@@ -1,6 +1,9 @@
 package org.ntust.app.tigerduck.data
 
 import android.app.Application
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
@@ -8,6 +11,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.ntust.app.tigerduck.academic.AcademicCalendarStore
+import org.ntust.app.tigerduck.auth.NotSignedInException
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.push.PushApiException
@@ -31,10 +35,19 @@ class PendingCourseAddsTest {
     private lateinit var cache: DataCache
     private lateinit var adds: PendingCourseAdds
 
-    private data class Upload(val courseNos: List<String>, val semester: String, val forceKeys: List<String>)
+    private data class Upload(
+        val courseNos: List<String>,
+        val semester: String,
+        val forceKeys: List<String>,
+        val account: Int = 1,
+    )
 
     private val uploads = mutableListOf<Upload>()
     private var answer: suspend () -> List<String>? = { emptyList() }
+
+    // AuthTokenManager.signInGeneration, and what happens before the request's header is made.
+    private var signIn = 1
+    private var beforeHeader: suspend () -> Unit = {}
 
     private val term = "1151"
     private val portal = Course(courseNo = "CS1010001", courseName = "Portal")
@@ -44,10 +57,13 @@ class PendingCourseAddsTest {
     fun setUp() {
         val context = RuntimeEnvironment.getApplication()
         cache = DataCache(context, AcademicCalendarStore(context, OkHttpClient(), AppPreferences(context)))
-        adds = PendingCourseAdds(cache) { courses, semester, forceKeys ->
-            uploads += Upload(courses.map { it.courseNo }, semester, forceKeys)
+        // As PushApiClient.uploadCourses: pinned to a sign-in, the header is that account's or none.
+        adds = PendingCourseAdds(cache, { courses, semester, forceKeys, pinned ->
+            beforeHeader()
+            if (pinned != signIn) throw NotSignedInException()
+            uploads += Upload(courses.map { it.courseNo }, semester, forceKeys, account = signIn)
             answer()
-        }
+        }, signInGeneration = { signIn })
     }
 
     private fun row(courseNo: String, semester: String = term) =
@@ -70,6 +86,7 @@ class PendingCourseAddsTest {
     @Test
     fun `an add that lands is not kept, and one refused by the server waits for the next sync`() = runTest {
         cache.saveCourses(listOf(typed), term)
+        answer = { listOf("MA1010002") }
         adds.send(listOf(typed), term, typed.courseNo)
         assertEquals(emptyMap<String, List<String>>(), cache.loadPendingCourseAdds())
 
@@ -77,6 +94,89 @@ class PendingCourseAddsTest {
         adds.send(listOf(typed), term, typed.courseNo)
         adds.retry()
         assertEquals(mapOf(term to listOf("MA1010002")), cache.loadPendingCourseAdds())
+    }
+
+    @Test
+    fun `an answer that accepts no course keeps the add, and one that accepts some keeps the rest`() = runTest {
+        val other = Course(courseNo = "PE1010003", courseName = "Other", isManual = true)
+        cache.saveCourses(listOf(typed, other), term)
+        // A 200 that says nothing was taken: a captive portal, or a body that could not be read.
+        answer = { emptyList() }
+        adds.send(listOf(typed, other), term, typed.courseNo)
+        adds.send(listOf(typed, other), term, other.courseNo)
+        assertEquals(mapOf(term to listOf("MA1010002", "PE1010003")), cache.loadPendingCourseAdds())
+
+        answer = { listOf("PE1010003") }
+        adds.retry()
+        assertEquals(mapOf(term to listOf("MA1010002")), cache.loadPendingCourseAdds())
+
+        // Nothing sent, course sync being off: the re-enable check answers for it.
+        answer = { null }
+        adds.retry()
+        assertEquals(emptyMap<String, List<String>>(), cache.loadPendingCourseAdds())
+    }
+
+    @Test
+    fun `an add read as one account is not sent as the next one`() = runTest {
+        cache.saveCourses(listOf(typed), term)
+        answer = { throw IOException("offline") }
+        adds.send(listOf(typed), term, typed.courseNo)
+
+        // The account signs out, and another signs in, before the retry's request has its header.
+        answer = { listOf("MA1010002") }
+        beforeHeader = {
+            beforeHeader = {}
+            cache.clearAllUserData()
+            signIn++
+        }
+        adds.retry()
+
+        assertEquals(emptyList<Upload>(), uploads.filter { it.account == 2 })
+        assertEquals(emptyMap<String, List<String>>(), cache.loadPendingCourseAdds())
+    }
+
+    @Test
+    fun `a course deleted or reset while its add is sent leaves the server after the add lands`() = runTest {
+        cache.saveCourses(listOf(typed), term)
+        answer = { throw IOException("offline") }
+        adds.send(listOf(typed), term, typed.courseNo)
+
+        val events = mutableListOf<String>()
+        val sending = CompletableDeferred<Unit>()
+        val landed = CompletableDeferred<Unit>()
+        answer = {
+            sending.complete(Unit)
+            landed.await()
+            events += "upload"
+            listOf("MA1010002")
+        }
+        val retry = launch { adds.retry() }
+        sending.await()
+        // Deleted by hand meanwhile: off this phone, then off the server.
+        cache.saveCourses(emptyList(), term)
+        val delete = launch { adds.removing { events += "DELETE" } }
+        runCurrent()
+        landed.complete(Unit)
+        retry.join()
+        delete.join()
+
+        // The add's force key would have brought the course back past the DELETE.
+        assertEquals(listOf("upload", "DELETE"), events)
+    }
+
+    @Test
+    fun `an add whose course was deleted since is not sent again, though the cache still has it`() = runTest {
+        cache.saveCourses(listOf(typed), term)
+        answer = { throw IOException("offline") }
+        adds.send(listOf(typed), term, typed.courseNo)
+        cache.saveDeletedCourseNos(CourseTombstoneKeys.hide(typed.courseNo, term, emptySet()))
+        uploads.clear()
+
+        answer = { listOf("MA1010002") }
+        adds.retry()
+
+        assertEquals(emptyList<Upload>(), uploads)
+        assertEquals(emptyMap<String, List<String>>(), cache.loadPendingCourseAdds())
     }
 
     @Test

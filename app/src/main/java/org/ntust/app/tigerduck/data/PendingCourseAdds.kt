@@ -4,6 +4,7 @@ import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.ntust.app.tigerduck.auth.AuthTokenManager
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.push.PushApiClient
 import org.ntust.app.tigerduck.push.ServerCourse
@@ -12,9 +13,9 @@ import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Uploads one term's courses; see [PushApiClient.uploadCourses]. */
+/** Uploads one term's courses as sign-in [signIn]; see [PushApiClient.uploadCourses]. */
 internal fun interface CourseUploader {
-    suspend fun upload(courses: List<Course>, semester: String, forceKeys: List<String>): List<String>?
+    suspend fun upload(courses: List<Course>, semester: String, forceKeys: List<String>, signIn: Int): List<String>?
 }
 
 /**
@@ -27,10 +28,10 @@ internal fun interface CourseUploader {
  * alone: never on another device, and lost at sign-out. Now the add waits on
  * disk, kept before the request so a process killed during it keeps it too,
  * and every full sync sends it again first with the same force key, as
- * [UnsentMarks] does for marks. It goes once an upload lands or a snapshot
- * lists the course, or once the course has left this phone's cache (deleted
- * by hand, a reset, Use Server). Account-scoped: wiped with the user data at
- * sign-out.
+ * [UnsentMarks] does for marks. It goes once an upload's answer accepts the
+ * course or a snapshot lists it, or once the course has left this phone's
+ * cache or been deleted (by hand, a reset, Use Server). Account-scoped: sent
+ * only as the account that kept it, and wiped with the user data at sign-out.
  *
  * iOS sends an add once and keeps nothing; its next sync drops a hand-added
  * course a populated server term does not list.
@@ -39,24 +40,32 @@ internal fun interface CourseUploader {
 class PendingCourseAdds internal constructor(
     private val dataCache: DataCache,
     private val uploader: CourseUploader,
+    private val signInGeneration: () -> Int,
 ) {
-    @Inject constructor(dataCache: DataCache, pushApiClient: PushApiClient) : this(
+    @Inject constructor(dataCache: DataCache, pushApiClient: PushApiClient, authTokenManager: AuthTokenManager) : this(
         dataCache = dataCache,
         uploader = CourseUploader(pushApiClient::uploadCourses),
+        signInGeneration = { authTokenManager.signInGeneration },
     )
 
     private val mutex = Mutex()
 
+    // One upload at a time, and none while courses are taken off the backend;
+    // see [removing].
+    private val sendMutex = Mutex()
+
     /**
      * Uploads [courses], [semester]'s list with [courseNo] just added to it,
-     * forcing [courseNo] past a tombstone as an add does. Kept until it lands.
-     * Let go as well when nothing was sent because course sync is off: the
-     * re-enable check answers for the courses when it comes back on.
+     * forcing [courseNo] past a tombstone as an add does. Kept until the
+     * backend accepts it. Let go as well when nothing was sent because course
+     * sync is off: the re-enable check answers for the courses when it comes
+     * back on.
      */
     suspend fun send(courses: List<Course>, semester: String, courseNo: String) {
         val generation = dataCache.userDataGeneration
+        val signIn = signInGeneration()
         if (!edit(generation) { it.with(semester, listOf(courseNo)) }) return
-        if (upload(courses, semester, listOf(courseNo))) edit(generation) { it.without(semester, listOf(courseNo)) }
+        trySend(semester, listOf(courseNo), generation, signIn, courses)
     }
 
     /**
@@ -66,14 +75,21 @@ class PendingCourseAdds internal constructor(
      */
     suspend fun retry() {
         val generation = dataCache.userDataGeneration
+        val signIn = signInGeneration()
         for ((semester, nos) in waiting()) {
-            val held = dataCache.loadCourses(semester).filter { it.courseNo in nos }
-            val gone = nos - held.map { it.courseNo }.toSet()
-            val sent = held.isNotEmpty() && upload(held, semester, held.map { it.courseNo })
-            val done = if (sent) nos else gone
-            if (done.isNotEmpty()) edit(generation) { it.without(semester, done) }
+            if (!trySend(semester, nos, generation, signIn)) return
         }
     }
+
+    /**
+     * Runs [block], which takes courses off the backend (a course deleted by
+     * hand, a term reset), with no add being sent meanwhile. An add already
+     * under way lands first, and the DELETE after it; one that waits finds
+     * its course gone from this phone and is not sent. The other way round,
+     * its force key would bring the course back past the DELETE. The courses
+     * have left this phone's cache by the time [block] ends.
+     */
+    suspend fun <T> removing(block: suspend () -> T): T = sendMutex.withLock { block() }
 
     /** Lets go of the adds [serverCourses], a snapshot's rows, list: the server has them. */
     suspend fun listed(serverCourses: List<ServerCourse>) {
@@ -87,16 +103,51 @@ class PendingCourseAdds internal constructor(
         }
     }
 
-    // Whether the request went through: sent, or nothing to send with course sync off.
-    private suspend fun upload(courses: List<Course>, semester: String, courseNos: List<String>): Boolean =
+    /**
+     * Sends [courseNos]' adds in [semester], [courses] going up (or the
+     * courses themselves as this phone holds them), for the account whose
+     * data [generation] and sign-in [signIn] were read with. Checked under the
+     * send lock, right before the request: an add whose course has left this
+     * phone's cache or been deleted since is let go unsent, and a sign-out
+     * since stops the send, false. The request itself carries [signIn], so a
+     * sign-out after the check sends it without a token rather than with the
+     * next account's.
+     */
+    private suspend fun trySend(
+        semester: String,
+        courseNos: List<String>,
+        generation: Int,
+        signIn: Int,
+        courses: List<Course>? = null,
+    ): Boolean = sendMutex.withLock {
+        if (generation != dataCache.userDataGeneration || signIn != signInGeneration()) return@withLock false
+        val cached = dataCache.loadCourses(semester)
+        val deleted = dataCache.loadDeletedCourseNos()
+        val held = courseNos.filter { no ->
+            cached.any { it.courseNo == no } && !CourseTombstoneKeys.isHidden(no, semester, deleted)
+        }
+        val accepted = if (held.isEmpty()) emptyList() else {
+            upload(courses ?: cached.filter { it.courseNo in held }, semester, held, signIn)
+        }
+        val done = courseNos - held.toSet() + accepted
+        if (done.isNotEmpty()) edit(generation) { it.without(semester, done) }
+        true
+    }
+
+    // The course numbers the backend took: those its answer accepts (a 200
+    // alone is not acceptance, see PushApiClient.uploadCourses), or all of
+    // them when nothing was sent because course sync is off. None on a failure.
+    private suspend fun upload(courses: List<Course>, semester: String, courseNos: List<String>, signIn: Int): List<String> =
         try {
-            uploader.upload(courses, semester, courseNos.map { forceKey(semester, it) })
-            true
+            val accepted = uploader.upload(courses, semester, courseNos.map { forceKey(semester, it) }, signIn)
+            val taken = if (accepted == null) courseNos else courseNos.filter { it in accepted }
+            if (taken.size < courseNos.size) Log.w(TAG, "course add not accepted, kept for the next sync")
+            taken
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "course add upload failed, kept for the next sync: ${e.logSummary()}")
-            false
+            emptyList()
         }
 
     private suspend fun waiting(): Map<String, List<String>> = dataCache.loadPendingCourseAdds()
