@@ -416,7 +416,7 @@ class ClassTableViewModel @Inject constructor(
                     _ignoredAssignmentIds.value = emptySet()
                     _markedCompletedIds.value = emptySet()
                     ignoredCourses.clear()
-                    _selectedCourse.value = null
+                    clearSelection()
                     _moodleCourseIdByIdnumber.value = emptyMap()
                     courseCustomNames = emptyMap()
                     hasLoaded = false

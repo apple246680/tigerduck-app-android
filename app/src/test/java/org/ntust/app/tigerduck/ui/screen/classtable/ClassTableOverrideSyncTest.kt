@@ -43,6 +43,19 @@ class ClassTableOverrideSyncTest {
     }
 
     @Test
+    fun `the selected course is only ever cleared together with its term`() {
+        // A term left behind would send the next rename from the grid's menu to the live term's copy.
+        val clears = source.withIndex().filter { "_selectedCourse.value = null" in it.value }
+        val clearSelection = body("clearSelection")
+        assertEquals(
+            clears.joinToString("\n") { "${it.index + 1}: ${it.value.trim()}" },
+            listOf(clearSelection.single { "_selectedCourse.value = null" in it }),
+            clears.map { it.value },
+        )
+        assertTrue(clearSelection.any { "selectedCourseSemester = null" in it })
+    }
+
+    @Test
     fun `a rename and its revert pick the course by where it was opened from`() {
         val call = Regex("""ClassTableSelection\.renameTarget\(([^)]*)\)""")
         for (name in listOf("setCustomCourseName", "revertCourseName")) {
