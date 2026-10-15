@@ -6,8 +6,10 @@ import android.net.Uri
 import android.os.Build
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.ntust.app.tigerduck.util.forgetFileProviderRoots
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
@@ -16,6 +18,9 @@ import java.io.File
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [Build.VERSION_CODES.TIRAMISU])
 class AttachmentShareIntentTest {
+
+    @Before
+    fun freshFileProvider() = forgetFileProviderRoots()
     @Test
     fun `an attachment goes to the share sheet as a read-only stream of its own type`() {
         val context = RuntimeEnvironment.getApplication()
