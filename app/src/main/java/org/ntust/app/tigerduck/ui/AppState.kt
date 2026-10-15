@@ -594,6 +594,9 @@ class AppState @Inject constructor(
                 hapticStrengthStates[scenario] = prefs.hapticStrength(scenario)
                 hapticDurationStates[scenario] = prefs.hapticDurationMs(scenario)
             }
+            // The widgets draw the wiped courses, accent and interface style,
+            // and redraw only when asked; reload() above does not ask.
+            widgetUpdater.requestUpdate()
 
             _needsUserReset.value = false
         }
