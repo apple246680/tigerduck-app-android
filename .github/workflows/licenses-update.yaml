@@ -1,14 +1,19 @@
-name: Renovate licences
+name: Licences update
 
-# Renovate updates dependencies but cannot run the licence export, so every
-# Gradle PR it opens fails licenses-up-to-date. This regenerates the committed
-# licence lists on a Renovate branch and commits them back, signed by GitHub
-# as the licences App.
+# Regenerates the committed licence lists on a PR's branch and commits them
+# back, signed by GitHub as the licences App, so a dependency change does not
+# have to be followed by the export by hand:
+# - on a Renovate branch into dev, on every push: hosted Renovate cannot run
+#   the export, and would otherwise fail licenses-up-to-date on every update;
+# - on any other PR from this repository, when someone adds the
+#   update-licenses label, which licenses-up-to-date suggests when it fails.
+#   The label is taken off again, so adding it once more runs it again.
+# A PR from a fork gets neither: the App cannot push to it.
 #
-# Two jobs, so the App's token never meets the updated dependencies' code:
-# - export runs Gradle, and with it whatever the new versions run at build
-#   time, with a read-only GITHUB_TOKEN and no secrets. It uploads only the
-#   licence files that changed.
+# Two jobs, so the App's token never meets the branch's code:
+# - export runs Gradle, and with it whatever the updated dependencies run at
+#   build time, with a read-only GITHUB_TOKEN and no secrets. It uploads only
+#   the licence files that changed.
 # - commit runs nothing from the branch. It checks every path it received
 #   against the six licence files and commits them through the GitHub API.
 #
@@ -18,22 +23,23 @@ name: Renovate licences
 
 on:
   pull_request:
-    branches: [ dev ]
-    paths:
-      - 'gradle/libs.versions.toml'
-      - '**/build.gradle.kts'
-      - 'settings.gradle.kts'
+    types: [ opened, synchronize, reopened, labeled ]
+    branches: [ dev, main ]
 
 permissions:
   contents: read
 
 concurrency:
-  group: renovate-licences-${{ github.head_ref }}
+  group: licences-update-${{ github.head_ref }}
   cancel-in-progress: true
 
 jobs:
   export:
-    if: startsWith(github.head_ref, 'renovate/') && github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository && (
+        (github.event.action == 'labeled' && github.event.label.name == 'update-licenses') ||
+        (github.event.action != 'labeled' && startsWith(github.head_ref, 'renovate/') && github.base_ref == 'dev')
+      )
     runs-on: ubuntu-latest
     outputs:
       changed: ${{ steps.stage.outputs.changed }}
@@ -59,7 +65,7 @@ jobs:
       - name: Keep Play services and Firebase out of the F-Droid list
         run: |
           if grep -qE '"(com\.google\.android\.gms|com\.google\.firebase)[:.]' app/src/fdroid/res/raw/aboutlibraries.json; then
-            echo "::error::The F-Droid licence list now names Play services or Firebase: this update pulls them into the fdroid flavor."
+            echo "::error::The F-Droid licence list now names Play services or Firebase: this change pulls them into the fdroid flavor."
             exit 1
           fi
 
@@ -109,8 +115,8 @@ jobs:
           private-key: ${{ secrets.LICENSES_APP_PRIVATE_KEY }}
 
       # createCommitOnBranch, so GitHub signs the commit; expectedHeadOid, so a
-      # push that landed meanwhile (Renovate's own rebase) is never overwritten:
-      # the call fails, and the new head runs this workflow again.
+      # push that landed meanwhile (Renovate's own rebase, or the author's next
+      # commit) is never overwritten: the call fails instead.
       - name: Commit the licence files
         env:
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
@@ -153,3 +159,21 @@ jobs:
           if out.returncode != 0 or '"errors"' in out.stdout:
               sys.exit(1)
           EOF
+
+  # Whatever the export found, the label has done its job: take it off so that
+  # adding it again runs the update again.
+  unlabel:
+    needs: [ export, commit ]
+    if: >-
+      always() && github.event.action == 'labeled' && github.event.label.name == 'update-licenses' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Take the label off
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: gh api -X DELETE "repos/$REPOSITORY/issues/$PR/labels/update-licenses" --silent || true

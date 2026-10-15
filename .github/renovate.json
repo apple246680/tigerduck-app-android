@@ -56,12 +56,12 @@
       "minimumReleaseAge": "3 days"
     },
     {
-      "description": "Hosted Renovate cannot run the licence export; the Renovate licences workflow commits it.",
+      "description": "Hosted Renovate cannot run the licence export; the Licences update workflow commits it.",
       "matchManagers": [
         "gradle"
       ],
       "prBodyNotes": [
-        "**Licences:** the Renovate licences workflow regenerates `res/raw` on this branch and commits it as the licences App. If it fails, run `./gradlew -PexportLicenses :app:exportLibraryDefinitionsPlayRelease :app:exportLibraryDefinitionsFdroidRelease :wear:exportLibraryDefinitionsRelease` here and commit the `res/raw` changes (signed). The F-Droid list must not gain a `com.google.android.gms` or `com.google.firebase` entry."
+        "**Licences:** the Licences update workflow regenerates `res/raw` on this branch and commits it as the licences App. If it fails, run `./gradlew -PexportLicenses :app:exportLibraryDefinitionsPlayRelease :app:exportLibraryDefinitionsFdroidRelease :wear:exportLibraryDefinitionsRelease` here and commit the `res/raw` changes (signed). The F-Droid list must not gain a `com.google.android.gms` or `com.google.firebase` entry."
       ]
     },
     {
