@@ -2,7 +2,7 @@ package org.ntust.app.tigerduck.ui.screen.coursemoodle
 
 import android.app.Application
 import androidx.activity.ComponentActivity
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performScrollToIndex
 import kotlinx.coroutines.CoroutineScope

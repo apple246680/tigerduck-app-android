@@ -18,6 +18,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.ntust.app.tigerduck.shared.LibraryServiceError
 import org.robolectric.RobolectricTestRunner
+import java.io.IOException
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.resume
@@ -55,6 +56,28 @@ class LibraryQRControllerTest {
 
         assertEquals(ACCOUNT_CHANGED, controller.error.value)
         assertNull(controller.qrBitmap.value)
+    }
+
+    /**
+     * Under the page's generic "Failed to generate QR code", a failure without
+     * a message has no reason to give, and its class name is none: a release
+     * build would show R8's short name for it.
+     */
+    @Test
+    fun `a failed fetch without a message adds nothing to the generic error`() {
+        answers += { throw IOException() }
+
+        controller.start(64, accounts)
+
+        assertEquals("", controller.error.value)
+        assertNull(controller.qrBitmap.value)
+    }
+
+    @Test
+    fun `a failure's own message is still the reason shown`() {
+        assertEquals("Unable to resolve host", qrErrorDetail(IOException("Unable to resolve host")))
+        assertEquals("", qrErrorDetail(IOException(" ")))
+        assertEquals("", qrErrorDetail(IllegalStateException()))
     }
 
     @Test
@@ -111,6 +134,17 @@ class LibraryQRControllerTest {
         controller.start(64, accounts)
 
         accounts.value = "b10000001"
+
+        assertNotNull(controller.qrBitmap.value)
+    }
+
+    @Test
+    fun `the same account with spaces around it keeps its code while it reloads`() {
+        answers += { "code" }
+        answers += { awaitCancellation() }
+        controller.start(64, accounts)
+
+        accounts.value = " b10000001 "
 
         assertNotNull(controller.qrBitmap.value)
     }

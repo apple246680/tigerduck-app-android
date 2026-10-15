@@ -8,8 +8,9 @@ import java.io.File
 
 /**
  * The user's own sign-out takes a school mail account signed in as the same student with it. The
- * mail account is matched by the stored student ID, so [AuthService.logout] has to ask before it
- * clears the school credentials; asked afterwards, there is no ID left and the mail account stays.
+ * mail account is matched by the stored student ID, so [AuthService.logout] has to ask before
+ * `signOutSchoolAccount` clears the school credentials; asked afterwards, there is no ID left and
+ * the mail account stays.
  * AuthService needs the Android Keystore, so this reads its source, as
  * ImportedClassTablesClearingTest does; MailAccountTest covers the same and the other student.
  */
@@ -48,7 +49,7 @@ class SchoolMailSignOutOrderTest {
     }
 
     private val mailSignOut = Regex("""\bmailAccount\.signOutIfSchoolAccount\(""")
-    private val schoolClear = Regex("""\bcredentials\.clearNtustCredentials\(\)""")
+    private val schoolClear = Regex("""\bcredentials\.signOutSchoolAccount\(\)""")
 
     @Test
     fun `the sign-out signs the school mail out with the stored student ID`() {

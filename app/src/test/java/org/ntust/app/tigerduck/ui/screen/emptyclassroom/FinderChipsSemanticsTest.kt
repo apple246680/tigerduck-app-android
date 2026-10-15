@@ -4,7 +4,7 @@ import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -96,7 +96,7 @@ class FinderChipsSemanticsTest {
             }
         }
 
-        val chip = composeRule.onNodeWithContentDescription("研揚大樓, Free classrooms: 1").fetchSemanticsNode()
+        val chip = composeRule.onNodeWithContentDescription("AAEON Building, Free classrooms: 1").fetchSemanticsNode()
 
         assertEquals(true, chip.config.getOrNull(SemanticsProperties.Selected))
         assertNull(chip.config.getOrNull(SemanticsProperties.StateDescription))

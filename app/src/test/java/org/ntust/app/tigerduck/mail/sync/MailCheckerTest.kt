@@ -425,6 +425,90 @@ class MailCheckerTest {
         assertEquals(listOf("${now}|WORKER|NoChange", "${now - 1}|ALARM|NoChange"), state.diagnostics)
     }
 
+    /** What the School Mail page's "Last synced" row dates: a check that reached the inbox. */
+    @Test
+    fun `a check that reaches the inbox dates it, whatever it finds there`() = runTest {
+        account.signIn("b10000001", "pw")
+        assertEquals(CheckOutcome.NoChange, checker().check(CheckSource.ALARM))
+        assertEquals(now, state.inboxFetchedAt)
+
+        now += 1_000
+        server.deliver("new one")
+        assertEquals(CheckOutcome.NewMail(1), checker().check(CheckSource.WORKER))
+        assertEquals(now, state.inboxFetchedAt)
+
+        now += 1_000
+        server.uidValidity = 99
+        assertTrue(checker().check(CheckSource.ALARM) is CheckOutcome.Baseline)
+        assertEquals(now, state.inboxFetchedAt)
+    }
+
+    @Test
+    fun `a check that fails or never reaches the inbox leaves its date`() = runTest {
+        account.signIn("b10000001", "pw")
+        checker().check(CheckSource.ALARM)
+        val fetched = now
+        assertEquals(fetched, state.inboxFetchedAt)
+        now += 1_000
+
+        server.openError = MailError.Network()
+        assertTrue(checker().check(CheckSource.WORKER) is CheckOutcome.Failed)
+        server.openError = null
+        server.passwords["B10000001"] = "changed"
+        assertTrue(checker().check(CheckSource.WORKER) is CheckOutcome.Failed)
+        assertEquals(CheckOutcome.Disabled, checker().check(CheckSource.ALARM))
+
+        assertEquals(fetched, state.inboxFetchedAt)
+    }
+
+    @Test
+    fun `the demo mailbox is never dated, having no server to answer`() = runTest {
+        account.signIn("B10000099", "demo")
+        assertEquals(CheckOutcome.Demo, checker().check(CheckSource.ALARM))
+        checker().noteFetchedByPage()
+        assertEquals(0L, state.inboxFetchedAt)
+    }
+
+    @Test
+    fun `the date goes with the account at sign-out`() = runTest {
+        account.signIn("b10000001", "pw")
+        checker().check(CheckSource.ALARM)
+        assertEquals(now, state.inboxFetchedAt)
+
+        account.signOut()
+
+        assertEquals(0L, state.inboxFetchedAt)
+    }
+
+    /** A check or a page fetch that outlives its account must not date the next one's mailbox. */
+    @Test
+    fun `a check whose account signs out before it ends leaves no date behind`() = runTest {
+        val cache = MailCache(tmp.root)
+        account.signIn("b10000001", "pw")
+        server.deliver("first")
+        var signedOut = false
+        val c = checker(
+            interrupting(beforeBody = { if (!signedOut) { signedOut = true; signOutAndSettle() } }),
+            cache,
+        )
+
+        c.check(CheckSource.ALARM)
+
+        assertTrue(signedOut)
+        assertEquals(0L, state.inboxFetchedAt)
+    }
+
+    @Test
+    fun `a page fetch that lands after the sign-out leaves no date behind`() = runTest {
+        account.signIn("b10000001", "pw")
+        val c = checker()
+        signOutAndSettle()
+
+        c.noteFetchedByPage()
+
+        assertEquals(0L, state.inboxFetchedAt)
+    }
+
     @Test
     fun `new mail arrives with its body already cached`() = runTest {
         val cache = MailCache(tmp.root)

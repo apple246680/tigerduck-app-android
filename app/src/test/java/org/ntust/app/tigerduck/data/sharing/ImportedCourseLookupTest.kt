@@ -2,6 +2,7 @@ package org.ntust.app.tigerduck.data.sharing
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.job
@@ -23,6 +24,7 @@ import java.io.IOException
  * course codes, however many a code carries and whether an import or a refresh asks, and unknown
  * codes stay apart from failed requests.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class ImportedCourseLookupTest {
 
     private var inFlight = 0

@@ -23,7 +23,7 @@ import org.ntust.app.tigerduck.mail.resolveAttachmentMimeType
 import org.ntust.app.tigerduck.network.moodle.MoodleAutologin
 import org.ntust.app.tigerduck.network.moodle.SHARED_NOT_VIEWED_EXTENSIONS
 import org.ntust.app.tigerduck.network.moodle.MoodleWebservice
-import org.ntust.app.tigerduck.ui.screen.mail.openMailLink
+import org.ntust.app.tigerduck.ui.openLink
 import org.ntust.app.tigerduck.util.fileProviderAuthority
 import org.ntust.app.tigerduck.util.logSummary
 import java.io.File
@@ -125,16 +125,16 @@ internal class SignedInMoodleWebPages(
         val preference = browserPreference ?: this.browserPreference()
         val browser = if (MoodleAutologin.isSignInTarget(url)) defaultBrowserPackage(context.packageManager) else null
         if (browser == null) {
-            openMailLink(context, url, preference)
+            openLink(context, url, preference)
             return
         }
         scope.launch(main) {
             val signedIn = signIn(url)
             if (signedIn == null) {
-                openMailLink(context, url, preference)
+                openLink(context, url, preference)
             } else {
                 runCatching { context.startActivity(signedInPageIntent(context, signedIn, browser, inApp = preference == "inApp")) }
-                    .onFailure { openMailLink(context, url, preference) }
+                    .onFailure { openLink(context, url, preference) }
             }
         }
     }
@@ -191,7 +191,7 @@ fun openMoodleContentLink(
         }
         uri.host.equals(MoodleWebservice.SITE_HOST, ignoreCase = true) ->
             openMoodleWebPage(context, moodleWebLink(url), browserPreference, pages)
-        else -> openMailLink(context, url, browserPreference)
+        else -> openLink(context, url, browserPreference)
     }
 }
 

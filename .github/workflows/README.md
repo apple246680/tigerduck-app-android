@@ -108,13 +108,16 @@ watch build to ship. It is signed with the same keystore as the phone (same
 ### `ci.yaml`
 
 Runs on PRs to `main` and `dev`. Compiles both phone flavors plus `:wear`,
-builds the `:wear` release AAB/APK unsigned, and runs every JVM unit test. Lean
-on purpose: no emulator, no lint baseline.
+builds the `:wear` release AAB/APK and both phone flavors' release APKs
+unsigned, and runs every JVM unit test. Lean on purpose: no emulator, no lint
+baseline.
 
-The wear release build is there because `:wear` is minified with its own
-`proguard-rules.pro` and nothing else in the PR gate runs R8 over it — without
-this step a missing keep rule would surface for the first time on release day.
-Unsigned because fork PRs cannot read the `KEYSTORE_*` secrets.
+The release builds are there because the phone and `:wear` are each minified
+with their own `proguard-rules.pro` and nothing else in the PR gate runs R8
+over them — without them a missing keep rule would surface for the first time
+on release day, as the two upgrade crashes R8 and Gson caused did. Unsigned
+because fork PRs cannot read the `KEYSTORE_*` secrets, and the phone's without
+`google-services.json`, which only the release workflow decodes.
 
 It also tests the two scripts the release workflows run, which otherwise first
 run once the PR is already on `main`: `tools/play/test_publish.py` runs the

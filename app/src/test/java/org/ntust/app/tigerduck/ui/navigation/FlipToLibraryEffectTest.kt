@@ -10,7 +10,7 @@ import android.hardware.Sensor
 import android.hardware.SensorManager
 import android.os.Looper
 import androidx.activity.ComponentActivity
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -27,8 +27,8 @@ import org.ntust.app.tigerduck.mail.ComposeMode
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.SensorBuilder
 import org.robolectric.shadows.SensorEventBuilder
-import org.robolectric.shadows.ShadowSensor
 import org.robolectric.util.ReflectionHelpers
 import org.robolectric.util.ReflectionHelpers.ClassParameter
 
@@ -43,13 +43,11 @@ class FlipToLibraryEffectTest {
     private lateinit var navController: NavHostController
     private lateinit var sensor: Sensor
     private var nowNanos = 0L
-    private var hasSeenFirstTrigger = true
-    private var firstTriggerRequests = 0
     private var haptics = 0
 
     @Before
     fun setUp() {
-        sensor = ShadowSensor.newInstance(Sensor.TYPE_ROTATION_VECTOR)
+        sensor = SensorBuilder.newBuilder().setType(Sensor.TYPE_ROTATION_VECTOR).build()
         shadowOf(sensorManager()).addSensor(sensor)
     }
 
@@ -62,10 +60,8 @@ class FlipToLibraryEffectTest {
             FlipToLibraryEffect(
                 navController = navController,
                 flipToLibraryEnabled = { true },
-                libraryFeatureEnabled = { true },
-                isLibraryLoggedIn = { true },
-                hasSeenFirstTrigger = { hasSeenFirstTrigger },
-                requestFirstTrigger = { firstTriggerRequests++ },
+                signedInToLibrary = { true },
+                stillSignedInToLibrary = { true },
                 onNavigated = { haptics++ },
             )
             if (withGraph) {
@@ -109,9 +105,7 @@ class FlipToLibraryEffectTest {
         composeRule.runOnUiThread {
             listOf(UPRIGHT, UPRIGHT, FACE_DOWN, FACE_DOWN).forEach { values ->
                 shadowOf(sensorManager()).sendSensorEventToListeners(
-                    SensorEventBuilder.newBuilder()
-                        .setSensor(sensor)
-                        .setValues(values.copyOf())
+                    SensorEventBuilder.newBuilder(sensor, values.copyOf())
                         .setTimestamp(nowNanos)
                         .build(),
                 )
@@ -157,20 +151,6 @@ class FlipToLibraryEffectTest {
         composeRule.waitForIdle()
         flip()
         assertEquals(Screen.SchoolMailCompose.route, route())
-    }
-
-    @Test
-    fun `the one-time prompt is not spent on a flip over a dialog`() {
-        hasSeenFirstTrigger = false
-        show()
-        focusWindow(false)
-        flip()
-        assertEquals(0, firstTriggerRequests)
-
-        focusWindow(true)
-        flip()
-        assertEquals(1, firstTriggerRequests)
-        assertEquals("the first flip explains rather than navigates", "home", route())
     }
 
     @Test

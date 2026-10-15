@@ -671,6 +671,29 @@ class MoodleCourseStoreTest {
         assertEquals(false, store.sectionRows.value.single().hasUnread)
     }
 
+    @Test
+    fun `a forums answer that already counts the read keeps the other announcement's dot`() = runTest(UnconfinedTestDispatcher()) {
+        api.forumList = listOf(testForum(1, courseId = 5, type = "news", count = 2, unread = 2))
+        api.pages = mapOf(0 to listOf(testDiscussion(10, unread = 1), testDiscussion(11, unread = 1)))
+        val store = store()
+        store.refreshForums()
+        val pages = store.announcementPages()!!
+        pages.refresh()
+
+        // Moodle logs the view before it answers the forums request under way, so the answer
+        // already leaves the opened announcement out: replaying the read must not take it off again.
+        api.gateForums = CompletableDeferred()
+        val refresh = async { store.refreshForums() }
+        runCurrent()
+        store.open(pages.list.value!!.discussions.first { it.id == 10 })
+        api.forumList = listOf(testForum(1, courseId = 5, type = "news", count = 2, unread = 1))
+        api.gateForums!!.complete(Unit)
+        refresh.await()
+
+        assertEquals(1, store.forums.value!!.forums.single().unreadPostCount)
+        assertEquals(true, store.sectionRows.value.single().hasUnread)
+    }
+
     // --- threads ---
 
     private val postsAllowed get() = api.allowed + MoodleCourseApi.DISCUSSION_POSTS_FUNCTION

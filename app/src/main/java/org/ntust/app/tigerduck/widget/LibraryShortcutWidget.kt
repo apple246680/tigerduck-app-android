@@ -3,6 +3,7 @@ package org.ntust.app.tigerduck.widget
 import android.content.Context
 import android.content.Intent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,26 +34,26 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextAlign
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
-import dagger.hilt.android.EntryPointAccessors
 import org.ntust.app.tigerduck.AppLink
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.activityIntent
+import org.ntust.app.tigerduck.data.preferences.AppPreferences
 
 /**
  * 1x1 home-screen widget that deep-links straight to the library QR page.
  * The tap opens `tigerduck://library`, which MainActivity turns into the
- * [ROUTE_SENTINEL] route; MainNavigation resolves that at launch time so an
- * intervening feature-disable toggle always routes the user to Settings with
- * the enable-prompt instead of a dead Library screen.
+ * [ROUTE_SENTINEL] route; MainNavigation resolves that to the Library page
+ * at launch time.
  */
-class LibraryShortcutWidget : GlanceAppWidget() {
+class LibraryShortcutWidget(
+    /** Where the settings come from: Hilt's, except in a test, which has no Hilt. */
+    private val preferencesOf: (Context) -> AppPreferences = ::widgetPreferences,
+) : GlanceAppWidget() {
 
     override val sizeMode: SizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val prefs = EntryPointAccessors
-            .fromApplication(context.applicationContext, WidgetThemeEntryPoint::class.java)
-            .appPreferences()
+        val prefs = preferencesOf(context)
         val tapAction = actionStartActivity(tapIntent(context))
         provideContent {
             // Same pattern as BaseClassTableWidget: provideGlance runs once
@@ -64,7 +65,11 @@ class LibraryShortcutWidget : GlanceAppWidget() {
             val tick = currentState(WidgetState.TickKey) ?: 0L
             val isDark = resolveWidgetIsDark(prefs, context)
             val accent = resolveWidgetAccentColor(prefs, isDark)
-            LibraryShortcutContent(isDark = isDark, accent = accent, onTap = tapAction)
+            CompositionLocalProvider(
+                androidx.glance.LocalContext provides widgetContext(context, prefs.appLanguage),
+            ) {
+                LibraryShortcutContent(isDark = isDark, accent = accent, onTap = tapAction)
+            }
         }
     }
 

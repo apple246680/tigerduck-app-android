@@ -1,10 +1,10 @@
 package org.ntust.app.tigerduck.ui
 
 import android.app.Application
+import android.content.ComponentName
 import android.content.ContextWrapper
 import android.content.Intent
-import android.content.pm.ActivityInfo
-import android.content.pm.ResolveInfo
+import android.content.IntentFilter
 import android.net.Uri
 import android.os.Bundle
 import android.os.FileUriExposedException
@@ -16,7 +16,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.ntust.app.tigerduck.ui.screen.mail.openMailLink
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.openMoodleContentLink
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
@@ -40,13 +40,15 @@ class OpenLinkTest {
 
     /** An app on the phone that takes [intent], so only openLink itself can refuse it. */
     private fun installHandler(intent: Intent) {
-        shadowOf(context.packageManager).addResolveInfoForIntent(
-            intent,
-            ResolveInfo().apply {
-                activityInfo = ActivityInfo().apply {
-                    packageName = "com.example.handler"
-                    name = "com.example.handler.Main"
-                }
+        val handler = ComponentName("com.example.handler", "com.example.handler.Main")
+        val packages = shadowOf(context.packageManager)
+        packages.addActivityIfNotPresent(handler)
+        packages.addIntentFilterForActivity(
+            handler,
+            IntentFilter(intent.action).apply {
+                addCategory(Intent.CATEGORY_DEFAULT)
+                addCategory(Intent.CATEGORY_BROWSABLE)
+                intent.data?.scheme?.let(::addDataScheme)
             },
         )
     }
@@ -146,17 +148,16 @@ class OpenLinkTest {
     }
 
     @Test
-    @Suppress("DEPRECATION")
-    fun `the mail screens' old opener goes through the guarded one`() {
-        // An open branch still calls openMailLink; it must follow the setting and refuse what
+    fun `a Moodle content link to another site goes through the guarded opener`() {
+        // A link that is neither mail nor a Moodle page must follow the setting and refuse what
         // openLink refuses, not keep its own copy of the old unguarded code.
         installBrowser()
-        openMailLink(context, url, BrowserPreference.IN_APP)
+        openMoodleContentLink(context, url, BrowserPreference.IN_APP)
         assertTrue("a Custom Tab", started()!!.hasExtra(CustomTabsIntent.EXTRA_SESSION))
 
         val file = "file:///sdcard/Download/notes.pdf"
         installHandler(Intent(Intent.ACTION_VIEW, Uri.parse(file)))
-        openMailLink(context, file, BrowserPreference.SYSTEM)
+        openMoodleContentLink(context, file, BrowserPreference.SYSTEM)
         assertNull(started())
     }
 }

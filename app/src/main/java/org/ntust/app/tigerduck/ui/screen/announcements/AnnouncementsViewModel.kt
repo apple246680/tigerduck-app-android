@@ -23,6 +23,7 @@ import org.ntust.app.tigerduck.data.BulletinRepository
 import org.ntust.app.tigerduck.data.RefreshPolicy
 import org.ntust.app.tigerduck.data.cache.BulletinCache
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
+import org.ntust.app.tigerduck.demo.DemoAccount
 import org.ntust.app.tigerduck.notification.SyncSource
 import org.ntust.app.tigerduck.network.BulletinApiClient
 import org.ntust.app.tigerduck.network.model.BulletinSummary
@@ -51,6 +52,7 @@ class AnnouncementsViewModel @Inject constructor(
     private val repository: BulletinRepository,
     private val readState: BulletinReadStateStore,
     private val prefs: AppPreferences,
+    private val demoAccount: DemoAccount,
 ) : ViewModel() {
 
 
@@ -80,20 +82,19 @@ class AnnouncementsViewModel @Inject constructor(
          * readIds ticks don't re-run the filter pass on every read.
          */
         val displayed: List<BulletinSummary> = emptyList(),
+        /** For the sync dot's "Last synced" row; see [BulletinCache.loadFetchedAt]. */
+        val syncedAtMs: Long = 0L,
     ) {
         val hasUnread: Boolean
             get() = filtered.any { it.id !in readIds }
     }
 
     private val _state = MutableStateFlow(
-        // Seed selectedOrgs synchronously from prefs so the first applyFilters()
-        // pass (from cache seed in load()) already respects the remembered
-        // filter — avoids a flash of unfiltered cached items.
-        State(
-            selectedOrgs = if (prefs.rememberAnnouncementFilter) {
-                prefs.savedAnnouncementOrgs
-            } else emptySet()
-        )
+        // A return visit finds the department list in memory, so the remembered
+        // departments go on before the cache seed's first applyFilters() pass,
+        // with no flash of unfiltered items. A first visit waits for
+        // fetchTaxonomyOnce().
+        repository.taxonomy().let { State(taxonomy = it, selectedOrgs = rememberedOrgs(it)) }
     )
     val state: StateFlow<State> = _state.asStateFlow()
 
@@ -114,11 +115,17 @@ class AnnouncementsViewModel @Inject constructor(
     // Main-thread-only — see nextCursor.
     private var hasLoaded = false
 
+    // Main-thread-only — see nextCursor. A department picked on this visit,
+    // which the remembered ones arriving later must not replace.
+    private var orgsPicked = false
+
     fun load() {
         if (hasLoaded) return
         hasLoaded = true
         viewModelScope.launch {
             val cached = cache.load()
+            val fetchedAt = cache.loadFetchedAt()
+            _state.update { it.copy(syncedAtMs = fetchedAt) }
             if (cached.isNotEmpty()) {
                 repository.putSummaries(cached)
                 _state.update { applyFilters(it.copy(items = sortedUnique(cached))) }
@@ -170,10 +177,34 @@ class AnnouncementsViewModel @Inject constructor(
         val tax = repository.getOrFetchTaxonomy {
             runCatching { api.fetchTaxonomy() }.getOrNull()
         } ?: return
-        _state.update { it.copy(taxonomy = tax) }
+        _state.update {
+            val orgs = if (orgsPicked) it.selectedOrgs else rememberedOrgs(tax)
+            applyFilters(it.copy(taxonomy = tax, selectedOrgs = orgs))
+        }
+    }
+
+    /**
+     * The remembered departments the department chips can show: none until
+     * [taxonomy] has loaded, and only those it still lists. A filter with no
+     * chip on screen to show it or turn it off is what this keeps out — after
+     * a cold start offline the department list never loads, and the list
+     * stays unfiltered rather than filtered unseen. Matches the iPhone's
+     * `restoreRememberedOrgs(known:)`.
+     */
+    private fun rememberedOrgs(taxonomy: TaxonomyResponse?): Set<String> {
+        if (taxonomy == null || !prefs.rememberAnnouncementFilter) return emptySet()
+        val known = taxonomy.orgs.mapTo(HashSet()) { it.id }
+        return prefs.savedAnnouncementOrgs intersect known
     }
 
     fun refresh() {
+        // The demo account's bulletins are the ones its sign-in cached, and
+        // DemoModeInterceptor refuses the fetch: the cached list is the loaded
+        // one, with no page behind it, rather than a refresh that can only fail.
+        if (demoAccount.isActive) {
+            _state.update { it.copy(loadState = LoadState.Loaded, hasMore = false) }
+            return
+        }
         inflight?.cancel()
         prefetch?.cancel()
         loadMoreJob?.cancel()
@@ -192,6 +223,9 @@ class AnnouncementsViewModel @Inject constructor(
                 // call: writing nextCursor / items here would overwrite the
                 // newer refresh that triggered our cancellation.
                 coroutineContext.ensureActive()
+                // Wall clock, for the "Last synced" row and across restarts;
+                // the session's elapsedRealtime below is neither.
+                val fetchedAt = System.currentTimeMillis()
                 val merged = sortedUnique(_state.value.items + response.items)
                 nextCursor = response.nextCursor
                 repository.putSummaries(merged)
@@ -201,10 +235,12 @@ class AnnouncementsViewModel @Inject constructor(
                             items = merged,
                             loadState = LoadState.Loaded,
                             hasMore = response.nextCursor != null,
+                            syncedAtMs = fetchedAt,
                         )
                     )
                 }
                 cache.save(merged)
+                cache.saveFetchedAt(fetchedAt)
                 repository.listRefreshed(
                     SystemClock.elapsedRealtime(), includeDeleted, response.nextCursor,
                 )
@@ -331,9 +367,10 @@ class AnnouncementsViewModel @Inject constructor(
     fun setOrgFilter(orgs: Set<String>) {
         // Always persist — the AppState setter for rememberAnnouncementFilter
         // clears this key when the toggle goes false, so writing here can't
-        // accidentally revive a stale selection. Restore on launch is gated
-        // by the toggle (see _state initializer).
+        // accidentally revive a stale selection. Restore is gated by the
+        // toggle (see rememberedOrgs).
         prefs.savedAnnouncementOrgs = orgs
+        orgsPicked = true
         _state.update { applyFilters(it.copy(selectedOrgs = orgs)) }
     }
 

@@ -11,6 +11,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import org.ntust.app.tigerduck.mail.store.MailCredentialStore
 import org.ntust.app.tigerduck.shared.LibraryAccountGate
 import org.ntust.app.tigerduck.shared.LibraryCredentialStore
+import org.ntust.app.tigerduck.shared.sameStudentId
 import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -81,14 +82,27 @@ class CredentialManager private constructor(
         token: String?,
         tokenExpiry: Long,
         byUser: Boolean,
-    ): Boolean = libraryAccount.saveIfCurrent(generation, byUser, { libraryUsername }, username) {
+        stillCurrent: () -> Boolean,
+    ): Boolean = libraryAccount.saveIfCurrent(generation, byUser, { libraryUsername }, username, stillCurrent) {
         prefs.edit()
             .putString("library_username", username)
             .putString("library_password", password)
             .putString("library_token", token)
             .putLong("library_token_expiry", tokenExpiry)
+            // Credentials that work, so the app may sign in with them again.
+            .remove(KEY_LIBRARY_PASSWORD_REFUSED)
             .apply()
     }
+
+    override val libraryPasswordRefused: Boolean
+        get() = prefs.getBoolean(KEY_LIBRARY_PASSWORD_REFUSED, false)
+
+    override fun refuseLibraryPassword(generation: Int, password: String): Boolean =
+        libraryAccount.whileCurrent(generation) {
+            if (libraryPassword != password) return@whileCurrent false
+            prefs.edit().putBoolean(KEY_LIBRARY_PASSWORD_REFUSED, true).apply()
+            true
+        } ?: false
 
     /** Long-lived Moodle Mobile wstoken, obtained via the OIDC launch flow. */
     var moodleToken: String?
@@ -138,6 +152,7 @@ class CredentialManager private constructor(
             .remove(V3TokenStore.KEY_ACCESS_TOKEN)
             .remove(V3TokenStore.KEY_REFRESH_TOKEN)
             .remove(V3TokenStore.KEY_EXPIRES_AT)
+            .remove(V3TokenStore.KEY_REFRESH_TOKEN_SENDS)
             .apply()
     }
 
@@ -149,8 +164,55 @@ class CredentialManager private constructor(
                 .remove("library_password")
                 .remove("library_token")
                 .remove("library_token_expiry")
+                .remove(KEY_LIBRARY_PASSWORD_REFUSED)
                 .apply()
         }
+    }
+
+    // Moved by each school sign-out, under the library account's lock.
+    private var schoolAccount = 0
+
+    /**
+     * Moved by each school sign-out. The school sign-in reads it before its
+     * SSO step, and its own library step stores nothing once it has moved
+     * (see [isSchoolAccount]). Only that step: a sign-in with another
+     * student's stored library credentials, which the sign-out keeps, still
+     * stores its token or its refusal, as on the iPhone.
+     */
+    val schoolAccountGeneration: Int get() = libraryAccount.atomically { schoolAccount }
+
+    /**
+     * Whether no school sign-out has come since [read] was read from
+     * [schoolAccountGeneration]. Asked as the library step's answer is
+     * stored, under the same lock as the sign-out.
+     */
+    fun isSchoolAccount(read: Int): Boolean = libraryAccount.atomically { schoolAccount == read }
+
+    /**
+     * The library sign-out a school sign-out makes: the library account goes
+     * when it is [ifSchoolAccount]'s, the departing student ID, compared as
+     * [sameStudentId] does; another student's stays. Either way the school
+     * sign-in's own library step, if still out, stores nothing. Atomic with
+     * the library's saves, so that step cannot store the departing account
+     * after this looked. Returns whether the library account went.
+     */
+    fun clearLibraryCredentials(ifSchoolAccount: String?): Boolean = libraryAccount.atomically {
+        schoolAccount++
+        val same = ifSchoolAccount != null && sameStudentId(libraryUsername, ifSchoolAccount)
+        if (same) clearLibraryCredentials()
+        same
+    }
+
+    /**
+     * A school sign-out's credentials: the school account goes, and the library
+     * account with it when it is the same student's, by the student ID read
+     * before the school's is wiped; see [clearLibraryCredentials]. Returns
+     * whether the library account went.
+     */
+    fun signOutSchoolAccount(): Boolean {
+        val departing = ntustStudentId
+        clearNtustCredentials()
+        return clearLibraryCredentials(ifSchoolAccount = departing)
     }
 
     // ── School mail — its own account, never shared with the NTUST or library one ──
@@ -186,6 +248,7 @@ class CredentialManager private constructor(
 
     companion object {
         private const val PREFS_NAME = "tigerduck_credentials"
+        private const val KEY_LIBRARY_PASSWORD_REFUSED = "library_password_refused"
 
         private fun openEncrypted(context: Context): Opened {
             fun attempt(): SharedPreferences {

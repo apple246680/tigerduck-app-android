@@ -21,6 +21,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.ntust.app.tigerduck.auth.PersistedStoredPasswordLatch
+import org.ntust.app.tigerduck.auth.SIGN_IN_CALL_TIMEOUT_SECONDS
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.debug.DebugFixtureStore
 import org.ntust.app.tigerduck.debug.DemoModeInterceptor
@@ -29,11 +30,13 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.TimeUnit
 
 /**
  * [MoodleTokenService]'s Moodle token harvest against hand-made Moodle and SSO pages, with the
  * app-wide stored-password latch: what its renewals post, and what a sign-in by hand stores
- * (https://github.com/tigerduck-app/tigerduck-app-android/issues/163, #212 and #300).
+ * (https://github.com/tigerduck-app/tigerduck-app-android/issues/163, #212 and #300), and how
+ * long each of its calls may take (#366).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
@@ -56,7 +59,13 @@ class MoodleTokenServiceLatchTest {
     /** Runs as the launch arrives, before its answer. */
     private var onLaunch: () -> Unit = {}
 
-    private val school = OkHttpClient.Builder().addInterceptor { chain -> answer(chain.request()) }.build()
+    /** Each call's deadline for the whole call, in nanoseconds; 0 for none. */
+    private val deadlines = CopyOnWriteArrayList<Long>()
+
+    private val school = OkHttpClient.Builder().addInterceptor { chain ->
+        deadlines += chain.call().timeout().timeoutNanos()
+        answer(chain.request())
+    }.build()
 
     private class Tokens : MoodleTokenPairStore {
         override var token: String? = null
@@ -116,6 +125,18 @@ class MoodleTokenServiceLatchTest {
         tokens.privateToken = null
         service.obtainToken(STUDENT, PASSWORD)
         assertEquals("a sign-in by hand stores it too", "private", tokens.privateToken)
+    }
+
+    @Test
+    fun `each call of a renewal has a deadline for the whole call`() = runTest(UnconfinedTestDispatcher()) {
+        // The automatic sign-in waits on the renewal under NonCancellable, and a school that
+        // trickled its answer, each byte inside the read timeout, held it without end.
+        val (service, _) = service()
+
+        assertEquals(WSTOKEN, service.renewToken(null))
+
+        // The launch, and the SSO sign-in's post.
+        assertEquals(List(2) { TimeUnit.SECONDS.toNanos(SIGN_IN_CALL_TIMEOUT_SECONDS) }, deadlines)
     }
 
     @Test

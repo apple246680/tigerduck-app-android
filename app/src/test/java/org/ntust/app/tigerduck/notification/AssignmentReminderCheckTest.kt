@@ -18,6 +18,7 @@ import org.ntust.app.tigerduck.data.CourseIgnores
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
+import org.ntust.app.tigerduck.debug.DebugFixtureStore
 import org.ntust.app.tigerduck.network.SubmissionStatusProbe
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.robolectric.RobolectricTestRunner
@@ -36,6 +37,7 @@ class AssignmentReminderCheckTest {
     private lateinit var context: Application
     private lateinit var dataCache: DataCache
     private lateinit var scheduler: AssignmentNotificationScheduler
+    private lateinit var fixtures: DebugFixtureStore
     private lateinit var check: AssignmentReminderCheck
 
     private var storedToken: String? = "stored-token"
@@ -64,7 +66,10 @@ class AssignmentReminderCheckTest {
                 .body(moodle().toResponseBody("application/json".toMediaType()))
                 .build()
         }.build()
-        check = AssignmentReminderCheck(dataCache, scheduler, SubmissionStatusProbe({ storedToken }, client))
+        fixtures = DebugFixtureStore(context)
+        check = AssignmentReminderCheck(
+            dataCache, scheduler, SubmissionStatusProbe({ storedToken }, client), fixtures,
+        )
     }
 
     private fun dueInThreeDays(id: String) = Assignment(
@@ -246,6 +251,23 @@ class AssignmentReminderCheckTest {
             assertEquals(listOf(assignment), dataCache.loadAssignments())
             assertEquals(listOf("20977", "20977"), armedIds())
         }
+
+    @Test
+    fun `the demo account's reminder answers from its own data and asks Moodle nothing`() = runBlocking {
+        // The demo account has no Moodle token: its assignments are the bundled file's.
+        fixtures.demoMode = true
+        storedToken = null
+        val due = dueInThreeDays("900001")
+        val handedIn = dueInThreeDays("900003").copy(isCompleted = true)
+        dataCache.saveAssignments(listOf(due, handedIn))
+
+        assertEquals(ReminderVerdict.Show, check.verdict("900001", due.dueDate.time))
+        assertEquals(
+            ReminderVerdict.Drop(ReminderDropReason.SUBMITTED_IN_CACHE),
+            check.verdict("900003", handedIn.dueDate.time),
+        )
+        assertEquals(emptyList<String>(), asked)
+    }
 
     // --- no answer from Moodle --------------------------------------------
 

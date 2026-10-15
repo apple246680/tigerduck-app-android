@@ -2,13 +2,14 @@ package org.ntust.app.tigerduck.ui.screen.calendar
 
 import android.app.Application
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
-import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.isHeading
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -26,8 +27,9 @@ import java.util.Date
 
 /**
  * What TalkBack reads in the calendar: each day cell is one stop naming the full date and how
- * many events it holds, as the iPhone's `a11y_calendar_day` label does, and says which day is
- * selected; the date over the day's events is a heading to jump to.
+ * many events it holds, as the iPhone's `a11y_calendar_day` label does, and only the selected
+ * day says it is selected ("not selected" on every other day would be noise); the date over the
+ * day's events is a heading to jump to.
  */
 @RunWith(RobolectricTestRunner::class)
 // A plain Application: the real one is a Hilt app these tests do not need.
@@ -38,6 +40,7 @@ class CalendarAccessibilityTest {
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     private val taipei = ZoneId.of("Asia/Taipei")
+    private val hasNoSelectedState = SemanticsMatcher.keyNotDefined(SemanticsProperties.Selected)
     private fun LocalDate.toDate(): Date = Date.from(atStartOfDay(taipei).toInstant())
 
     private val day = LocalDate.of(2026, 10, 14)
@@ -62,7 +65,7 @@ class CalendarAccessibilityTest {
         showGrid(selected = day.plusDays(1))
         composeRule.onNodeWithContentDescription("Wednesday, October 14, 2026, 2 events")
             .assertHasClickAction()
-            .assertIsNotSelected()
+            .assert(hasNoSelectedState)
         composeRule.onNodeWithContentDescription("Thursday, October 15, 2026, 0 events").assertIsSelected()
     }
 
@@ -70,7 +73,7 @@ class CalendarAccessibilityTest {
     fun `the selected day says so`() {
         showGrid(selected = day)
         composeRule.onNodeWithContentDescription("Wednesday, October 14, 2026, 2 events").assertIsSelected()
-        composeRule.onNodeWithContentDescription("Thursday, October 15, 2026, 0 events").assertIsNotSelected()
+        composeRule.onNodeWithContentDescription("Thursday, October 15, 2026, 0 events").assert(hasNoSelectedState)
     }
 
     @Test

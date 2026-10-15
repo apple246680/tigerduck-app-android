@@ -162,6 +162,14 @@ android {
                     "tigerduck.nsc.debug", file("src/debug/res/xml/network_security_config.xml"),
                 )
             }
+            // ReleaseLogLinesTest reads the watch's sources too, and
+            // NetworkSecurityConfigTest the watch's manifest and network config,
+            // which nothing here builds.
+            all {
+                it.inputs.files(
+                    fileTree("../wear/src/main") { include("**/*.kt", "AndroidManifest.xml", "res/xml/**") },
+                ).withPathSensitivity(PathSensitivity.RELATIVE)
+            }
         }
     }
 

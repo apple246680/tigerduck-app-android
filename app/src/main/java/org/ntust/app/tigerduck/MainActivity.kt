@@ -53,6 +53,7 @@ import org.ntust.app.tigerduck.ui.BrowserPreference
 import org.ntust.app.tigerduck.ui.component.TigerDuckDialog
 import org.ntust.app.tigerduck.ui.firsttrigger.FirstTriggerPromptController
 import org.ntust.app.tigerduck.ui.firsttrigger.FirstTriggerPromptHost
+import org.ntust.app.tigerduck.ui.firsttrigger.firstTriggerPromptMayShow
 import org.ntust.app.tigerduck.ui.navigation.AppNavigation
 import org.ntust.app.tigerduck.ui.navigation.Screen
 import org.ntust.app.tigerduck.ui.openLink
@@ -121,6 +122,12 @@ class MainActivity : AppCompatActivity() {
 
     @Inject
     lateinit var mailChecker: org.ntust.app.tigerduck.mail.sync.MailChecker
+
+    @Inject
+    lateinit var libraryReturnSignIn: org.ntust.app.tigerduck.library.LibraryReturnSignIn
+
+    @Inject
+    lateinit var libraryPagePresence: org.ntust.app.tigerduck.library.LibraryPagePresence
 
     @Inject
     lateinit var dataCache: DataCache
@@ -246,9 +253,23 @@ class MainActivity : AppCompatActivity() {
                         }
 
                         // First-trigger opt-in prompts (e.g. flip-to-library):
-                        // root-level so the prompt can surface over any tab the
-                        // gesture fires from, independent of the nav back stack.
-                        FirstTriggerPromptHost(firstTriggerPromptController)
+                        // root-level so the prompt can surface over any tab,
+                        // independent of the nav back stack. A pending one
+                        // waits for What's New and the update prompt to close,
+                        // as on the iPhone, rather than stacking on them, and
+                        // the flip one for the Library page to be left.
+                        val updatePending by updateChecker.pendingUpdate.collectAsStateWithLifecycle()
+                        val pendingPrompt by firstTriggerPromptController.pending.collectAsStateWithLifecycle()
+                        val libraryPageShown by libraryPagePresence.shown.collectAsStateWithLifecycle()
+                        if (firstTriggerPromptMayShow(
+                                whatsNewShowing = whatsNewFlow.value != null,
+                                updatePromptShowing = updatePending != null,
+                                pending = pendingPrompt?.key,
+                                libraryPageShown = libraryPageShown,
+                            )
+                        ) {
+                            FirstTriggerPromptHost(firstTriggerPromptController)
+                        }
 
                         // Operator-issued popup: rendered over whatever screen
                         // the user lands on after tapping the notification.
@@ -262,6 +283,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // The library sign-in state read again, and a sign-in with the stored
+        // credentials once the day-long token has run out.
+        lifecycleScope.launch { libraryReturnSignIn.onAppResumed() }
         refreshAcademicCalendar()
         liveActivityManager.refresh()
         updateChecker.resume(this)

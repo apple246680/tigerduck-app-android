@@ -1,6 +1,7 @@
 package org.ntust.app.tigerduck.ui.screen.emptyclassroom
 
 import android.text.format.DateFormat
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
@@ -73,11 +74,39 @@ internal fun dayLabel(day: LocalDate, today: LocalDate): String {
 }
 
 /**
- * A building's name as the site's building list gives it (研揚大樓, 第四教學大樓 …), in every UI
- * language, as course names are; the code when the list has no name for it.
+ * The app-translation string naming the building [code], or null for a code it has none for.
+ * One per building on the campus map (RoomPlace); Chinese names in Chinese, the official English
+ * name, or the code and "Building", everywhere else (#610).
  */
+@StringRes
+internal fun buildingNameRes(code: String): Int? = when (code) {
+    "AD" -> R.string.empty_classroom_building_ad
+    "AU" -> R.string.empty_classroom_building_au
+    "E1" -> R.string.empty_classroom_building_e1
+    "E2" -> R.string.empty_classroom_building_e2
+    "EE" -> R.string.empty_classroom_building_ee
+    "IA" -> R.string.empty_classroom_building_ia
+    "IB" -> R.string.empty_classroom_building_ib
+    "LB" -> R.string.empty_classroom_building_lb
+    "MA" -> R.string.empty_classroom_building_ma
+    "RB" -> R.string.empty_classroom_building_rb
+    "T1" -> R.string.empty_classroom_building_t1
+    "T2" -> R.string.empty_classroom_building_t2
+    "T3" -> R.string.empty_classroom_building_t3
+    "T4" -> R.string.empty_classroom_building_t4
+    "TR" -> R.string.empty_classroom_building_tr
+    else -> null
+}
+
+/**
+ * A building's name in the user's language ([buildingNameRes]); for a code without one, the name
+ * the site's building list gives it (研揚大樓, 第四教學大樓 …), or else the code.
+ */
+@Composable
 internal fun buildingName(code: String, siteNames: Map<String, String>): String =
-    siteNames[code]?.trim()?.takeIf { it.isNotEmpty() } ?: code
+    buildingNameRes(code)?.let { stringResource(it) }
+        ?: siteNames[code]?.trim()?.takeIf { it.isNotEmpty() }
+        ?: code
 
 /** What a TalkBack label's parts are joined with: the full-width comma in Chinese, ", " otherwise. */
 internal fun labelSeparator(languageTag: String): String =

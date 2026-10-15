@@ -132,6 +132,9 @@
                 android:resource="@xml/widget_week_light_info" />
         </receiver>
 
+        <!-- Each *Dark* receiver below draws what its light twin does and is hidden
+             from the widget picker (widgetFeatures="hide_from_picker"); it stays
+             declared so widgets placed from it before keep working. -->
         <receiver
             android:name="org.ntust.app.tigerduck.widget.receivers.WeekDarkWidgetReceiver"
             android:exported="true"

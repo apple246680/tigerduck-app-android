@@ -70,7 +70,7 @@ fun NowNextScreen(snapshot: WatchSnapshot) {
                         item {
                             NextCard(
                                 course = next.course,
-                                weekday = next.weekday,
+                                classroom = next.classroom,
                                 statusText = nextStatusText(next.startMinute, minuteOfDay),
                                 titleResId = R.string.watch_next,
                             )
@@ -81,7 +81,7 @@ fun NowNextScreen(snapshot: WatchSnapshot) {
                 is NextClassResult.NextToday -> item {
                     NextCard(
                         course = result.course,
-                        weekday = result.weekday,
+                        classroom = result.classroom,
                         statusText = nextStatusText(result.startMinute, minuteOfDay),
                         titleResId = null,
                     )
@@ -90,7 +90,7 @@ fun NowNextScreen(snapshot: WatchSnapshot) {
                 is NextClassResult.NextFuture -> item {
                     NextCard(
                         course = result.course,
-                        weekday = result.weekday,
+                        classroom = result.classroom,
                         statusText = futureStatusText(result.daysAhead, result.startMinute, result.weekday),
                         titleResId = null,
                     )
@@ -128,7 +128,7 @@ private fun OngoingCard(result: NextClassResult.Ongoing, minuteOfDay: Int) {
             overflow = TextOverflow.Ellipsis,
         )
         Text(
-            text = "${result.course.classroom(result.weekday)} · ${result.course.instructor}",
+            text = "${result.classroom} · ${result.course.instructor}",
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -153,7 +153,8 @@ private fun OngoingCard(result: NextClassResult.Ongoing, minuteOfDay: Int) {
 @Composable
 private fun NextCard(
     course: Course,
-    weekday: Int,
+    /** The room of the block the card is about, not every room of the course that day. */
+    classroom: String,
     statusText: String,
     titleResId: Int?,
 ) {
@@ -175,7 +176,7 @@ private fun NextCard(
             overflow = TextOverflow.Ellipsis,
         )
         Text(
-            text = "${course.classroom(weekday)} · ${course.instructor}",
+            text = "$classroom · ${course.instructor}",
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

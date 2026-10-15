@@ -141,7 +141,7 @@ class MoodleLogicTest {
     }
 
     @Test
-    fun `names read from NTUST's "ID @ name" form`() {
+    fun `names read from NTUST's ID @ name form`() {
         assertEquals("Amy", MoodlePersonName.displayName("B11300001 @ Amy"))
         assertEquals("B11300001", MoodlePersonName.studentId("B11300001 @ Amy"))
         assertEquals("Teacher Wang", MoodlePersonName.displayName("Teacher Wang"))

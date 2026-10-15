@@ -48,6 +48,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -455,7 +458,7 @@ private fun SyncStatusCard(
                             Spacer(Modifier.height(4.dp))
                             LabeledText(
                                 label = stringResource(R.string.push_server_latest_error),
-                                value = msg,
+                                value = latestErrorText(msg),
                                 valueColor = MaterialTheme.colorScheme.error,
                             )
                         }
@@ -467,6 +470,15 @@ private fun SyncStatusCard(
         }
     }
 }
+
+/**
+ * The status card's latest error: the failure's own message or, for one that
+ * had none (stored as ""), the generic "Failed" in the app's language now,
+ * not the one it was recorded in.
+ */
+@Composable
+internal fun latestErrorText(lastError: String): String =
+    lastError.ifEmpty { stringResource(R.string.sync_status_failed) }
 
 /**
  * "Automatic sign-in failed", with the school sign-in a tap away; signing in there signs in to
@@ -573,13 +585,19 @@ private fun DeviceIdRow(deviceId: String) {
     }
 }
 
+/**
+ * A link out of the app. The whole row is the button, as [SettingsLinkRow]
+ * is and as the iPhone's is, not only its small trailing icon.
+ */
 @Composable
-private fun LinkRow(label: String, onClick: () -> Unit) {
+internal fun LinkRow(label: String, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = SettingRowHeight)
-            .padding(horizontal = 16.dp),
+            .semantics(mergeDescendants = true) { role = Role.Button }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -589,14 +607,12 @@ private fun LinkRow(label: String, onClick: () -> Unit) {
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.weight(1f),
         )
-        IconButton(onClick = onClick, modifier = Modifier.size(24.dp)) {
-            Icon(
-                Icons.AutoMirrored.Filled.OpenInNew,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(16.dp),
-            )
-        }
+        Icon(
+            Icons.AutoMirrored.Filled.OpenInNew,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(16.dp),
+        )
     }
 }
 

@@ -11,6 +11,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import kotlinx.coroutines.CoroutineScope
+import org.ntust.app.tigerduck.auth.SIGN_IN_CALL_TIMEOUT_SECONDS
 import org.ntust.app.tigerduck.auth.SIGN_IN_PAUSE_MS
 import org.ntust.app.tigerduck.auth.PasswordPosting
 import org.ntust.app.tigerduck.auth.StoredPasswordLatch
@@ -18,6 +19,7 @@ import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.di.ApplicationScope
 import java.net.SocketTimeoutException
 import java.security.SecureRandom
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -93,10 +95,13 @@ class MoodleTokenService internal constructor(
      * Dedicated client that forces the Moodle Mobile UA on every hop of the
      * OIDC chain (SSO portal + Moodle). The session manager's default
      * interceptor only swaps UA for moodle2.* — SSO hops need it too so
-     * NetScaler doesn't serve an anti-bot challenge mid-redirect.
+     * NetScaler doesn't serve an anti-bot challenge mid-redirect. Each call
+     * has a deadline, as the automatic backend sign-in waits on a renewal;
+     * see SIGN_IN_CALL_TIMEOUT_SECONDS.
      */
     private val tokenClient: OkHttpClient by lazy {
         clientFor().newBuilder()
+            .callTimeout(SIGN_IN_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .addNetworkInterceptor { chain ->
                 val req = chain.request().newBuilder()
                     .header("User-Agent", moodleUa)

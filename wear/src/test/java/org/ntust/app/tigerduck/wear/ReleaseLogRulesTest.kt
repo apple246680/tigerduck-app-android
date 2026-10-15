@@ -1,6 +1,7 @@
 package org.ntust.app.tigerduck.wear
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
@@ -27,6 +28,16 @@ class ReleaseLogRulesTest {
                 ),
             ),
             blocks,
+        )
+    }
+
+    @Test
+    fun `release builds keep the class names warnings and errors log`() {
+        // They name a failure by javaClass.simpleName, and no release keeps the R8 mapping
+        // that would decode an obfuscated name.
+        assertTrue(
+            File("proguard-rules.pro").readLines().map { it.trim() }
+                .contains("-keepnames class * extends java.lang.Throwable"),
         )
     }
 }

@@ -223,9 +223,7 @@ fun SchoolMailMessageScreen(
                     }
                     if (state.content !is Content.Loading) {
                         Box {
-                            IconButton(onClick = { menuOpen = true }) {
-                                Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.school_mail_view_mode))
-                            }
+                            MessageActionsButton(onClick = { menuOpen = true })
                             MessageMenu(
                                 expanded = menuOpen,
                                 mode = state.mode,
@@ -461,6 +459,17 @@ fun SchoolMailMessageScreen(
  */
 internal fun offersLightMode(isDark: Boolean, mode: ViewMode, canFormat: Boolean): Boolean =
     isDark && canFormat && mode == ViewMode.FORMATTED
+
+/**
+ * The ⋮ button that opens [MessageMenu]. Named for every action in it, not
+ * only the view modes: it also holds mark unread, move and delete.
+ */
+@Composable
+internal fun MessageActionsButton(onClick: () -> Unit) {
+    IconButton(onClick = onClick) {
+        Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.school_mail_message_actions))
+    }
+}
 
 /** The message's ⋮ menu. Internal so [MailMessageMenuTest] can open it and read what TalkBack is told. */
 @Composable

@@ -5,12 +5,8 @@
 package org.ntust.app.tigerduck.ui.screen.settings
 
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -18,10 +14,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -39,8 +32,6 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -58,6 +49,7 @@ import org.ntust.app.tigerduck.ui.BrowserPreference
 import org.ntust.app.tigerduck.ui.component.ContentCard
 import org.ntust.app.tigerduck.ui.component.PageHeader
 import org.ntust.app.tigerduck.ui.component.SectionHeader
+import org.ntust.app.tigerduck.sensor.FlipDetector
 import org.ntust.app.tigerduck.ui.component.TigerDuckDialog
 import org.ntust.app.tigerduck.ui.haptics.HapticScenario
 import org.ntust.app.tigerduck.ui.haptics.Haptics
@@ -139,8 +131,8 @@ fun SettingsScreen(
     val useEnglishCourseAbbreviation = viewModel.appState.useEnglishCourseAbbreviation
     val useEnglishClassroomAbbreviation = viewModel.appState.useEnglishClassroomAbbreviation
     val classroomMandarinDisplay = viewModel.appState.classroomMandarinDisplay
-    val libraryEnabled = viewModel.appState.libraryFeatureEnabled
     val appLanguage = viewModel.appState.appLanguage
+    val flipSensorSupported = remember(context) { FlipDetector.isSupported(context) }
     val shouldShowEnglishAbbreviationToggle = AppLanguageManager.isCourseApiEnglish(appLanguage)
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -178,7 +170,7 @@ fun SettingsScreen(
     // read, so the row follows a change made since (in the tab editor, or by
     // answering a page of this very replay).
     val configuredTabs = viewModel.appState.configuredTabs
-    val latestWhatsNew: WhatsNewFlow? = remember(whatsNewReplay, configuredTabs, libraryEnabled) {
+    val latestWhatsNew: WhatsNewFlow? = remember(whatsNewReplay, configuredTabs) {
         whatsNewReplay?.let { WhatsNewFlow.from(it, whatsNewCatalog, whatsNewSummaries) }
     }
     // The open sheet's page ids: fixed when the row is tapped and saved across
@@ -259,18 +251,16 @@ fun SettingsScreen(
                             onHighlightConsumed = { highlightNtustRow = false },
                         )
 
-                        if (libraryEnabled) {
-                            HorizontalDivider()
-                            AccountRow(
-                                title = stringResource(R.string.settings_account_library_system),
-                                isLoggedIn = isLibraryLoggedIn,
-                                subtitle = if (isLibraryLoggedIn) viewModel.libraryUsername else null,
-                                isLoggingIn = libIsLoggingIn,
-                                onLogin = { showLibraryLoginSheet = true },
-                                onLogout = { viewModel.logoutLibrary() },
-                                actionMinWidth = accountButtonMinWidth,
-                            )
-                        }
+                        HorizontalDivider()
+                        AccountRow(
+                            title = stringResource(R.string.settings_account_library_system),
+                            isLoggedIn = isLibraryLoggedIn,
+                            subtitle = if (isLibraryLoggedIn) viewModel.libraryUsername else null,
+                            isLoggingIn = libIsLoggingIn,
+                            onLogin = { showLibraryLoginSheet = true },
+                            onLogout = { viewModel.logoutLibrary() },
+                            actionMinWidth = accountButtonMinWidth,
+                        )
 
                         HorizontalDivider()
                         // Its own account (spec §7.1). A rejected password shows as
@@ -313,42 +303,11 @@ fun SettingsScreen(
                             // Show the mode-appropriate display color but always
                             // persist the canonical (light) hex so the pair swaps
                             // when the user toggles the color theme.
-                            val accentPaletteDisplay = if (TigerDuckTheme.isDarkMode) {
-                                AppPreferences.themeColorsDark
-                            } else {
-                                AppPreferences.themeColors
-                            }
-                            // Eight 32dp swatches need 326dp, more than a narrow phone -- or a
-                            // larger display size -- leaves inside this card, and a plain Row
-                            // squeezes whatever does not fit out of the last one. Scrolling
-                            // keeps every swatch round.
-                            Row(
-                                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                accentPaletteDisplay.forEachIndexed { idx, (_, displayHex) ->
-                                    val canonicalHex = AppPreferences.themeColors[idx].second
-                                    val color = Color(0xFF000000 or displayHex.toLong())
-                                    Box(
-                                        modifier = Modifier
-                                            .size(32.dp)
-                                            .clip(CircleShape)
-                                            .background(color)
-                                            .clickable {
-                                                viewModel.appState.accentColorHex = canonicalHex
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (accentColorHex == canonicalHex) {
-                                            Text(
-                                                "\u2713",
-                                                color = Color.White,
-                                                style = MaterialTheme.typography.labelSmall
-                                            )
-                                        }
-                                    }
-                                }
-                            }
+                            AccentColorSwatches(
+                                selectedHex = accentColorHex,
+                                isDark = TigerDuckTheme.isDarkMode,
+                                onSelect = { viewModel.appState.accentColorHex = it },
+                            )
                         }
                     }
                 }
@@ -537,10 +496,14 @@ fun SettingsScreen(
             item {
                 ContentCard {
                     Column {
-                        SettingsLinkRow(stringResource(R.string.settings_library_related_features)) {
-                            onNavigateToLibrarySettings()
+                        // Its page holds only flip-to-library, so a phone
+                        // that cannot sense the flip leaves the row out.
+                        if (flipSensorSupported) {
+                            SettingsLinkRow(stringResource(R.string.settings_library_related_features)) {
+                                onNavigateToLibrarySettings()
+                            }
+                            HorizontalDivider()
                         }
-                        HorizontalDivider()
                         SettingsLinkRow(stringResource(R.string.school_mail_account_title)) {
                             onNavigateToSchoolMailSettings()
                         }
@@ -766,16 +729,6 @@ fun SettingsScreen(
                 viewModel.logoutNtust()
             },
             dismissText = stringResource(R.string.action_cancel),
-        )
-    }
-
-    if (viewModel.appState.pendingLibraryEnablePrompt) {
-        TigerDuckDialog(
-            onDismissRequest = { viewModel.appState.pendingLibraryEnablePrompt = false },
-            title = stringResource(R.string.settings_library_feature_disabled_title),
-            message = stringResource(R.string.settings_library_feature_disabled_message),
-            confirmText = stringResource(R.string.settings_acknowledged),
-            onConfirm = { viewModel.appState.pendingLibraryEnablePrompt = false },
         )
     }
 

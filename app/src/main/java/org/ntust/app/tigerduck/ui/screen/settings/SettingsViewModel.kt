@@ -27,6 +27,7 @@ import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.UnsentMarks
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
+import org.ntust.app.tigerduck.library.libraryErrorMessage
 import org.ntust.app.tigerduck.data.sharing.ImportedClassTableStore
 import org.ntust.app.tigerduck.data.sharing.ImportedClassTables
 import org.ntust.app.tigerduck.liveactivity.LiveActivityManager
@@ -220,6 +221,7 @@ class SettingsViewModel @Inject constructor(
         // and tied to this account: a sign-out ends it, and drops any write
         // still on its way.
         val held = heldUntilAnswered(conflict.categories)
+        val left = unanswered(prefs.pendingConflictCategories, conflict.categories)
         val holdsCourseIgnores = "assignments" in held
         // Use Local's terms are latched before the courses check lets the
         // course list go: a sync in between would un-hide a course deleted
@@ -229,10 +231,14 @@ class SettingsViewModel @Inject constructor(
             semesters = semesterCatalog::availableSemesters,
             host = useLocalHost,
         ) {
-            prefs.pendingConflictCategories = held
+            prefs.pendingConflictCategories = held + left
         }
         val generation = dataCache.userDataGeneration
         reenableCheck.resolutions.start()
+        // What the dialog did not cover is checked from this screen once the
+        // answer has been applied: the check waits for it, and then settles
+        // the hold in its place (ReenableResolutions.finish).
+        if (left.isNotEmpty()) checkPendingConflicts()
         appScope.launch(DataCache.Generation(generation)) {
             try {
                 coroutineScope {
@@ -424,14 +430,10 @@ class SettingsViewModel @Inject constructor(
 
     val isNtustLoggedIn: StateFlow<Boolean> = authService.authState
 
-    private val _isLibraryLoggedIn = MutableStateFlow(librarySignedIn())
-    val isLibraryLoggedIn: StateFlow<Boolean> = _isLibraryLoggedIn
-
-    private fun librarySignedIn(): Boolean =
-        credentials.isLibraryTokenValid || demoAccount.isLibrarySignedIn
+    val isLibraryLoggedIn: StateFlow<Boolean> = appState.librarySession.signedIn
 
     fun refreshLoginState() {
-        _isLibraryLoggedIn.value = librarySignedIn()
+        appState.librarySession.refresh()
     }
 
     fun loginNtust(studentId: String, password: String) {
@@ -446,7 +448,7 @@ class SettingsViewModel @Inject constructor(
         // application-scoped coroutine, so it survives ViewModel destruction
         // when the user navigates away from Settings immediately after logout.
         authService.logout()
-        _isLibraryLoggedIn.value = false
+        appState.librarySession.refresh()
         notificationScheduler.cancelAllTracked()
         liveActivityManager.stop()
         BackgroundSyncWorker.cancel(context)
@@ -460,7 +462,7 @@ class SettingsViewModel @Inject constructor(
                 // The demo library password signs in on the device, with or
                 // without the demo account; see [DemoAccount.signInLibrary].
                 if (demoAccount.signInLibrary(username, password)) {
-                    _isLibraryLoggedIn.value = true
+                    appState.librarySession.refresh()
                     return@launch
                 }
                 // The demo account itself never reaches the library, so
@@ -471,15 +473,14 @@ class SettingsViewModel @Inject constructor(
                 }
                 libraryService.login(username, password, credentials.libraryAccountGeneration, byUser = true)
                 demoAccount.signOutLibrary()
-                _isLibraryLoggedIn.value = true
+                appState.librarySession.refresh()
                 // The NTUST authState collector in TigerDuckApp pushes library
                 // credentials on NTUST login/logout, but a Settings-only
                 // library login/logout doesn't flip that state — so mirror the
                 // fresh creds to the watch here.
                 wearBridge.publishLibraryCredentials()
             } catch (e: Exception) {
-                _libLoginError.value = e.message?.takeUnless { it.isBlank() }
-                    ?: context.getString(R.string.error_sign_in_failed)
+                _libLoginError.value = libraryErrorMessage(e, R.string.error_sign_in_failed, context::getString)
             } finally {
                 _libIsLoggingIn.value = false
             }
@@ -489,7 +490,7 @@ class SettingsViewModel @Inject constructor(
     fun logoutLibrary() {
         demoAccount.signOutLibrary()
         credentials.clearLibraryCredentials()
-        _isLibraryLoggedIn.value = false
+        appState.librarySession.refresh()
         viewModelScope.launch { wearBridge.publishLibraryCredentials() }
     }
 

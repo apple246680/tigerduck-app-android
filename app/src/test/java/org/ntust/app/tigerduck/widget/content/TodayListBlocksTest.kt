@@ -6,10 +6,10 @@ import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.widget.WidgetState
 
 /**
- * Covers [todayListCourses], the rows of the Today widget. The Week grid reads
+ * Covers [todayListBlocks], the rows of the Today widget. The Week grid reads
  * [WidgetState.courses] itself, so a quiet day leaves it the timetable.
  */
-class TodayListCoursesTest {
+class TodayListBlocksTest {
 
     private val mondayEvening = Course.fromSchedule("CS101", "Evening", schedule = mapOf(1 to listOf("10")))
     private val mondayMorning = Course.fromSchedule("CS102", "Morning", schedule = mapOf(1 to listOf("2", "3")))
@@ -23,8 +23,8 @@ class TodayListCoursesTest {
         currentMinuteOfDay = 8 * 60,
         isLoggedIn = true,
         isQuietToday = isQuietToday,
-        ongoingCourseNos = emptyList(),
-        nextCourseTodayNo = null,
+        ongoingBlocks = emptyList(),
+        nextTodayBlock = null,
         tomorrowFirstCourseNo = null,
         tomorrowFirstCourseWeekday = null,
         tomorrowFirstCoursePeriodId = null,
@@ -36,7 +36,7 @@ class TodayListCoursesTest {
     fun `lists today's classes in the order they are taught`() {
         assertEquals(
             listOf("CS102", "CS101"),
-            todayListCourses(mondayState(isQuietToday = false)).map { it.courseNo },
+            todayListBlocks(mondayState(isQuietToday = false)).map { it.course.courseNo },
         )
     }
 
@@ -44,7 +44,7 @@ class TodayListCoursesTest {
     fun `lists no class on a holiday the user has not opted back into`() {
         assertEquals(
             emptyList<String>(),
-            todayListCourses(mondayState(isQuietToday = true)).map { it.courseNo },
+            todayListBlocks(mondayState(isQuietToday = true)).map { it.course.courseNo },
         )
     }
 }

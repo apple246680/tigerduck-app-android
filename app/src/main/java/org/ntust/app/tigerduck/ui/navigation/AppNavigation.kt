@@ -23,7 +23,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -217,7 +216,11 @@ fun MainNavigation(
     onStartRouteConsumed: () -> Unit = {},
 ) {
     val navController = rememberNavController()
-    FlipToLibraryEffect(navController = navController, appState = appState)
+    FlipToLibraryEffect(
+        navController = navController,
+        appState = appState,
+        startRoutePending = widgetStartRoute != null,
+    )
     // Hoist Home / ClassTable / Calendar VMs to the activity scope so they
     // exist from app open and survive tab switches. load() is called once
     // here on first composition; the per-screen LaunchedEffect that also
@@ -261,13 +264,7 @@ fun MainNavigation(
         pollingLifecycleOwner.lifecycle.addObserver(observer)
         onDispose { pollingLifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    val configuredTabs by remember {
-        derivedStateOf {
-            appState.configuredTabs.filter { feature ->
-                !feature.isLibraryRelated || appState.libraryFeatureEnabled
-            }
-        }
-    }
+    val configuredTabs = appState.configuredTabs
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     LaunchedEffect(currentRoute) {
@@ -298,16 +295,9 @@ fun MainNavigation(
     LaunchedEffect(widgetStartRoute) {
         widgetStartRoute ?: return@LaunchedEffect
         // The library-shortcut widget emits a sentinel instead of a direct
-        // route so the feature gate is re-evaluated at tap time. If library
-        // has been turned off since the widget was placed, reroute to
-        // Settings and raise the "enable first" prompt.
+        // route; widgets already on a home screen still send it.
         val target = if (widgetStartRoute == LibraryShortcutWidget.ROUTE_SENTINEL) {
-            if (appState.libraryFeatureEnabled) {
-                Screen.Library.route
-            } else {
-                appState.pendingLibraryEnablePrompt = true
-                Screen.Settings.route
-            }
+            Screen.Library.route
         } else {
             widgetStartRoute
         }
@@ -579,7 +569,7 @@ fun MainNavigation(
             page(Screen.EmptyClassroom.route) {
                 EmptyClassroomScreen(onOpenSignInSettings = openSignInSettings)
             }
-            page(Screen.More.route) { MoreScreen(navController, appState) }
+            page(Screen.More.route) { MoreScreen(navController) }
             page(Screen.Settings.route) {
                 SettingsScreen(
                     onNavigateToTabEditor = { navController.navigate(Screen.TabEditor.route) },

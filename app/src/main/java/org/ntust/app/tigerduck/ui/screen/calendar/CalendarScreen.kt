@@ -429,19 +429,19 @@ internal fun CalendarGrid(
                                     }
                                 )
                                 .clickable(role = Role.Button) { onDateSelected(dayDate) }
-                                // One stop per day, read as the iPhone reads
-                                // it: the full date and how many events, since
-                                // the dots say it in colour alone.
-                                .semantics {
+                                // The full date and the event count in place of the
+                                // bare day number, as iOS reads it. Only the chosen
+                                // day says it is selected: "not selected" on every
+                                // other day would be noise. Cleared here, on the
+                                // clickable node itself: a child that clears its own
+                                // semantics leaves this node unclickable to TalkBack.
+                                .clearAndSetSemantics {
                                     contentDescription = description
-                                    selected = isSelected
+                                    if (isSelected) selected = true
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.clearAndSetSemantics {},
-                            ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
                                     text = "$dayNum",
                                     style = MaterialTheme.typography.bodyMedium,

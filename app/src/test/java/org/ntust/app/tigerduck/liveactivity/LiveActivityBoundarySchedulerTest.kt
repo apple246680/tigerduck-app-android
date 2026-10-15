@@ -49,7 +49,7 @@ class LiveActivityBoundarySchedulerTest {
         scheduler.scheduleAt(STATE_AT)
 
         val alarm = alarmFor(STATE_AT)
-        assertEquals(AlarmManager.RTC_WAKEUP, alarm.type)
+        assertEquals(AlarmManager.RTC_WAKEUP, alarm.getType())
         assertTrue("held back by Doze", alarm.isAllowWhileIdle)
         assertEquals("not exact", EXACT, alarm.windowLengthMs)
     }
@@ -60,7 +60,7 @@ class LiveActivityBoundarySchedulerTest {
         scheduler.scheduleMinuteChangeAt(MINUTE_AT)
 
         val alarm = alarmFor(MINUTE_AT)
-        assertEquals(AlarmManager.RTC, alarm.type)
+        assertEquals(AlarmManager.RTC, alarm.getType())
         assertFalse("allowed while idle", alarm.isAllowWhileIdle)
         assertEquals("not exact", EXACT, alarm.windowLengthMs)
     }
@@ -85,11 +85,11 @@ class LiveActivityBoundarySchedulerTest {
 
     private fun assertInexactFallback() {
         val state = alarmFor(STATE_AT)
-        assertEquals(AlarmManager.RTC_WAKEUP, state.type)
+        assertEquals(AlarmManager.RTC_WAKEUP, state.getType())
         assertTrue("state alarm held back by Doze", state.isAllowWhileIdle)
 
         val minute = alarmFor(MINUTE_AT)
-        assertEquals(AlarmManager.RTC, minute.type)
+        assertEquals(AlarmManager.RTC, minute.getType())
         assertFalse("minute alarm allowed while idle", minute.isAllowWhileIdle)
 
         assertEquals(2, scheduled().size)
@@ -118,7 +118,7 @@ class LiveActivityBoundarySchedulerTest {
 
         scheduler.scheduleMinuteChangeAt(null)
 
-        assertEquals(AlarmManager.RTC_WAKEUP, scheduled().single().type)
+        assertEquals(AlarmManager.RTC_WAKEUP, scheduled().single().getType())
     }
 
     @Test

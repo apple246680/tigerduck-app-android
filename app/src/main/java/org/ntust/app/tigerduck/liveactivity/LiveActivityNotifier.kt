@@ -198,7 +198,10 @@ class LiveActivityNotifier @Inject constructor(
         if (countingDown) {
             builder.setUsesChronometer(true)
             builder.setChronometerCountDown(true)
-            builder.setWhen(target)
+            // The chronometer counts against the real clock, and Android 15+
+            // drops a post whose `when` is weeks old: the target's real time,
+            // which is the target itself unless the developer menu's clock is set.
+            builder.setWhen(AppClock.realTimeFor(target))
             if (spelledOut) {
                 builder.setShortCriticalText(
                     StaticCountdown.format(
