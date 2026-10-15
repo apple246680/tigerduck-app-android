@@ -136,7 +136,7 @@ class VisualStylePolicyTest {
     fun `TigerDuck cards keep the tint each card picks, laid over the surface in dark mode`() {
         val colour = Color(0xFFFF6B6B)
         val surface = Color(0xFF1C1C1E)
-        assertEquals(VisualStylePolicy.CourseCardStyle.Tint, tigerDuck.courseCardStyle)
+        assertEquals(VisualStylePolicy.CourseColorStyle.Tint, tigerDuck.courseColorStyle)
         assertEquals(
             colour.copy(alpha = 0.5f),
             tigerDuck.courseCardFill(colour, tintAlpha = 0.5f, muted = false, surface = surface, isDark = false),
@@ -162,7 +162,7 @@ class VisualStylePolicyTest {
 
     @Test
     fun `TAT cards take the class table's pastel in either theme, whatever tint a card picks`() {
-        assertEquals(VisualStylePolicy.CourseCardStyle.Pastel, tat.courseCardStyle)
+        assertEquals(VisualStylePolicy.CourseColorStyle.Pastel, tat.courseColorStyle)
         colours.forEach { colour ->
             val tile = tat.classTableCourseFill(colour, Color.Magenta, isDark = false)
             listOf(false, true).forEach { isDark ->
@@ -207,6 +207,31 @@ class VisualStylePolicyTest {
                 assertTrue("details on $colour, muted $muted: $details", details >= 4.5)
                 assertTrue("mark on $colour, muted $muted: $mark", mark >= 4.5)
             }
+        }
+    }
+
+    // ---- time slider track ----
+
+    @Test
+    fun `TigerDuck keeps the track's tints and the course-coloured dot, with no outline`() {
+        val colour = Color(0xFFFF6B6B)
+        assertEquals(colour.copy(alpha = 0.5f), tigerDuck.timeSliderSegmentColor(colour, tintAlpha = 0.5f))
+        assertEquals(colour.copy(alpha = 0.3f), tigerDuck.timeSliderSegmentColor(colour, tintAlpha = 0.3f))
+        assertNull(tigerDuck.timeSliderActiveOutline)
+        assertEquals(colour, tigerDuck.timeSliderInClassDotColor(colour))
+    }
+
+    @Test
+    fun `TAT draws every segment in the class's pastel, the active one outlined, with a dark dot`() {
+        colours.forEach { colour ->
+            val segment = tat.timeSliderSegmentColor(colour, tintAlpha = 0.5f)
+            assertEquals(tat.classTableCourseFill(colour, Color.Magenta, isDark = false), segment)
+            assertEquals(segment, tat.timeSliderSegmentColor(colour, tintAlpha = 0.3f))
+            // A mark needs 3:1 against what it sits on.
+            val outline = contrast(tat.timeSliderActiveOutline!!, segment)
+            val dot = contrast(tat.timeSliderInClassDotColor(colour), segment)
+            assertTrue("outline on $colour: $outline", outline >= 3.0)
+            assertTrue("dot on $colour: $dot", dot >= 3.0)
         }
     }
 

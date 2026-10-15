@@ -10,8 +10,8 @@ import androidx.compose.ui.graphics.compositeOver
  * it. Views read these values instead of branching on the preset, so a new
  * style is a new case here rather than an `if` in every view.
  *
- * The class table, the course cards in its today carousel and on Home's time
- * slider, and the Week widget differ; every other screen looks the same
+ * The class table, the course cards in its today carousel, Home's time
+ * slider and the Week widget differ; every other screen looks the same
  * under both presets.
  */
 @Immutable
@@ -85,10 +85,10 @@ data class VisualStylePolicy(val preset: VisualPreset) {
         ClassTableGridStyle.PeriodTiles -> onSurface.copy(alpha = if (rowIndex % 2 == 0) 0.08f else 0.04f)
     }
 
-    enum class CourseCardStyle {
+    enum class CourseColorStyle {
         /**
-         * The course colour laid over the surface, as strongly as each card
-         * picks for its state, with the theme's text.
+         * The course colour laid over what is behind it, as strongly as each
+         * card or segment picks for its state, with the theme's text.
          */
         Tint,
 
@@ -101,18 +101,19 @@ data class VisualStylePolicy(val preset: VisualPreset) {
     }
 
     /**
-     * The course cards: the today carousel's above the class table, and the
-     * time slider's on Home.
+     * How the course colour shows outside the class table: on the today
+     * carousel's cards above it, and on Home's time slider, its cards and
+     * its track.
      */
-    val courseCardStyle: CourseCardStyle
+    val courseColorStyle: CourseColorStyle
         get() = when (preset) {
-            VisualPreset.TigerDuck -> CourseCardStyle.Tint
-            VisualPreset.Tat -> CourseCardStyle.Pastel
+            VisualPreset.TigerDuck -> CourseColorStyle.Tint
+            VisualPreset.Tat -> CourseColorStyle.Pastel
         }
 
     /**
      * A course card's fill. [courseColor] is the course's own colour, the light
-     * palette hex; [tintAlpha] is how strongly a [CourseCardStyle.Tint] card
+     * palette hex; [tintAlpha] is how strongly a [CourseColorStyle.Tint] card
      * lays it over [surface], which each card picks for its state. [muted]
      * marks a card that steps back: a class already over, or one beside the
      * class the time slider is on.
@@ -123,34 +124,66 @@ data class VisualStylePolicy(val preset: VisualPreset) {
         muted: Boolean,
         surface: Color,
         isDark: Boolean,
-    ): Color = when (courseCardStyle) {
+    ): Color = when (courseColorStyle) {
         // See-through in light mode and laid over the surface in dark, as the
         // cards have always drawn it.
-        CourseCardStyle.Tint -> courseColor.copy(alpha = tintAlpha).let {
+        CourseColorStyle.Tint -> courseColor.copy(alpha = tintAlpha).let {
             if (isDark) it.compositeOver(surface) else it
         }
-        CourseCardStyle.Pastel ->
+        CourseColorStyle.Pastel ->
             courseColor.pastel(if (muted) MUTED_PASTEL_WHITE_SHARE else PASTEL_WHITE_SHARE)
     }
 
     /** A course card's name on [courseCardFill], given the theme's text colour there. */
-    fun courseCardTextColor(themeText: Color): Color = when (courseCardStyle) {
-        CourseCardStyle.Tint -> themeText
-        CourseCardStyle.Pastel -> TextOnPastel
+    fun courseCardTextColor(themeText: Color): Color = when (courseColorStyle) {
+        CourseColorStyle.Tint -> themeText
+        CourseColorStyle.Pastel -> TextOnPastel
     }
 
     /** A course card's room and time on [courseCardFill], given the theme's `onSurface`. */
-    fun courseCardSecondaryTextColor(onSurface: Color): Color = when (courseCardStyle) {
-        CourseCardStyle.Tint -> onSurface.copy(alpha = ContentAlpha.SECONDARY)
-        CourseCardStyle.Pastel -> TextOnPastelSecondary
+    fun courseCardSecondaryTextColor(onSurface: Color): Color = when (courseColorStyle) {
+        CourseColorStyle.Tint -> onSurface.copy(alpha = ContentAlpha.SECONDARY)
+        CourseColorStyle.Pastel -> TextOnPastelSecondary
     }
 
     /** A course card's assignment mark on [courseCardFill]. */
     val courseCardMarkColor: Color
-        get() = when (courseCardStyle) {
-            CourseCardStyle.Tint -> Color.Gray.copy(alpha = 0.5f)
-            CourseCardStyle.Pastel -> TextOnPastelSecondary
+        get() = when (courseColorStyle) {
+            CourseColorStyle.Tint -> Color.Gray.copy(alpha = 0.5f)
+            CourseColorStyle.Pastel -> TextOnPastelSecondary
         }
+
+    /**
+     * A class's segment on the time slider's track. [courseColor] is the light
+     * palette hex; [tintAlpha] is how strongly a [CourseColorStyle.Tint] track
+     * lays it on, stronger for the class the slider is on. A pastel track
+     * draws every segment alike and marks that one with
+     * [timeSliderActiveOutline] instead: a paler pastel all but vanishes into
+     * the light track, and on the dark one it would stand out the more.
+     */
+    fun timeSliderSegmentColor(courseColor: Color, tintAlpha: Float): Color =
+        when (courseColorStyle) {
+            CourseColorStyle.Tint -> courseColor.copy(alpha = tintAlpha)
+            CourseColorStyle.Pastel -> courseColor.pastel()
+        }
+
+    /**
+     * The outline drawn just inside the segment of the class the slider is on;
+     * null where its stronger tint marks it.
+     */
+    val timeSliderActiveOutline: Color?
+        get() = when (courseColorStyle) {
+            CourseColorStyle.Tint -> null
+            CourseColorStyle.Pastel -> TextOnPastelSecondary
+        }
+
+    /** The dot at the slider's centre while it is on a class of [courseColor]. */
+    fun timeSliderInClassDotColor(courseColor: Color): Color = when (courseColorStyle) {
+        CourseColorStyle.Tint -> courseColor
+        // Dark on the class's pastel, where the course colour itself can all
+        // but vanish: a yellow on its own pastel, say.
+        CourseColorStyle.Pastel -> TextOnPastel
+    }
 
     companion object {
         /** Text on a [pastel] fill, which stays light in either theme. */

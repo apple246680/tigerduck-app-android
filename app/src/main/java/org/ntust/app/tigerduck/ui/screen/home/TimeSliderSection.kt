@@ -49,6 +49,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.layout.layout
@@ -528,6 +529,9 @@ private fun FluidTrack(viewModel: TimeSliderViewModel, invertDirection: Boolean)
     var widthPx by remember { mutableStateOf(0f) }
 
     val pxPerDp = with(density) { 1.dp.toPx() }
+    val style = LocalVisualStylePolicy.current
+    val activeOutline = style.timeSliderActiveOutline
+    val activeOutlineWidthPx = with(density) { 1.5.dp.toPx() }
     val a11yLabel = stringResource(R.string.home_time_slider_title)
     val a11ySwipeHint = stringResource(R.string.a11y_time_slider_swipe_hint)
     val selectedTimeLabel = formatTimeLabel(viewModel.selectedTime)
@@ -594,38 +598,50 @@ private fun FluidTrack(viewModel: TimeSliderViewModel, invertDirection: Boolean)
                         val isBottom = lane == laneCount - 1
                         val topR = if (isTop) cornerRadiusPx else 0f
                         val bottomR = if (isBottom) cornerRadiusPx else 0f
-                        val shape = androidx.compose.ui.graphics.Path().apply {
+                        // The lane's rounded box, drawn [inset] inside its edges.
+                        fun laneShape(inset: Float) = androidx.compose.ui.graphics.Path().apply {
+                            val topCorner = (topR - inset).coerceAtLeast(0f)
+                            val bottomCorner = (bottomR - inset).coerceAtLeast(0f)
                             addRoundRect(
                                 androidx.compose.ui.geometry.RoundRect(
-                                    left = left,
-                                    top = laneTop,
-                                    right = left + segW,
-                                    bottom = laneTop + laneH,
+                                    left = left + inset,
+                                    top = laneTop + inset,
+                                    right = left + segW - inset,
+                                    bottom = laneTop + laneH - inset,
                                     topLeftCornerRadius = androidx.compose.ui.geometry.CornerRadius(
-                                        topR,
-                                        topR
+                                        topCorner,
+                                        topCorner
                                     ),
                                     topRightCornerRadius = androidx.compose.ui.geometry.CornerRadius(
-                                        topR,
-                                        topR
+                                        topCorner,
+                                        topCorner
                                     ),
                                     bottomLeftCornerRadius = androidx.compose.ui.geometry.CornerRadius(
-                                        bottomR,
-                                        bottomR
+                                        bottomCorner,
+                                        bottomCorner
                                     ),
                                     bottomRightCornerRadius = androidx.compose.ui.geometry.CornerRadius(
-                                        bottomR,
-                                        bottomR
+                                        bottomCorner,
+                                        bottomCorner
                                     ),
                                 )
                             )
                         }
                         drawPath(
-                            path = shape,
-                            color = courseColor.copy(
-                                alpha = TigerDuckTheme.tintAlpha(if (isActive) 0.5f else 0.3f)
+                            path = laneShape(0f),
+                            color = style.timeSliderSegmentColor(
+                                courseColor,
+                                tintAlpha = TigerDuckTheme.tintAlpha(if (isActive) 0.5f else 0.3f),
                             ),
                         )
+                        if (isActive && activeOutline != null) {
+                            // Inside the lane, so it stays clear of a 衝堂 lane next to it.
+                            drawPath(
+                                path = laneShape(activeOutlineWidthPx / 2),
+                                color = activeOutline,
+                                style = Stroke(width = activeOutlineWidthPx),
+                            )
+                        }
                     }
                 }
 
@@ -673,7 +689,9 @@ private fun FluidTrack(viewModel: TimeSliderViewModel, invertDirection: Boolean)
 
                 // Glow dot
                 val glowColor = when (val s = viewModel.currentCourseState) {
-                    is CourseState.InClass -> TigerDuckTheme.courseColorVibrant(s.slots.first().course.courseNo)
+                    is CourseState.InClass -> style.timeSliderInClassDotColor(
+                        TigerDuckTheme.courseColorVibrant(s.slots.first().course.courseNo)
+                    )
                     else -> Color.White
                 }
                 val gs = TimeSliderViewModel.GLOW_DOT_SIZE
