@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -47,11 +48,15 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
+import org.ntust.app.tigerduck.util.replaceIosArg
 
 /**
  * Bottom sheet that lets the user assign a tile color to a class.
@@ -153,10 +158,13 @@ fun ColorPickerSheet(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 maxItemsInEachRow = 6
             ) {
-                presetPalette.forEach { preset ->
+                presetPalette.forEachIndexed { index, preset ->
                     val presetArgb = preset.toArgb() or 0xFF000000.toInt()
                     ColorSwatch(
                         color = preset,
+                        // Numbered from 1, as iOS reads them.
+                        label = stringResource(R.string.a11y_course_color_swatch)
+                            .replaceIosArg(1, index + 1L),
                         selected = presetArgb == selectedArgb,
                         usedByOther = presetArgb in usedByOthers && presetArgb != selectedArgb,
                         onClick = { setHsvFrom(preset) }
@@ -239,6 +247,8 @@ private fun SectionLabel(text: String, modifier: Modifier = Modifier) {
 @Composable
 private fun ColorSwatch(
     color: Color,
+    /** What TalkBack calls the swatch; whether it is chosen rides its selected state. */
+    label: String,
     selected: Boolean,
     usedByOther: Boolean,
     onClick: () -> Unit
@@ -254,7 +264,8 @@ private fun ColorSwatch(
                 .align(Alignment.Center)
                 .clip(CircleShape)
                 .background(color)
-                .clickable(onClick = onClick)
+                .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+                .semantics { contentDescription = label }
                 .then(
                     if (selected) Modifier.border(3.dp, Color.White, CircleShape)
                     else Modifier
@@ -264,7 +275,7 @@ private fun ColorSwatch(
             if (selected) {
                 Icon(
                     imageVector = Icons.Filled.Check,
-                    contentDescription = stringResource(R.string.color_picker_selected),
+                    contentDescription = null,
                     tint = Color.White,
                     modifier = Modifier.size(18.dp)
                 )

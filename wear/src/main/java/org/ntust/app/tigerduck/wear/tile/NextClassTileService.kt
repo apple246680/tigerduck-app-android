@@ -145,7 +145,7 @@ class NextClassTileService : TileService() {
             else -> when (val r = snapshot.nextClass(today, minuteOfDay)) {
                 is NextClassResult.Ongoing -> Triple(
                     getString(R.string.watch_now_ends_at, formatHm(r.endMinute)),
-                    "${r.course.displayName}\n${r.course.classroom(r.weekday)} · ${r.course.instructor}",
+                    "${r.course.displayName}\n${r.classroom} · ${r.course.instructor}",
                     r.nextToday?.let {
                         getString(
                             R.string.watch_next_label,
@@ -157,7 +157,7 @@ class NextClassTileService : TileService() {
 
                 is NextClassResult.NextToday -> Triple(
                     getString(R.string.watch_starts_at, formatHm(r.startMinute)),
-                    "${r.course.displayName}\n${r.course.classroom(r.weekday)} · ${r.course.instructor}",
+                    "${r.course.displayName}\n${r.classroom} · ${r.course.instructor}",
                     "",
                 )
 
@@ -171,7 +171,7 @@ class NextClassTileService : TileService() {
                             formatHm(r.startMinute),
                         )
                     },
-                    "${r.course.displayName}\n${r.course.classroom(r.weekday)} · ${r.course.instructor}",
+                    "${r.course.displayName}\n${r.classroom} · ${r.course.instructor}",
                     "",
                 )
 

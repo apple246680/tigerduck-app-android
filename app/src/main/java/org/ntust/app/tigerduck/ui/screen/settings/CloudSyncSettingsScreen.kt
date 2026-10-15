@@ -3,7 +3,6 @@ package org.ntust.app.tigerduck.ui.screen.settings
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
 import android.os.Build
 import android.widget.Toast
 import androidx.compose.foundation.clickable
@@ -28,6 +27,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,15 +50,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import org.ntust.app.tigerduck.BuildConfig
+import org.ntust.app.tigerduck.AppUrls
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.push.PushDiagnostic
 import org.ntust.app.tigerduck.ui.component.ContentCard
 import org.ntust.app.tigerduck.ui.component.NoTopBarInsets
 import org.ntust.app.tigerduck.ui.component.SectionHeader
+import org.ntust.app.tigerduck.ui.openLink
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
+import org.ntust.app.tigerduck.ui.screen.signin.NtustSignInViewModel
 
 /**
  * F-Droid ships without Google Play Services and so cannot run TigerSync's
@@ -132,6 +134,9 @@ fun CloudSyncSettingsScreen(
     val reenableConflict by viewModel.reenableConflict.collectAsState()
     val serverPushOn by viewModel.serverPushOn.collectAsState()
     val isTogglingServerPush by viewModel.isTogglingServerPush.collectAsState()
+    val signInViewModel: NtustSignInViewModel = hiltViewModel()
+    val lastSignInFailed by signInViewModel.lastSignInFailed.collectAsState()
+    val asksToSignInAgain = signInViewModel.asksToSignInAgain(syncEnabled, lastSignInFailed)
 
     fun refreshSyncStates() {
         syncCourses = viewModel.prefs.syncCourses
@@ -347,7 +352,14 @@ fun CloudSyncSettingsScreen(
             // registration status and, when there is one, the error sit
             // directly under the heading rather than behind a nav target.
             item { SectionHeader(stringResource(R.string.sync_status_nav_label)) }
-            item { SyncStatusCard(diagnostic = diagnostic, deviceId = deviceId) }
+            item {
+                SyncStatusCard(
+                    diagnostic = diagnostic,
+                    deviceId = deviceId,
+                    asksToSignInAgain = asksToSignInAgain,
+                    onSignInAgain = signInViewModel::requestSignIn,
+                )
+            }
 
             item { Spacer(Modifier.height(8.dp)) }
             item {
@@ -355,24 +367,15 @@ fun CloudSyncSettingsScreen(
                     Column {
                         LinkRow(
                             label = stringResource(R.string.settings_learn_more_backend),
-                            onClick = {
-                                val intent = Intent(Intent.ACTION_VIEW, "https://tigerduck.app/tigersync".toUri())
-                                context.startActivity(intent)
-                            },
+                            onClick = { openLink(context, AppUrls.LEARN_MORE_TIGERSYNC, viewModel.appState.browserPreference) },
                         )
                         LinkRow(
                             label = stringResource(R.string.onboarding_privacy_policy_label),
-                            onClick = {
-                                val intent = Intent(Intent.ACTION_VIEW, "https://tigerduck.app/privacy-policy".toUri())
-                                context.startActivity(intent)
-                            },
+                            onClick = { openLink(context, AppUrls.PRIVACY_POLICY, viewModel.appState.browserPreference) },
                         )
                         LinkRow(
                             label = stringResource(R.string.onboarding_privacy_delete_account_label),
-                            onClick = {
-                                val intent = Intent(Intent.ACTION_VIEW, "https://tigerduck.app/delete-account".toUri())
-                                context.startActivity(intent)
-                            },
+                            onClick = { openLink(context, AppUrls.DELETE_ACCOUNT, viewModel.appState.browserPreference) },
                         )
                     }
                 }
@@ -427,6 +430,9 @@ private fun ToggleWithFooterRow(
 private fun SyncStatusCard(
     diagnostic: PushDiagnostic,
     deviceId: String,
+    /** In place of the latest error: the automatic sign-in failed; see [asksToSignInAgain]. */
+    asksToSignInAgain: Boolean,
+    onSignInAgain: () -> Unit,
 ) {
     ContentCard {
         Column {
@@ -442,13 +448,17 @@ private fun SyncStatusCard(
                             stringResource(R.string.bulletin_push_status_registration_pending)
                         },
                     )
-                    diagnostic.lastError?.let { msg ->
-                        Spacer(Modifier.height(4.dp))
-                        LabeledText(
-                            label = stringResource(R.string.push_server_latest_error),
-                            value = latestErrorText(msg),
-                            valueColor = MaterialTheme.colorScheme.error,
-                        )
+                    if (asksToSignInAgain) {
+                        SignInAgainRow(onSignInAgain)
+                    } else {
+                        diagnostic.lastError?.let { msg ->
+                            Spacer(Modifier.height(4.dp))
+                            LabeledText(
+                                label = stringResource(R.string.push_server_latest_error),
+                                value = latestErrorText(msg),
+                                valueColor = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
                 }
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
@@ -466,6 +476,35 @@ private fun SyncStatusCard(
 @Composable
 internal fun latestErrorText(lastError: String): String =
     lastError.ifEmpty { stringResource(R.string.sync_status_failed) }
+
+/**
+ * "Automatic sign-in failed", with the school sign-in a tap away; signing in there signs in to
+ * TigerSync too. The iPhone shows the same row.
+ */
+@Composable
+internal fun SignInAgainRow(onSignInAgain: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.WarningAmber,
+            contentDescription = null,
+            tint = Color(0xFFFF9500),
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            stringResource(R.string.common_auto_sign_in_failed),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(8.dp))
+        Button(onClick = onSignInAgain) {
+            Text(stringResource(R.string.action_sign_in_again))
+        }
+    }
+}
 
 @Composable
 private fun StatusRow(label: String, ok: Boolean, okText: String, badText: String) {

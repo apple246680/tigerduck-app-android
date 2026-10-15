@@ -1,6 +1,7 @@
 package org.ntust.app.tigerduck.academic
 
 import android.app.Application
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -25,6 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * of quiet days, so it has to fire for each input of that list and stay
  * quiet when nothing changed.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
 class AcademicCalendarStoreChangesTest {

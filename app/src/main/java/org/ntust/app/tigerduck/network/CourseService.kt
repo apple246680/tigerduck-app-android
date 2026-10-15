@@ -16,6 +16,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.di.ApplicationScope
@@ -26,6 +27,7 @@ import org.ntust.app.tigerduck.network.model.CourseSearchRequest
 import org.ntust.app.tigerduck.network.model.CourseSearchResult
 import org.ntust.app.tigerduck.network.model.MoodleEnrolledCourse
 import org.ntust.app.tigerduck.util.SharedFetch
+import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -56,7 +58,7 @@ class CourseService @Inject constructor(
     private val dataCache: DataCache,
     private val appPreferences: AppPreferences,
     private val academicCalendar: org.ntust.app.tigerduck.academic.AcademicCalendarStore,
-    @param:ApplicationScope appScope: CoroutineScope,
+    @ApplicationScope appScope: CoroutineScope,
 ) {
     private val client: OkHttpClient get() = sessionManager.client
     private val gson = Gson()
@@ -136,10 +138,12 @@ class CourseService @Inject constructor(
         }
     }
 
+    /** [fresh] asks QueryCourse even when the cache holds a recent answer. */
     suspend fun lookupCourse(
         semester: String,
         courseNo: String,
         lang: String = preferredCourseApiLanguage(),
+        fresh: Boolean = false,
     ): List<CourseSearchResult> =
         withContext(Dispatchers.IO) {
             ensureLookupCacheLoaded()
@@ -148,14 +152,16 @@ class CourseService @Inject constructor(
             // applyAbbreviations runs at access time, so toggling the abbr
             // setting reuses the same cache entry and never refetches.
             val key = "${semester}_${courseNo}_${language}"
-            lookupCache[key]?.takeIf {
-                System.currentTimeMillis() - it.cachedAt < LOOKUP_TTL_MS
-            }?.let { return@withContext applyAbbreviations(it.results, language) }
+            if (!fresh) {
+                lookupCache[key]?.takeIf {
+                    System.currentTimeMillis() - it.cachedAt < LOOKUP_TTL_MS
+                }?.let { return@withContext applyAbbreviations(it.results, language) }
+            }
 
-            val fresh = lookupsInFlight.get(key) {
+            val answer = lookupsInFlight.get(key) {
                 withContext(Dispatchers.IO) { fetchLookup(key, semester, courseNo, language) }
             }
-            applyAbbreviations(fresh, language)
+            applyAbbreviations(answer, language)
         }
 
     /** The querycourse request behind [lookupCourse], written through to its cache. */
@@ -175,11 +181,7 @@ class CourseService @Inject constructor(
             .post(requestBody)
             .build()
 
-        val fresh = client.newCall(request).execute().use { response ->
-            val body = response.body.string()
-            val type = object : TypeToken<List<CourseSearchResult>>() {}.type
-            gson.fromJson<List<CourseSearchResult>?>(body, type) ?: emptyList()
-        }
+        val fresh = client.newCall(request).execute().use(::lookupAnswer)
 
         if (fresh.isNotEmpty()) {
             lookupCache[key] = DataCache.CourseLookupEntry(fresh, System.currentTimeMillis())
@@ -326,29 +328,7 @@ class CourseService @Inject constructor(
         if (results.isEmpty()) {
             fallbackCourseFromMoodle(courseNo, moodle)
         } else {
-            val first = results.first()
-            val allRooms = LinkedHashSet<String>().apply {
-                for (row in results) {
-                    Course.splitRooms(row.classRoomNo ?: "").forEach { add(it) }
-                }
-            }
-            Course.fromSchedule(
-                courseNo = first.courseNo,
-                courseName = first.courseName,
-                instructor = first.courseTeacher,
-                credits = first.creditPoint.toCreditsOrZero(),
-                classroom = allRooms.joinToString(", "),
-                enrolledCount = first.chooseStudent ?: 0,
-                maxCount = first.maxEnrollment,
-                schedule = mergeSchedules(*results.map { it.node }.toTypedArray()),
-                classroomMap = buildClassroomMap(results),
-                moodleIdNumber = moodle?.idnumber ?: "${first.semester}${first.courseNo}",
-                moodleNumericCourseId = moodle?.id,
-                // First non-empty rather than the first row's: a course split
-                // across rows only names these on some of them.
-                dimension = CourseService.firstNonEmpty(results.map { it.dimension }),
-                allYear = CourseService.firstNonEmpty(results.map { it.allYear }),
-            )
+            courseFrom(results, moodle)
         }
     } catch (e: CancellationException) {
         // ClassTableViewModel cancels its load job on every semester flip, and
@@ -359,6 +339,36 @@ class CourseService @Inject constructor(
     } catch (e: Exception) {
         Log.e(TAG_LOOKUP, "Failed to look up a course: ${e.logSummary()}")
         fallbackCourseFromMoodle(courseNo, moodle)
+    }
+
+    /**
+     * One course from the QueryCourse rows [lookupCourse] returned for it, which must not be
+     * empty: schedules merged, the per-slot rooms mapped across every row, see [lookupOrFallback].
+     */
+    fun courseFrom(results: List<CourseSearchResult>, moodle: MoodleEnrolledCourse?): Course {
+        val first = results.first()
+        val allRooms = LinkedHashSet<String>().apply {
+            for (row in results) {
+                Course.splitRooms(row.classRoomNo ?: "").forEach { add(it) }
+            }
+        }
+        return Course.fromSchedule(
+            courseNo = first.courseNo,
+            courseName = first.courseName,
+            instructor = first.courseTeacher,
+            credits = first.creditPoint.toCreditsOrZero(),
+            classroom = allRooms.joinToString(", "),
+            enrolledCount = first.chooseStudent ?: 0,
+            maxCount = first.maxEnrollment,
+            schedule = mergeSchedules(*results.map { it.node }.toTypedArray()),
+            classroomMap = buildClassroomMap(results),
+            moodleIdNumber = moodle?.idnumber ?: "${first.semester}${first.courseNo}",
+            moodleNumericCourseId = moodle?.id,
+            // First non-empty rather than the first row's: a course split
+            // across rows only names these on some of them.
+            dimension = CourseService.firstNonEmpty(results.map { it.dimension }),
+            allYear = CourseService.firstNonEmpty(results.map { it.allYear }),
+        )
     }
 
     /**
@@ -408,6 +418,20 @@ class CourseService @Inject constructor(
          * GE dimension or term span on some of them, so the first row is not
          * enough.
          */
+        private val lookupGson = Gson()
+
+        /**
+         * QueryCourse's rows for one course code, an empty list for a code it does not know, or
+         * an [IOException] for a request that failed: a failed answer must not pass for an
+         * unknown course, which an import of someone's class table would leave out.
+         */
+        internal fun lookupAnswer(response: Response): List<CourseSearchResult> {
+            if (!response.isSuccessful) throw IOException("QueryCourse answered ${response.code}")
+            val body = response.body.string()
+            val type = object : TypeToken<List<CourseSearchResult>>() {}.type
+            return lookupGson.fromJson<List<CourseSearchResult>?>(body, type) ?: emptyList()
+        }
+
         fun firstNonEmpty(values: List<String?>): String? =
             values.firstOrNull { !it.isNullOrBlank() }?.trim()
 

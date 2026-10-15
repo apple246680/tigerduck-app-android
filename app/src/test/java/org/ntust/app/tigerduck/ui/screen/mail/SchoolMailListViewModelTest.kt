@@ -34,6 +34,8 @@ import org.ntust.app.tigerduck.mail.mailSummary
 import org.ntust.app.tigerduck.mail.model.FolderStatus
 import org.ntust.app.tigerduck.mail.model.MailBody
 import org.ntust.app.tigerduck.mail.store.MailCache
+import org.ntust.app.tigerduck.mail.sync.CheckOutcome
+import org.ntust.app.tigerduck.mail.sync.CheckSource
 import org.ntust.app.tigerduck.mail.sync.MailChecker
 import org.ntust.app.tigerduck.mail.testApplicationScope
 import java.time.Instant
@@ -47,6 +49,7 @@ class SchoolMailListViewModelTest {
     private val state = InMemoryMailStateStore()
     private val repo = FakeSchoolMailRepository()
     private lateinit var account: MailAccount
+    private lateinit var checker: MailChecker
     private lateinit var vm: SchoolMailListViewModel
 
     // Where the sign-out test's cache wipe runs, stopped before TemporaryFolder deletes its folder.
@@ -55,12 +58,16 @@ class SchoolMailListViewModelTest {
     @After
     fun stopAppScope() = appScope.cancelAndJoinBlocking()
 
+    /** The checker's clock, which dates the inbox for the "Last synced" row. */
+    private var now = 0L
+
     @Before
     fun setUp() {
         account = MailAccount(InMemoryCredentialStore(), state, server.factory(), MailCache(tmp.root),
             FakeDemoGate(), schoolMailSite(), RecordingScheduler(), RecordingNotifier(), appScope)
         runBlocking { account.signIn("b10000001", "pw") }
-        vm = SchoolMailListViewModel(repo, account, MailChecker(account, state, server.factory(), RecordingNotifier(), MailCache(tmp.root)) { 0 }, schoolMailSite())
+        checker = MailChecker(account, state, server.factory(), RecordingNotifier(), MailCache(tmp.root)) { now }
+        vm = SchoolMailListViewModel(repo, account, checker, schoolMailSite())
     }
 
     @Test
@@ -318,6 +325,78 @@ class SchoolMailListViewModelTest {
         account.signOut()
         main.dispatcher.scheduler.runCurrent()
         assertEquals(SchoolMailListViewModel.UiState(), vm.state.value)
+    }
+
+    // --- the "Last synced" row --------------------------------------------------------------
+
+    @Test
+    fun `loading the inbox dates it, and a load that fails leaves the date`() {
+        now = 5_000
+        repo.add("INBOX", mailSummary(1))
+        vm.load()
+        assertEquals(5_000L, vm.state.value.inboxFetchedAt)
+        assertEquals(5_000L, state.inboxFetchedAt)
+
+        now = 9_000
+        repo.loadError = MailError.Network()
+        vm.refresh()
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        assertEquals(5_000L, vm.state.value.inboxFetchedAt)
+        assertEquals(5_000L, state.inboxFetchedAt)
+    }
+
+    @Test
+    fun `a poll that finds nothing new still dates the inbox, and one that fails does not`() {
+        repo.add("INBOX", mailSummary(1))
+        repo.status = FolderStatus(server.uidValidity, 2, 1, 1)
+        vm.load()
+        vm.startPolling()
+
+        now = 9_000
+        pollOnce()
+        assertEquals(9_000L, vm.state.value.inboxFetchedAt)
+
+        now = 12_000
+        repo.statusError = MailError.ServerBusy()
+        pollOnce()
+        assertEquals(9_000L, vm.state.value.inboxFetchedAt)
+        vm.stopPolling()
+    }
+
+    @Test
+    fun `a check that ran while the page was away shows when the page comes back`() {
+        repo.add("INBOX", mailSummary(1))
+        vm.load()
+        now = 7_000
+        assertEquals(CheckOutcome.NoChange, runBlocking { checker.check(CheckSource.ALARM) })
+
+        vm.startPolling()
+        assertEquals(7_000L, vm.state.value.inboxFetchedAt)
+        vm.stopPolling()
+    }
+
+    @Test
+    fun `the demo mailbox is never dated, having no server to answer`() {
+        runBlocking { account.signIn("B10000099", "demo") }
+        now = 5_000
+        repo.add("INBOX", mailSummary(1))
+        vm.load()
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Loaded)
+        assertEquals(0L, vm.state.value.inboxFetchedAt)
+        assertEquals(0L, state.inboxFetchedAt)
+    }
+
+    @Test
+    fun `signing out forgets the date with the rest of the mail state`() {
+        now = 5_000
+        repo.add("INBOX", mailSummary(1))
+        vm.load()
+        assertEquals(5_000L, vm.state.value.inboxFetchedAt)
+
+        account.signOut()
+        main.dispatcher.scheduler.runCurrent()
+        assertEquals(0L, vm.state.value.inboxFetchedAt)
+        assertEquals(0L, state.inboxFetchedAt)
     }
 
     // --- a new mail's body ---------------------------------------------------------------

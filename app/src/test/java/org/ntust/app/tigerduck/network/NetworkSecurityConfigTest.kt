@@ -47,7 +47,17 @@ class NetworkSecurityConfigTest {
         }
     }
 
-    private val release = pinSets("src/main/res/xml/network_security_config.xml")
+    /**
+     * The configs are read through paths Gradle hands the test together with declaring the
+     * files as inputs of the test task. A path typed here instead would be no input, so an
+     * edit to the XML alone would leave the task UP-TO-DATE and these checks would not run.
+     */
+    private fun declaredInput(property: String): String =
+        checkNotNull(System.getProperty(property)) {
+            "$property is not set: declare the file as an input of the unit-test tasks in app/build.gradle.kts"
+        }
+
+    private val release = pinSets(declaredInput("tigerduck.nsc.release"))
 
     @Test
     fun `no pin-set is within 45 days of its expiration`() {
@@ -63,7 +73,7 @@ class NetworkSecurityConfigTest {
 
     @Test
     fun `the debug config pins the same hosts with the same pins and dates`() {
-        assertEquals(release, pinSets("src/debug/res/xml/network_security_config.xml"))
+        assertEquals(release, pinSets(declaredInput("tigerduck.nsc.debug")))
     }
 
     // The watch calls the library with the same account the phone pins it for, so a

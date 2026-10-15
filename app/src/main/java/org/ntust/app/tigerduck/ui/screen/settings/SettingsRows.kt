@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -51,6 +52,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
@@ -241,12 +243,29 @@ internal fun SettingsToggleRow(
     checked: Boolean,
     enabled: Boolean = true,
     subtitle: String? = null,
+    /** Said in place of on/off while the row is disabled, such as why it is. */
+    disabledStateDescription: String? = null,
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = SettingRowHeight)
+            // The whole row is the switch, so TalkBack reads the label and
+            // summary with its state and a tap anywhere on it toggles.
+            .toggleable(
+                value = checked,
+                enabled = enabled,
+                role = Role.Switch,
+                onValueChange = onCheckedChange,
+            )
+            .then(
+                if (!enabled && disabledStateDescription != null) {
+                    Modifier.semantics { stateDescription = disabledStateDescription }
+                } else {
+                    Modifier
+                },
+            )
             .padding(horizontal = 16.dp, vertical = if (subtitle != null) 8.dp else 0.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -270,18 +289,24 @@ internal fun SettingsToggleRow(
         }
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            // The row handles it; a second target would be read on its own.
+            onCheckedChange = null,
             enabled = enabled,
             colors = tigerDuckSwitchColors(),
         )
     }
 }
+/**
+ * [enabled] greys the row out in place and stops it opening, as
+ * [SettingsToggleRow] does for a switch.
+ */
 @Composable
 internal fun SettingsPickerRow(
     label: String,
     value: String,
     options: List<Pair<String, String>>,
     selectedKey: String,
+    enabled: Boolean = true,
     onSelect: (String) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -294,15 +319,24 @@ internal fun SettingsPickerRow(
             // clipped — Mandarin labels are tall enough to need the extra
             // room.
             .heightIn(min = SettingRowHeight)
-            .clickable { expanded = true }
+            .clickable(enabled = enabled) { expanded = true }
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        Text(
+            label,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(
+                alpha = if (enabled) 1f else ContentAlpha.DISABLED,
+            ),
+        )
         Box {
             Text(
                 value, style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY)
+                color = MaterialTheme.colorScheme.onSurface.copy(
+                    alpha = if (enabled) ContentAlpha.SECONDARY else ContentAlpha.DISABLED,
+                )
             )
 
             DropdownMenu(

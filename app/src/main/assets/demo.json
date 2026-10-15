@@ -187,6 +187,56 @@
     }
   ],
 
+  "classmates": [
+    {
+      "studentId": "B11308965",
+      "nickname": { "zh": "小鴨", "en": "Duckling" },
+      "courses": [
+        {
+          "courseNo": "CS3005301",
+          "name": { "zh": "資料結構", "en": "Data Structures" },
+          "instructor": { "zh": "王小明", "en": "Wang Hsiao-Ming" },
+          "credits": 3,
+          "classroom": "TR-513",
+          "schedule": { "1": ["2", "3", "4"], "3": ["6", "7"] },
+          "classroomMap": { "3-6": "TR-215", "3-7": "TR-215" }
+        },
+        {
+          "courseNo": "MA2012301",
+          "name": { "zh": "機率", "en": "Probability" },
+          "instructor": { "zh": "陳美玲", "en": "Chen Mei-Ling" },
+          "credits": 3,
+          "classroom": "TR-411",
+          "schedule": { "2": ["3", "4"], "4": ["3", "4"] }
+        },
+        {
+          "courseNo": "CS3011301",
+          "name": { "zh": "計算機網路", "en": "Computer Networks" },
+          "instructor": { "zh": "林志豪", "en": "Lin Chih-Hao" },
+          "credits": 3,
+          "classroom": "RB-105",
+          "schedule": { "3": ["3", "4"], "5": ["8"] }
+        },
+        {
+          "courseNo": "PE1018301",
+          "name": { "zh": "羽球", "en": "Badminton" },
+          "instructor": { "zh": "張育成", "en": "Chang Yu-Cheng" },
+          "credits": 0,
+          "classroom": "Gym",
+          "schedule": { "5": ["3", "4"] }
+        },
+        {
+          "courseNo": "EE2004301",
+          "name": { "zh": "線性代數", "en": "Linear Algebra" },
+          "instructor": { "zh": "張志豪", "en": "Chang Chih-Hao" },
+          "credits": 3,
+          "classroom": "EE-201",
+          "schedule": { "2": ["6", "7"], "4": ["8"] }
+        }
+      ]
+    }
+  ],
+
   "assignments": [
     {
       "id": "900001",
@@ -235,5 +285,499 @@
     { "title": "開學日", "date": "2026-09-14", "source": "semester" },
     { "title": "中秋節", "date": "2026-09-25", "source": "holiday" },
     { "title": "期中考週", "date": "2026-11-09", "source": "exam" }
-  ]
+  ],
+
+  "moodle": {
+    "ownMemberId": 9001,
+    "courses": [
+      {
+        "courseNo": "CS3005301",
+        "moodleId": 90501,
+        "fullname": {
+          "zh": "1151 CS3005301 資料結構",
+          "en": "1151 CS3005301 Data Structures"
+        },
+        "summary": {
+          "zh": "<p>本課程介紹常用的資料結構與其分析方法，著重於實作與效能比較。</p><ul><li>陣列、串列、堆疊與佇列</li><li>樹、平衡樹與堆積</li><li>圖與最短路徑</li></ul><p>教科書：<em>Data Structures and Algorithms in C++</em>，作業與講義皆在 Moodle 公告。</p>",
+          "en": "<p>An introduction to the common data structures and how to analyse them, with an emphasis on implementation and measuring performance.</p><ul><li>Arrays, lists, stacks and queues</li><li>Trees, balanced trees and heaps</li><li>Graphs and shortest paths</li></ul><p>Textbook: <em>Data Structures and Algorithms in C++</em>. Homework and slides are posted on Moodle.</p>"
+        },
+        "announcements": [
+          {
+            "id": 95001,
+            "created": "2026-09-14T09:00",
+            "pinned": true,
+            "unread": false,
+            "author": {
+              "zh": "王小明",
+              "en": "Wang Hsiao-Ming"
+            },
+            "authorId": 9101,
+            "title": {
+              "zh": "課程大綱與評分方式",
+              "en": "Syllabus and grading"
+            },
+            "message": {
+              "zh": "<p>各位同學好，課程大綱已上傳，請參考附件。</p><h4>評分方式</h4><ul><li>作業 40%</li><li>期中考 25%</li><li>期末考 25%</li><li>小考 10%</li></ul><p>如有問題歡迎來信或於 office hour 詢問。</p>",
+              "en": "<p>Hello everyone, the syllabus is attached.</p><h4>Grading</h4><ul><li>Homework 40%</li><li>Midterm 25%</li><li>Final 25%</li><li>Quizzes 10%</li></ul><p>Email me or come to office hours with any questions.</p>"
+            },
+            "attachments": [
+              {
+                "name": "syllabus.pdf",
+                "size": 284512,
+                "mime": "application/pdf"
+              }
+            ]
+          },
+          {
+            "id": 95002,
+            "created": "2026-09-28T20:00",
+            "pinned": false,
+            "unread": true,
+            "author": {
+              "zh": "王小明",
+              "en": "Wang Hsiao-Ming"
+            },
+            "authorId": 9101,
+            "title": {
+              "zh": "作業三：平衡二元樹",
+              "en": "Homework 3: balanced binary trees"
+            },
+            "message": {
+              "zh": "<p>作業三已公布，繳交期限為 <strong>10 月 15 日 23:59</strong>。請實作 AVL 樹的插入與刪除，並附上測試結果。</p><p>遲交每日扣 10%。</p>",
+              "en": "<p>Homework 3 is out and due <strong>October 15, 23:59</strong>. Implement insertion and deletion for an AVL tree and include your test results.</p><p>Late work loses 10% a day.</p>"
+            },
+            "attachments": [
+              {
+                "name": "hw3.pdf",
+                "size": 151200,
+                "mime": "application/pdf"
+              },
+              {
+                "name": "hw3-starter.zip",
+                "size": 20480,
+                "mime": "application/zip"
+              }
+            ]
+          },
+          {
+            "id": 95003,
+            "created": "2026-10-01T12:15",
+            "pinned": false,
+            "unread": false,
+            "author": {
+              "zh": "林助教",
+              "en": "TA Lin"
+            },
+            "authorId": 9102,
+            "title": {
+              "zh": "助教時間異動",
+              "en": "TA office hours moved"
+            },
+            "message": {
+              "zh": "<p>本週起助教時間改為每週三 15:30–17:00，地點 TR-411。</p>",
+              "en": "<p>From this week, TA office hours are Wednesdays 15:30–17:00 in TR-411.</p>"
+            }
+          },
+          {
+            "id": 95004,
+            "created": "2026-10-12T10:30",
+            "pinned": false,
+            "unread": true,
+            "author": {
+              "zh": "王小明",
+              "en": "Wang Hsiao-Ming"
+            },
+            "authorId": 9101,
+            "title": {
+              "zh": "期中考範圍與教室",
+              "en": "Midterm scope and room"
+            },
+            "message": {
+              "zh": "<p>期中考將於 <strong>11 月 4 日</strong>上課時間舉行，地點 TR-313。</p><ol><li>範圍：第 1–7 章</li><li>可攜帶一張 A4 手寫筆記</li></ol><p>考古題請見<a href=\"https://moodle2.ntust.edu.tw/course/view.php?id=90501\">課程頁面</a>。</p>",
+              "en": "<p>The midterm is on <strong>November 4</strong> in class time, room TR-313.</p><ol><li>Scope: chapters 1–7</li><li>One handwritten A4 sheet allowed</li></ol><p>Past papers are on the <a href=\"https://moodle2.ntust.edu.tw/course/view.php?id=90501\">course page</a>.</p>"
+            }
+          }
+        ],
+        "grades": [
+          {
+            "name": {
+              "zh": "作業一：陣列與串列",
+              "en": "Homework 1: arrays and lists"
+            },
+            "module": "assign",
+            "grade": "92.00",
+            "max": 100,
+            "feedback": {
+              "zh": "<p>寫得很好，記得處理空串列的情況。</p>",
+              "en": "<p>Well done. Remember to handle the empty list.</p>"
+            }
+          },
+          {
+            "name": {
+              "zh": "作業二：堆疊與佇列",
+              "en": "Homework 2: stacks and queues"
+            },
+            "module": "assign",
+            "grade": "85.00",
+            "max": 100
+          },
+          {
+            "name": {
+              "zh": "小考一",
+              "en": "Quiz 1"
+            },
+            "module": "quiz",
+            "grade": "8.00",
+            "max": 10
+          },
+          {
+            "name": {
+              "zh": "實驗報告",
+              "en": "Lab report"
+            },
+            "type": "manual",
+            "grade": "A",
+            "max": 100
+          },
+          {
+            "type": "course",
+            "grade": "88.50",
+            "max": 100
+          }
+        ],
+        "members": [
+          {
+            "id": 9101,
+            "name": {
+              "zh": "王小明",
+              "en": "Wang Hsiao-Ming"
+            },
+            "role": "editingteacher",
+            "department": {
+              "zh": "資訊工程系",
+              "en": "Computer Science and Information Engineering"
+            },
+            "email": "wang.hm@mail.ntust.example",
+            "description": {
+              "zh": "研究興趣為演算法與資料庫系統。",
+              "en": "Research interests: algorithms and database systems."
+            },
+            "interests": [
+              "Algorithms",
+              "Databases"
+            ]
+          },
+          {
+            "id": 9102,
+            "name": {
+              "zh": "M11415001 @ 林助教",
+              "en": "M11415001 @ TA Lin"
+            },
+            "role": "teacher",
+            "idNumber": "M11415001",
+            "department": {
+              "zh": "資訊工程系",
+              "en": "Computer Science and Information Engineering"
+            },
+            "email": "m11415001@mail.ntust.example"
+          },
+          {
+            "id": 9001,
+            "name": {
+              "zh": "B11308964 @ 示範同學",
+              "en": "B11308964 @ Demo Student"
+            },
+            "role": "student",
+            "idNumber": "B11308964",
+            "department": {
+              "zh": "資訊工程系",
+              "en": "Computer Science and Information Engineering"
+            },
+            "email": "b11308964@mail.ntust.example"
+          },
+          {
+            "id": 9003,
+            "name": {
+              "zh": "B11308901 @ 陳怡君",
+              "en": "B11308901 @ Chen Yi-Chun"
+            },
+            "role": "student",
+            "idNumber": "B11308901",
+            "department": {
+              "zh": "資訊工程系",
+              "en": "Computer Science and Information Engineering"
+            },
+            "email": "b11308901@mail.ntust.example"
+          },
+          {
+            "id": 9004,
+            "name": {
+              "zh": "B11308977 @ 張家豪",
+              "en": "B11308977 @ Chang Chia-Hao"
+            },
+            "role": "student",
+            "idNumber": "B11308977",
+            "department": {
+              "zh": "資訊工程系",
+              "en": "Computer Science and Information Engineering"
+            },
+            "email": "b11308977@mail.ntust.example"
+          },
+          {
+            "id": 9005,
+            "name": {
+              "zh": "B11202033 @ 黃郁婷",
+              "en": "B11202033 @ Huang Yu-Ting"
+            },
+            "role": "student",
+            "idNumber": "B11202033",
+            "department": {
+              "zh": "電機工程系",
+              "en": "Electrical Engineering"
+            },
+            "email": "b11202033@mail.ntust.example"
+          },
+          {
+            "id": 9006,
+            "name": {
+              "zh": "B11309015 @ 李承恩",
+              "en": "B11309015 @ Lee Cheng-En"
+            },
+            "role": "auditor_student",
+            "idNumber": "B11309015",
+            "department": {
+              "zh": "資訊管理系",
+              "en": "Information Management"
+            }
+          }
+        ]
+      },
+      {
+        "courseNo": "CS3204301",
+        "moodleId": 90502,
+        "fullname": {
+          "zh": "1151 CS3204301 作業系統",
+          "en": "1151 CS3204301 Operating Systems"
+        },
+        "summary": {
+          "zh": "CS3204301",
+          "en": "CS3204301"
+        },
+        "announcements": [
+          {
+            "id": 95101,
+            "created": "2026-09-16T08:30",
+            "pinned": false,
+            "unread": false,
+            "author": {
+              "zh": "李美華",
+              "en": "Li Mei-Hua"
+            },
+            "authorId": 9201,
+            "title": {
+              "zh": "實驗環境設定",
+              "en": "Setting up the lab environment"
+            },
+            "message": {
+              "zh": "<p>請在第一次實驗前安裝 Ubuntu 24.04 虛擬機，步驟請見附件。</p>",
+              "en": "<p>Please install an Ubuntu 24.04 virtual machine before the first lab. The steps are attached.</p>"
+            },
+            "attachments": [
+              {
+                "name": "lab-setup.pdf",
+                "size": 98304,
+                "mime": "application/pdf"
+              }
+            ]
+          },
+          {
+            "id": 95102,
+            "created": "2026-10-08T17:45",
+            "pinned": true,
+            "unread": true,
+            "author": {
+              "zh": "李美華",
+              "en": "Li Mei-Hua"
+            },
+            "authorId": 9201,
+            "title": {
+              "zh": "實驗二延長繳交",
+              "en": "Lab 2 deadline extended"
+            },
+            "message": {
+              "zh": "<p>實驗二繳交期限延長至 <strong>10 月 20 日</strong>。</p>",
+              "en": "<p>The Lab 2 deadline is extended to <strong>October 20</strong>.</p>"
+            }
+          }
+        ],
+        "grades": [
+          {
+            "name": {
+              "zh": "實驗一：系統呼叫",
+              "en": "Lab 1: system calls"
+            },
+            "module": "assign",
+            "grade": "96.00",
+            "max": 100,
+            "feedback": {
+              "zh": "<p>很棒的報告！</p>",
+              "en": "<p>Great write-up!</p>"
+            }
+          },
+          {
+            "type": "course",
+            "grade": "96.00",
+            "max": 100
+          }
+        ],
+        "members": [
+          {
+            "id": 9201,
+            "name": {
+              "zh": "李美華",
+              "en": "Li Mei-Hua"
+            },
+            "role": "editingteacher",
+            "department": {
+              "zh": "資訊工程系",
+              "en": "Computer Science and Information Engineering"
+            },
+            "email": "li.mh@mail.ntust.example"
+          },
+          {
+            "id": 9001,
+            "name": {
+              "zh": "B11308964 @ 示範同學",
+              "en": "B11308964 @ Demo Student"
+            },
+            "role": "student",
+            "idNumber": "B11308964",
+            "department": {
+              "zh": "資訊工程系",
+              "en": "Computer Science and Information Engineering"
+            }
+          },
+          {
+            "id": 9003,
+            "name": {
+              "zh": "B11308901 @ 陳怡君",
+              "en": "B11308901 @ Chen Yi-Chun"
+            },
+            "role": "student",
+            "idNumber": "B11308901",
+            "department": {
+              "zh": "資訊工程系",
+              "en": "Computer Science and Information Engineering"
+            }
+          }
+        ]
+      },
+      {
+        "courseNo": "EE2004301",
+        "moodleId": 90503,
+        "fullname": {
+          "zh": "1151 EE2004301 線性代數",
+          "en": "1151 EE2004301 Linear Algebra"
+        },
+        "summary": {
+          "zh": "<p>矩陣、向量空間、特徵值與其在工程上的應用。</p>",
+          "en": "<p>Matrices, vector spaces, eigenvalues and their uses in engineering.</p>"
+        },
+        "announcements": [
+          {
+            "id": 95201,
+            "created": "2026-09-15T13:00",
+            "pinned": false,
+            "unread": false,
+            "author": {
+              "zh": "張志豪",
+              "en": "Chang Chih-Hao"
+            },
+            "authorId": 9301,
+            "title": {
+              "zh": "第一週講義",
+              "en": "Week 1 slides"
+            },
+            "message": {
+              "zh": "<p>第一週講義已上傳至課程頁面。</p>",
+              "en": "<p>The week 1 slides are on the course page.</p>"
+            }
+          }
+        ],
+        "members": [
+          {
+            "id": 9301,
+            "name": {
+              "zh": "張志豪",
+              "en": "Chang Chih-Hao"
+            },
+            "role": "editingteacher",
+            "department": {
+              "zh": "電機工程系",
+              "en": "Electrical Engineering"
+            },
+            "email": "chang.ch@mail.ntust.example"
+          },
+          {
+            "id": 9001,
+            "name": {
+              "zh": "B11308964 @ 示範同學",
+              "en": "B11308964 @ Demo Student"
+            },
+            "role": "student",
+            "idNumber": "B11308964"
+          },
+          {
+            "id": 9005,
+            "name": {
+              "zh": "B11202033 @ 黃郁婷",
+              "en": "B11202033 @ Huang Yu-Ting"
+            },
+            "role": "student",
+            "idNumber": "B11202033"
+          }
+        ]
+      }
+    ]
+  },
+
+  "emptyClassroom": {
+    "buildings": { "TR": "研揚大樓", "IB": "國際大樓", "EE": "電資館", "T4": "第四教學大樓", "E1": "工程一館" },
+    "classes": [
+      { "name": { "zh": "資料結構", "en": "Data Structures" }, "teacher": { "zh": "王小明", "en": "Wang Hsiao-Ming" } },
+      { "name": { "zh": "作業系統", "en": "Operating Systems" }, "teacher": { "zh": "李美華", "en": "Li Mei-Hua" } },
+      { "name": { "zh": "藝術與生活", "en": "Art and Life" }, "teacher": { "zh": "陳大文", "en": "Chen Ta-Wen" } },
+      { "name": { "zh": "線性代數", "en": "Linear Algebra" }, "teacher": { "zh": "張志豪", "en": "Chang Chih-Hao" } },
+      { "name": { "zh": "微積分（一）", "en": "Calculus (I)" }, "teacher": { "zh": "林志明", "en": "Lin Chih-Ming" } },
+      { "name": { "zh": "普通物理", "en": "General Physics" }, "teacher": { "zh": "黃雅婷", "en": "Huang Ya-Ting" } },
+      { "name": { "zh": "英文（一）", "en": "English (I)" }, "teacher": { "zh": "郭淑芬", "en": "Kuo Shu-Fen" } },
+      { "name": { "zh": "計算機網路", "en": "Computer Networks" }, "teacher": { "zh": "吳建宏", "en": "Wu Chien-Hung" } },
+      { "name": { "zh": "機率與統計", "en": "Probability and Statistics" }, "teacher": { "zh": "蔡文欣", "en": "Tsai Wen-Hsin" } }
+    ],
+    "rooms": {
+      "TR-209": { "*": "55..b.66......" },
+      "TR-212": { "*": "..77..88..b..." },
+      "TR-213": { "*": "....b........." },
+      "TR-215": { "*": "99....99......", "3": "99...11......." },
+      "TR-311": { "*": "..8888........", "2": "..22..55......", "4": "..22.........." },
+      "TR-312": { "*": "6666..77..b..." },
+      "TR-313": { "*": "......bbb....." },
+      "TR-411": { "*": "..b...99......" },
+      "TR-513": { "*": "..............", "1": ".111....55...." },
+      "TR-514": { "*": "88..55..bb...." },
+      "TR-611": { "*": "77..7777..99.." },
+      "IB-101": { "*": "55....b.......", "5": "55...33......." },
+      "IB-201": { "*": "..66..66..b..." },
+      "IB-305": { "*": "99..99..99...." },
+      "IB-508": { "*": ".............." },
+      "EE-201": { "*": "88..88........", "2": "88...44.......", "4": "88.....4......" },
+      "EE-B03": { "*": "....b...b....." },
+      "EE-406": { "*": "6666....66...." },
+      "T4-301": { "*": "77..77........" },
+      "T4-302": { "*": "55555555......" },
+      "T4-402": { "*": "....99..99...." },
+      "E1-306": { "*": "5555.6666999.." },
+      "E1-211": { "*": "7777.8888bbb.." }
+    }
+  }
 }

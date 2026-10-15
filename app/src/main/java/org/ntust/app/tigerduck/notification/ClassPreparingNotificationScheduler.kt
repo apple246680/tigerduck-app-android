@@ -8,8 +8,9 @@ import android.os.Build
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.ntust.app.tigerduck.AppConstants
 import org.ntust.app.tigerduck.academic.AcademicCalendar
-import org.ntust.app.tigerduck.shared.collapseContiguousPeriods
 import org.ntust.app.tigerduck.shared.Course
+import org.ntust.app.tigerduck.shared.blockClassroom
+import org.ntust.app.tigerduck.shared.contiguousPeriodRuns
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import java.time.LocalTime
 import java.time.ZonedDateTime
@@ -25,7 +26,7 @@ import javax.inject.Singleton
 @Singleton
 class ClassPreparingNotificationScheduler @Inject constructor(
     @param:ApplicationContext private val context: Context,
-) {
+) : ClassReminderAlarms {
     private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
     private val trackerPrefs = context.getSharedPreferences(TRACKER_PREFS, Context.MODE_PRIVATE)
 
@@ -38,35 +39,37 @@ class ClassPreparingNotificationScheduler @Inject constructor(
 
     /**
      * @param calendar the school calendar, used to skip days classes do not
-     *   meet. Defaults to [AcademicCalendar.EMPTY] so a caller that has not
-     *   been given one behaves exactly as this scheduler did before
-     *   holidays existed — nothing suppressed.
+     *   meet; [AcademicCalendar.EMPTY] suppresses nothing.
      * @param optedInHolidayIds holidays this user asked to keep hearing
      *   about, which put their days back in.
      */
-    fun scheduleAll(
+    override fun scheduleAll(
         courses: List<Course>,
         skippedDates: Map<String, List<String>>,
         leadTimeSec: Long,
-        calendar: AcademicCalendar = AcademicCalendar.EMPTY,
-        optedInHolidayIds: Set<Int> = emptySet(),
-    ) = synchronized(schedulerLock) {
+        calendar: AcademicCalendar,
+        optedInHolidayIds: Set<Int>,
+    ): Long? = synchronized(schedulerLock) {
         // Load the persisted slotId→requestCode map BEFORE cancelling so cancel
         // looks up the same code each alarm was originally registered with.
         // Previously we hashed slotId into the requestCode, which could collide
         // across two different slots and silently overwrite the earlier alarm.
         val codeMap = loadCodeMap()
         cancelAllTrackedLocked(codeMap)
-        if (leadTimeSec <= 0 || courses.isEmpty()) return@synchronized
+        if (leadTimeSec <= 0 || courses.isEmpty()) return@synchronized null
 
         val now = AppClock.nowMillis()
         val scheduled = mutableSetOf<String>()
         var nextCode = trackerPrefs.getInt(KEY_NEXT_CODE, 1)
+        var nextClassStart: Long? = null
 
         for (slot in upcomingSlots(
             courses, skippedDates, daysAhead = DAYS_AHEAD,
             calendar = calendar, optedInHolidayIds = optedInHolidayIds,
         )) {
+            // Before the trigger check: a class whose reminder has gone off
+            // still has its banner up until it begins.
+            if (slot.startMs > now) nextClassStart = minOf(nextClassStart ?: slot.startMs, slot.startMs)
             val triggerTime = slot.startMs - leadTimeSec * 1000
             if (triggerTime <= now) continue
 
@@ -134,9 +137,10 @@ class ClassPreparingNotificationScheduler @Inject constructor(
             .putString(KEY_CODE_MAP, encodeCodeMap(codeMap))
             .putInt(KEY_NEXT_CODE, nextCode)
             .apply()
+        nextClassStart
     }
 
-    fun cancelAllTracked() = synchronized(schedulerLock) {
+    override fun cancelAllTracked() = synchronized(schedulerLock) {
         cancelAllTrackedLocked(loadCodeMap())
     }
 
@@ -186,8 +190,11 @@ class ClassPreparingNotificationScheduler @Inject constructor(
         val endMs: Long,
         val id: String,
         val weekday: Int,
+        /** This block's periods, not every period of the course that day. */
+        val periods: List<String>,
     ) {
-        val classroom: String get() = course.classroom(weekday)
+        /** This block's room: a course meeting twice a day can switch rooms in between. */
+        val classroom: String get() = course.blockClassroom(weekday, periods)
     }
 
     private fun upcomingSlots(
@@ -220,8 +227,9 @@ class ClassPreparingNotificationScheduler @Inject constructor(
                 val periods = course.schedule[weekdayIdx] ?: continue
                 if (periods.isEmpty()) continue
                 if (skippedDates[course.courseNo]?.contains(isoDate) == true) continue
-                val ranges = collapseContiguousPeriods(periods)
-                for ((first, last) in ranges) {
+                for (block in contiguousPeriodRuns(periods)) {
+                    val first = block.first()
+                    val last = block.last()
                     val start = periodStart(first) ?: continue
                     val end = periodEnd(last) ?: continue
                     val startZdt = ZonedDateTime.of(date, start, AppConstants.TAIPEI_ZONE)
@@ -234,6 +242,7 @@ class ClassPreparingNotificationScheduler @Inject constructor(
                         endMs = endMs,
                         id = "${course.courseNo}@${isoDate}#${first}-${last}",
                         weekday = weekdayIdx,
+                        periods = block,
                     )
                 }
             }

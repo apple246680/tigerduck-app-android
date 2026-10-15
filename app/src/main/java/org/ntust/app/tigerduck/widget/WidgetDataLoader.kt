@@ -58,11 +58,10 @@ object WidgetDataLoader {
         val today = AppClock.localDateTime().toLocalDate()
         val quietToday = today in quietDays
 
-        val ongoingInfos =
-            if (quietToday) emptyList() else computeOngoingCourses(courses, weekday, minuteOfDay)
-        val ongoingNos = ongoingInfos.map { it.course.courseNo }
-        val nextCourseTodayNo = if (quietToday) null else computeNextCourseTodayNo(
-            courses, weekday, minuteOfDay, ongoingNos,
+        val ongoing =
+            if (quietToday) emptyList() else computeOngoingBlocks(courses, weekday, minuteOfDay)
+        val nextToday = if (quietToday) null else computeNextTodayBlock(
+            courses, weekday, minuteOfDay, ongoing.map { it.course.courseNo },
         )
         val tomorrowFirst = computeTomorrowFirst(courses, today, quietDays)
 
@@ -81,8 +80,8 @@ object WidgetDataLoader {
             currentMinuteOfDay = minuteOfDay,
             isLoggedIn = isLoggedIn,
             isQuietToday = quietToday,
-            ongoingCourseNos = ongoingNos,
-            nextCourseTodayNo = nextCourseTodayNo,
+            ongoingBlocks = ongoing,
+            nextTodayBlock = nextToday,
             tomorrowFirstCourseNo = tomorrowFirst?.courseNo,
             tomorrowFirstCourseWeekday = tomorrowFirst?.weekday,
             tomorrowFirstCoursePeriodId = tomorrowFirst?.periodId,
@@ -117,24 +116,34 @@ object WidgetDataLoader {
         return AppConstants.Periods.chronologicalOrder.filter { it in ids }
     }
 
-    private fun computeNextCourseTodayNo(
+    /** The block each course is in at [minuteOfDay] on [weekday], for the courses going on. */
+    internal fun computeOngoingBlocks(
+        courses: List<Course>,
+        weekday: Int,
+        minuteOfDay: Int,
+    ): List<CourseBlock> =
+        computeOngoingCourses(courses, weekday, minuteOfDay)
+            .map { CourseBlock(it.course, weekday, it.periods) }
+
+    /**
+     * The block starting soonest after [minuteOfDay] today, from the courses
+     * not in [ongoingNos]. A block, not a course: after a course's morning
+     * block its afternoon one is next, starting at its own first period.
+     */
+    internal fun computeNextTodayBlock(
         courses: List<Course>,
         weekday: Int,
         minuteOfDay: Int,
         ongoingNos: List<String>,
-    ): String? {
-        return courses
-            .filter { it.schedule.containsKey(weekday) && it.courseNo !in ongoingNos }
-            .mapNotNull { course ->
-                val firstFutureMinute = course.schedule[weekday]!!
-                    .mapNotNull { pid -> parseHm(AppConstants.PeriodTimes.mapping[pid]?.first) }
-                    .filter { it > minuteOfDay }
-                    .minOrNull()
-                firstFutureMinute?.let { course to it }
+    ): CourseBlock? =
+        courses
+            .filter { it.courseNo !in ongoingNos }
+            .flatMap { CourseBlock.allOf(it, weekday) }
+            .mapNotNull { block ->
+                parseHm(block.startTime)?.takeIf { it > minuteOfDay }?.let { block to it }
             }
             .minByOrNull { it.second }
-            ?.first?.courseNo
-    }
+            ?.first
 
     /**
      * Scans up to 7 future days for the earliest scheduled class. Mirrors
