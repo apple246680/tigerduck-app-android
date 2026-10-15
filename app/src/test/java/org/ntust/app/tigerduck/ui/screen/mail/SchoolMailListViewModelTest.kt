@@ -138,6 +138,85 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
+    fun `a password the server rejects during a search is not sent again for the next folder`() {
+        repo.add("INBOX", mailSummary(1, subject = "期中考"))
+        repo.add("寄件備份匣", mailSummary(2, subject = "期中考 reply"))
+        vm.load()
+        repo.foldersTouched.clear()
+        repo.searchError = MailError.AuthFailed()
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        // Spec §7.4: the rejection reaches the account before Sent is searched, so no second LOGIN.
+        assertEquals(listOf("INBOX"), repo.foldersTouched)
+        assertTrue(account.authFailed.value)
+        // Both folders still show their matches among the loaded mail.
+        assertEquals(setOf(1L, 2L), vm.state.value.displayed.map { it.uid }.toSet())
+        assertTrue(vm.state.value.searchLocalOnly)
+    }
+
+    @Test
+    fun `a search that cannot reach the server stops trying folder after folder`() {
+        repo.add("INBOX", mailSummary(1, subject = "期中考"))
+        repo.add("寄件備份匣", mailSummary(2, subject = "期中考 reply"))
+        vm.load()
+        repo.foldersTouched.clear()
+        repo.searchError = MailError.Network()
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        assertEquals(listOf("INBOX"), repo.foldersTouched)
+        assertEquals(setOf(1L, 2L), vm.state.value.displayed.map { it.uid }.toSet())
+        assertTrue(vm.state.value.actionError is MailError.Network)
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Loaded)
+    }
+
+    @Test
+    fun `a certificate failure during a search stays on screen, as it does for the poll`() {
+        repo.add("INBOX", mailSummary(1, subject = "期中考"))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        repo.searchError = MailError.Certificate()
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        val s = vm.state.value
+        assertTrue((s.loadState as? SchoolMailListViewModel.LoadState.Failed)?.error is MailError.Certificate)
+        // The list it searched is still there, with the loaded matches.
+        assertEquals(listOf(1L), s.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `a certificate failure while paging search results stays on screen`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..5L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        repo.searchPageError = MailError.Certificate()
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertTrue((vm.state.value.loadState as? SchoolMailListViewModel.LoadState.Failed)?.error is MailError.Certificate)
+    }
+
+    @Test
+    fun `a page of search results that fails is asked for once, not again and again`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..9L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        repo.searchPageError = MailError.ServerBusy()
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertEquals(1, repo.searchPages.size)
+        assertTrue(vm.state.value.actionError is MailError.ServerBusy)
+        assertFalse(vm.state.value.isPaginating)
+        // The page stays unfetched: the next scroll to the end asks for the same page again.
+        repo.searchPageError = null
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertEquals(2, repo.searchPages.size)
+        assertEquals(repo.searchPages[0], repo.searchPages[1])
+    }
+
+    @Test
     fun `search results keep paging past the first page as the list scrolls`() {
         repo.pageSize = 2
         repo.add("INBOX", *(1L..5L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray(), mailSummary(6, subject = "other"))

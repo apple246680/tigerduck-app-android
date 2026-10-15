@@ -233,9 +233,20 @@ class FakeSchoolMailRepository : SchoolMailRepository {
     /** Every `(folder, uids)` handed to [searchPage], in order. */
     val searchPages = mutableListOf<Pair<String, List<Long>>>()
 
+    /** Thrown by [searchPage], after the call is recorded in [searchPages]. */
+    var searchPageError: MailError? = null
+
+    /**
+     * While set, [searchPage] suspends on it after recording the call, so a test can change
+     * things -- clear the search, sign out -- while a page of results is still on its way.
+     */
+    var searchPageGate: CompletableDeferred<Unit>? = null
+
     override suspend fun searchPage(folder: String, uids: List<Long>): List<MailSummary> {
         foldersTouched += folder
         searchPages += folder to uids
+        searchPageGate?.await()
+        searchPageError?.let { throw it }
         return sorted(folder).filter { it.uid in uids }
     }
 

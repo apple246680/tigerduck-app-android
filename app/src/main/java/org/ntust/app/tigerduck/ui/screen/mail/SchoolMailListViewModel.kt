@@ -527,16 +527,33 @@ class SchoolMailListViewModel @Inject constructor(
             // one of them fell back.
             //
             // A failure is the search's, never the list's: the list it would replace is as good as
-            // it was a moment ago, so it reaches [UiState.actionError] and not [UiState.loadState].
+            // it was a moment ago, so it reaches [UiState.actionError] and not [UiState.loadState]
+            // -- except a certificate failure, which stays on screen as the poll's does.
+            //
+            // A rejected password, a connection that could not be made or a certificate that
+            // could not be trusted ends the server's part of the search: every folder after it
+            // searches its loaded mail instead. Searching on would open the connection again for
+            // each folder, and for a rejected password that is the same LOGIN sent again (spec
+            // §7.4), so the rejection reaches the account at once, before anything else runs.
             var failure: MailError? = null
+            var serverUnreachable = false
             val outcomes = _state.value.targets.map { folder ->
-                folder to try {
-                    repository.search(folder, query)
-                } catch (e: MailError) {
-                    if (failure == null) failure = e
+                val loadedMatches = {
                     SearchOutcome.LoadedOnly(
                         _state.value.messages.filter { it.folder == folder && matchesLoadedMail(it.summary, query) }.map { it.summary },
                     )
+                }
+                folder to if (serverUnreachable) {
+                    loadedMatches()
+                } else {
+                    try {
+                        repository.search(folder, query)
+                    } catch (e: MailError) {
+                        if (failure == null) failure = e
+                        if (e is MailError.AuthFailed) account.onAuthFailure()
+                        if (endsServerSearch(e)) serverUnreachable = true
+                        loadedMatches()
+                    }
                 }
             }
             if (_state.value.selected != selection || generation != searchGeneration) return
@@ -550,7 +567,7 @@ class SchoolMailListViewModel @Inject constructor(
                     searchLocalOnly = outcomes.any { (_, outcome) -> outcome is SearchOutcome.LoadedOnly },
                 )
             }
-            failure?.let(::actionFail)
+            failure?.let(::searchFail)
             // Nothing on screen means no last row to scroll to, however many matches are left.
             if (_state.value.displayed.isEmpty()) loadMoreSearchResults()
         } finally {
@@ -579,7 +596,7 @@ class SchoolMailListViewModel @Inject constructor(
                     val more = try {
                         repository.searchPage(folder, batch)
                     } catch (e: MailError) {
-                        if (generation == searchGeneration) actionFail(e)
+                        if (generation == searchGeneration) searchFail(e)
                         return
                     }
                     if (_state.value.selected != selection || generation != searchGeneration) return
@@ -732,6 +749,19 @@ class SchoolMailListViewModel @Inject constructor(
         if (error is MailError.AuthFailed) account.onAuthFailure()
         _state.update { it.copy(actionError = error) }
     }
+
+    /**
+     * A search, or a page of its results, failed. Reported once as a toast like any other action,
+     * but a certificate failure stays on screen the way the poll leaves it ([poll]): it is the
+     * interception case, and a toast is easy to miss.
+     */
+    private fun searchFail(error: MailError) {
+        if (error is MailError.Certificate) fail(error) else actionFail(error)
+    }
+
+    /** A failure after which a search stops asking the server for the folders still to go. */
+    private fun endsServerSearch(error: MailError): Boolean =
+        error is MailError.AuthFailed || error is MailError.Network || error is MailError.Certificate
 
     fun dismissActionError() = _state.update { it.copy(actionError = null) }
 
