@@ -330,4 +330,27 @@ class BackgroundSyncWorkerTest {
             )
         }
     }
+
+    @Test
+    fun `the first run in a term fetches its courses, and only the first`() {
+        val term = org.ntust.app.tigerduck.academic.SemesterTerm(
+            code = "1151", start = java.time.LocalDate.of(2026, 9, 7), end = java.time.LocalDate.of(2027, 1, 22),
+        )
+        val firstDay = java.time.LocalDate.of(2026, 9, 7)
+        // Last fetched in the term before: the new term's courses may never have been.
+        assertTrue(BackgroundSyncWorker.firstRunOfTerm("1142", term, firstDay))
+        assertTrue(BackgroundSyncWorker.firstRunOfTerm(null, term, firstDay))
+        // Fetched in this term already.
+        assertTrue(!BackgroundSyncWorker.firstRunOfTerm("1151", term, firstDay.plusDays(3)))
+    }
+
+    @Test
+    fun `a term yet to begin by the app's clock, or no calendar, fetches nothing extra`() {
+        val term = org.ntust.app.tigerduck.academic.SemesterTerm(
+            code = "1151", start = java.time.LocalDate.of(2026, 9, 7), end = java.time.LocalDate.of(2027, 1, 22),
+        )
+        // The calendar's earliest term, before it starts.
+        assertTrue(!BackgroundSyncWorker.firstRunOfTerm("1142", term, java.time.LocalDate.of(2026, 9, 6)))
+        assertTrue(!BackgroundSyncWorker.firstRunOfTerm("1142", term = null, today = java.time.LocalDate.of(2026, 9, 7)))
+    }
 }

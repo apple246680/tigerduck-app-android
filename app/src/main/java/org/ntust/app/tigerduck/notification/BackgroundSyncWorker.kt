@@ -18,12 +18,15 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import org.ntust.app.tigerduck.academic.AcademicCalendarStore
+import org.ntust.app.tigerduck.academic.SemesterTerm
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
@@ -43,6 +46,7 @@ import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.network.CourseService
 import org.ntust.app.tigerduck.network.MoodleService
 import org.ntust.app.tigerduck.network.SemesterCatalog
+import org.ntust.app.tigerduck.shared.clock.AppClock
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
@@ -73,6 +77,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
     private val storedPasswordLatch: StoredPasswordLatch,
     private val unsentMarks: UnsentMarks,
     private val pendingCourseAdds: PendingCourseAdds,
+    private val academicCalendar: AcademicCalendarStore,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) : CoroutineWorker(context, params) {
 
@@ -124,16 +129,25 @@ class BackgroundSyncWorker @AssistedInject constructor(
         // its fetch left a fresh stamp over nothing stored; its retry would
         // otherwise skip the fetch and report success.
         val retry = runAttemptCount > 0
-        val coursesDue = triggered || retry || RefreshPolicies.coursesEvery?.let {
-            RefreshPolicy.hasPassed(prefs.backgroundCoursesSyncedAtMs, now, it)
-        } == true
+        // And once a term, whatever the pages ask: see firstRunOfTerm.
+        val today = AppClock.localDateTime().toLocalDate()
+        val term = academicCalendar.current().currentTerm(today)
+        val coursesDue = triggered || retry ||
+            firstRunOfTerm(prefs.backgroundCoursesTerm, term, today) ||
+            RefreshPolicies.coursesEvery?.let {
+                RefreshPolicy.hasPassed(prefs.backgroundCoursesSyncedAtMs, now, it)
+            } == true
         val assignmentsDue = triggered || retry || RefreshPolicies.assignmentsEvery?.let {
             RefreshPolicy.hasPassed(prefs.schoolDataSyncedAtMs.value, now, it)
         } == true
 
         val coursesOk = !coursesDue || syncCourses(studentId, password)
         if (authService.storedStudentId != studentId) return Result.success()
-        if (coursesDue && coursesOk) prefs.backgroundCoursesSyncedAtMs = now
+        if (coursesDue && coursesOk) {
+            prefs.backgroundCoursesSyncedAtMs = now
+            // The term the fetch covered, by the app's clock: see firstRunOfTerm.
+            if (term != null && !today.isBefore(term.start)) prefs.backgroundCoursesTerm = term.code
+        }
         val assignmentsOk = when {
             !assignmentsDue -> true
             // What the server announced may be a submission made elsewhere.
@@ -595,6 +609,16 @@ class BackgroundSyncWorker @AssistedInject constructor(
             WorkInfo.State.RUNNING in states -> ExistingWorkPolicy.APPEND_OR_REPLACE
             else -> ExistingWorkPolicy.KEEP
         }
+
+        /**
+         * Whether this is the first run in [term], by the app's clock ([today]), since courses were
+         * last fetched in [fetchedTerm]: the new term's courses may never have been fetched, and
+         * the reminders planned from them need them. Not for a term yet to begin, which the
+         * calendar gives before its first term starts. Compared by term code, not by time, so a
+         * debug clock moved into a later term still fetches it once and no more.
+         */
+        internal fun firstRunOfTerm(fetchedTerm: String?, term: SemesterTerm?, today: LocalDate): Boolean =
+            term != null && !today.isBefore(term.start) && fetchedTerm != term.code
 
         /**
          * What a run that could not fetch courses or assignments reports.
