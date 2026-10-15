@@ -78,7 +78,11 @@ class BulletinRepository @Inject constructor() {
     @Synchronized
     fun putDetail(detail: BulletinDetail) {
         details[detail.id] = detail
-        summaries[detail.id] = detail.toSummary()
+        // A detail without a summary keeps the list row's, which its page falls back to.
+        val listSummary = summaries[detail.id]?.summary?.takeIf { it.isNotBlank() }
+        summaries[detail.id] = detail.toSummary().let {
+            if (it.summary.isNullOrBlank() && listSummary != null) it.copy(summary = listSummary) else it
+        }
     }
 
     @Synchronized

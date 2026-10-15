@@ -34,6 +34,21 @@ class BulletinBodyRendererTest {
     )
 
     @Test
+    fun `code, link destinations, URLs and thematic breaks are left as written`() {
+        val fenced = "```\n+ value\n**重點**：時間\n```"
+        assertEquals(fenced, BulletinBodyRenderer.normalize(fenced))
+        val inline = "見 `**重點**：時間` 一節"
+        assertEquals(inline, BulletinBodyRenderer.normalize(inline))
+        val link = "[文件](https://example.com/**文件**：v1)"
+        assertEquals(link, BulletinBodyRenderer.normalize(link))
+        val bare = "https://example.com/**文件**：v1"
+        assertEquals(bare, BulletinBodyRenderer.normalize(bare))
+        assertEquals("* * *", BulletinBodyRenderer.normalize("* * *"))
+        // Outside them, the fix-ups still apply.
+        assertEquals("見 `x` 與 **重點** ：時間", BulletinBodyRenderer.normalize("見 `x` 與 **重點**：時間"))
+    }
+
+    @Test
     fun `the cleaned body wins over the scraped one`() {
         assertEquals("清理後", BulletinBodyRenderer.bodyMarkdown(detail(bodyClean = "清理後", bodyMd = "原文")))
     }

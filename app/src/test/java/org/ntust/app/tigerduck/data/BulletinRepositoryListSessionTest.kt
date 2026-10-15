@@ -7,6 +7,23 @@ import org.junit.Test
 class BulletinRepositoryListSessionTest {
 
     @Test
+    fun `a detail without a summary keeps the list row's`() {
+        val repo = BulletinRepository()
+        repo.putSummaries(listOf(org.ntust.app.tigerduck.network.model.BulletinSummary(
+            id = 7, externalId = "e7", title = "T", titleClean = null, canonicalOrg = null,
+            importance = null, summary = "列表摘要", sourceUrl = null, postedAt = null,
+        )))
+        repo.putDetail(org.ntust.app.tigerduck.network.model.BulletinDetail(
+            id = 7, externalId = "e7", title = "T", titleClean = null, canonicalOrg = null,
+            importance = null, summary = "  ", sourceUrl = null, postedAt = null,
+            bodyClean = null, bodyMd = null, rawPublisher = null,
+        ))
+
+        // The next open of the detail falls back to it when the detail has no body.
+        org.junit.Assert.assertEquals("列表摘要", repo.summary(7)?.summary)
+    }
+
+    @Test
     fun `there is no session before the first refresh`() {
         assertNull(BulletinRepository().listSession(includeDeleted = false))
     }
