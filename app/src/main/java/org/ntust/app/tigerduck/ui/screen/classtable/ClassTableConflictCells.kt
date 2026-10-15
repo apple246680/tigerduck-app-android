@@ -49,7 +49,7 @@ import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.ui.component.ConflictLOrientation
 import org.ntust.app.tigerduck.ui.component.ConflictLShape
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
-import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
+import org.ntust.app.tigerduck.ui.theme.LocalVisualStylePolicy
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -73,12 +73,10 @@ internal fun ConflictCourseCell(
     onToggleIgnoreAssignments: ((Course) -> Unit)?,
     onDelete: (Course) -> Unit,
 ) {
-    val textColor = if (TigerDuckTheme.isDarkMode) Color.White else Color(0xFF1C1C1E)
-    fun bgFor(course: Course) = if (TigerDuckTheme.isDarkMode) {
-        TigerDuckTheme.courseColor(course.courseNo)
-    } else {
-        TigerDuckTheme.courseColorVibrant(course.courseNo).copy(alpha = 0.50f)
-    }
+    val style = LocalVisualStylePolicy.current
+    val textColor = style.courseTextColor
+    val markColor = style.courseSecondaryTextColor
+    fun bgFor(course: Course) = style.courseFill(course.courseNo)
 
     val overlapStart = maxOf(cellRole.offsetA, cellRole.offsetB)
     val overlapEnd = minOf(cellRole.offsetA + cellRole.spanA, cellRole.offsetB + cellRole.spanB)
@@ -221,7 +219,7 @@ internal fun ConflictCourseCell(
                 CourseCellBadge(
                     hasAssignment = hasAssignmentA,
                     assignmentsIgnored = assignmentsIgnoredA,
-                    tint = textColor.copy(alpha = 0.7f),
+                    tint = markColor,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(3.dp)
@@ -275,7 +273,7 @@ internal fun ConflictCourseCell(
                 CourseCellBadge(
                     hasAssignment = hasAssignmentB,
                     assignmentsIgnored = assignmentsIgnoredB,
-                    tint = textColor.copy(alpha = 0.7f),
+                    tint = markColor,
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .padding(3.dp)
@@ -339,12 +337,10 @@ internal fun MultiConflictCourseCell(
     onToggleIgnoreAssignments: ((Course) -> Unit)?,
     onDelete: (Course) -> Unit,
 ) {
-    val textColor = if (TigerDuckTheme.isDarkMode) Color.White else Color(0xFF1C1C1E)
-    fun bgFor(course: Course) = if (TigerDuckTheme.isDarkMode) {
-        TigerDuckTheme.courseColor(course.courseNo)
-    } else {
-        TigerDuckTheme.courseColorVibrant(course.courseNo).copy(alpha = 0.50f)
-    }
+    val style = LocalVisualStylePolicy.current
+    val textColor = style.courseTextColor
+    val markColor = style.courseSecondaryTextColor
+    fun bgFor(course: Course) = style.courseFill(course.courseNo)
 
     val conflictPrefix = stringResource(R.string.a11y_class_table_conflict_prefix)
     val assignmentLabel = stringResource(R.string.a11y_class_table_cell_assignment_indicator)
@@ -429,7 +425,7 @@ internal fun MultiConflictCourseCell(
                     CourseCellBadge(
                         hasAssignment = hasAssignmentForMember,
                         assignmentsIgnored = ignoredForMember,
-                        tint = textColor.copy(alpha = 0.7f),
+                        tint = markColor,
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(3.dp)
