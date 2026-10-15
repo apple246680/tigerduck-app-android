@@ -817,6 +817,20 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
         }
 
     /**
+     * The building the empty-classroom finder last showed at the user's pick, by the booking
+     * site's code (e.g. "TR"). Null until the first pick; cleared at sign-out, so the next
+     * account opens on its own building.
+     */
+    var emptyClassroomBuilding: String?
+        get() = prefs.getString("emptyClassroomBuilding", null)
+        set(value) {
+            val editor = prefs.edit()
+            if (value == null) editor.remove("emptyClassroomBuilding")
+            else editor.putString("emptyClassroomBuilding", value)
+            editor.apply()
+        }
+
+    /**
      * Semester codes published by NTUST, newest first — see
      * [org.ntust.app.tigerduck.network.SemesterCatalog]. Empty until the first
      * successful fetch, which the catalogue reads as "fall back to the month

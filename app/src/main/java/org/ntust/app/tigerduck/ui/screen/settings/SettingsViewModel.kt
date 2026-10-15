@@ -27,6 +27,8 @@ import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.UnsentMarks
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
+import org.ntust.app.tigerduck.data.sharing.ImportedClassTableStore
+import org.ntust.app.tigerduck.data.sharing.ImportedClassTables
 import org.ntust.app.tigerduck.liveactivity.LiveActivityManager
 import org.ntust.app.tigerduck.notification.AssignmentNotificationScheduler
 import org.ntust.app.tigerduck.notification.BackgroundSyncWorker
@@ -73,9 +75,14 @@ class SettingsViewModel @Inject constructor(
     private val courseIgnoreSync: CourseIgnoreSync,
     private val unsentMarks: UnsentMarks,
     private val reenableCheck: ReenableCheck,
+    private val importedClassTableStore: ImportedClassTableStore,
     @param:ApplicationScope private val appScope: CoroutineScope,
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
+
+    /** For the NTUST sign-out, which asks first when it would delete imported class tables. */
+    val importedClassTables: StateFlow<ImportedClassTables> = importedClassTableStore.tables
+
 
     private companion object {
         const val TAG = "SyncReenable"
@@ -462,7 +469,7 @@ class SettingsViewModel @Inject constructor(
                     _libLoginError.value = context.getString(R.string.error_sign_in_failed)
                     return@launch
                 }
-                libraryService.login(username, password)
+                libraryService.login(username, password, credentials.libraryAccountGeneration, byUser = true)
                 demoAccount.signOutLibrary()
                 _isLibraryLoggedIn.value = true
                 // The NTUST authState collector in TigerDuckApp pushes library

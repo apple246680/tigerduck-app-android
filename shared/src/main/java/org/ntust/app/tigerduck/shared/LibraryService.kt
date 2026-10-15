@@ -3,15 +3,21 @@ package org.ntust.app.tigerduck.shared
 import android.util.Log
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import okhttp3.logging.HttpLoggingInterceptor
+import java.io.IOException
+import kotlin.coroutines.resumeWithException
 
 /**
  * NTUST library passport + virtual-code client. Shared between phone (`:app`)
@@ -48,11 +54,31 @@ class LibraryService(
     private val gson = Gson()
     private val tokenMutex = Mutex()
 
-    suspend fun login(username: String, password: String): String = tokenMutex.withLock {
-        loginInternal(username, password)
+    /**
+     * Signs in and stores the account and its token. Once the library account
+     * has signed out since [accountGeneration] was read, the answer is the
+     * departing account's: it stores nothing, and this throws
+     * [LibraryServiceError.CredentialsNotFound]. A sign-in the app makes on its
+     * own ([byUser] false) also yields to another account stored meanwhile; one
+     * the user asked for replaces it. The caller reads the generation from the
+     * store when its sign-in starts: right before this call, or earlier, as the
+     * school sign-in does before its SSO step.
+     */
+    suspend fun login(
+        username: String,
+        password: String,
+        accountGeneration: Int,
+        byUser: Boolean,
+    ): String = tokenMutex.withLock {
+        loginInternal(username, password, accountGeneration, byUser)
     }
 
-    private suspend fun loginInternal(username: String, password: String): String =
+    private suspend fun loginInternal(
+        username: String,
+        password: String,
+        accountGeneration: Int,
+        byUser: Boolean,
+    ): String =
         withContext(Dispatchers.IO) {
             val body = gson.toJson(LibraryLoginRequest(username, password))
                 .toRequestBody("application/json".toMediaType())
@@ -62,7 +88,7 @@ class LibraryService(
                 .post(body)
                 .build()
 
-            client.newCall(request).execute().use { response ->
+            send(request).use { response ->
                 val responseBody = response.body.string()
                 val loginResponse = runCatching {
                     gson.fromJson(responseBody, LibraryLoginResponse::class.java)
@@ -76,16 +102,24 @@ class LibraryService(
                     )
                 }
 
-                credentials.libraryUsername = username
-                credentials.libraryPassword = password
-                credentials.libraryToken = loginResponse.data.token
-                credentials.libraryTokenExpiry = loginResponse.data.expirationTimeStamp
-
-                loginResponse.data.token
+                val token = loginResponse.data.token
+                val stored = credentials.saveLibrarySignIn(
+                    accountGeneration,
+                    username,
+                    password,
+                    token,
+                    loginResponse.data.expirationTimeStamp,
+                    byUser,
+                )
+                if (!stored) throw LibraryServiceError.CredentialsNotFound()
+                token
             }
         }
 
     suspend fun ensureToken(): String = tokenMutex.withLock {
+        // Before the account it signs in with, so a sign-out after this keeps
+        // the answer from being stored.
+        val accountGeneration = credentials.libraryAccountGeneration
         val token = credentials.libraryToken
         if (token != null && credentials.isLibraryTokenValid) return@withLock token
 
@@ -94,7 +128,7 @@ class LibraryService(
         val password = credentials.libraryPassword
             ?: throw LibraryServiceError.CredentialsNotFound()
 
-        loginInternal(username, password)
+        loginInternal(username, password, accountGeneration, byUser = false)
     }
 
     suspend fun generateQRCode(): String = withContext(Dispatchers.IO) {
@@ -107,7 +141,7 @@ class LibraryService(
             .post(body)
             .build()
 
-        client.newCall(request).execute().use { response ->
+        send(request).use { response ->
             val responseBody = response.body.string()
             val qrResponse = runCatching {
                 gson.fromJson(responseBody, LibraryQRResponse::class.java)
@@ -122,6 +156,23 @@ class LibraryService(
             }
             qrResponse.data
         }
+    }
+
+    /**
+     * Sends [request] and waits for its response, cancelling the call when the caller is
+     * cancelled. A blocking execute() went on until the library answered or timed out, and held
+     * a caller that had already moved on, such as the watch's page after the phone handed over
+     * another account.
+     */
+    private suspend fun send(request: Request): Response = suspendCancellableCoroutine { waiting ->
+        val call = client.newCall(request)
+        waiting.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) = waiting.resumeWithException(e)
+
+            override fun onResponse(call: Call, response: Response) =
+                waiting.resume(response) { _, unused, _ -> unused.close() }
+        })
     }
 
     /**

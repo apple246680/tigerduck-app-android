@@ -1,6 +1,7 @@
 package org.ntust.app.tigerduck.ui.screen.calendar
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,8 +47,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -68,8 +76,10 @@ import org.ntust.app.tigerduck.ui.component.SyncStatusDot
 import org.ntust.app.tigerduck.ui.component.TigerPullToRefresh
 import org.ntust.app.tigerduck.ui.component.scrollbar
 import org.ntust.app.tigerduck.ui.component.PageLeftEffect
+import org.ntust.app.tigerduck.ui.component.SectionHeader
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
 import java.text.SimpleDateFormat
+import java.time.LocalDate
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
@@ -80,7 +90,7 @@ fun CalendarScreen(
     viewModel: CalendarViewModel = hiltViewModel(),
     onOpenSignInSettings: () -> Unit = {},
 ) {
-    val events by viewModel.events.collectAsStateWithLifecycle()
+    val eventsByDay by viewModel.eventsByDay.collectAsStateWithLifecycle()
     val holidayOverrides by viewModel.holidayOverrides.collectAsStateWithLifecycle()
     val selectedDate by viewModel.selectedDate.collectAsStateWithLifecycle()
     val displayedMonth by viewModel.displayedMonth.collectAsStateWithLifecycle()
@@ -150,7 +160,7 @@ fun CalendarScreen(
                         MonthCalendar(
                             displayedMonth = displayedMonth,
                             selectedDate = selectedDate,
-                            events = events,
+                            eventsByDay = eventsByDay,
                             onDateSelected = { viewModel.selectDate(it) },
                             onMonthChanged = { viewModel.setDisplayedMonth(it) }
                         )
@@ -162,6 +172,13 @@ fun CalendarScreen(
                                 horizontal = 16.dp,
                                 vertical = 8.dp
                             )
+                        )
+                    }
+
+                    item {
+                        CalendarDayHeading(
+                            date = selectedDate.taipeiDate(),
+                            today = Date(AppClock.nowMillis()).taipeiDate(),
                         )
                     }
 
@@ -202,11 +219,29 @@ fun CalendarScreen(
     } // Box
 }
 
+/**
+ * The selected date over its events, as the iPhone heads the list: after a
+ * swipe to another month the grid alone no longer says which day this is.
+ */
+@Composable
+internal fun CalendarDayHeading(date: LocalDate, today: LocalDate) {
+    SectionHeader(
+        dayTitle(
+            date = date,
+            today = today,
+            locale = LocalConfiguration.current.locales[0],
+            todaySuffix = stringResource(R.string.calendar_date_today_suffix),
+        ),
+        // So TalkBack's heading navigation jumps from the grid to the list.
+        modifier = Modifier.semantics { heading() },
+    )
+}
+
 @Composable
 private fun MonthCalendar(
     displayedMonth: Date,
     selectedDate: Date,
-    events: List<CalendarEvent>,
+    eventsByDay: Map<LocalDate, List<CalendarEvent>>,
     onDateSelected: (Date) -> Unit,
     onMonthChanged: (Date) -> Unit
 ) {
@@ -319,7 +354,7 @@ private fun MonthCalendar(
             CalendarGrid(
                 monthDate = monthDate,
                 selectedDate = selectedDate,
-                events = events,
+                eventsByDay = eventsByDay,
                 onDateSelected = onDateSelected
             )
         }
@@ -327,10 +362,10 @@ private fun MonthCalendar(
 }
 
 @Composable
-private fun CalendarGrid(
+internal fun CalendarGrid(
     monthDate: Date,
     selectedDate: Date,
-    events: List<CalendarEvent>,
+    eventsByDay: Map<LocalDate, List<CalendarEvent>>,
     onDateSelected: (Date) -> Unit
 ) {
     val taipeiTz = org.ntust.app.tigerduck.AppConstants.TAIPEI_TZ
@@ -347,6 +382,10 @@ private fun CalendarGrid(
 
     val totalCells = startDow + daysInMonth
     val rows = (totalCells + 6) / 7
+    val selectedDay = selectedDate.taipeiDate()
+    val today = Date(AppClock.nowMillis()).taipeiDate()
+    val locale = LocalConfiguration.current.locales[0]
+    val dayDescription = stringResource(R.string.a11y_calendar_day)
 
     Column(modifier = Modifier.fillMaxWidth()) {
         repeat(rows) { row ->
@@ -367,9 +406,14 @@ private fun CalendarGrid(
                             set(Calendar.MILLISECOND, 0)
                         }.time
 
-                        val isSelected = isSameDay(dayDate, selectedDate)
-                        val isToday = isSameDay(dayDate, Date(AppClock.nowMillis()))
-                        val hasEvent = events.any { isSameDay(it.date, dayDate) }
+                        val day = LocalDate.of(year, month + 1, dayNum)
+                        val isSelected = day == selectedDay
+                        val isToday = day == today
+                        val dayEvents = eventsByDay[day].orEmpty()
+                        val dotSources = remember(dayEvents) { dotSources(dayEvents) }
+                        val description = remember(dayDescription, day, dayEvents.size, locale) {
+                            dayCellDescription(dayDescription, day, dayEvents.size, locale)
+                        }
 
                         Box(
                             modifier = Modifier
@@ -383,10 +427,20 @@ private fun CalendarGrid(
                                         else -> Color.Transparent
                                     }
                                 )
-                                .clickable { onDateSelected(dayDate) },
+                                .clickable(role = Role.Button) { onDateSelected(dayDate) }
+                                // One stop per day, read as the iPhone reads
+                                // it: the full date and how many events, since
+                                // the dots say it in colour alone.
+                                .semantics {
+                                    contentDescription = description
+                                    selected = isSelected
+                                },
                             contentAlignment = Alignment.Center
                         ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.clearAndSetSemantics {},
+                            ) {
                                 Text(
                                     text = "$dayNum",
                                     style = MaterialTheme.typography.bodyMedium,
@@ -397,16 +451,23 @@ private fun CalendarGrid(
                                     },
                                     fontWeight = if (isToday || isSelected) FontWeight.Bold else FontWeight.Normal
                                 )
-                                if (hasEvent) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(4.dp)
-                                            .clip(CircleShape)
-                                            .background(
-                                                if (isSelected) Color.White
-                                                else MaterialTheme.colorScheme.primary
+                                if (dotSources.isNotEmpty()) {
+                                    // One dot per source in its colour, as on
+                                    // the iPhone, so a deadline reads apart
+                                    // from a holiday. White on the selected
+                                    // day: a source colour can sit too close
+                                    // to the accent fill, and the list below
+                                    // shows that day's sources anyway.
+                                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        dotSources.forEach { source ->
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(4.dp)
+                                                    .clip(CircleShape)
+                                                    .background(if (isSelected) Color.White else source.color)
                                             )
-                                    )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -449,7 +510,7 @@ private fun isSameMonth(a: Date, b: Date): Boolean {
 
 
 @Composable
-private fun EventRow(
+internal fun EventRow(
     event: CalendarEvent,
     notifyOnHoliday: Boolean? = null,
     onNotifyOnHolidayChange: ((Boolean) -> Unit)? = null,
@@ -482,8 +543,8 @@ private fun EventRow(
             )
         }
         if (notifyOnHoliday != null && onNotifyOnHolidayChange != null) {
-            // Replaces the timestamp rather than joining it: a holiday is an
-            // all-day thing, so "00:00" was never telling the user anything.
+            // Where a timed row has its time: a holiday is a whole day, so it
+            // has none to show.
             //
             // The switch is labelled rather than bare: on its own it asked
             // the user to guess what it governed, and a screen reader had
@@ -499,7 +560,9 @@ private fun EventRow(
                 checked = notifyOnHoliday,
                 onCheckedChange = onNotifyOnHolidayChange,
             )
-        } else {
+        } else if (!event.isAllDay) {
+            // A whole day has no time worth showing: "00:00" read as a
+            // midnight deadline.
             Text(
                 timeFmt.format(event.date),
                 style = MaterialTheme.typography.labelSmall,
@@ -507,11 +570,4 @@ private fun EventRow(
             )
         }
     }
-}
-
-private fun isSameDay(a: Date, b: Date): Boolean {
-    val ca = Calendar.getInstance(org.ntust.app.tigerduck.AppConstants.TAIPEI_TZ).apply { time = a }
-    val cb = Calendar.getInstance(org.ntust.app.tigerduck.AppConstants.TAIPEI_TZ).apply { time = b }
-    return ca.get(Calendar.YEAR) == cb.get(Calendar.YEAR) &&
-            ca.get(Calendar.DAY_OF_YEAR) == cb.get(Calendar.DAY_OF_YEAR)
 }
