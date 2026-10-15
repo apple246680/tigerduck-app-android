@@ -36,7 +36,7 @@ class MoodleService @Inject constructor(
     private val dataCache: DataCache,
     private val prefs: AppPreferences,
     private val webservice: MoodleWebservice,
-    @param:ApplicationScope appScope: CoroutineScope,
+    @ApplicationScope appScope: CoroutineScope,
 ) {
     private val client: OkHttpClient get() = sessionManager.client
 

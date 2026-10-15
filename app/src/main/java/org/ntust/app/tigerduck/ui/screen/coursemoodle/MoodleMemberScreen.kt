@@ -78,7 +78,7 @@ fun MoodleMemberScreen(
     val members = current?.members?.state?.collectAsStateWithLifecycle()?.value?.value
     val pictures = current?.pictures?.collectAsStateWithLifecycle()?.value.orEmpty()
     val member = members?.members?.firstOrNull { it.id == memberId }
-    LaunchedEffect(member?.pictureUrl) { if (member != null && current != null) current.loadPicture(member) }
+    LaunchedEffect(member?.pictureUrl) { if (member != null) current.loadPicture(member) }
     // Opened with no members cached, as after the system ended the app: fetched, or its failure
     // shown with Retry; a member no longer in the course closes the page.
     var lookup by remember { mutableStateOf<MoodleLookup?>(null) }

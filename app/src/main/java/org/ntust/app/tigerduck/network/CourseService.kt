@@ -58,7 +58,7 @@ class CourseService @Inject constructor(
     private val dataCache: DataCache,
     private val appPreferences: AppPreferences,
     private val academicCalendar: org.ntust.app.tigerduck.academic.AcademicCalendarStore,
-    @param:ApplicationScope appScope: CoroutineScope,
+    @ApplicationScope appScope: CoroutineScope,
 ) {
     private val client: OkHttpClient get() = sessionManager.client
     private val gson = Gson()
