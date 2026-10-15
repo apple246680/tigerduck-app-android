@@ -14,7 +14,6 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -46,6 +45,7 @@ import org.ntust.app.tigerduck.data.CourseTombstoneKeys
 import org.ntust.app.tigerduck.data.OutstandingAssignments
 import org.ntust.app.tigerduck.data.RefreshPolicy
 import org.ntust.app.tigerduck.data.RefreshTriggers
+import org.ntust.app.tigerduck.data.UnsentMarks
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.model.AssignmentFilter
@@ -63,6 +63,7 @@ import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.SingleFlight
 import org.ntust.app.tigerduck.util.logSummary
 import java.util.Date
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import kotlin.time.Duration.Companion.minutes
 
@@ -97,6 +98,7 @@ class HomeViewModel @Inject constructor(
     private val syncApiClient: SyncApiClient,
     private val authTokenManager: AuthTokenManager,
     private val backendSync: HomeBackendSync,
+    private val unsentMarks: UnsentMarks,
 ) : ViewModel() {
 
 
@@ -168,6 +170,11 @@ class HomeViewModel @Inject constructor(
     )
 
     val syncConflicts: StateFlow<List<AssignmentSyncConflict>> = syncState.conflicts
+
+    // Full syncs under way. A poll that finds the server ahead leaves the
+    // change to them rather than fetch it a second time — as on a return,
+    // when the poll and Home's own sync start together.
+    private val backendPullsInFlight = AtomicInteger(0)
 
     /**
      * Answer the sync-conflict dialog.
@@ -553,51 +560,36 @@ class HomeViewModel @Inject constructor(
 
     // --- Foreground revision polling ---
 
-    private var revisionPollingJob: Job? = null
+    private val revisionPoller = RevisionPoller(
+        scope = viewModelScope,
+        poll = ::pollRevision,
+        relogin = authService::attemptRelogin,
+        now = SystemClock::elapsedRealtime,
+    )
 
+    // The first start is the launch, whose own sync has just pulled.
+    private var revisionPollingStarted = false
+
+    /** The app is in the foreground again; see [RevisionPoller.start]. */
     fun startRevisionPolling() {
-        if (revisionPollingJob?.isActive == true) {
-            Log.d("RevisionPoll", "[poll] startRevisionPolling skipped — job already active")
-            return
-        }
-        Log.d("RevisionPoll", "[poll] startRevisionPolling — launching 10s loop")
-        revisionPollingJob = viewModelScope.launch {
-            while (true) {
-                delay(10_000)
-                // cloudSyncEnabled already reads false on fdroid at its
-                // source (AppPreferences.cloudSyncEnabled), so no separate
-                // flavor check is needed here.
-                if (!prefs.cloudSyncEnabled) {
-                    Log.d("RevisionPoll", "[poll] tick skipped — cloudSyncEnabled=false")
-                    continue
-                }
-                if (!networkChecker.isAvailable()) {
-                    Log.d("RevisionPoll", "[poll] tick skipped — no network")
-                    continue
-                }
-                if (!authTokenManager.signInIfSignedOut()) {
-                    Log.d("RevisionPoll", "[poll] tick skipped — not logged in")
-                    continue
-                }
-                Log.d("RevisionPoll", "[poll] tick — fetching revision (lastKnown=${syncState.lastKnownRevision})")
-                try {
-                    val revision = syncApiClient.fetchRevision()
-                    Log.d("RevisionPoll", "[poll] server revision=$revision lastKnown=${syncState.lastKnownRevision}")
-                    if (revision > syncState.lastKnownRevision) {
-                        Log.d("RevisionPoll", "[poll] revision changed — triggering full sync")
-                        syncAndRepublish()
-                    }
-                } catch (e: Exception) {
-                    Log.w("RevisionPoll", "[poll] tick failed: ${e.logSummary()}")
-                }
-            }
-        }
+        revisionPoller.start(pollNow = revisionPollingStarted)
+        revisionPollingStarted = true
     }
 
-    fun stopRevisionPolling() {
-        revisionPollingJob?.cancel()
-        revisionPollingJob = null
-    }
+    fun stopRevisionPolling() = revisionPoller.stop()
+
+    // cloudSyncEnabled already reads false on fdroid at its source
+    // (AppPreferences.cloudSyncEnabled), so no separate flavor check is
+    // needed here.
+    private suspend fun pollRevision(): RevisionPollOutcome = pollRevisionOnce(
+        syncEnabled = { prefs.cloudSyncEnabled },
+        online = networkChecker::isAvailable,
+        signIn = authTokenManager::signInIfSignedOut,
+        fetchRevision = syncApiClient::fetchRevision,
+        lastKnownRevision = { syncState.lastKnownRevision },
+        fullSyncsInFlight = backendPullsInFlight::get,
+        fullSync = ::syncAndRepublish,
+    )
 
     /**
      * Pull from the backend, then re-publish whatever landed in the cache.
@@ -619,8 +611,17 @@ class HomeViewModel @Inject constructor(
         dataCache.loadDeletedCourseNos(),
     )
 
+    private suspend fun pullFromBackend() {
+        backendPullsInFlight.incrementAndGet()
+        try {
+            backendSync.pull(syncState)
+        } finally {
+            backendPullsInFlight.decrementAndGet()
+        }
+    }
+
     private suspend fun syncAndRepublish() {
-        backendSync.pull(syncState)
+        pullFromBackend()
         val courses = dataCache.loadCourses().filterNot { it.courseNo in hiddenNow() }
         val assignments = dataCache.loadAssignments()
         TigerDuckTheme.buildCourseColorMap(courses)
@@ -641,7 +642,7 @@ class HomeViewModel @Inject constructor(
                 // Moodle-direct for the assignment/course list (proven,
                 // correct semester filtering). Backend handles override
                 // sync only (done/ignored marks across devices).
-                backendSync.pull(syncState)
+                pullFromBackend()
                 // Re-read after backend sync so server-merged courses and
                 // deletions are reflected even if the Moodle fetch below fails.
                 courses = dataCache.loadCourses().filterNot { it.courseNo in hiddenNow() }
@@ -883,7 +884,8 @@ class HomeViewModel @Inject constructor(
      * 已忽略 and 標示為完成 are mutually exclusive, so setting either clears
      * the other — that is what [secondary] is for. The UI updates before the
      * PATCH goes out and is never rolled back if it fails: the id stays in
-     * this device's cache and the next sync re-asserts it, which is a better
+     * this device's cache, [UnsentMarks] keeps it, and the next sync keeps
+     * this device's value for it and sends it again, which is a better
      * outcome than a row that silently springs back under the user's finger.
      */
     private fun toggleOverride(
@@ -907,17 +909,15 @@ class HomeViewModel @Inject constructor(
         }
         val status = if (wasSet) AssignmentOverrideReconciler.STATUS_NONE else statusWhenSet
         pendingOverrides.add(id)
+        revisionPoller.noteActivity()
         viewModelScope.launch {
             try {
-                pushApiClient.patchAssignmentOverride(
-                    id.toIntOrNull() ?: return@launch, status,
-                )
-            } catch (e: Exception) {
-                Log.w("HomeViewModel", "override PATCH FAILED → $status: ${e.logSummary()}")
+                // Kept on disk until it lands; a failure is logged there.
+                unsentMarks.send(id, status)
             } finally {
-                // Always release the in-flight lock — a failed PATCH must not
-                // pin this id in pendingOverrides forever, which would block it
-                // from ever being reconciled from the server again.
+                // Always release the in-flight lock: from here on a PATCH
+                // that failed is protected by UnsentMarks, which lets the id
+                // go once the server has it, so it is not pinned for ever.
                 pendingOverrides.remove(id)
             }
         }

@@ -41,8 +41,9 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
-// A plain Application: the real one is a Hilt app these tests do not need.
-@Config(application = Application::class)
+// A plain Application: the real one is a Hilt app these tests do not need. A tall window, so
+// every row of cards is laid out on screen at the largest font.
+@Config(application = Application::class, qualifiers = "h1600dp")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class FeatureGridTest {
 
@@ -53,7 +54,8 @@ class FeatureGridTest {
 
     @Test
     fun `cards keep their shape when every name fits one line`() {
-        show(width = 600.dp, fontScale = 1f)
+        // Wide enough for "Empty classroom", the longest English name, on one line.
+        show(width = 1000.dp, fontScale = 1f)
 
         val cards = cards()
         val cellWidth = cards.first().width
@@ -90,7 +92,7 @@ class FeatureGridTest {
     }
 
     @Test
-    @Config(qualifiers = "ru")
+    @Config(qualifiers = "+ru")
     fun `a name that cannot fit even at the smallest size stays inside its card`() {
         // "Университетская почта": the first word alone outgrows the card at 2x.
         show(width = 360.dp, fontScale = 2f)

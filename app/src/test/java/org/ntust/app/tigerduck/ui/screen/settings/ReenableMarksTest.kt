@@ -3,12 +3,14 @@ package org.ntust.app.tigerduck.ui.screen.settings
 import android.app.Application
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.ntust.app.tigerduck.data.DataMigration
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.ui.screen.home.AssignmentOverrideReconciler
+import org.ntust.app.tigerduck.ui.screen.home.CourseSyncReconciler
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
@@ -90,16 +92,26 @@ class ReenableMarksTest {
 
     @Test
     fun `an install signed in at the update keeps its re-enable checks`() {
-        // Left by an older build, its check not run yet.
-        prefs.pendingConflictCategories = setOf("assignments")
         // Off at the update, with whatever this phone changed since.
         prefs.syncCourses = false
 
         DataMigration.settleReenableCheck(prefs, signedIn = true)
-        assertEquals(setOf("assignments"), prefs.pendingConflictCategories)
 
         turnTigerSyncOn()
         assertEquals(REENABLE_CATEGORIES, prefs.pendingConflictCategories)
+    }
+
+    @Test
+    fun `an assignments check left by a build that never held the marks is dropped at the update`() {
+        // v2.3.1 went on applying the server's marks while its check waited,
+        // so there is nothing of this phone's left to ask about; kept, it
+        // would hold the marks until TigerSync was next opened.
+        prefs.pendingConflictCategories = setOf("assignments", "course_names")
+
+        DataMigration.settleReenableCheck(prefs, signedIn = true)
+
+        assertEquals(setOf("course_names"), prefs.pendingConflictCategories)
+        assertFalse(AssignmentOverrideReconciler.isHeldForReenable(prefs.pendingConflictCategories))
     }
 
     @Test
@@ -121,5 +133,32 @@ class ReenableMarksTest {
 
         assertEquals(emptySet<String>(), prefs.pendingConflictCategories)
         assertFalse(AssignmentOverrideReconciler.isHeldForReenable(prefs.pendingConflictCategories))
+    }
+
+    @Test
+    fun `assignments are not recorded as synced when the switch went off during the sync`() {
+        val switchedOn = categoriesSwitchedOn(prefs)
+        // Turned off while the sync ran, so its marks step left the marks alone.
+        prefs.syncAssignments = false
+
+        prefs.syncedCategories += categoriesSynced(switchedOn, prefs)
+
+        assertEquals(REENABLE_CATEGORIES - "assignments", prefs.syncedCategories)
+    }
+
+    @Test
+    fun `every category the sync read as on is recorded when none went off`() {
+        assertEquals(REENABLE_CATEGORIES, categoriesSynced(categoriesSwitchedOn(prefs), prefs))
+    }
+
+    @Test
+    fun `a courses check an older build left pending stops holding the course list at the update`() {
+        // Left by a build that kept reconciling the course list while it waited.
+        prefs.pendingConflictCategories = setOf("courses", "assignments")
+
+        DataMigration.dropStaleCoursesCheck(prefs)
+
+        assertEquals(setOf("assignments"), prefs.pendingConflictCategories)
+        assertTrue(CourseSyncReconciler.syncsCourseList(prefs.syncCourses, prefs.pendingConflictCategories))
     }
 }

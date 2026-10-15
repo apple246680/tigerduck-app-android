@@ -25,6 +25,7 @@ import org.ntust.app.tigerduck.data.CourseIgnores
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.model.PendingCourseIgnore
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
+import org.ntust.app.tigerduck.shared.Course
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
@@ -216,5 +217,26 @@ class DataCacheTest {
     private companion object {
         // Only a broken lock waits this long; it fails the test instead of hanging the suite.
         const val WAIT_SECONDS = 5L
+    }
+
+    @Test
+    fun `a term's portal courses count as cached only while their file holds some`() = runTest {
+        assertFalse("nothing cached", cache.hasPortalCourses("1151"))
+
+        cache.saveCourses(listOf(Course(courseNo = "MY1", courseName = "Mine", isManual = true)), "1151")
+        assertFalse("hand-typed alone", cache.hasPortalCourses("1151"))
+
+        cache.saveCourses(
+            listOf(
+                Course(courseNo = "CS1", courseName = "CS1"),
+                Course(courseNo = "MY1", courseName = "Mine", isManual = true),
+            ),
+            "1151",
+        )
+        assertTrue(cache.hasPortalCourses("1151"))
+
+        // What the system evicting cacheDir leaves.
+        File(context.cacheDir, "TigerDuckCache/courses_1151.json").delete()
+        assertFalse(cache.hasPortalCourses("1151"))
     }
 }

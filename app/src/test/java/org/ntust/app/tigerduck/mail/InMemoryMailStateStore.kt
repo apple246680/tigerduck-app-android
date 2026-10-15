@@ -7,7 +7,10 @@ class InMemoryMailStateStore : MailStateStore {
     override var notificationsEnabled: Boolean = true
     override var authFailed: Boolean = false
     override var demoMailbox: Boolean = false
+    /** Fires on every [inboxUidValidity] read, after the value was read: lets a test act between the read and what follows it. */
+    var onUidValidityRead: (() -> Unit)? = null
     override var inboxUidValidity: Long = 0
+        get() = field.also { onUidValidityRead?.invoke() }
     override var inboxSeenUidNext: Long = 0
     override var lastForegroundCheckAt: Long = 0
     override var diagnostics: List<String> = emptyList()

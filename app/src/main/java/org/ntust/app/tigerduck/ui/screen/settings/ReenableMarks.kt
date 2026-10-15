@@ -21,6 +21,15 @@ internal fun categoriesSwitchedOn(prefs: AppPreferences): Set<String> = buildSet
 }
 
 /**
+ * What a full sync that read [switchedOn] records in
+ * [AppPreferences.syncedCategories] once it has run: assignments only while
+ * their switch is still on, since one turned off meanwhile stopped the sync
+ * from taking the marks (see `AssignmentMarkStep`).
+ */
+internal fun categoriesSynced(switchedOn: Set<String>, prefs: AppPreferences): Set<String> =
+    if (prefs.syncAssignments) switchedOn else switchedOn - "assignments"
+
+/**
  * Marks [category], switched back on, for the re-enable check, which compares
  * this phone's copy of the account's data with the server's. Before a full
  * sync has taken the category's data for the account here, as after a sign-in,

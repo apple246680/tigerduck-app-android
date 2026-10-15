@@ -21,14 +21,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.sp
@@ -62,8 +67,21 @@ internal fun TimetableGrid(
     /** Null leaves the action out of the long-press menu. */
     onToggleIgnoreAssignments: ((Course) -> Unit)? = null,
     onPickConflict: (Course, Course, Int, String) -> Unit = { _, _, _, _ -> },
+    /** False on someone else's class table, whose courses have no long-press menu. */
+    editable: Boolean = true,
+    /**
+     * Where the period rows' block was placed, and each row's height in pixels; the rows are
+     * [periods] in order from its top. The page keeps the rows in place across a switch with it.
+     */
+    onRowsPlaced: ((rows: LayoutCoordinates, rowHeightPx: Float) -> Unit)? = null,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    // The app's own long-press vibration, through the Vibration setting; none without a menu.
+    val onLongPress: (() -> Unit)? = if (editable) {
+        { Haptics.perform(context, HapticScenario.ClassTableLongPress) }
+    } else {
+        null
+    }
     val dayLabels = listOf(
         "",
         stringResource(R.string.weekday_mon_short),
@@ -112,10 +130,15 @@ internal fun TimetableGrid(
             }
 
             // Grid body — use Box with absolute positioning so blocks can span rows
+            val rowHeightPx = with(LocalDensity.current) { cellHeight.toPx() }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(totalHeight)
+                    .then(
+                        if (onRowsPlaced == null) Modifier
+                        else Modifier.onGloballyPositioned { onRowsPlaced(it, rowHeightPx) }
+                    )
             ) {
                 // Period labels (left column)
                 periods.forEachIndexed { periodIndex, period ->
@@ -167,128 +190,76 @@ internal fun TimetableGrid(
                     }
                 }
 
-                // Day cells
+                // What each slot shows, worked out once for both passes below.
+                val roles = remember(courses, periods, weekdays) {
+                    weekdays.map { weekday ->
+                        periods.indices.map { ClassTableCellLayout.roleAt(courses, periods, weekday, it) }
+                    }
+                }
+
+                // Empty slots first, drawn at once: a course fading out of a
+                // slot sits above them, and the grid itself never fades.
+                weekdays.forEachIndexed { dayIndex, _ ->
+                    periods.forEachIndexed { periodIndex, _ ->
+                        if (roles[dayIndex][periodIndex] is CellRole.Empty) {
+                            Box(
+                                modifier = Modifier
+                                    .width(dayColWidth)
+                                    .height(cellHeight)
+                                    .absoluteOffset(x = periodColWidth + dayColWidth * dayIndex, y = cellHeight * periodIndex)
+                                    .padding(1.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(
+                                            alpha = 0.3f
+                                        )
+                                    )
+                            )
+                        }
+                    }
+                }
+
+                // Then the courses, each slot keyed by its day and period so
+                // a switch fades only the slots whose courses change.
                 weekdays.forEachIndexed { dayIndex, weekday ->
                     val x = periodColWidth + dayColWidth * dayIndex
 
                     periods.forEachIndexed { periodIndex, period ->
                         val y = cellHeight * periodIndex
+                        val role = roles[dayIndex][periodIndex]
+                        // Solo cells only: a 衝堂 cluster splits the cell and
+                        // leaves no corner to print in.
+                        val roomHint = if (showRoomHints && role is CellRole.SoloStart) {
+                            CourseRoomHint.room(role.course, weekday, period.id)
+                        } else {
+                            null
+                        }
 
-                        when (val role = ClassTableCellLayout.roleAt(courses, periods, weekday, periodIndex)) {
-                            is CellRole.Empty -> {
-                                Box(
-                                    modifier = Modifier
-                                        .width(dayColWidth)
-                                        .height(cellHeight)
-                                        .absoluteOffset(x = x, y = y)
-                                        .padding(1.dp)
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(
-                                            MaterialTheme.colorScheme.surfaceVariant.copy(
-                                                alpha = 0.3f
-                                            )
-                                        )
-                                )
-                            }
-
-                            is CellRole.SoloStart -> {
-                                SoloCourseCell(
-                                    course = role.course,
-                                    // Solo cells only: a 衝堂 cluster splits the
-                                    // cell and leaves no corner to print in.
-                                    roomHint = if (showRoomHints) {
-                                        CourseRoomHint.room(role.course, weekday, period.id)
-                                    } else {
-                                        null
-                                    },
-                                    spanCount = role.spanCount,
-                                    dayColWidth = dayColWidth,
-                                    cellHeight = cellHeight,
-                                    x = x,
-                                    y = y,
-                                    weekday = weekday,
-                                    hasAssignment = role.course.courseNo in courseNosWithAssignments,
-                                    assignmentsIgnored =
-                                        role.course.courseNo in courseNosIgnoringAssignments,
-                                    onTap = {
-                                        viewModel.selectCourse(
-                                            role.course,
-                                            weekday,
-                                            period.id
-                                        )
-                                    },
-                                    onLongPress = {
-                                        Haptics.perform(
-                                            context,
-                                            HapticScenario.ClassTableLongPress,
-                                        )
-                                    },
-                                    onRename = onRename,
-                                    onPickColor = onPickColor,
-                                    onToggleIgnoreAssignments = onToggleIgnoreAssignments,
-                                    onDelete = onDelete,
-                                )
-                            }
-
-                            is CellRole.ConflictStart -> {
-                                ConflictCourseCell(
-                                    cellRole = role,
-                                    dayColWidth = dayColWidth,
-                                    cellHeight = cellHeight,
-                                    x = x,
-                                    y = y,
+                        key(weekday, period.id) {
+                            CourseSlotFade(
+                                target = SlotCourses(
+                                    role, roomHint, courseNosWithAssignments, courseNosIgnoringAssignments,
+                                ),
+                                key = { ClassTableCellLayout.contentKey(it.role, it.roomHint) },
+                                modifier = Modifier.absoluteOffset(x = x, y = y),
+                            ) { slot ->
+                                CourseSlot(
+                                    role = slot.role,
                                     weekday = weekday,
                                     periodId = period.id,
-                                    hasAssignmentA = role.courseA.courseNo in courseNosWithAssignments,
-                                    hasAssignmentB = role.courseB.courseNo in courseNosWithAssignments,
-                                    assignmentsIgnoredA =
-                                        role.courseA.courseNo in courseNosIgnoringAssignments,
-                                    assignmentsIgnoredB =
-                                        role.courseB.courseNo in courseNosIgnoringAssignments,
-                                    onPickConflict = onPickConflict,
-                                    onLongPress = {
-                                        Haptics.perform(
-                                            context,
-                                            HapticScenario.ClassTableLongPress,
-                                        )
-                                    },
-                                    onRename = onRename,
-                                    onPickColor = onPickColor,
-                                    onToggleIgnoreAssignments = onToggleIgnoreAssignments,
-                                    onDelete = onDelete,
-                                )
-                            }
-
-                            is CellRole.MultiConflictStart -> {
-                                MultiConflictCourseCell(
-                                    cellRole = role,
+                                    roomHint = slot.roomHint,
                                     dayColWidth = dayColWidth,
                                     cellHeight = cellHeight,
-                                    x = x,
-                                    y = y,
-                                    weekday = weekday,
-                                    hasAssignment = { courseNo -> courseNo in courseNosWithAssignments },
-                                    assignmentsIgnored = { courseNo ->
-                                        courseNo in courseNosIgnoringAssignments
-                                    },
-                                    onSelect = { course, firstPeriodId ->
-                                        viewModel.selectCourse(course, weekday, firstPeriodId)
-                                    },
-                                    onLongPress = {
-                                        Haptics.perform(
-                                            context,
-                                            HapticScenario.ClassTableLongPress,
-                                        )
-                                    },
+                                    viewModel = viewModel,
+                                    courseNosWithAssignments = slot.withAssignments,
+                                    courseNosIgnoringAssignments = slot.ignoringAssignments,
+                                    onLongPress = onLongPress,
                                     onRename = onRename,
                                     onPickColor = onPickColor,
                                     onToggleIgnoreAssignments = onToggleIgnoreAssignments,
                                     onDelete = onDelete,
+                                    onPickConflict = onPickConflict,
                                 )
-                            }
-
-                            is CellRole.Skip -> {
-                                // Rendered as part of an earlier SoloStart / ConflictStart
                             }
                         }
                     }
@@ -297,3 +268,96 @@ internal fun TimetableGrid(
         }
     }
 }
+
+/**
+ * What one slot shows: the courses that start in it, the room printed in its corner and the
+ * marks, kept with them so courses fading out keep the marks they had.
+ */
+private data class SlotCourses(
+    val role: CellRole,
+    val roomHint: String?,
+    val withAssignments: Set<String>,
+    val ignoringAssignments: Set<String>,
+)
+
+/** The courses that start in one slot, drawn from the slot's own corner; the grid places it. */
+@Composable
+private fun CourseSlot(
+    role: CellRole,
+    weekday: Int,
+    periodId: String,
+    roomHint: String?,
+    dayColWidth: Dp,
+    cellHeight: Dp,
+    viewModel: ClassTableViewModel,
+    courseNosWithAssignments: Set<String>,
+    courseNosIgnoringAssignments: Set<String>,
+    onLongPress: (() -> Unit)?,
+    onRename: (Course) -> Unit,
+    onPickColor: (Course) -> Unit,
+    onToggleIgnoreAssignments: ((Course) -> Unit)?,
+    onDelete: (Course) -> Unit,
+    onPickConflict: (Course, Course, Int, String) -> Unit,
+) {
+    when (role) {
+        is CellRole.SoloStart -> SoloCourseCell(
+            course = role.course,
+            roomHint = roomHint,
+            spanCount = role.spanCount,
+            dayColWidth = dayColWidth,
+            cellHeight = cellHeight,
+            x = 0.dp,
+            y = 0.dp,
+            weekday = weekday,
+            hasAssignment = role.course.courseNo in courseNosWithAssignments,
+            assignmentsIgnored = role.course.courseNo in courseNosIgnoringAssignments,
+            onTap = { viewModel.selectCourse(role.course, weekday, periodId) },
+            onLongPress = onLongPress,
+            onRename = onRename,
+            onPickColor = onPickColor,
+            onToggleIgnoreAssignments = onToggleIgnoreAssignments,
+            onDelete = onDelete,
+        )
+
+        is CellRole.ConflictStart -> ConflictCourseCell(
+            cellRole = role,
+            dayColWidth = dayColWidth,
+            cellHeight = cellHeight,
+            x = 0.dp,
+            y = 0.dp,
+            weekday = weekday,
+            periodId = periodId,
+            hasAssignmentA = role.courseA.courseNo in courseNosWithAssignments,
+            hasAssignmentB = role.courseB.courseNo in courseNosWithAssignments,
+            assignmentsIgnoredA = role.courseA.courseNo in courseNosIgnoringAssignments,
+            assignmentsIgnoredB = role.courseB.courseNo in courseNosIgnoringAssignments,
+            onPickConflict = onPickConflict,
+            onLongPress = onLongPress,
+            onRename = onRename,
+            onPickColor = onPickColor,
+            onToggleIgnoreAssignments = onToggleIgnoreAssignments,
+            onDelete = onDelete,
+        )
+
+        is CellRole.MultiConflictStart -> MultiConflictCourseCell(
+            cellRole = role,
+            dayColWidth = dayColWidth,
+            cellHeight = cellHeight,
+            x = 0.dp,
+            y = 0.dp,
+            weekday = weekday,
+            hasAssignment = { courseNo -> courseNo in courseNosWithAssignments },
+            assignmentsIgnored = { courseNo -> courseNo in courseNosIgnoringAssignments },
+            onSelect = { course, firstPeriodId -> viewModel.selectCourse(course, weekday, firstPeriodId) },
+            onLongPress = onLongPress,
+            onRename = onRename,
+            onPickColor = onPickColor,
+            onToggleIgnoreAssignments = onToggleIgnoreAssignments,
+            onDelete = onDelete,
+        )
+
+        // Rendered as part of an earlier start, or an empty slot drawn under the courses.
+        CellRole.Empty, CellRole.Skip -> Unit
+    }
+}
+

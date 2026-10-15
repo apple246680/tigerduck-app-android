@@ -17,7 +17,7 @@ import org.robolectric.annotation.Config
 class CredentialManagerMoodleTest {
 
     private val prefs = RuntimeEnvironment.getApplication().getSharedPreferences("credentials-test", Context.MODE_PRIVATE)
-    private val credentials = CredentialManager(context = null, givenPrefs = prefs)
+    private val credentials = CredentialManager(prefs)
 
     @Test
     fun `the private token is stored with the token while the account is signed in, and goes at sign-out`() {

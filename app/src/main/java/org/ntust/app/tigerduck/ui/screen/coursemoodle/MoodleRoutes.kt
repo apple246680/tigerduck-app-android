@@ -1,16 +1,13 @@
 package org.ntust.app.tigerduck.ui.screen.coursemoodle
 
 /**
- * The course detail and the Moodle screens it opens, each a page of the app's own navigation, so
- * back, predictive back and the School Mail compose a member's email opens all stack as any
- * other page does.
+ * The course detail and the Moodle screens it opens, each a page of the course detail sheet's own
+ * navigation (see CourseDetailSheet), so back, predictive back and the School Mail compose a
+ * member's email opens all stack inside the sheet.
  */
 object MoodleRoutes {
-    /** The course detail of the class table's selected course. */
+    /** The course detail of the class table's selected course, where the sheet's navigation starts. */
     const val COURSE_DETAIL = "classTable/course"
-
-    /** What every Moodle page's route starts with. */
-    const val PREFIX = "courseMoodle/"
 
     const val ANNOUNCEMENTS = "courseMoodle/{courseId}/announcements"
     const val ANNOUNCEMENT = "courseMoodle/{courseId}/announcements/{discussionId}"
