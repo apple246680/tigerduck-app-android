@@ -287,13 +287,21 @@ class MainActivity : AppCompatActivity() {
 
                         // The one Play Store rating ask (issue #332), at a
                         // moment ReviewPrompt picks and, like the prompt
-                        // above, not over another prompt.
+                        // above, not over another prompt: the root-level
+                        // ones here, AppNavigation's permission warning,
+                        // reset dialog and sign-in sheet, and the retired-
+                        // API dialog. A dialog a page owns is the page's to
+                        // hold the moment back for.
                         val popupPending by serverPushPopupCoordinator.pending.collectAsStateWithLifecycle()
+                        val permissionWarning by appState.systemPermissions.warningShowing.collectAsStateWithLifecycle()
+                        val needsReset by appState.needsUserReset.collectAsStateWithLifecycle()
+                        val apiRetired by ApiVersionGate.isRetired.collectAsStateWithLifecycle()
                         ReviewPromptHost(
                             reviewPrompt = reviewPrompt,
                             inAppReview = inAppReview,
                             otherPromptShowing = whatsNewFlow.value != null || updatePending != null ||
-                                pendingPrompt != null || popupPending != null,
+                                pendingPrompt != null || popupPending != null || permissionWarning ||
+                                needsReset || apiRetired || appState.ntustSignInSheetRequested,
                         )
 
                         // Operator-issued popup: rendered over whatever screen
@@ -733,7 +741,13 @@ private fun ReviewPromptHost(
     val activity = LocalContext.current as? Activity ?: return
     if (!pending || otherPromptShowing) return
     // Keyed on nothing: a recomposition while Play is being asked for the
-    // flow must not ask twice. Leaving composition — a failure withdrew the
-    // ask, or another prompt opened — cancels that request before a launch.
-    LaunchedEffect(Unit) { reviewPrompt.launched(inAppReview.launch(activity)) }
+    // flow must not ask twice. Leaving composition — the ask withdrawn, or
+    // another prompt opened — cancels that request before a launch; and the
+    // request is a round trip, so ReviewPrompt re-checks its gates before
+    // the flow it brought back is started.
+    LaunchedEffect(Unit) {
+        val flow = inAppReview.request()
+        if (flow == null) reviewPrompt.refused()
+        else reviewPrompt.launchIfStillCalm { inAppReview.launch(activity, flow) }
+    }
 }

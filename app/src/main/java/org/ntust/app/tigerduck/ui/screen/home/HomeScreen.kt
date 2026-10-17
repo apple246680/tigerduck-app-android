@@ -165,6 +165,8 @@ fun HomeScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.syncOnForeground()
+                // The page's own resume, for the Play rating's moment.
+                viewModel.onPageResumed()
             } else if (event == Lifecycle.Event.ON_PAUSE) {
                 viewModel.onHomePaused()
             }

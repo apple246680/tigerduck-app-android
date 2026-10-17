@@ -13,7 +13,7 @@ import java.time.LocalDate
  * class table has loaded on [ReviewPrompt.DAYS_OF_USE] different days.
  *
  * Flavor-neutral: the same rule runs on fdroid, where the launcher is a stub
- * that never launches, so nothing is recorded as asked there.
+ * that never hands out a flow, so nothing is recorded as asked there.
  */
 class ReviewPromptTest {
 
@@ -39,6 +39,13 @@ class ReviewPromptTest {
             today = day
             classTableLoaded()
         }
+    }
+
+    /** Five days of use and a calm moment: the ask is pending. */
+    private fun readyProcess(): ReviewPrompt = process().also {
+        it.loadedOn(days(5))
+        it.calmMoment()
+        assertTrue(it.pending.value)
     }
 
     @Test
@@ -81,13 +88,19 @@ class ReviewPromptTest {
     }
 
     @Test
-    fun `never asks again once the flow was launched`() {
-        val prompt = process()
-        prompt.loadedOn(days(5))
-        prompt.calmMoment()
-        prompt.launched(true)
-        assertFalse(prompt.pending.value)
+    fun `launches the flow Play handed out while the gates still hold`() {
+        val prompt = readyProcess()
+        var launches = 0
+        prompt.launchIfStillCalm { launches++; true }
+        assertEquals(1, launches)
         assertTrue(store.reviewPromptAsked)
+        assertFalse(prompt.pending.value)
+    }
+
+    @Test
+    fun `never asks again once the flow was launched`() {
+        val prompt = readyProcess()
+        prompt.launchIfStillCalm { true }
 
         prompt.loadedOn(days(9))
         prompt.calmMoment()
@@ -113,6 +126,37 @@ class ReviewPromptTest {
     }
 
     @Test
+    fun `does not launch a flow handed out after the user signed out, and asks again later`() {
+        val prompt = readyProcess()
+        // The round trip to Play took long enough for a sign-out, a sign-in
+        // sheet or a source failing.
+        mayAsk = false
+        var launched = false
+        prompt.launchIfStillCalm { launched = true; true }
+        assertFalse(launched)
+        assertFalse(store.reviewPromptAsked)
+        assertFalse(prompt.pending.value)
+
+        mayAsk = true
+        prompt.calmMoment()
+        assertTrue("a withdrawn ask is not an attempt", prompt.pending.value)
+    }
+
+    @Test
+    fun `a gate flipping while the ask is pending withdraws it`() {
+        val prompt = readyProcess()
+        mayAsk = false
+        prompt.recheck()
+        assertFalse(prompt.pending.value)
+
+        mayAsk = true
+        prompt.recheck()
+        assertFalse("a recheck never arms the ask", prompt.pending.value)
+        prompt.calmMoment()
+        assertTrue(prompt.pending.value)
+    }
+
+    @Test
     fun `does not ask right after a load failed`() {
         val prompt = process()
         prompt.loadedOn(days(5))
@@ -126,13 +170,19 @@ class ReviewPromptTest {
     }
 
     @Test
-    fun `a failure withdraws an ask not yet launched`() {
-        val prompt = process()
-        prompt.loadedOn(days(5))
-        prompt.calmMoment()
-        assertTrue(prompt.pending.value)
+    fun `a failure withdraws an ask not yet launched, and the flow Play then hands out stays unlaunched`() {
+        val prompt = readyProcess()
         prompt.loadFailed()
         assertFalse(prompt.pending.value)
+
+        var launched = false
+        prompt.launchIfStillCalm { launched = true; true }
+        assertFalse(launched)
+        assertFalse(store.reviewPromptAsked)
+
+        prompt.classTableLoaded()
+        prompt.calmMoment()
+        assertTrue("a withdrawn ask is not an attempt", prompt.pending.value)
     }
 
     @Test
@@ -150,11 +200,10 @@ class ReviewPromptTest {
 
     @Test
     fun `tries once per process when Play would not hand out the flow`() {
-        val prompt = process()
-        prompt.loadedOn(days(5))
-        prompt.calmMoment()
-        prompt.launched(false)
+        val prompt = readyProcess()
+        prompt.refused()
         assertFalse(store.reviewPromptAsked)
+        assertFalse(prompt.pending.value)
         prompt.calmMoment()
         assertFalse("tried again in the same process", prompt.pending.value)
 
@@ -162,5 +211,14 @@ class ReviewPromptTest {
         later.classTableLoaded()
         later.calmMoment()
         assertTrue("not tried again in a later process", later.pending.value)
+    }
+
+    @Test
+    fun `a flow that would not start is this process's one attempt too`() {
+        val prompt = readyProcess()
+        prompt.launchIfStillCalm { false }
+        assertFalse(store.reviewPromptAsked)
+        prompt.calmMoment()
+        assertFalse(prompt.pending.value)
     }
 }

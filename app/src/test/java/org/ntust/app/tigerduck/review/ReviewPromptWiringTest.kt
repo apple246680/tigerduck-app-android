@@ -1,19 +1,24 @@
 package org.ntust.app.tigerduck.review
 
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
 /**
- * Where [ReviewPrompt] is told about the class table (tigerduck-app-android#332).
- * The two view models take some twenty collaborators each and cannot be built
- * in a JVM test, so what this pins is that they still make the calls; read
- * from the source, as ClassTableWiringTest does.
+ * Where [ReviewPrompt] is told about the class table and where the ask is
+ * launched (tigerduck-app-android#332). The two view models take some twenty
+ * collaborators each and cannot be built in a JVM test, so what this pins is
+ * that they, their pages and MainActivity still make the calls; read from
+ * the source, as ClassTableWiringTest does.
  */
 class ReviewPromptWiringTest {
 
     private val classTable = "src/main/java/org/ntust/app/tigerduck/ui/screen/classtable/ClassTableViewModel.kt"
     private val home = "src/main/java/org/ntust/app/tigerduck/ui/screen/home/HomeViewModel.kt"
+    private val classTableScreen = "src/main/java/org/ntust/app/tigerduck/ui/screen/classtable/ClassTableScreen.kt"
+    private val homeScreen = "src/main/java/org/ntust/app/tigerduck/ui/screen/home/HomeScreen.kt"
+    private val mainActivity = "src/main/java/org/ntust/app/tigerduck/MainActivity.kt"
 
     private fun source(rel: String): List<String> {
         var dir: File? = File("").absoluteFile
@@ -56,12 +61,44 @@ class ReviewPromptWiringTest {
         assertTrue("fetchData no longer reports a failed fetch", "reviewPrompt.loadFailed()" in body)
     }
 
+    /** The moment comes from the page on screen, not from a foreground return whatever page shows. */
     @Test
-    fun `a return to Home or the class table is a moment to ask at`() {
+    fun `a resume of Home or the class table, on screen, is the moment to ask at`() {
         for (rel in listOf(classTable, home)) {
+            assertTrue("$rel: onPageResumed no longer offers a calm moment", "reviewPrompt.calmMoment()" in body(rel, "onPageResumed"))
             for (name in listOf("onPageShown", "onAppForeground")) {
-                assertTrue("$rel: $name no longer offers a calm moment", "reviewPrompt.calmMoment()" in body(rel, name))
+                assertFalse("$rel: $name offers a calm moment whatever page is on screen", "reviewPrompt.calmMoment()" in body(rel, name))
             }
+        }
+    }
+
+    /** A return from the background can find the course detail sheet open. */
+    @Test
+    fun `no moment over the course detail sheet`() {
+        for (rel in listOf(classTable, home)) {
+            val body = body(rel, "onPageResumed")
+            val sheet = body.indexOf("_selectedCourse.value != null")
+            assertTrue("$rel: onPageResumed no longer holds the moment back over the course sheet", sheet in 0 until body.indexOf("reviewPrompt.calmMoment()"))
+        }
+    }
+
+    @Test
+    fun `each page reports its own resume`() {
+        for (rel in listOf(classTableScreen, homeScreen)) {
+            val text = source(rel).joinToString("\n")
+            assertTrue("$rel no longer reports ON_RESUME to its view model", "Lifecycle.Event.ON_RESUME" in text && "viewModel.onPageResumed()" in text)
+        }
+    }
+
+    @Test
+    fun `the host keeps the ask off the other dialogs`() {
+        val text = source(mainActivity).joinToString("\n")
+        val call = text.substring(text.indexOf("ReviewPromptHost("), text.indexOf("// Operator-issued popup"))
+        for (state in listOf(
+            "whatsNewFlow.value != null", "updatePending != null", "pendingPrompt != null", "popupPending != null",
+            "permissionWarning", "needsReset", "apiRetired", "ntustSignInSheetRequested",
+        )) {
+            assertTrue("ReviewPromptHost no longer stays off $state", state in call)
         }
     }
 }

@@ -516,22 +516,29 @@ class HomeViewModel @Inject constructor(
     fun onAppForeground() {
         if (!hasLoaded || !authService.authState.value) return
         if (refreshTriggers.onForeground()) fetchOnReturn()
-        // A return with Home on screen is the Play rating's moment, if
-        // ReviewPrompt agrees (issue #332).
-        reviewPrompt.calmMoment()
     }
 
     /** Home was shown: on launch, or on coming back to it from another page. */
     fun onPageShown() {
         if (!authService.authState.value) return
         if (refreshTriggers.onShown()) fetchOnReturn()
-        // See onAppForeground; on the launch's first showing, before any
-        // load, ReviewPrompt declines.
-        reviewPrompt.calmMoment()
     }
 
     /** The page left the screen for another page; see PageLeftEffect. */
     fun onPageLeft() = refreshTriggers.onLeft()
+
+    /**
+     * Home is on screen and the activity resumed: on coming to the page, and
+     * on each return from the background with it showing — the page's own
+     * ON_RESUME, so a return with another page up is not one. The Play
+     * rating's moment (issue #332), if ReviewPrompt agrees; not over the
+     * course sheet, which such a return can find open. On the launch's
+     * first resume, before any load, ReviewPrompt declines.
+     */
+    fun onPageResumed() {
+        if (_selectedCourse.value != null) return
+        reviewPrompt.calmMoment()
+    }
 
     private fun fetchOnReturn() {
         // Quietly: nobody asked, so no snackbar, and a fetch bound to fail
