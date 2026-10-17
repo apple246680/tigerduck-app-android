@@ -548,6 +548,9 @@ class ClassTableViewModel @Inject constructor(
                 )
                 if (relabeled != _courses.value) {
                     _courses.value = relabeled
+                    // An edit of the list like any other, for a commit
+                    // reading the term meanwhile; see noteTermEdit.
+                    noteTermEdit(semester)
                     dataCache.saveCourses(relabeled, semester)
                     TigerDuckTheme.buildCourseColorMap(relabeled)
                 }

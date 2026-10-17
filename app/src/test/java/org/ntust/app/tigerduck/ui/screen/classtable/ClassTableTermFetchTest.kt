@@ -130,12 +130,20 @@ class ClassTableTermFetchTest {
         var generation = 0
         var cacheReads = 0
 
-        /** A delete as the view model makes one: off the list at once, the tombstone's write after. */
-        fun delete(courseNo: String, written: Boolean) {
+        /**
+         * A delete as the view model makes one: off the list at once, the edit counted, the
+         * tombstone pending; its write lands with [written], at once when [written] is set.
+         */
+        fun delete(courseNo: String, written: Boolean = false): Long {
             shown = shown?.filter { it.courseNo != courseNo }
             generation++
             val id = edits.edit { CourseTombstoneKeys.hide(courseNo, "1151", it) }
-            if (!written) return
+            if (written) written(courseNo, id)
+            return id
+        }
+
+        /** The delete's tombstone write landed: the file carries it, and the pending edit is retired. */
+        fun written(courseNo: String, id: Long) {
             file = CourseTombstoneKeys.hide(courseNo, "1151", file)
             edits.saved(id)
         }
@@ -243,6 +251,30 @@ class ClassTableTermFetchTest {
         snapshot.delete("GONE", written = true)
         snapshot.cacheGate.complete(Unit)
         advanceUntilIdle()
+        assertEquals(listOf("A"), out()!!.map { it.courseNo })
+    }
+
+    @Test
+    fun `a delete tapped before the commit, whose tombstone is written during the cache read, stays deleted`() = runTest {
+        // No edit falls inside the reads, so the snapshot is not taken again: only the order of
+        // the reads keeps GONE out. The tap left the pending edit as the delete's only record;
+        // its write lands, and retires that edit, while the cache is read — so the file has to
+        // be read after the cache. Read the other way round, the file predates the write and
+        // the edit is gone by the fold, and GONE's roster answer brings it back.
+        gate.complete(Unit)
+        val answers = lookUp(listOf("A", "GONE"), before = listOf(course("A"), course("GONE")))
+        val snapshot = Snapshot().apply {
+            cached = listOf(course("A"), course("GONE"))
+            shown = listOf(course("A"), course("GONE"))
+            fileGate.complete(Unit)
+        }
+        val tombstone = snapshot.delete("GONE")
+        val out = foldLatest(answers, snapshot)
+        advanceUntilIdle()
+        snapshot.written("GONE", tombstone)
+        snapshot.cacheGate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(1, snapshot.cacheReads)
         assertEquals(listOf("A"), out()!!.map { it.courseNo })
     }
 

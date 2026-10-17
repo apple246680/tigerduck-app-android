@@ -136,6 +136,14 @@ class ClassTableWiringTest {
             val noted = body.indexOf("noteTermEdit(")
             assertTrue("$name no longer counts its edit right after making it", edit in 0 until noted)
         }
+        // The abbreviation relabel is an edit too, made from a collector in init rather than a function.
+        val source = source().joinToString("\n")
+        val relabel = source.indexOf("_courses.value = relabeled")
+        assertTrue("the relabel collector is gone", relabel >= 0)
+        assertTrue(
+            "the abbreviation relabel no longer counts its edit right after making it",
+            source.indexOf("noteTermEdit(semester)", relabel) in relabel until source.indexOf("dataCache.saveCourses(relabeled", relabel),
+        )
         assertCalls("fetchTermCourses", "editGeneration = { termEdits[semester] ?: 0 }")
     }
 
