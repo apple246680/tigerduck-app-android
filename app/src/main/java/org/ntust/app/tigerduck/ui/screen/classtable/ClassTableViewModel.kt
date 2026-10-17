@@ -1516,7 +1516,7 @@ class ClassTableViewModel @Inject constructor(
             // independent — run them concurrently and apply each result as
             // soon as it lands.
             coroutineScope {
-                val coursesJob = launch { fetchTermCourses(semester, orderedCourseNos, moodleByNo) }
+                val coursesJob = launch { fetchTermCourses(semester, orderedCourseNos, moodleByNo, countsAsUse = true) }
 
                 // Assignments are always "upcoming from now", so they belong
                 // to the active enrolment — fetch only when viewing the
@@ -1603,6 +1603,8 @@ class ClassTableViewModel @Inject constructor(
         semester: String,
         rosterNos: List<String>,
         moodleByNo: Map<String, MoodleEnrolledCourse>,
+        // The page's own fetch is a day of use; a warm of the other terms is not.
+        countsAsUse: Boolean = false,
         mayCommit: () -> Boolean = { true },
     ): Boolean {
         val answers = termFetch.lookUp(semester, rosterNos, moodleByNo, before = latestCourses(semester))
@@ -1634,7 +1636,7 @@ class ClassTableViewModel @Inject constructor(
             dataCache.saveCourses(merged, semester)
             // The class table loaded: a day of use towards the Play rating ask
             // (issue #332).
-            reviewPrompt.classTableLoaded()
+            if (countsAsUse) reviewPrompt.classTableLoaded()
             // Superseded during the save: the reset's wipe, or the newer
             // fetch's save, takes the file, and these rows need not go up to
             // be taken down again.

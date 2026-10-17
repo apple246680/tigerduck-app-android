@@ -93,7 +93,7 @@ class ClassTableWiringTest {
      */
     @Test
     fun `a fetch looks the term's hand-added courses up again, onto the list as the user left it`() {
-        assertCalls("fetchData", "fetchTermCourses(semester, orderedCourseNos, moodleByNo)")
+        assertCalls("fetchData", "fetchTermCourses(semester, orderedCourseNos, moodleByNo, countsAsUse = true)")
         assertCalls("fetchTermCourses", "termFetch.lookUp(", "termFetch.foldLatest(", "latestCourses(semester)")
         assertCalls("latestCourses", "if (coursesSemester == semester) _courses.value else dataCache.loadCourses(semester)")
     }
