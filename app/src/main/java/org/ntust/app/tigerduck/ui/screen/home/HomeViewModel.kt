@@ -701,11 +701,16 @@ class HomeViewModel @Inject constructor(
 
                     // Null when Moodle failed or was not asked; an empty list
                     // is its answer and replaces the cache like any other.
-                    // See CourseRosterMerge.assignmentsToStore.
-                    if (remoteAssignments != null) {
-                        assignments = remoteAssignments.assignments
-                        moodleService.storeAssignments(remoteAssignments.assignments, remoteAssignments.answer)
-                        runCatching { pushApiClient.uploadAssignments(remoteAssignments.assignments) }
+                    // See CourseRosterMerge.assignmentsToStore. What is shown
+                    // and uploaded is the list as written, which the write
+                    // reconciles against newer answers; nothing when the write
+                    // was refused.
+                    val written = remoteAssignments?.let {
+                        moodleService.storeAssignments(it.assignments, it.answer)
+                    }
+                    if (written != null) {
+                        assignments = written
+                        runCatching { pushApiClient.uploadAssignments(written) }
                             .onFailure {
                                 prefs.setLastSyncSource(SyncSource.LOCAL)
                                 Log.w("HomeViewModel", "uploadAssignments failed (non-fatal): ${it.logSummary()}")

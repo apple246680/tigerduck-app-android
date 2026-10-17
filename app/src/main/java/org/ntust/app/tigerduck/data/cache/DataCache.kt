@@ -310,8 +310,9 @@ class DataCache @Inject constructor(
     /**
      * Stores what [transform] makes of the cached assignments, read and
      * written under one hold of the cache's lock: a save landing between a
-     * separate load and save would be undone by that save. False, and
-     * nothing written, when the data was wiped since [generation].
+     * separate load and save would be undone by that save. The list as
+     * written, for the caller to show, upload and arm reminders from; null,
+     * and nothing written, when the data was wiped since [generation].
      *
      * [transform] runs only after that check and under the same lock, so a
      * sign-out cannot wipe the data while it runs.
@@ -319,19 +320,18 @@ class DataCache @Inject constructor(
     suspend fun updateAssignments(
         generation: Int? = null,
         transform: (List<Assignment>) -> List<Assignment>,
-    ): Boolean {
+    ): List<Assignment>? {
         val expected = generation ?: writeGeneration()
         val type = object : TypeToken<List<Assignment>>() {}.type
         val written = cacheMutex.withLock {
-            if (expected != userDataGeneration) return@withLock false
+            if (expected != userDataGeneration) return@withLock null
             withContext(Dispatchers.IO) {
                 val file = File(cacheDir, "assignments.json")
                 val current = readJson<List<Assignment>>(file, type) ?: emptyList()
-                atomicWrite(file, gson.toJson(transform(current)))
+                transform(current).also { atomicWrite(file, gson.toJson(it)) }
             }
-            true
         }
-        if (written) _assignmentsVersion.update { it + 1 }
+        if (written != null) _assignmentsVersion.update { it + 1 }
         return written
     }
 

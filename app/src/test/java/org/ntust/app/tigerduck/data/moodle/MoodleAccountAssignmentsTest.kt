@@ -42,7 +42,7 @@ class MoodleAccountAssignmentsTest {
 
     private val submitted = MoodleAssignmentSubmission(
         status = "submitted", modified = 1_790_500_000L, files = emptyList(), onlineText = "<p>Done</p>", id = 5501,
-        takesComments = true, groupId = 31, groupName = null, comments = null,
+        takesComments = true, groupId = 31, groupName = null, comments = null, grade = null,
     )
     private val comment = MoodleSubmissionComment(901, "T00001 @ Duck Teacher", 1_790_505_000L, "<p>Please check page 2.</p>")
 

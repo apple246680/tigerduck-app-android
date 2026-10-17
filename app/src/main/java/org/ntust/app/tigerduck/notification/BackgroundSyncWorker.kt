@@ -475,8 +475,10 @@ class BackgroundSyncWorker @AssistedInject constructor(
                 remote = answer.assignments,
                 cached = dataCache.loadAssignments(),
             ) ?: return true
-            moodleService.storeAssignments(merged, answer)
-            runCatching { pushApiClient.uploadAssignments(merged) }
+            // Uploaded as written: the write reconciles the list against
+            // newer answers, and nothing is uploaded when it was refused.
+            val written = moodleService.storeAssignments(merged, answer) ?: return true
+            runCatching { pushApiClient.uploadAssignments(written) }
                 .onFailure {
                     prefs.setLastSyncSource(SyncSource.LOCAL)
                     Log.w(TAG, "uploadAssignments failed (non-fatal): ${it.logSummary()}")

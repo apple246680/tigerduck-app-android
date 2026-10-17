@@ -56,8 +56,8 @@ class AssignmentStatusWriter internal constructor(
         // Checked before the ledger takes the answer: an answer for the account that left must
         // not stand in the way of the next account's round for the same id.
         if (answer.generation != dataCache.userDataGeneration) return false
-        var written: List<Assignment>? = null
-        val wrote = dataCache.updateAssignments(answer.generation) { assignments ->
+        var changed = false
+        val written = dataCache.updateAssignments(answer.generation) { assignments ->
             // Offered under the cache's lock, which a round's write holds too, so a round that
             // writes between the offer and this write cannot be overwritten by an older answer.
             if (!ledger.offer(answer)) return@updateAssignments assignments
@@ -66,12 +66,13 @@ class AssignmentStatusWriter internal constructor(
             val current = assignments[index]
             val submittedAt = answer.submittedAtMs?.let(::Date)
             if (current.isCompleted == answer.submitted && current.submittedAt == submittedAt) return@updateAssignments assignments
+            changed = true
             assignments.toMutableList().apply {
                 this[index] = current.copy(isCompleted = answer.submitted, submittedAt = submittedAt)
-            }.also { written = it }
+            }
         }
-        val changed = written?.takeIf { wrote } ?: return false
-        published(changed)
+        if (written == null || !changed) return false
+        published(written)
         return true
     }
 }

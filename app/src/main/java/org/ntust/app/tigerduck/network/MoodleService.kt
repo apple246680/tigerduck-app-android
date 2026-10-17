@@ -386,14 +386,26 @@ class MoodleService @Inject constructor(
      * Writes [assignments], a round's [answer] as the caller merged it, to the cache, with each
      * status reconciled against the newest answer accepted for the assignment by the round's own
      * request time, so an older round cannot take back a page's or a later round's status. Under
-     * the cache's lock, so a page's write cannot pass it. False, and nothing written, once the
-     * data was wiped under the round.
+     * the cache's lock, so a page's write cannot pass it.
+     *
+     * The list as written, which is what the caller shows, uploads and arms reminders from: the
+     * reconciliation can change what the caller merged. Null, and nothing written, once the data
+     * was wiped under the round, when the caller publishes nothing.
      */
-    suspend fun storeAssignments(assignments: List<Assignment>, answer: AssignmentsAnswer): Boolean =
-        dataCache.updateAssignments(answer.generation) { statusLedger.reconcile(assignments, answer.statuses, answer.generation) }
+    suspend fun storeAssignments(assignments: List<Assignment>, answer: AssignmentsAnswer): List<Assignment>? =
+        storeAssignments(dataCache, statusLedger, assignments, answer)
 
     companion object {
         private val decodeGson = Gson()
+
+        /** The write behind [MoodleService.storeAssignments], on the given cache and ledger. */
+        internal suspend fun storeAssignments(
+            dataCache: DataCache,
+            ledger: AssignmentStatusLedger,
+            assignments: List<Assignment>,
+            answer: AssignmentsAnswer,
+        ): List<Assignment>? =
+            dataCache.updateAssignments(answer.generation) { ledger.reconcile(assignments, answer.statuses, answer.generation) }
 
         /**
          * What each round keeps of every assignment of the answer, the undated and the ones

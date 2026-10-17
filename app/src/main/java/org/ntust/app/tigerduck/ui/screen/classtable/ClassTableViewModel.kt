@@ -1419,9 +1419,12 @@ class ClassTableViewModel @Inject constructor(
                                 remote = answer?.assignments,
                                 cached = _assignments.value,
                             )
-                            if (merged != null && answer != null) {
-                                _assignments.value = merged
-                                moodleService.storeAssignments(merged, answer)
+                            // Shown as written: the write reconciles the list
+                            // against newer answers, and nothing shows or is
+                            // armed when it was refused.
+                            val written = if (merged != null && answer != null) moodleService.storeAssignments(merged, answer) else null
+                            if (written != null) {
+                                _assignments.value = written
                                 // The reminders and the Live Update follow the
                                 // cache, as Home and the worker make them do.
                                 notificationScheduler.rescheduleFromCache(dataCache, appPreferences)
