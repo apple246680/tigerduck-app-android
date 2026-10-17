@@ -3,6 +3,7 @@ package org.ntust.app.tigerduck.ui.screen.settings
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
+import org.ntust.app.tigerduck.data.PendingCourseOverrides
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.push.PushApiClient
 import org.ntust.app.tigerduck.shared.Course
@@ -30,10 +31,12 @@ internal class CourseSyncOffException : IllegalStateException("course sync is of
  * [CourseSyncBackend] over [PushApiClient], whose course requests return
  * quietly unsent with cloud or course sync off. Use Local's fail instead, so
  * it stops rather than follow a term reset with an upload that never went.
+ * The names go through [PendingCourseOverrides], as every name PATCH does.
  */
 internal class PushCourseSyncBackend(
     private val api: PushApiClient,
     private val prefs: AppPreferences,
+    private val overrides: PendingCourseOverrides,
 ) : CourseSyncBackend {
     private fun ensureSends() {
         if (!prefs.cloudSyncEnabled || !prefs.syncCourses) throw CourseSyncOffException()
@@ -57,7 +60,9 @@ internal class PushCourseSyncBackend(
 
     override suspend fun patchCustomName(moodleId: String, name: String, locale: String) {
         ensureSends()
-        api.patchCourseOverride(moodleId, customName = name, locale = locale)
+        // Through the outbox: kept until it lands, and in place of an older
+        // name of the course still waiting, which would land over this one.
+        overrides.send(moodleId, customName = name, locale = locale)
     }
 }
 

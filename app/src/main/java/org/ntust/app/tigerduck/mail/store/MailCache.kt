@@ -50,6 +50,19 @@ class MailCache(
         )
     }
 
+    /**
+     * [saveFolder] while [stillCurrent] says the page is still the signed-in account's, asked
+     * under the lock [clearAll] takes, and says whether it saved. As [saveBodyIf]: a sign-out
+     * moves its account before it clears the cache, so a page it allows lands before that clear
+     * and goes with it, and a page that lands after it is not kept for whoever signs in next.
+     */
+    @Synchronized
+    fun saveFolderIf(folder: String, page: MailPage, stillCurrent: () -> Boolean): Boolean {
+        if (!stillCurrent()) return false
+        saveFolder(folder, page)
+        return true
+    }
+
     /** Drops [folder]'s cached page, e.g. once its UIDVALIDITY no longer matches the server's. */
     @Synchronized
     fun deleteFolder(folder: String) {

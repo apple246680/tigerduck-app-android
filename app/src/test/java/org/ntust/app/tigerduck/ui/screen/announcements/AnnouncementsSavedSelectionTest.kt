@@ -2,6 +2,7 @@ package org.ntust.app.tigerduck.ui.screen.announcements
 
 import android.app.Application
 import android.content.Context
+import androidx.lifecycle.SavedStateHandle
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -23,6 +24,7 @@ import org.ntust.app.tigerduck.mail.MainDispatcherRule
 import org.ntust.app.tigerduck.network.BulletinApiClient
 import org.ntust.app.tigerduck.network.model.BulletinSummary
 import org.ntust.app.tigerduck.network.model.OrgLabel
+import org.ntust.app.tigerduck.network.model.TagLabel
 import org.ntust.app.tigerduck.network.model.TaxonomyResponse
 import org.ntust.app.tigerduck.ui.screen.announcements.AnnouncementsViewModel.LoadState
 import org.ntust.app.tigerduck.util.AppReturns
@@ -34,26 +36,26 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * "Remember bulletin filter": the saved departments go on only once the department chips can
- * show them, only those the department list still has, and never over a pick made on the visit.
+ * A selection belongs to the visit that made it: kept in the back-stack entry's
+ * [SavedStateHandle], it comes back when Android kills the process while a bulletin is open and
+ * the user presses Back into a recreated view model. It goes on once the chips can show it, and
+ * only the ids the department and category lists still have. A new entry, with nothing saved,
+ * starts empty ([AnnouncementsFilterStartsEmptyTest]).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
-class AnnouncementsRememberedFilterTest {
+class AnnouncementsSavedSelectionTest {
 
     @get:Rule val main = MainDispatcherRule()
 
     private val context = RuntimeEnvironment.getApplication()
     private val prefs = AppPreferences(context).apply {
         announcementApiBaseUrlOverride = "http://127.0.0.1:9/v3"
-        rememberAnnouncementFilter = true
-        savedAnnouncementOrgs = setOf("library", "gone")
     }
     private val cache = BulletinCache(context)
     private val repository = BulletinRepository()
 
-    /** Whether the backend answers the department list; it waits on [taxonomyGate] first. */
-    @Volatile private var taxonomyAnswers = true
+    /** The backend answers the department list only once [taxonomyGate] opens. */
     private val taxonomyGate = CountDownLatch(1)
     private val taxonomyRequests = AtomicInteger()
 
@@ -66,7 +68,7 @@ class AnnouncementsRememberedFilterTest {
                 path.endsWith("/bulletins/taxonomy") -> {
                     taxonomyRequests.incrementAndGet()
                     taxonomyGate.await(5, TimeUnit.SECONDS)
-                    TAXONOMY.takeIf { taxonomyAnswers }
+                    TAXONOMY
                 }
                 else -> null
             }
@@ -82,11 +84,19 @@ class AnnouncementsRememberedFilterTest {
 
     @After fun openGate() = taxonomyGate.countDown()
 
-    private fun viewModel(): AnnouncementsViewModel {
+    /** What the entry saved: a department and a category, and one id of each the lists no longer have. */
+    private fun savedSelection() = SavedStateHandle(
+        mapOf(
+            "selectedOrgs" to arrayOf("library", "gone"),
+            "selectedTags" to arrayOf("exam", "gone"),
+        )
+    )
+
+    private fun viewModel(handle: SavedStateHandle): AnnouncementsViewModel {
         val tokens = V3TokenStore(context.getSharedPreferences("v3-tokens-test", Context.MODE_PRIVATE))
         val api = BulletinApiClient(client, prefs, AuthTokenManager(tokens, client, prefs, "device-1"))
         return AnnouncementsViewModel(
-            api, cache, repository, BulletinReadStateStore(context), prefs, testDemoAccount(context, prefs, cache),
+            handle, api, cache, repository, BulletinReadStateStore(context), testDemoAccount(context, prefs, cache), testCredentials(context),
             AppReturns(now = { 0L }, register = {}),
         )
     }
@@ -103,92 +113,74 @@ class AnnouncementsRememberedFilterTest {
     private fun AnnouncementsViewModel.shownIds() = state.value.displayed.map { it.id }.toSet()
 
     @Test
-    fun `the remembered departments wait for the department list, and only those it has return`() {
-        val vm = viewModel()
+    fun `the entry's selection returns once the department list arrives, only the ids it has`() {
+        val vm = viewModel(savedSelection())
         assertEquals(emptySet<String>(), vm.state.value.selectedOrgs)
+        assertEquals(emptySet<String>(), vm.state.value.selectedTags)
         vm.load()
         eventually("the list loads") { vm.state.value.loadState == LoadState.Loaded }
         eventually("the department list is asked for") { taxonomyRequests.get() > 0 }
         // No chips on screen yet, so nothing is filtered by them.
-        assertEquals(emptySet<String>(), vm.state.value.selectedOrgs)
-        assertEquals(setOf(1, 2), vm.shownIds())
+        assertEquals(setOf(1, 2, 3), vm.shownIds())
 
         taxonomyGate.countDown()
         eventually("the department list arrives") { vm.state.value.taxonomy != null }
 
         assertEquals(setOf("library"), vm.state.value.selectedOrgs)
+        assertEquals(setOf("exam"), vm.state.value.selectedTags)
         assertEquals(setOf(1), vm.shownIds())
     }
 
     @Test
-    fun `without the department list the list stays unfiltered`() {
-        taxonomyAnswers = false
-        taxonomyGate.countDown()
-        val vm = viewModel()
-        vm.load()
-        eventually("the list loads") { vm.state.value.loadState == LoadState.Loaded }
-        eventually("the department list is asked for") { taxonomyRequests.get() > 0 }
-        Thread.sleep(200)
-
-        assertEquals(null, vm.state.value.taxonomy)
-        assertEquals(emptySet<String>(), vm.state.value.selectedOrgs)
-        assertEquals(setOf(1, 2), vm.shownIds())
-        // Still saved for a visit that does get the list.
-        assertEquals(setOf("library", "gone"), prefs.savedAnnouncementOrgs)
-    }
-
-    @Test
-    fun `a department picked on this visit is not replaced by the remembered ones`() {
-        val vm = viewModel()
-        vm.load()
-        eventually("the department list is asked for") { taxonomyRequests.get() > 0 }
-        vm.setOrgFilter(setOf("registrar"))
-
-        taxonomyGate.countDown()
-        eventually("the department list arrives") { vm.state.value.taxonomy != null }
-
-        assertEquals(setOf("registrar"), vm.state.value.selectedOrgs)
-    }
-
-    @Test
-    fun `a return visit with the department list in memory opens on the remembered departments`() {
+    fun `with the department list in memory the entry's selection is there from the start`() {
         runBlocking { repository.getOrFetchTaxonomy { TAXONOMY_VALUE } }
-        runBlocking { cache.save(listOf(bulletin(1, "library"), bulletin(2, "registrar"))) }
+        runBlocking {
+            cache.save(listOf(bulletin(1, "library", "exam"), bulletin(2, "library", "scholarship"), bulletin(3, "registrar", "exam")))
+        }
 
-        val vm = viewModel()
+        val vm = viewModel(savedSelection())
 
         assertEquals(setOf("library"), vm.state.value.selectedOrgs)
+        assertEquals(setOf("exam"), vm.state.value.selectedTags)
         vm.load()
         eventually("the cached list shows") { vm.state.value.items.isNotEmpty() }
         assertEquals(setOf(1), vm.shownIds())
     }
 
     @Test
-    fun `with the setting off nothing is restored`() {
-        prefs.rememberAnnouncementFilter = false
+    fun `a pick on this visit is saved for the entry`() {
         taxonomyGate.countDown()
-        val vm = viewModel()
+        val handle = SavedStateHandle()
+        val vm = viewModel(handle)
         vm.load()
         eventually("the department list arrives") { vm.state.value.taxonomy != null }
 
-        assertEquals(emptySet<String>(), vm.state.value.selectedOrgs)
+        vm.setOrgFilter(setOf("registrar"))
+        vm.setTagFilter(setOf("scholarship"))
+        assertEquals(listOf("registrar"), handle.get<Array<String>>("selectedOrgs")?.toList())
+        assertEquals(listOf("scholarship"), handle.get<Array<String>>("selectedTags")?.toList())
+
+        vm.setOrgFilter(emptySet())
+        assertEquals(emptyList<String>(), handle.get<Array<String>>("selectedOrgs")?.toList())
     }
 
-    private fun bulletin(id: Int, org: String) = BulletinSummary(
+    private fun bulletin(id: Int, org: String, tag: String) = BulletinSummary(
         id = id, externalId = "e$id", title = "Bulletin $id", titleClean = null, canonicalOrg = org,
-        importance = null, summary = null, sourceUrl = null, postedAt = "2026-10-0${id}T00:00:00Z",
+        contentTags = listOf(tag), importance = null, summary = null, sourceUrl = null,
+        postedAt = "2026-10-0${id}T00:00:00Z",
     )
 
     private companion object {
         const val LIST = """{"items":[""" +
-            """{"id":1,"external_id":"e1","title":"One","canonical_org":"library","content_tags":[],"posted_at":"2026-10-01T00:00:00Z"},""" +
-            """{"id":2,"external_id":"e2","title":"Two","canonical_org":"registrar","content_tags":[],"posted_at":"2026-10-02T00:00:00Z"}""" +
+            """{"id":1,"external_id":"e1","title":"One","canonical_org":"library","content_tags":["exam"],"posted_at":"2026-10-01T00:00:00Z"},""" +
+            """{"id":2,"external_id":"e2","title":"Two","canonical_org":"library","content_tags":["scholarship"],"posted_at":"2026-10-02T00:00:00Z"},""" +
+            """{"id":3,"external_id":"e3","title":"Three","canonical_org":"registrar","content_tags":["exam"],"posted_at":"2026-10-03T00:00:00Z"}""" +
             """],"next_cursor":null}"""
         const val TAXONOMY = """{"orgs":[{"id":"library","label":"圖書館"},{"id":"registrar","label":"註冊組"}],""" +
-            """"tags":[],"default_tags":[]}"""
+            """"tags":[{"id":"exam","label":"考試"},{"id":"scholarship","label":"獎學金"}],"default_tags":[]}"""
         val TAXONOMY_VALUE = TaxonomyResponse(
             orgs = listOf(OrgLabel("library", "圖書館"), OrgLabel("registrar", "註冊組")),
-            tags = emptyList(),
+            tags = listOf(TagLabel("exam", "考試"), TagLabel("scholarship", "獎學金")),
             defaultTags = emptyList(),
         )
     }

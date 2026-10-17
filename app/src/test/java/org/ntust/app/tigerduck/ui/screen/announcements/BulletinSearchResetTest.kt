@@ -3,6 +3,7 @@ package org.ntust.app.tigerduck.ui.screen.announcements
 import android.app.Application
 import android.content.Context
 import android.os.Build
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -51,7 +52,8 @@ class BulletinSearchResetTest {
         val returns = AppReturns(now = { clock }, register = { observer = it as DefaultLifecycleObserver })
         val cache = BulletinCache(context)
         vm = AnnouncementsViewModel(
-            api, cache, BulletinRepository(), BulletinReadStateStore(context), prefs, testDemoAccount(context, prefs, cache), returns,
+            SavedStateHandle(), api, cache, BulletinRepository(), BulletinReadStateStore(context),
+            testDemoAccount(context, prefs, cache), testCredentials(context), returns,
         )
     }
 

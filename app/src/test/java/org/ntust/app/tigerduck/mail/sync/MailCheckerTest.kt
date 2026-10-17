@@ -180,7 +180,7 @@ class MailCheckerTest {
         account.signIn("b10000001", "pw")
         server.deliver("seen in the list")
         val c = checker()
-        c.noteSeenByPage(FolderStatus(server.uidValidity, server.nextUid, 1, 1))
+        c.noteSeenByPage(FolderStatus(server.uidValidity, server.nextUid, 1, 1), account.accountGeneration)
         assertEquals(CheckOutcome.NoChange, c.check(CheckSource.ALARM))
         assertTrue(notifier.posted.isEmpty())
     }
@@ -214,7 +214,7 @@ class MailCheckerTest {
             // Spec §8.5 order: notify first, advance after.
             markerWhenNotified = state.inboxSeenUidNext
             // The page poll ran in this window and saw further mail than this check fetched.
-            c.noteSeenByPage(FolderStatus(server.uidValidity, uid + 10, 1, 0))
+            c.noteSeenByPage(FolderStatus(server.uidValidity, uid + 10, 1, 0), account.accountGeneration)
         }
 
         assertEquals(CheckOutcome.NewMail(1), c.check(CheckSource.ALARM))
@@ -235,7 +235,7 @@ class MailCheckerTest {
         server.deliver("new one")
         val newValidity = server.uidValidity + 1
         val c = checker()
-        notifier.onPostNewMail = { c.noteSeenByPage(FolderStatus(newValidity, 2, 1, 0)) }
+        notifier.onPostNewMail = { c.noteSeenByPage(FolderStatus(newValidity, 2, 1, 0), account.accountGeneration) }
 
         assertEquals(CheckOutcome.NewMail(2), c.check(CheckSource.ALARM))
         assertEquals(newValidity, state.inboxUidValidity)
@@ -373,7 +373,7 @@ class MailCheckerTest {
             state.onUidValidityRead = {
                 state.onUidValidityRead = null
                 val polled = CountDownLatch(1)
-                poll = thread { c.noteSeenByPage(FolderStatus(newValidity, 2, 1, 0)); polled.countDown() }
+                poll = thread { c.noteSeenByPage(FolderStatus(newValidity, 2, 1, 0), account.accountGeneration); polled.countDown() }
                 // Given the time to finish first if it could; held behind the advance, it cannot.
                 polled.await(300, TimeUnit.MILLISECONDS)
             }
@@ -430,17 +430,17 @@ class MailCheckerTest {
     fun `a check that reaches the inbox dates it, whatever it finds there`() = runTest {
         account.signIn("b10000001", "pw")
         assertEquals(CheckOutcome.NoChange, checker().check(CheckSource.ALARM))
-        assertEquals(now, state.inboxFetchedAt)
+        assertEquals(now, state.fetchedAt("INBOX"))
 
         now += 1_000
         server.deliver("new one")
         assertEquals(CheckOutcome.NewMail(1), checker().check(CheckSource.WORKER))
-        assertEquals(now, state.inboxFetchedAt)
+        assertEquals(now, state.fetchedAt("INBOX"))
 
         now += 1_000
         server.uidValidity = 99
         assertTrue(checker().check(CheckSource.ALARM) is CheckOutcome.Baseline)
-        assertEquals(now, state.inboxFetchedAt)
+        assertEquals(now, state.fetchedAt("INBOX"))
     }
 
     @Test
@@ -448,7 +448,7 @@ class MailCheckerTest {
         account.signIn("b10000001", "pw")
         checker().check(CheckSource.ALARM)
         val fetched = now
-        assertEquals(fetched, state.inboxFetchedAt)
+        assertEquals(fetched, state.fetchedAt("INBOX"))
         now += 1_000
 
         server.openError = MailError.Network()
@@ -458,26 +458,26 @@ class MailCheckerTest {
         assertTrue(checker().check(CheckSource.WORKER) is CheckOutcome.Failed)
         assertEquals(CheckOutcome.Disabled, checker().check(CheckSource.ALARM))
 
-        assertEquals(fetched, state.inboxFetchedAt)
+        assertEquals(fetched, state.fetchedAt("INBOX"))
     }
 
     @Test
     fun `the demo mailbox is never dated, having no server to answer`() = runTest {
         account.signIn("B10000099", "demo")
         assertEquals(CheckOutcome.Demo, checker().check(CheckSource.ALARM))
-        checker().noteFetchedByPage()
-        assertEquals(0L, state.inboxFetchedAt)
+        checker().noteFetchedByPage("INBOX", account.accountGeneration)
+        assertEquals(0L, state.fetchedAt("INBOX"))
     }
 
     @Test
     fun `the date goes with the account at sign-out`() = runTest {
         account.signIn("b10000001", "pw")
         checker().check(CheckSource.ALARM)
-        assertEquals(now, state.inboxFetchedAt)
+        assertEquals(now, state.fetchedAt("INBOX"))
 
         account.signOut()
 
-        assertEquals(0L, state.inboxFetchedAt)
+        assertEquals(0L, state.fetchedAt("INBOX"))
     }
 
     /** A check or a page fetch that outlives its account must not date the next one's mailbox. */
@@ -495,18 +495,59 @@ class MailCheckerTest {
         c.check(CheckSource.ALARM)
 
         assertTrue(signedOut)
-        assertEquals(0L, state.inboxFetchedAt)
+        assertEquals(0L, state.fetchedAt("INBOX"))
     }
 
     @Test
-    fun `a page fetch that lands after the sign-out leaves no date behind`() = runTest {
+    fun `a page fetch that lands after the sign-out leaves no date behind, whichever folder it read`() = runTest {
         account.signIn("b10000001", "pw")
         val c = checker()
+        // What the page read before it fetched, as the page does.
+        val before = account.accountGeneration
         signOutAndSettle()
 
-        c.noteFetchedByPage()
+        assertFalse(c.noteFetchedByPage("INBOX", before))
+        assertFalse(c.noteFetchedByPage("寄件備份匣", before))
 
-        assertEquals(0L, state.inboxFetchedAt)
+        assertEquals(0L, state.fetchedAt("INBOX"))
+        assertEquals(0L, state.fetchedAt("寄件備份匣"))
+    }
+
+    /**
+     * The page's own fetch, landing after its account left and the same student -- or another --
+     * signed in again: it was the sign-in before's, and dates nothing of the new one's.
+     */
+    @Test
+    fun `a page fetch for the sign-in before dates nothing, even with the same student signed in again`() = runTest {
+        account.signIn("b10000001", "pw")
+        val c = checker()
+        val before = account.accountGeneration
+        signOutAndSettle()
+        account.signIn("b10000001", "pw")
+
+        assertFalse(c.noteFetchedByPage("INBOX", before))
+        assertFalse(c.noteFetchedByPage("寄件備份匣", before))
+        assertEquals(0L, state.fetchedAt("INBOX"))
+        assertEquals(0L, state.fetchedAt("寄件備份匣"))
+
+        assertTrue(c.noteFetchedByPage("INBOX", account.accountGeneration))
+        assertEquals(now, state.fetchedAt("INBOX"))
+    }
+
+    /** Likewise the inbox status the page read: it says nothing about the next sign-in's inbox. */
+    @Test
+    fun `a page status for the sign-in before moves no marker`() = runTest {
+        account.signIn("b10000001", "pw")
+        val c = checker()
+        val before = account.accountGeneration
+        signOutAndSettle()
+        account.signIn("b10000001", "pw")
+        val marker = state.inboxSeenUidNext
+        assertTrue(marker > 0)
+
+        c.noteSeenByPage(FolderStatus(server.uidValidity, marker + 50, 1, 1), before)
+
+        assertEquals(marker, state.inboxSeenUidNext)
     }
 
     @Test

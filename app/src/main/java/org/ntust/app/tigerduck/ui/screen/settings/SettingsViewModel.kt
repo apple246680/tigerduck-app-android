@@ -24,6 +24,7 @@ import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.data.CourseColorStore
 import org.ntust.app.tigerduck.data.CourseIgnoreSync
+import org.ntust.app.tigerduck.data.PendingCourseOverrides
 import org.ntust.app.tigerduck.data.UnsentMarks
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
@@ -75,6 +76,7 @@ class SettingsViewModel @Inject constructor(
     private val demoAccount: DemoAccount,
     private val courseIgnoreSync: CourseIgnoreSync,
     private val unsentMarks: UnsentMarks,
+    private val pendingCourseOverrides: PendingCourseOverrides,
     private val reenableCheck: ReenableCheck,
     private val importedClassTableStore: ImportedClassTableStore,
     @param:ApplicationScope private val appScope: CoroutineScope,
@@ -259,6 +261,8 @@ class SettingsViewModel @Inject constructor(
                 }
             }
             if (holdsCourseIgnores) courseIgnoreSync.retryPending()
+            // Use Local queued its colours and names behind their holds, lifted just above.
+            if (keepLocal && ("course_colors" in held || "course_names" in held)) pendingCourseOverrides.retry()
         }
     }
 
@@ -270,28 +274,35 @@ class SettingsViewModel @Inject constructor(
     ) {
         if (keepLocal) {
             val resetTerms = if (latch != null) sendLocalCourses(generation, latch) else emptySet()
+            // Through the outbox, queued whole at a version reserved before
+            // the colours and names are read, so an edit made from here on is
+            // the newer. The outbox holds them while their category is
+            // pending and sends them once resolveReenableConflict has lifted
+            // the hold; one that fails to land is sent again at the next sync.
+            val version = pendingCourseOverrides.reserveVersion()
             if ("course_colors" in conflict.categories) {
-                val courses = dataCache.loadCourses()
-                for (course in courses) {
-                    val hex = course.customColorHex ?: continue
-                    val moodleId = course.moodleIdNumber ?: continue
-                    runCatching { pushApiClient.patchCourseOverride(moodleId, colorHex = hex) }
-                }
+                pendingCourseOverrides.queue(
+                    dataCache.loadCourses().mapNotNull { course ->
+                        val hex = course.customColorHex ?: return@mapNotNull null
+                        val moodleId = course.moodleIdNumber ?: return@mapNotNull null
+                        PendingCourseOverrides.Change(moodleId, colorHex = hex)
+                    },
+                    version,
+                )
             }
             if ("course_names" in conflict.categories) {
-                val customNames = dataCache.loadCourseCustomNames()
-                val courses = dataCache.loadCourses()
-                val noToMoodle = courses.mapNotNull { c ->
+                val noToMoodle = dataCache.loadCourses().mapNotNull { c ->
                     c.moodleIdNumber?.let { c.courseNo to it }
                 }.toMap()
-                for ((courseNo, locales) in customNames) {
-                    val moodleId = noToMoodle[courseNo] ?: continue
-                    for ((locale, name) in locales) {
-                        if (name.isNotEmpty()) {
-                            runCatching { pushApiClient.patchCourseOverride(moodleId, customName = name, locale = locale) }
+                pendingCourseOverrides.queue(
+                    dataCache.loadCourseCustomNames().flatMap { (courseNo, locales) ->
+                        val moodleId = noToMoodle[courseNo] ?: return@flatMap emptyList<PendingCourseOverrides.Change>()
+                        locales.filterValues { it.isNotEmpty() }.map { (locale, name) ->
+                            PendingCourseOverrides.Change(moodleId, customName = name, locale = locale)
                         }
-                    }
-                }
+                    },
+                    version,
+                )
             }
             if ("assignments" in conflict.categories) {
                 // Syncs leave the marks alone while "assignments" is pending,
@@ -319,6 +330,9 @@ class SettingsViewModel @Inject constructor(
             if ("course_names" in conflict.categories) {
                 dataCache.saveCourseCustomNames(emptyMap())
             }
+            // The server's colours and names win, so changes still waiting
+            // to go up are dropped; a category not here is left alone.
+            pendingCourseOverrides.adoptServer(conflict.categories)
             if ("assignments" in conflict.categories) {
                 // The server's marks win, so taps still waiting to go up are dropped.
                 unsentMarks.forget()
@@ -405,7 +419,7 @@ class SettingsViewModel @Inject constructor(
         return useLocalCourses(
             terms = semesters.map { it to dataCache.loadCourses(it) },
             hiding = dataCache.loadDeletedCourseNos(),
-            backend = PushCourseSyncBackend(pushApiClient, prefs),
+            backend = PushCourseSyncBackend(pushApiClient, prefs, pendingCourseOverrides),
             // A term's reset takes its courses' names off the server with
             // them. With name sync off here nothing can be sent back (the
             // PATCH honours the switch), so names other devices set on that

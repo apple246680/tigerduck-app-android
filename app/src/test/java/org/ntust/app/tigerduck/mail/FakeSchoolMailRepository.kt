@@ -23,6 +23,48 @@ class FakeSchoolMailRepository : SchoolMailRepository {
     /** Thrown by [inboxStatus] -- the first call the page poll makes. */
     var statusError: MailError? = null
     var statusCalls = 0
+
+    /** Set, every [inboxStatus] waits on it first: a poll's check held out while the test acts. */
+    var statusGate: CompletableDeferred<Unit>? = null
+
+    /** Set, every [status] waits on it first: a STATUS queued behind the session another request holds. */
+    var folderStatusGate: CompletableDeferred<Unit>? = null
+
+    /** Set, every foreground [loadPage] waits on it first: a load held out while the test acts. */
+    var loadGate: CompletableDeferred<Unit>? = null
+
+    /** Set, every [folders] waits on it first: the folder list's LIST held out while the test acts. */
+    var foldersGate: CompletableDeferred<Unit>? = null
+
+    /** How many times the folder list went out; one refused by its `stillWanted` is not counted. */
+    var foldersSent = 0
+
+    /**
+     * The gates above stand for the wait behind the session; a request whose `stillWanted` says
+     * no once its gate opens is not sent, as the real repository's is not, and ends the same way.
+     */
+    private fun unlessAbandoned(stillWanted: () -> Boolean) {
+        if (!stillWanted()) throw MailError.Abandoned()
+    }
+
+    /** Every page request that went out, in order; one refused by its `stillWanted` is not here. */
+    val loadsSent = mutableListOf<String>()
+
+    /** Every search that went out, in order; one refused by its `stillWanted` is not here. */
+    val searchesSent = mutableListOf<String>()
+
+    /** Fires with the folder just after its page was produced and before it is returned: a test acts between two requests of one batch. */
+    var onLoaded: ((String) -> Unit)? = null
+
+    /** As [onLoaded], for a search. */
+    var onSearched: ((String) -> Unit)? = null
+
+    /** Thrown by [loadPage] for that folder alone, where [loadError] fails every folder. */
+    val folderLoadErrors = mutableMapOf<String, MailError>()
+
+    /** Thrown by [status] for that folder -- the poll's check of a folder on screen other than the inbox. */
+    val folderStatusErrors = mutableMapOf<String, MailError>()
+    val folderStatusCalls = mutableListOf<String>()
     var loadError: MailError? = null
     /** When set, [loadError] is thrown for this folder alone: one folder's page lands and the next one's does not. */
     var loadErrorFolder: String? = null
@@ -133,16 +175,17 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         if (i >= 0) list[i] = transform(list[i])
     }
 
-    /** Thrown by [folders] -- the first call a list load makes. */
+    /** Thrown by [folders] -- the first call a list load makes -- once the list went out. */
     var foldersError: MailError? = null
+
+    /** How many times the folder list was asked for, counted before the wait on [foldersGate]; [foldersSent] is what went out. */
     var foldersCalls = 0
 
-    /** While set, [folders] suspends on it after counting the call: a folder list still on its way. */
-    var foldersGate: CompletableDeferred<Unit>? = null
-
-    override suspend fun folders(): ResolvedFolders {
+    override suspend fun folders(stillWanted: () -> Boolean): ResolvedFolders {
         foldersCalls++
         foldersGate?.await()
+        unlessAbandoned(stillWanted)
+        foldersSent++
         foldersError?.let { throw it }
         return resolved
     }
@@ -163,12 +206,15 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         if (cachedPages[folder]?.uidValidity == obsoleteValidity) dropCache(folder)
     }
 
-    override suspend fun loadPage(folder: String, beforeSeq: Int?, limit: Int, background: Boolean): MailPage {
+    override suspend fun loadPage(folder: String, beforeSeq: Int?, limit: Int, background: Boolean, stillWanted: () -> Boolean): MailPage {
         openLoads++
         maxConcurrentLoads = maxOf(maxConcurrentLoads, openLoads)
         try {
+            if (!background) loadGate?.await()
+            unlessAbandoned(stillWanted)
             foldersTouched += folder
             pageLimits += folder to limit
+            loadsSent += folder
             if (background) {
                 prefetchError?.let { throw it }
                 if (blockPrefetch) {
@@ -178,6 +224,7 @@ class FakeSchoolMailRepository : SchoolMailRepository {
                 }
             }
             loadError?.takeIf { loadErrorFolder == null || loadErrorFolder == folder }?.let { throw it }
+            folderLoadErrors[folder]?.let { throw it }
             if (beforeSeq != null) olderPageGate?.await()
             if (beforeSeq != null) olderPage?.invoke(folder, beforeSeq)?.let { return it }
             val all = sorted(folder)
@@ -194,16 +241,29 @@ class FakeSchoolMailRepository : SchoolMailRepository {
                     cached.uidValidity == page.uidValidity && cached.messages.size > page.messages.size
                 if (!shortens) cachedPages[folder] = page
             }
+            onLoaded?.invoke(folder)
             return page
         } finally {
             openLoads--
         }
     }
 
-    override suspend fun inboxStatus(): FolderStatus {
+    override suspend fun inboxStatus(stillWanted: () -> Boolean): FolderStatus {
+        statusGate?.await()
+        unlessAbandoned(stillWanted)
         statusCalls++
         statusError?.let { throw it }
         return status
+    }
+
+    override suspend fun status(folder: String, stillWanted: () -> Boolean): FolderStatus {
+        folderStatusGate?.await()
+        unlessAbandoned(stillWanted)
+        foldersTouched += folder
+        folderStatusCalls += folder
+        folderStatusErrors[folder]?.let { throw it }
+        val newest = sorted(folder).firstOrNull()?.uid ?: 0L
+        return FolderStatus(status.uidValidity, newest + 1, mail[folder]?.size ?: 0, 0)
     }
     override suspend fun refreshFlags(folder: String, uids: List<Long>): Map<Long, MailFlags> =
         touching(folder) { sorted(folder).filter { it.uid in uids }.associate { it.uid to it.flags } }
@@ -242,7 +302,7 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         mail[folder]?.removeAll { it.uid == uid }
     }
 
-    /** Thrown by [search] for a folder, after it is recorded as touched. */
+    /** Thrown by [search] for a folder, after it is recorded as touched and sent. */
     var searchError: MailError? = null
 
     /**
@@ -251,20 +311,23 @@ class FakeSchoolMailRepository : SchoolMailRepository {
      */
     var searchErrorFolder: String? = null
 
-    /** How many times [search] was called, failed or not. */
+    /** How many times [search] went out, failed or not; [searchesSent] names them in order. */
     var searchCalls = 0
 
-    override suspend fun search(folder: String, query: String): SearchOutcome {
+    override suspend fun search(folder: String, query: String, stillWanted: () -> Boolean): SearchOutcome {
+        unlessAbandoned(stillWanted)
         foldersTouched += folder
         searchCalls++
+        searchesSent += folder
         searchError?.takeIf { searchErrorFolder == null || searchErrorFolder == folder }?.let { throw it }
         val hits = sorted(folder).filter { query in it.subject }
+        onSearched?.invoke(folder)
         // Paged like the real repository: the newest [pageSize] matches, the rest left to fetch.
         return if (searchUnsupported) SearchOutcome.LoadedOnly(hits)
         else SearchOutcome.Server(hits.take(pageSize), hits.drop(pageSize).map { it.uid }, uidValidity = 1)
     }
 
-    /** Every `(folder, uids)` handed to [searchPage], in order. */
+    /** Every `(folder, uids)` handed to [searchPage], in order -- asked for, whether or not it then went out. */
     val searchPages = mutableListOf<Pair<String, List<Long>>>()
 
     /** Thrown by [searchPage], after the call is recorded in [searchPages]. */
@@ -279,10 +342,11 @@ class FakeSchoolMailRepository : SchoolMailRepository {
     /** The UIDVALIDITY [searchPage] reports; the search itself always reports 1. */
     var searchPageValidity = 1L
 
-    override suspend fun searchPage(folder: String, uids: List<Long>): SearchPage {
+    override suspend fun searchPage(folder: String, uids: List<Long>, stillWanted: () -> Boolean): SearchPage {
         foldersTouched += folder
         searchPages += folder to uids
         searchPageGate?.await()
+        unlessAbandoned(stillWanted)
         searchPageError?.let { throw it }
         return SearchPage(searchPageValidity, sorted(folder).filter { it.uid in uids })
     }
