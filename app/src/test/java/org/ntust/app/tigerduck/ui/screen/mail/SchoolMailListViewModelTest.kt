@@ -1077,6 +1077,26 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
+    fun `a change for the later folder of an older-page batch that came before its request is not written over its page`() {
+        val sent = repo.resolved.nameOf(SpecialFolder.SENT)!!
+        repo.add("INBOX", *(1L..60L).map { mailSummary(it) }.toTypedArray())
+        repo.add(sent, *(1L..60L).map { mailSummary(it) }.toTypedArray())
+        vm.loadIfNeeded()
+        assertEquals(FolderSelection.AllMail, vm.state.value.selected)
+        val gate = holdAnswerOf("INBOX")
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        // While the inbox's older page is on its way, a Sent mail is marked read from its own
+        // screen, and another client marks it unread again -- which no change tells of -- before
+        // Sent's own older page is read. That page has the newer flag.
+        runBlocking { repo.setSeen(sent, 5, true) }
+        repo.mail.getValue(sent).replaceAll { if (it.uid == 5L) it.copy(flags = it.flags.copy(seen = false)) else it }
+        releaseAnswer(gate)
+        assertEquals(120, vm.state.value.displayed.size)
+        val row = vm.state.value.displayed.first { it.folder == sent && it.uid == 5L }
+        assertFalse("the earlier change was written over the page's newer flag", row.summary.flags.seen)
+    }
+
+    @Test
     fun `a cached page read across a mark-read is fetched again as the page appears, even after its own fetch failed`() {
         repo.add("INBOX", mailSummary(1))
         vm.loadIfNeeded()

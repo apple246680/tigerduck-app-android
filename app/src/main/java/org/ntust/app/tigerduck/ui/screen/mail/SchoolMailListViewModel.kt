@@ -203,8 +203,8 @@ class SchoolMailListViewModel @Inject constructor(
      * Where [paginate] collects the changes that arrive while its older page is out; null when
      * none is. A first page is fetched again after such a change ([refetchIfChangedSince]); an
      * older page is not, since that fetch replaces the whole list and the user's place in it,
-     * so the change is applied to the page's rows instead ([pageWith]) -- only the changes of
-     * that one request, so there is nothing to cap.
+     * so the change is applied to the page's rows instead ([pageWith]) -- only the changes from
+     * when that folder's own request started until the batch lands, so there is nothing to cap.
      */
     private var olderPageChanges: MutableList<MailChange>? = null
 
@@ -826,7 +826,14 @@ class SchoolMailListViewModel @Inject constructor(
                 // asked has gone (see [fetchFirstPage]): an older page of a list a refresh has
                 // replaced since would only be dropped on return, and under the next account's
                 // credentials it must not be sent at all.
+                //
+                // Each folder's page is read during its own request, so the changes that count for
+                // it are those from when that request started: one for it from before went into the
+                // page, which may since have had a newer flag from another client that no change
+                // tells of, and would only be written over (see [pageWith]).
+                val windows = mutableMapOf<String, Int>()
                 val pages = cursors.entries.sortedBy { it.key }.map { (folder, before) ->
+                    windows[folder] = arrived.size
                     folder to repository.loadPage(folder, before) { stillCurrent(selection, generation) && list == listGeneration }
                 }
                 if (!stillCurrent(selection, generation) || list != listGeneration) return
@@ -840,7 +847,9 @@ class SchoolMailListViewModel @Inject constructor(
                     return
                 }
                 _state.update { st ->
-                    val merged = pages.fold(st.messages) { rows, (folder, page) -> mergeOlderPage(rows, folder, pageWith(folder, page, arrived)) }
+                    val merged = pages.fold(st.messages) { rows, (folder, page) ->
+                        mergeOlderPage(rows, folder, pageWith(folder, page, arrived.drop(windows.getValue(folder))))
+                    }
                     st.copy(
                         messages = if (selection is FolderSelection.AllMail) merged.sortedWith(NEWEST_FIRST) else merged.sortedByDescending { it.uid },
                         cursors = st.cursors - cursors.keys + cursorsOf(pages),
@@ -862,9 +871,11 @@ class SchoolMailListViewModel @Inject constructor(
 
     /**
      * [page], an older page of [folder], with those of [arrived] that are the folder's applied to
-     * its rows: a read flag as a write set it, or a row a move or delete took away. They arrived
-     * while the page was out, so the server read it before them; the rest of the list had them
-     * in place as they came ([apply]).
+     * its rows: a read flag as a write set it, or a row a move or delete took away. [arrived] is
+     * what came from the folder's own request on -- read by the server no earlier than the page,
+     * and after it where the batch went on to other folders -- and the rest of the list had them
+     * in place as they came ([apply]). Nothing from before the request: the page has that, and
+     * perhaps a newer flag besides.
      */
     private fun pageWith(folder: String, page: MailPage, arrived: List<MailChange>): MailPage {
         var messages = page.messages
