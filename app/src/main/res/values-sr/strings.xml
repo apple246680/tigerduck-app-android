@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">Ресетуј</string>
     <string name="app_reset_required_message">Ваше стање пријаве и подешавања се више не могу прочитати, вероватно услед надоградње ОС-а, враћања резервне копије или проблема са складиштем.\n\nДодирните „Ресетуј\" да бисте обрисали старе податке, а затим се пријавите и поново конфигуришите подешавања.</string>
     <string name="app_reset_required_title">Потребно је ресетовање</string>
+    <string name="assignment_detail_comments">Коментари на предају</string>
+    <string name="assignment_detail_description">Опис</string>
+    <string name="assignment_detail_due">Рок</string>
+    <string name="assignment_detail_group">Група</string>
+    <string name="assignment_detail_not_submitted">Још није предато</string>
+    <string name="assignment_detail_submission">Ваша предаја</string>
+    <string name="assignment_detail_submit_on_moodle">Предај у Moodle-у</string>
+    <string name="assignment_detail_submitted_at">Предато</string>
     <string name="assignment_filter_all">Све</string>
     <string name="assignment_filter_ignored">Игнорисано</string>
     <string name="assignment_filter_incomplete">Недовршено</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">Прилагођена боја</string>
     <string name="course_color_picker_title">Уреди боју</string>
     <string name="course_credits_value">ЕСПБ бодови: %1$s</string>
+    <string name="course_detail_assignments_label">Задаци</string>
     <string name="course_detail_classroom_label">Учионица</string>
     <string name="course_detail_code_copied">Код копиран</string>
     <string name="course_detail_code_label">Шифра</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">Почни да користиш TigerDuck</string>
     <string name="onboarding_sync_description">TigerSync одржава ваше предмете, задатке и подешавања синхронизованим на свим вашим уређајима. Можете тачно одабрати шта да синхронизујете у подешавањима TigerSync.</string>
     <string name="onboarding_sync_not_shared_password">Лозинка се никада не отпрема</string>
-    <string name="onboarding_sync_note">Када је синхронизација искључена, сви подаци остају само на овом уређају. Push обавештења за подсетнике за задатке раде локално без TigerSync.</string>
+    <string name="onboarding_sync_note">Када је синхронизација искључена, TigerDuck сервер и даље добија ваш студентски ID, Moodle токен и push акредитиве овог уређаја како би слао подсетнике за задатке</string>
     <string name="onboarding_sync_shared_assignments">Подаци о задацима</string>
     <string name="onboarding_sync_shared_courses">Подаци о курсевима</string>
     <string name="onboarding_sync_shared_device_id">ID уређаја</string>
@@ -769,6 +778,7 @@
     <string name="school_mail_send">Пошаљи</string>
     <string name="school_mail_send_confirm_title">Да пошаљем ову поруку?</string>
     <string name="school_mail_send_failed">Порука није послата</string>
+    <string name="school_mail_send_unconfirmed">Није могуће потврдити да ли је порука послата; поновни покушај може да је испоручи двапут</string>
     <string name="school_mail_sent_copy_failed">Порука је послата, али копију није било могуће сачувати у фасцикли Послато.</string>
     <string name="school_mail_sent_copy_no_folder">Порука је послата, али не постоји фасцикла Послато у коју би се сачувала копија.</string>
     <string name="school_mail_sent_copy_not_saved">Порука је послата, али копија није сачувана у фасцикли Послато</string>
@@ -956,7 +966,7 @@
     <string name="settings_sign_out_imported_tables">Увезени распореди ће такође бити обрисани.</string>
     <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync омогућава синхронизацију изабраних информација на свим уређајима. Неактивиране информације остају само на овом уређају.</string>
-    <string name="settings_sync_disabled_note">Када је синхронизација искључена, сви подаци остају само на овом уређају.</string>
+    <string name="settings_sync_disabled_note">Када је синхронизација искључена, TigerDuck сервер и даље добија ваш студентски ID, Moodle токен и push акредитиве овог уређаја како би слао подсетнике за задатке</string>
     <string name="settings_sync_status_off">Искључено</string>
     <string name="settings_sync_status_on">Укључено</string>
     <string name="settings_system_language">Језик система</string>
@@ -1011,10 +1021,12 @@
     <string name="sync_status_hours_ago_short">пре %1$d ч.</string>
     <string name="sync_status_just_now">Управо сада</string>
     <string name="sync_status_last_synced">Последња синхронизација</string>
+    <string name="sync_status_last_updated">Последње ажурирање</string>
     <string name="sync_status_minimal">Ограничено</string>
     <string name="sync_status_minutes_ago_short">пре %1$d мин.</string>
     <string name="sync_status_nav_label">TigerSync статус</string>
     <string name="sync_status_never_synced">Никада синхронизовано</string>
+    <string name="sync_status_never_updated">Никада ажурирано</string>
     <string name="sync_status_ok">У реду</string>
     <string name="sync_status_syncing">Синхронизација…</string>
     <string name="sync_status_title">Стање синхронизације</string>

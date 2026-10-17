@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">Setel ulang</string>
     <string name="app_reset_required_message">Status login dan preferensi kamu tidak dapat dibaca lagi, mungkin karena pembaruan OS, pemulihan cadangan, atau masalah penyimpanan.\n\nKetuk \"Setel ulang\" untuk menghapus data lama, lalu masuk dan konfigurasi ulang preferensi kamu.</string>
     <string name="app_reset_required_title">Perlu disetel ulang</string>
+    <string name="assignment_detail_comments">Komentar kiriman</string>
+    <string name="assignment_detail_description">Deskripsi</string>
+    <string name="assignment_detail_due">Tenggat</string>
+    <string name="assignment_detail_group">Grup</string>
+    <string name="assignment_detail_not_submitted">Belum dikirim</string>
+    <string name="assignment_detail_submission">Kiriman Anda</string>
+    <string name="assignment_detail_submit_on_moodle">Kirim di Moodle</string>
+    <string name="assignment_detail_submitted_at">Dikirim</string>
     <string name="assignment_filter_all">Semua</string>
     <string name="assignment_filter_ignored">Diabaikan</string>
     <string name="assignment_filter_incomplete">Belum selesai</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">Warna khusus</string>
     <string name="course_color_picker_title">Edit warna</string>
     <string name="course_credits_value">SKS: %1$s</string>
+    <string name="course_detail_assignments_label">Tugas</string>
     <string name="course_detail_classroom_label">Ruang kelas</string>
     <string name="course_detail_code_copied">Kode disalin</string>
     <string name="course_detail_code_label">Kode</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">Mulai gunakan TigerDuck</string>
     <string name="onboarding_sync_description">TigerSync menjaga mata kuliah, tugas, dan pengaturan Anda tetap sinkron di semua perangkat Anda. Anda dapat memilih dengan tepat apa yang ingin disinkronkan di pengaturan TigerSync.</string>
     <string name="onboarding_sync_not_shared_password">Kata sandi tidak pernah diunggah</string>
-    <string name="onboarding_sync_note">Saat sinkronisasi mati, semua data hanya tersimpan di perangkat ini. Notifikasi push untuk pengingat tugas tetap berfungsi secara lokal tanpa TigerSync.</string>
+    <string name="onboarding_sync_note">Saat sinkronisasi nonaktif, server TigerDuck tetap menerima NIM, token Moodle, dan kredensial push perangkat ini untuk mengirim pengingat tugas</string>
     <string name="onboarding_sync_shared_assignments">Data tugas</string>
     <string name="onboarding_sync_shared_courses">Data mata kuliah</string>
     <string name="onboarding_sync_shared_device_id">ID perangkat</string>
@@ -769,6 +778,7 @@
     <string name="school_mail_send">Kirim</string>
     <string name="school_mail_send_confirm_title">Kirim email ini?</string>
     <string name="school_mail_send_failed">Tidak dapat mengirim email</string>
+    <string name="school_mail_send_unconfirmed">Tidak dapat memastikan email sudah terkirim; mencoba lagi dapat membuatnya terkirim dua kali</string>
     <string name="school_mail_sent_copy_failed">Email sudah terkirim, tetapi salinannya tidak dapat disimpan ke Terkirim.</string>
     <string name="school_mail_sent_copy_no_folder">Email sudah terkirim, tetapi tidak ada folder Terkirim untuk menyimpan salinan.</string>
     <string name="school_mail_sent_copy_not_saved">Email terkirim, tetapi salinan tidak tersimpan di Terkirim</string>
@@ -956,7 +966,7 @@
     <string name="settings_sign_out_imported_tables">Jadwal kuliah yang diimpor juga akan dihapus.</string>
     <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync memungkinkan Anda menyinkronkan informasi pilihan di semua perangkat. Informasi yang tidak diaktifkan tetap hanya di perangkat ini.</string>
-    <string name="settings_sync_disabled_note">Saat sinkronisasi mati, semua data hanya tersimpan di perangkat ini.</string>
+    <string name="settings_sync_disabled_note">Saat sinkronisasi nonaktif, server TigerDuck tetap menerima NIM, token Moodle, dan kredensial push perangkat ini untuk mengirim pengingat tugas</string>
     <string name="settings_sync_status_off">Nonaktif</string>
     <string name="settings_sync_status_on">Aktif</string>
     <string name="settings_system_language">Bahasa sistem</string>
@@ -1011,10 +1021,12 @@
     <string name="sync_status_hours_ago_short">%1$d j lalu</string>
     <string name="sync_status_just_now">Baru saja</string>
     <string name="sync_status_last_synced">Terakhir disinkronkan</string>
+    <string name="sync_status_last_updated">Terakhir diperbarui</string>
     <string name="sync_status_minimal">Terbatas</string>
     <string name="sync_status_minutes_ago_short">%1$d mnt lalu</string>
     <string name="sync_status_nav_label">Status TigerSync</string>
     <string name="sync_status_never_synced">Belum pernah disinkronkan</string>
+    <string name="sync_status_never_updated">Belum pernah diperbarui</string>
     <string name="sync_status_ok">OK</string>
     <string name="sync_status_syncing">Menyinkronkan…</string>
     <string name="sync_status_title">Status sinkronisasi</string>

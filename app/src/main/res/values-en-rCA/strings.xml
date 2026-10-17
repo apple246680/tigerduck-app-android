@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">Reset</string>
     <string name="app_reset_required_message">Your sign-in state and preferences can no longer be read, possibly due to an OS upgrade, backup restore, or storage issue.\n\nTap \"Reset\" to clear old data, then sign in and reconfigure your preferences.</string>
     <string name="app_reset_required_title">Reset required</string>
+    <string name="assignment_detail_comments">Submission comments</string>
+    <string name="assignment_detail_description">Description</string>
+    <string name="assignment_detail_due">Due</string>
+    <string name="assignment_detail_group">Group</string>
+    <string name="assignment_detail_not_submitted">Not submitted yet</string>
+    <string name="assignment_detail_submission">Your submission</string>
+    <string name="assignment_detail_submit_on_moodle">Submit on Moodle</string>
+    <string name="assignment_detail_submitted_at">Submitted</string>
     <string name="assignment_filter_all">All</string>
     <string name="assignment_filter_ignored">Ignored</string>
     <string name="assignment_filter_incomplete">Incomplete</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">Custom color</string>
     <string name="course_color_picker_title">Edit color</string>
     <string name="course_credits_value">Credits: %1$s</string>
+    <string name="course_detail_assignments_label">Assignments</string>
     <string name="course_detail_classroom_label">Classroom</string>
     <string name="course_detail_code_copied">Code copied</string>
     <string name="course_detail_code_label">Code</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">Start using TigerDuck</string>
     <string name="onboarding_sync_description">TigerSync keeps your courses, assignments, and settings in sync across all your devices. You can choose exactly what to sync in TigerSync settings.</string>
     <string name="onboarding_sync_not_shared_password">Password is never uploaded</string>
-    <string name="onboarding_sync_note">When sync is off, all data stays on this device only. Push notifications for homework reminders work locally without TigerSync.</string>
+    <string name="onboarding_sync_note">When sync is off, the TigerDuck server still receives your student ID, Moodle token and this device\'s push credentials to send assignment reminders</string>
     <string name="onboarding_sync_shared_assignments">Assignment data</string>
     <string name="onboarding_sync_shared_courses">Course data</string>
     <string name="onboarding_sync_shared_device_id">Device ID</string>
@@ -769,6 +778,7 @@
     <string name="school_mail_send">Send</string>
     <string name="school_mail_send_confirm_title">Send this mail?</string>
     <string name="school_mail_send_failed">Couldn\'t send the mail</string>
+    <string name="school_mail_send_unconfirmed">Couldn\'t confirm the mail was sent; retrying may deliver it twice</string>
     <string name="school_mail_sent_copy_failed">The mail was sent, but the copy couldn\'t be saved to Sent.</string>
     <string name="school_mail_sent_copy_no_folder">The mail was sent, but there\'s no Sent folder to keep a copy in.</string>
     <string name="school_mail_sent_copy_not_saved">Mail sent, but a copy wasn\'t saved to Sent</string>
@@ -956,7 +966,7 @@
     <string name="settings_sign_out_imported_tables">Imported class tables will be deleted too.</string>
     <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync lets you sync your chosen information across all your devices that have TigerSync turned on. Information not enabled for TigerSync stays on this device only.</string>
-    <string name="settings_sync_disabled_note">When sync is off, all data stays on this device only.</string>
+    <string name="settings_sync_disabled_note">When sync is off, the TigerDuck server still receives your student ID, Moodle token and this device\'s push credentials to send assignment reminders</string>
     <string name="settings_sync_status_off">Off</string>
     <string name="settings_sync_status_on">On</string>
     <string name="settings_system_language">System Language</string>
@@ -1011,10 +1021,12 @@
     <string name="sync_status_hours_ago_short">%1$d h ago</string>
     <string name="sync_status_just_now">Just now</string>
     <string name="sync_status_last_synced">Last synced</string>
+    <string name="sync_status_last_updated">Last updated</string>
     <string name="sync_status_minimal">Minimal</string>
     <string name="sync_status_minutes_ago_short">%1$d min ago</string>
     <string name="sync_status_nav_label">TigerSync status</string>
     <string name="sync_status_never_synced">Never synced</string>
+    <string name="sync_status_never_updated">Never updated</string>
     <string name="sync_status_ok">OK</string>
     <string name="sync_status_syncing">Syncing…</string>
     <string name="sync_status_title">Sync status</string>

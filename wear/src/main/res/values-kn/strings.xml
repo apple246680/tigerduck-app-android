@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">ಮರುಹೊಂದಿಕೆ</string>
     <string name="app_reset_required_message">ನಿಮ್ಮ ಸೈನ್-ಇನ್ ಸ್ಥಿತಿ ಮತ್ತು ಆದ್ಯತೆಗಳನ್ನು ಇನ್ನು ಓದಲು ಸಾಧ್ಯವಿಲ್ಲ, ಇದು OS ಅಪ್‌ಗ್ರೇಡ್, ಬ್ಯಾಕಪ್ ಮರುಸ್ಥಾಪನೆ ಅಥವಾ ಸಂಗ್ರಹ ಸಮಸ್ಯೆಯಿಂದ ಆಗಿರಬಹುದು.\n\nಹಳೆಯ ಡೇಟಾ ತೆಗೆಯಲು \"ಮರುಹೊಂದಿಕೆ\" ಟ್ಯಾಪ್ ಮಾಡಿ, ನಂತರ ಸೈನ್ ಇನ್ ಮಾಡಿ ಮತ್ತು ಆದ್ಯತೆಗಳನ್ನು ಮರಳಿ ಸಂರಚಿಸಿ.</string>
     <string name="app_reset_required_title">ಮರುಹೊಂದಿಕೆ ಅಗತ್ಯವಿದೆ</string>
+    <string name="assignment_detail_comments">ಸಲ್ಲಿಕೆಯ ಟಿಪ್ಪಣಿಗಳು</string>
+    <string name="assignment_detail_description">ವಿವರಣೆ</string>
+    <string name="assignment_detail_due">ಗಡುವು</string>
+    <string name="assignment_detail_group">ಗುಂಪು</string>
+    <string name="assignment_detail_not_submitted">ಇನ್ನೂ ಸಲ್ಲಿಸಿಲ್ಲ</string>
+    <string name="assignment_detail_submission">ನಿಮ್ಮ ಸಲ್ಲಿಕೆ</string>
+    <string name="assignment_detail_submit_on_moodle">Moodle ನಲ್ಲಿ ಸಲ್ಲಿಸಿ</string>
+    <string name="assignment_detail_submitted_at">ಸಲ್ಲಿಸಿದ ಸಮಯ</string>
     <string name="assignment_filter_all">ಎಲ್ಲಾ</string>
     <string name="assignment_filter_ignored">ನಿರ್ಲಕ್ಷಿಸಲಾಗಿದೆ</string>
     <string name="assignment_filter_incomplete">ಅಪೂರ್ಣ</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">ಕಸ್ಟಮ್ ಬಣ್ಣ</string>
     <string name="course_color_picker_title">ಬಣ್ಣ ಸಂಪಾದಿಸಿ</string>
     <string name="course_credits_value">ಕ್ರೆಡಿಟ್‌ಗಳು: %1$s</string>
+    <string name="course_detail_assignments_label">ಕಾರ್ಯಗಳು</string>
     <string name="course_detail_classroom_label">ತರಗತಿ ಕೊಠಡಿ</string>
     <string name="course_detail_code_copied">ಕೋಡ್ ನಕಲಿಸಲಾಗಿದೆ</string>
     <string name="course_detail_code_label">ಕೋಡ್</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">TigerDuck ಬಳಸಲು ಆರಂಭಿಸಿ</string>
     <string name="onboarding_sync_description">TigerSync ನಿಮ್ಮ ಎಲ್ಲಾ ಸಾಧನಗಳಲ್ಲಿ ನಿಮ್ಮ ಕೋರ್ಸ್‌ಗಳು, ಅಸೈನ್‌ಮೆಂಟ್‌ಗಳು ಮತ್ತು ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ಸಿಂಕ್‌ನಲ್ಲಿ ಇಡುತ್ತದೆ. TigerSync ಸೆಟ್ಟಿಂಗ್‌ಗಳಲ್ಲಿ ಏನನ್ನು ಸಿಂಕ್ ಮಾಡಬೇಕೆಂದು ನೀವು ನಿಖರವಾಗಿ ಆಯ್ಕೆ ಮಾಡಬಹುದು.</string>
     <string name="onboarding_sync_not_shared_password">ಪಾಸ್‌ವರ್ಡ್ ಎಂದಿಗೂ ಅಪ್‌ಲೋಡ್ ಆಗುವುದಿಲ್ಲ</string>
-    <string name="onboarding_sync_note">ಸಿಂಕ್ ಆಫ್ ಆಗಿದ್ದಾಗ, ಎಲ್ಲಾ ಡೇಟಾ ಈ ಸಾಧನದಲ್ಲಿ ಮಾತ್ರ ಉಳಿಯುತ್ತದೆ. ಹೋಮ್‌ವರ್ಕ್ ಜ್ಞಾಪನೆಗಳ ಪುಶ್ ಅಧಿಸೂಚನೆಗಳು TigerSync ಇಲ್ಲದೆ ಸ್ಥಳೀಯವಾಗಿ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತವೆ.</string>
+    <string name="onboarding_sync_note">ಸಿಂಕ್ ಆಫ್ ಆಗಿದ್ದರೂ, ಅಸೈನ್‌ಮೆಂಟ್ ಜ್ಞಾಪನೆಗಳನ್ನು ಕಳುಹಿಸಲು TigerDuck ಸರ್ವರ್ ನಿಮ್ಮ ವಿದ್ಯಾರ್ಥಿ ID, Moodle ಟೋಕನ್ ಮತ್ತು ಈ ಸಾಧನದ ಪುಶ್ ರುಜುವಾತುಗಳನ್ನು ಪಡೆಯುತ್ತದೆ</string>
     <string name="onboarding_sync_shared_assignments">ಅಸೈನ್‌ಮೆಂಟ್ ಡೇಟಾ</string>
     <string name="onboarding_sync_shared_courses">ಕೋರ್ಸ್ ಡೇಟಾ</string>
     <string name="onboarding_sync_shared_device_id">ಸಾಧನ ID</string>
@@ -769,6 +778,7 @@
     <string name="school_mail_send">ಕಳುಹಿಸಿ</string>
     <string name="school_mail_send_confirm_title">ಈ ಇಮೇಲ್ ಕಳುಹಿಸಬೇಕೇ?</string>
     <string name="school_mail_send_failed">ಇಮೇಲ್ ಕಳುಹಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ</string>
+    <string name="school_mail_send_unconfirmed">ಇಮೇಲ್ ಕಳುಹಿಸಲಾಗಿದೆಯೇ ಎಂದು ದೃಢಪಡಿಸಲಾಗಲಿಲ್ಲ; ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿದರೆ ಅದು ಎರಡು ಬಾರಿ ತಲುಪಬಹುದು</string>
     <string name="school_mail_sent_copy_failed">ಇಮೇಲ್ ಕಳುಹಿಸಲಾಗಿದೆ, ಆದರೆ ನಕಲನ್ನು ಕಳುಹಿಸಿದವುಗಳಲ್ಲಿ ಉಳಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ.</string>
     <string name="school_mail_sent_copy_no_folder">ಇಮೇಲ್ ಕಳುಹಿಸಲಾಗಿದೆ, ಆದರೆ ನಕಲನ್ನು ಇರಿಸಲು ಯಾವುದೇ ಕಳುಹಿಸಿದವು ಫೋಲ್ಡರ್ ಇಲ್ಲ.</string>
     <string name="school_mail_sent_copy_not_saved">ಇಮೇಲ್ ಕಳುಹಿಸಲಾಗಿದೆ, ಆದರೆ ಅದರ ನಕಲನ್ನು ಕಳುಹಿಸಿದವುಗಳಲ್ಲಿ ಉಳಿಸಲಾಗಿಲ್ಲ</string>
@@ -956,7 +966,7 @@
     <string name="settings_sign_out_imported_tables">ಆಮದು ಮಾಡಿದ ತರಗತಿ ವೇಳಾಪಟ್ಟಿಗಳನ್ನೂ ಅಳಿಸಲಾಗುತ್ತದೆ.</string>
     <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync ನಿಮ್ಮ ಎಲ್ಲ ಸಾಧನಗಳಲ್ಲಿ ಮಾಹಿತಿಯನ್ನು ಸಿಂಕ್ ಮಾಡಲು ಅನುಮತಿಸುತ್ತದೆ. ಸಿಂಕ್‌ಗೆ ಸಕ್ರಿಯವಲ್ಲದ ಮಾಹಿತಿ ಈ ಸಾಧನದಲ್ಲಿ ಮಾತ್ರ ಉಳಿಯುತ್ತದೆ.</string>
-    <string name="settings_sync_disabled_note">ಸಿಂಕ್ ಆಫ್ ಆಗಿದ್ದಾಗ, ಎಲ್ಲಾ ಡೇಟಾ ಈ ಸಾಧನದಲ್ಲಿ ಮಾತ್ರ ಉಳಿಯುತ್ತದೆ.</string>
+    <string name="settings_sync_disabled_note">ಸಿಂಕ್ ಆಫ್ ಆಗಿದ್ದರೂ, ಅಸೈನ್‌ಮೆಂಟ್ ಜ್ಞಾಪನೆಗಳನ್ನು ಕಳುಹಿಸಲು TigerDuck ಸರ್ವರ್ ನಿಮ್ಮ ವಿದ್ಯಾರ್ಥಿ ID, Moodle ಟೋಕನ್ ಮತ್ತು ಈ ಸಾಧನದ ಪುಶ್ ರುಜುವಾತುಗಳನ್ನು ಪಡೆಯುತ್ತದೆ</string>
     <string name="settings_sync_status_off">ಆಫ್</string>
     <string name="settings_sync_status_on">ಆನ್</string>
     <string name="settings_system_language">ಸಿಸ್ಟಂ ಭಾಷೆ</string>
@@ -1011,10 +1021,12 @@
     <string name="sync_status_hours_ago_short">%1$d ಗಂ ಹಿಂದೆ</string>
     <string name="sync_status_just_now">ಈಗಷ್ಟೇ</string>
     <string name="sync_status_last_synced">ಕೊನೆಯ ಸಿಂಕ್</string>
+    <string name="sync_status_last_updated">ಕೊನೆಯ ಅಪ್‌ಡೇಟ್</string>
     <string name="sync_status_minimal">ಸೀಮಿತ</string>
     <string name="sync_status_minutes_ago_short">%1$d ನಿ ಹಿಂದೆ</string>
     <string name="sync_status_nav_label">TigerSync ಸ್ಥಿತಿ</string>
     <string name="sync_status_never_synced">ಎಂದೂ ಸಿಂಕ್ ಆಗಿಲ್ಲ</string>
+    <string name="sync_status_never_updated">ಎಂದೂ ಅಪ್‌ಡೇಟ್ ಆಗಿಲ್ಲ</string>
     <string name="sync_status_ok">ಸರಿ</string>
     <string name="sync_status_syncing">ಸಿಂಕ್ ಆಗುತ್ತಿದೆ…</string>
     <string name="sync_status_title">ಸಿಂಕ್ ಸ್ಥಿತಿ</string>

@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">Atiestatīt</string>
     <string name="app_reset_required_message">Jūsu pieteikšanās stāvokli un preferences vairs nevar nolasīt, iespējams, OS jauninājuma, dublējuma atjaunošanas vai glabāšanas problēmas dēļ.\n\nPieskarieties \"Atiestatīt\", lai notīrītu vecos datus, pēc tam piesakieties un pārkonfigurējiet preferences.</string>
     <string name="app_reset_required_title">Nepieciešama atiestatīšana</string>
+    <string name="assignment_detail_comments">Iesnieguma komentāri</string>
+    <string name="assignment_detail_description">Apraksts</string>
+    <string name="assignment_detail_due">Termiņš</string>
+    <string name="assignment_detail_group">Grupa</string>
+    <string name="assignment_detail_not_submitted">Vēl nav iesniegts</string>
+    <string name="assignment_detail_submission">Jūsu iesniegums</string>
+    <string name="assignment_detail_submit_on_moodle">Iesniegt Moodle</string>
+    <string name="assignment_detail_submitted_at">Iesniegts</string>
     <string name="assignment_filter_all">Visi</string>
     <string name="assignment_filter_ignored">Ignorētie</string>
     <string name="assignment_filter_incomplete">Nepabeigti</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">Pielāgota krāsa</string>
     <string name="course_color_picker_title">Rediģēt krāsu</string>
     <string name="course_credits_value">Kredītpunkti: %1$s</string>
+    <string name="course_detail_assignments_label">Uzdevumi</string>
     <string name="course_detail_classroom_label">Auditorija</string>
     <string name="course_detail_code_copied">Kods nokopēts</string>
     <string name="course_detail_code_label">Kods</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">Sākt lietot TigerDuck</string>
     <string name="onboarding_sync_description">TigerSync uztur jūsu kursus, uzdevumus un iestatījumus sinhronizētus visās jūsu ierīcēs. TigerSync iestatījumos varat precīzi izvēlēties, ko sinhronizēt.</string>
     <string name="onboarding_sync_not_shared_password">Parole nekad netiek augšupielādēta</string>
-    <string name="onboarding_sync_note">Kad sinhronizācija ir izslēgta, visi dati paliek tikai šajā ierīcē. Push paziņojumi par mājasdarbiem darbojas lokāli bez TigerSync.</string>
+    <string name="onboarding_sync_note">Kad sinhronizācija ir izslēgta, TigerDuck serveris joprojām saņem jūsu studenta ID, Moodle žetonu un šīs ierīces push akreditācijas datus, lai sūtītu uzdevumu atgādinājumus</string>
     <string name="onboarding_sync_shared_assignments">Uzdevumu dati</string>
     <string name="onboarding_sync_shared_courses">Kursu dati</string>
     <string name="onboarding_sync_shared_device_id">Ierīces ID</string>
@@ -769,6 +778,7 @@
     <string name="school_mail_send">Sūtīt</string>
     <string name="school_mail_send_confirm_title">Vai sūtīt šo vēstuli?</string>
     <string name="school_mail_send_failed">Neizdevās nosūtīt vēstuli</string>
+    <string name="school_mail_send_unconfirmed">Neizdevās apstiprināt, vai vēstule tika nosūtīta; atkārtots mēģinājums to var piegādāt divreiz</string>
     <string name="school_mail_sent_copy_failed">Vēstule tika nosūtīta, bet kopiju neizdevās saglabāt mapē Nosūtītie.</string>
     <string name="school_mail_sent_copy_no_folder">Vēstule tika nosūtīta, bet nav mapes Nosūtītie, kurā saglabāt kopiju.</string>
     <string name="school_mail_sent_copy_not_saved">Vēstule nosūtīta, bet kopija netika saglabāta mapē Nosūtītie</string>
@@ -956,7 +966,7 @@
     <string name="settings_sign_out_imported_tables">Tiks dzēsti arī importētie stundu plāni.</string>
     <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync ļauj sinhronizēt izvēlēto informāciju visās ierīcēs. Nesinhronizēta informācija paliek tikai šajā ierīcē.</string>
-    <string name="settings_sync_disabled_note">Kad sinhronizācija ir izslēgta, visi dati paliek tikai šajā ierīcē.</string>
+    <string name="settings_sync_disabled_note">Kad sinhronizācija ir izslēgta, TigerDuck serveris joprojām saņem jūsu studenta ID, Moodle žetonu un šīs ierīces push akreditācijas datus, lai sūtītu uzdevumu atgādinājumus</string>
     <string name="settings_sync_status_off">Izslēgts</string>
     <string name="settings_sync_status_on">Ieslēgts</string>
     <string name="settings_system_language">Sistēmas valoda</string>
@@ -1011,10 +1021,12 @@
     <string name="sync_status_hours_ago_short">pirms %1$d st.</string>
     <string name="sync_status_just_now">Tikko</string>
     <string name="sync_status_last_synced">Pēdējoreiz sinhronizēts</string>
+    <string name="sync_status_last_updated">Pēdējoreiz atjaunināts</string>
     <string name="sync_status_minimal">Ierobežots</string>
     <string name="sync_status_minutes_ago_short">pirms %1$d min.</string>
     <string name="sync_status_nav_label">TigerSync statuss</string>
     <string name="sync_status_never_synced">Nav sinhronizēts</string>
+    <string name="sync_status_never_updated">Nav atjaunināts</string>
     <string name="sync_status_ok">Labi</string>
     <string name="sync_status_syncing">Sinhronizē…</string>
     <string name="sync_status_title">Sinhronizācijas statuss</string>

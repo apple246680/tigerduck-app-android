@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">重新設定</string>
     <string name="app_reset_required_message">您的登入狀態與偏好設定已無法讀取，可能因為裝置升級、備份還原或儲存空間異常。\n\n請點選「重新設定」以清除舊資料，然後重新登入並重新配置偏好。</string>
     <string name="app_reset_required_title">需要重新設定</string>
+    <string name="assignment_detail_comments">作業備註</string>
+    <string name="assignment_detail_description">作業說明</string>
+    <string name="assignment_detail_due">截止時間</string>
+    <string name="assignment_detail_group">組別</string>
+    <string name="assignment_detail_not_submitted">尚未繳交</string>
+    <string name="assignment_detail_submission">繳交的作業</string>
+    <string name="assignment_detail_submit_on_moodle">前往 Moodle 繳交</string>
+    <string name="assignment_detail_submitted_at">繳交時間</string>
     <string name="assignment_filter_all">全部</string>
     <string name="assignment_filter_ignored">已忽略</string>
     <string name="assignment_filter_incomplete">未完成</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">自訂顏色</string>
     <string name="course_color_picker_title">編輯顏色</string>
     <string name="course_credits_value">學分：%1$s</string>
+    <string name="course_detail_assignments_label">作業</string>
     <string name="course_detail_classroom_label">教室</string>
     <string name="course_detail_code_copied">已複製代碼</string>
     <string name="course_detail_code_label">代碼</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">開始使用 TigerDuck</string>
     <string name="onboarding_sync_description">TigerSync 可以在你所有裝置間同步課表、作業和設定。你可以在 TigerSync 設定中選擇要同步的項目。</string>
     <string name="onboarding_sync_not_shared_password">密碼不會被上傳</string>
-    <string name="onboarding_sync_note">關閉同步後，所有資料僅保留在此裝置。推播通知在不需要 TigerSync 的情況下仍可正常運作。</string>
+    <string name="onboarding_sync_note">關閉同步後，為了傳送作業提醒，TigerDuck 伺服器仍會收到你的學號、Moodle token 和此裝置的推播憑證</string>
     <string name="onboarding_sync_shared_assignments">作業資料</string>
     <string name="onboarding_sync_shared_courses">課程資料</string>
     <string name="onboarding_sync_shared_device_id">裝置 ID</string>
@@ -769,6 +778,7 @@
     <string name="school_mail_send">傳送</string>
     <string name="school_mail_send_confirm_title">要傳送這封信嗎？</string>
     <string name="school_mail_send_failed">無法傳送郵件</string>
+    <string name="school_mail_send_unconfirmed">無法確認郵件是否已寄出，重試可能會導致對方收到兩封</string>
     <string name="school_mail_sent_copy_failed">郵件已傳送，但副本無法儲存到寄件備份。</string>
     <string name="school_mail_sent_copy_no_folder">郵件已傳送，但目前沒有寄件備份資料夾可以保留副本。</string>
     <string name="school_mail_sent_copy_not_saved">郵件已傳送，但副本未儲存到寄件備份</string>
@@ -956,7 +966,7 @@
     <string name="settings_sign_out_imported_tables">匯入的課表也會一併刪除。</string>
     <string name="settings_sign_out_unsynced_data">未透過 TigerSync 同步的資料將會刪除。</string>
     <string name="settings_sync_brief_description">TigerSync 可讓你將所選資料同步至所有已開啟 TigerSync 的裝置。未啟用 TigerSync 的資料僅會保留在此裝置上。</string>
-    <string name="settings_sync_disabled_note">關閉同步後，所有資料僅儲存於本機</string>
+    <string name="settings_sync_disabled_note">關閉同步後，為了傳送作業提醒，TigerDuck 伺服器仍會收到你的學號、Moodle token 和此裝置的推播憑證</string>
     <string name="settings_sync_status_off">關閉</string>
     <string name="settings_sync_status_on">開啟</string>
     <string name="settings_system_language">系統語言</string>
@@ -1011,10 +1021,12 @@
     <string name="sync_status_hours_ago_short">%1$d 小時前</string>
     <string name="sync_status_just_now">剛剛</string>
     <string name="sync_status_last_synced">上次同步</string>
+    <string name="sync_status_last_updated">上次更新</string>
     <string name="sync_status_minimal">最低限度</string>
     <string name="sync_status_minutes_ago_short">%1$d 分鐘前</string>
     <string name="sync_status_nav_label">TigerSync 狀態</string>
     <string name="sync_status_never_synced">尚未同步</string>
+    <string name="sync_status_never_updated">尚未更新</string>
     <string name="sync_status_ok">正常</string>
     <string name="sync_status_syncing">同步中…</string>
     <string name="sync_status_title">同步狀態</string>

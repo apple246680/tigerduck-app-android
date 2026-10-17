@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">Қалпына келтіру</string>
     <string name="app_reset_required_message">Кіру күйіңіз бен параметрлеріңізді оқу мүмкін емес; мүмкін операциялық жүйе жаңартуы, сақтық көшірмеден қалпына келтіру немесе сақтау мәселесі салдарынан.\n\nЕскі деректерді тазалау үшін «Қалпына келтіру» түймесін түртіңіз, содан кейін қайта кіріп параметрлерді орнатыңыз.</string>
     <string name="app_reset_required_title">Қалпына келтіру қажет</string>
+    <string name="assignment_detail_comments">Жұмысқа түсініктемелер</string>
+    <string name="assignment_detail_description">Сипаттама</string>
+    <string name="assignment_detail_due">Мерзімі</string>
+    <string name="assignment_detail_group">Топ</string>
+    <string name="assignment_detail_not_submitted">Әлі тапсырылмаған</string>
+    <string name="assignment_detail_submission">Тапсырылған жұмыс</string>
+    <string name="assignment_detail_submit_on_moodle">Moodle-да тапсыру</string>
+    <string name="assignment_detail_submitted_at">Тапсырылған уақыты</string>
     <string name="assignment_filter_all">Барлығы</string>
     <string name="assignment_filter_ignored">Елемеулер</string>
     <string name="assignment_filter_incomplete">Аяқталмаған</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">Жеке түс</string>
     <string name="course_color_picker_title">Түсті өңдеу</string>
     <string name="course_credits_value">Кредит: %1$s</string>
+    <string name="course_detail_assignments_label">Тапсырмалар</string>
     <string name="course_detail_classroom_label">Аудитория</string>
     <string name="course_detail_code_copied">Код көшірілді</string>
     <string name="course_detail_code_label">Код</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">TigerDuck-ты қолдануды бастау</string>
     <string name="onboarding_sync_description">TigerSync сіздің курстарыңызды, тапсырмаларыңызды және параметрлеріңізді барлық құрылғыларыңызда синхрондап ұстайды. TigerSync параметрлерінде нені синхрондау керектігін дәл таңдай аласыз.</string>
     <string name="onboarding_sync_not_shared_password">Құпия сөз ешқашан жүктелмейді</string>
-    <string name="onboarding_sync_note">Синхрондау өшірулі кезде барлық деректер тек осы құрылғыда сақталады. Тапсырма еске салулары үшін push хабарландырулар TigerSync-сіз жергілікті жұмыс істейді.</string>
+    <string name="onboarding_sync_note">Синхрондау өшірулі болса да, тапсырма еске салғыштарын жіберу үшін TigerDuck сервері студент ID-іңізді, Moodle токеніңізді және осы құрылғының push тіркелгі деректерін алады</string>
     <string name="onboarding_sync_shared_assignments">Тапсырма деректері</string>
     <string name="onboarding_sync_shared_courses">Курс деректері</string>
     <string name="onboarding_sync_shared_device_id">Құрылғы ID</string>
@@ -769,6 +778,7 @@
     <string name="school_mail_send">Жіберу</string>
     <string name="school_mail_send_confirm_title">Бұл хат жіберілсін бе?</string>
     <string name="school_mail_send_failed">Хатты жіберу мүмкін болмады</string>
+    <string name="school_mail_send_unconfirmed">Хаттың жіберілгенін растау мүмкін болмады; қайта жіберу оны екі рет жеткізуі мүмкін</string>
     <string name="school_mail_sent_copy_failed">Хат жіберілді, бірақ көшірмесі Жіберілген қалтасына сақтала алмады.</string>
     <string name="school_mail_sent_copy_no_folder">Хат жіберілді, бірақ көшірмені сақтайтын Жіберілген қалтасы жоқ.</string>
     <string name="school_mail_sent_copy_not_saved">Хат жіберілді, бірақ көшірмесі Жіберілген қалтасына сақталмады</string>
@@ -956,7 +966,7 @@
     <string name="settings_sign_out_imported_tables">Импортталған сабақ кестелері де жойылады.</string>
     <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync таңдалған ақпаратты барлық құрылғылар арасында синхрондауға мүмкіндік береді. Синхрондалмаған ақпарат тек осы құрылғыда қалады.</string>
-    <string name="settings_sync_disabled_note">Синхрондау өшірулі кезде барлық деректер тек осы құрылғыда сақталады.</string>
+    <string name="settings_sync_disabled_note">Синхрондау өшірулі болса да, тапсырма еске салғыштарын жіберу үшін TigerDuck сервері студент ID-іңізді, Moodle токеніңізді және осы құрылғының push тіркелгі деректерін алады</string>
     <string name="settings_sync_status_off">Өшірулі</string>
     <string name="settings_sync_status_on">Қосулы</string>
     <string name="settings_system_language">Жүйе тілі</string>
@@ -1011,10 +1021,12 @@
     <string name="sync_status_hours_ago_short">%1$d с бұрын</string>
     <string name="sync_status_just_now">Жаңа ғана</string>
     <string name="sync_status_last_synced">Соңғы синхрондау</string>
+    <string name="sync_status_last_updated">Соңғы жаңарту</string>
     <string name="sync_status_minimal">Шектеулі</string>
     <string name="sync_status_minutes_ago_short">%1$d м бұрын</string>
     <string name="sync_status_nav_label">TigerSync мәртебесі</string>
     <string name="sync_status_never_synced">Ешқашан синхрондалмаған</string>
+    <string name="sync_status_never_updated">Ешқашан жаңартылмаған</string>
     <string name="sync_status_ok">Дұрыс</string>
     <string name="sync_status_syncing">Синхрондалуда…</string>
     <string name="sync_status_title">Синхрондау күйі</string>

@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">Resetare</string>
     <string name="app_reset_required_message">Starea de autentificare și preferințele tale nu mai pot fi citite, posibil din cauza unei actualizări de SO, restaurări din backup sau probleme de stocare.\n\nApasă „Resetare“ pentru a șterge datele vechi, apoi autentifică-te și reconfigurează preferințele.</string>
     <string name="app_reset_required_title">Resetare necesară</string>
+    <string name="assignment_detail_comments">Comentarii la predare</string>
+    <string name="assignment_detail_description">Descriere</string>
+    <string name="assignment_detail_due">Termen</string>
+    <string name="assignment_detail_group">Grup</string>
+    <string name="assignment_detail_not_submitted">Încă nepredat</string>
+    <string name="assignment_detail_submission">Lucrarea predată</string>
+    <string name="assignment_detail_submit_on_moodle">Predă în Moodle</string>
+    <string name="assignment_detail_submitted_at">Trimis</string>
     <string name="assignment_filter_all">Toate</string>
     <string name="assignment_filter_ignored">Ignorate</string>
     <string name="assignment_filter_incomplete">Incomplete</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">Culoare personalizată</string>
     <string name="course_color_picker_title">Editează culoarea</string>
     <string name="course_credits_value">Credite: %1$s</string>
+    <string name="course_detail_assignments_label">Teme</string>
     <string name="course_detail_classroom_label">Sală</string>
     <string name="course_detail_code_copied">Cod copiat</string>
     <string name="course_detail_code_label">Cod</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">Începe să folosești TigerDuck</string>
     <string name="onboarding_sync_description">TigerSync menține cursurile, temele și setările sincronizate pe toate dispozitivele tale. Poți alege exact ce să sincronizezi în setările TigerSync.</string>
     <string name="onboarding_sync_not_shared_password">Parola nu este încărcată niciodată</string>
-    <string name="onboarding_sync_note">Când sincronizarea este dezactivată, toate datele rămân doar pe acest dispozitiv. Notificările push pentru mementourile de teme funcționează local fără TigerSync.</string>
+    <string name="onboarding_sync_note">Când sincronizarea este dezactivată, serverul TigerDuck primește în continuare ID-ul dvs. de student, tokenul Moodle și acreditările push ale acestui dispozitiv pentru a trimite mementouri pentru teme</string>
     <string name="onboarding_sync_shared_assignments">Date teme</string>
     <string name="onboarding_sync_shared_courses">Date cursuri</string>
     <string name="onboarding_sync_shared_device_id">Identificator dispozitiv</string>
@@ -769,6 +778,7 @@
     <string name="school_mail_send">Trimite</string>
     <string name="school_mail_send_confirm_title">Trimiți acest e-mail?</string>
     <string name="school_mail_send_failed">E-mailul nu a putut fi trimis</string>
+    <string name="school_mail_send_unconfirmed">Nu s-a putut confirma dacă e-mailul a fost trimis; o nouă încercare l-ar putea livra de două ori</string>
     <string name="school_mail_sent_copy_failed">E-mailul a fost trimis, dar copia nu a putut fi salvată în Trimise.</string>
     <string name="school_mail_sent_copy_no_folder">E-mailul a fost trimis, dar nu există un folder Trimise în care să se păstreze o copie.</string>
     <string name="school_mail_sent_copy_not_saved">E-mail trimis, dar copia nu a fost salvată în Trimise</string>
@@ -956,7 +966,7 @@
     <string name="settings_sign_out_imported_tables">Orarele importate vor fi șterse și ele.</string>
     <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync vă permite să sincronizați informațiile alese pe toate dispozitivele. Informațiile neactivate rămân doar pe acest dispozitiv.</string>
-    <string name="settings_sync_disabled_note">Când sincronizarea este dezactivată, toate datele rămân doar pe acest dispozitiv.</string>
+    <string name="settings_sync_disabled_note">Când sincronizarea este dezactivată, serverul TigerDuck primește în continuare ID-ul dvs. de student, tokenul Moodle și acreditările push ale acestui dispozitiv pentru a trimite mementouri pentru teme</string>
     <string name="settings_sync_status_off">Oprit</string>
     <string name="settings_sync_status_on">Pornit</string>
     <string name="settings_system_language">Limba sistemului</string>
@@ -1011,10 +1021,12 @@
     <string name="sync_status_hours_ago_short">acum %1$d h</string>
     <string name="sync_status_just_now">Chiar acum</string>
     <string name="sync_status_last_synced">Ultima sincronizare</string>
+    <string name="sync_status_last_updated">Ultima actualizare</string>
     <string name="sync_status_minimal">Limitat</string>
     <string name="sync_status_minutes_ago_short">acum %1$d min</string>
     <string name="sync_status_nav_label">Starea TigerSync</string>
     <string name="sync_status_never_synced">Niciodată sincronizat</string>
+    <string name="sync_status_never_updated">Niciodată actualizat</string>
     <string name="sync_status_ok">OK</string>
     <string name="sync_status_syncing">Se sincronizează…</string>
     <string name="sync_status_title">Stare sincronizare</string>
