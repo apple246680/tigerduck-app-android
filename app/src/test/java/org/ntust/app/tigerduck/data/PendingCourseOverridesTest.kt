@@ -235,6 +235,7 @@ class PendingCourseOverridesTest {
                     PendingCourseOverrides.Change(calculus, colorHex = "#FF0000"),
                     PendingCourseOverrides.Change(physics, colorHex = "#00FF00"),
                 ),
+                overrides.reserveVersion(),
             )
             overrides.retry()
         }
@@ -249,6 +250,52 @@ class PendingCourseOverridesTest {
 
         assertEquals(listOf(physics to "#0000FF"), cache.loadPendingCourseOverrides().map { it.moodleId to it.colorHex })
         assertEquals("the reset's older green never went up", emptyList<Patch>(), patches.filter { it.colorHex == "#00FF00" })
+    }
+
+    @Test
+    fun `a batch's version is reserved before its snapshot is read, so an edit made while it is read outbids it`() = runTest {
+        val physics = "1151PH1010003"
+        answer = { throw IOException("offline") }
+        // Use Local reserves, then reads the cached colours; the user picks blue for physics while
+        // it reads, and the batch, built from colours that predate the pick, reaches the outbox after it.
+        val version = overrides.reserveVersion()
+        overrides.send(physics, colorHex = "#0000FF")
+        overrides.queue(
+            listOf(
+                PendingCourseOverrides.Change(calculus, colorHex = "#FF0000"),
+                PendingCourseOverrides.Change(physics, colorHex = "#00FF00"),
+            ),
+            version,
+        )
+
+        assertEquals(
+            mapOf(calculus to "#FF0000", physics to "#0000FF"),
+            cache.loadPendingCourseOverrides().associate { it.moodleId to it.colorHex },
+        )
+    }
+
+    @Test
+    fun `after a restart a change still outbids every change waiting, whatever the clock says`() = runTest {
+        answer = { throw IOException("offline") }
+        overrides.send(calculus, colorHex = "#FF0000")
+        val before = cache.loadPendingCourseOverrides().single().seq
+
+        // A new process over the same file, with the clock set back: versions are compared only
+        // against the changes still waiting, so this one must still count as the newer.
+        now = 1L
+        val restarted = PendingCourseOverrides(
+            cache,
+            { _, _, _, _, _, _ -> throw IOException("offline") },
+            records = { true },
+            sends = { true },
+            signInGeneration = { signIn },
+            clock = { now++ },
+        )
+        restarted.send(calculus, colorHex = "#0000FF")
+
+        val after = cache.loadPendingCourseOverrides().single()
+        assertEquals("#0000FF", after.colorHex)
+        assertTrue("${after.seq} > $before", after.seq > before)
     }
 
     @Test

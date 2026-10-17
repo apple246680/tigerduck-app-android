@@ -147,11 +147,27 @@ class SyncWiringTest {
     @Test
     fun `a reset of every colour is queued whole before the colours are saved, and sent after`() {
         val body = body("data/CourseColorStore.kt", "resetAllColors")
+        val reserved = body.indexOf("val version = pendingCourseOverrides.reserveVersion()")
+        val read = body.indexOf("dataCache.loadCourses()")
         val queued = body.indexOf("pendingCourseOverrides.queue(")
         val saved = body.indexOf("dataCache.saveCourses(updated)")
         val sent = body.indexOf("pendingCourseOverrides.retry()")
-        assertTrue("resetAllColors no longer queues every colour before saving them", queued in 0 until saved)
+        assertTrue("resetAllColors no longer reserves the batch's version before reading the colours", reserved in 0 until read)
+        assertTrue("resetAllColors no longer queues every colour before saving them", queued in read until saved)
         assertTrue("resetAllColors no longer sends the queued colours after saving them", sent > saved)
+    }
+
+    /** tigerduck-app-android#380: versioned when queued, a batch outbid an edit made while its snapshot was read. */
+    @Test
+    fun `Use Local reserves its batch's version before reading the colours and names it sends`() {
+        val body = body("ui/screen/settings/SettingsViewModel.kt", "resolve")
+        val reserved = body.indexOf("val version = pendingCourseOverrides.reserveVersion()")
+        val read = body.indexOf("dataCache.loadCourses()")
+        val queued = body.indexOf("pendingCourseOverrides.queue(")
+        assertTrue("resolve no longer reserves the batch's version before reading what Use Local sends", reserved in 0 until read)
+        // The read is the queue call's first argument, so it sits inside the call: what is pinned
+        // is that the batch goes in at the version reserved above.
+        assertTrue("resolve no longer queues what Use Local sends at the reserved version", queued > reserved && "version,\n" in body)
     }
 
     /** tigerduck-app-android#380: a course gone from this phone would be PATCHed, and refused, at every sync. */

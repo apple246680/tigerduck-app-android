@@ -274,10 +274,12 @@ class SettingsViewModel @Inject constructor(
     ) {
         if (keepLocal) {
             val resetTerms = if (latch != null) sendLocalCourses(generation, latch) else emptySet()
-            // Through the outbox, queued whole: it holds them while their
-            // category is pending and sends them once resolveReenableConflict
-            // has lifted the hold, and one that fails to land is sent again
-            // at the next sync. An edit made meanwhile is the newer.
+            // Through the outbox, queued whole at a version reserved before
+            // the colours and names are read, so an edit made from here on is
+            // the newer. The outbox holds them while their category is
+            // pending and sends them once resolveReenableConflict has lifted
+            // the hold; one that fails to land is sent again at the next sync.
+            val version = pendingCourseOverrides.reserveVersion()
             if ("course_colors" in conflict.categories) {
                 pendingCourseOverrides.queue(
                     dataCache.loadCourses().mapNotNull { course ->
@@ -285,6 +287,7 @@ class SettingsViewModel @Inject constructor(
                         val moodleId = course.moodleIdNumber ?: return@mapNotNull null
                         PendingCourseOverrides.Change(moodleId, colorHex = hex)
                     },
+                    version,
                 )
             }
             if ("course_names" in conflict.categories) {
@@ -298,6 +301,7 @@ class SettingsViewModel @Inject constructor(
                             PendingCourseOverrides.Change(moodleId, customName = name, locale = locale)
                         }
                     },
+                    version,
                 )
             }
             if ("assignments" in conflict.categories) {

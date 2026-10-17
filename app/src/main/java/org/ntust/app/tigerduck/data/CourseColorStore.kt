@@ -38,6 +38,9 @@ class CourseColorStore @Inject constructor(
      * shared color map before broadcasting [changeEvent].
      */
     suspend fun resetAllColors() {
+        // Reserved before the colours are read: a pick made from here on is
+        // the newer, and the reset's own colour for that course gives way.
+        val version = pendingCourseOverrides.reserveVersion()
         val courses = dataCache.loadCourses()
         if (courses.isEmpty()) return
 
@@ -55,16 +58,17 @@ class CourseColorStore @Inject constructor(
         }
 
         // Through the outbox, which honours the sync switches and keeps a
-        // colour that fails to land. Queued whole, at the version of this
-        // reset and before the colours are saved: a pick made while they go
-        // up one by one is the newer, and is not replaced when the reset's
-        // own colour for that course reaches its turn.
+        // colour that fails to land. Queued whole, at the version reserved
+        // above and before the colours are saved: a pick made while they are
+        // read or go up one by one is the newer, and is not replaced when the
+        // reset's own colour for that course reaches its turn.
         pendingCourseOverrides.queue(
             updated.mapNotNull { course ->
                 val hex = course.customColorHex ?: return@mapNotNull null
                 val moodleId = course.moodleIdNumber ?: return@mapNotNull null
                 PendingCourseOverrides.Change(moodleId, colorHex = hex)
             },
+            version,
         )
         dataCache.saveCourses(updated)
         TigerDuckTheme.clearCourseColorMap()

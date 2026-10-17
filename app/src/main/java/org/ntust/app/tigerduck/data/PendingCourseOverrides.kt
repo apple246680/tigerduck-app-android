@@ -149,16 +149,26 @@ class PendingCourseOverrides internal constructor(
 
     /**
      * Keeps [changes], each in place of an older change of the same, all at
-     * one version, and sends none: [retry] does, once the caller has saved
-     * what they stand for. A reset of every colour goes through here before
-     * it saves the colours, so a pick made while they go up one by one is
-     * the newer, and the reset's own colour for that course, reaching its
-     * turn, neither replaces it nor goes up.
+     * [version] (from [reserveVersion], taken before the data they were read
+     * from), and sends none: [retry] does, once the caller has saved what
+     * they stand for. A reset of every colour goes through here before it
+     * saves the colours, so a pick made while they are read or go up one by
+     * one is the newer, and the reset's own colour for that course, reaching
+     * its turn, neither replaces it nor goes up.
      */
-    suspend fun queue(changes: List<Change>) {
+    suspend fun queue(changes: List<Change>, version: Long) {
         if (changes.isEmpty()) return
-        record(changes, dataCache.userDataGeneration)
+        record(changes, dataCache.userDataGeneration, version)
     }
+
+    /**
+     * A version for a batch whose changes are yet to be read, taken before
+     * the read: an edit recorded while the read completes gets a later one,
+     * and [queue]'s batch, built from data that predates the edit, neither
+     * replaces it nor goes up over it. In memory only: a reservation lives in
+     * its caller and does not outlive the process.
+     */
+    suspend fun reserveVersion(): Long = mutex.withLock { nextSeq(waiting()) }
 
     /**
      * Sends every change still waiting whose kind goes out; each full sync
@@ -216,17 +226,22 @@ class PendingCourseOverrides internal constructor(
     }
 
     /**
-     * Writes [changes] at one new version, each in place of the change
-     * waiting under its key unless that one is newer, and returns the ones
-     * now waiting, by key. A change of a kind that does not sync is this
-     * phone's own: not kept, and the last word on its key, as one still
-     * waiting would go up over it later. Nothing is written once the data
-     * was wiped since [generation].
+     * Writes [changes] at [version], or at a new one, each in place of the
+     * change waiting under its key unless that one is newer: recorded after
+     * the version was reserved, from data the batch predates, so it stands.
+     * A change of a kind that does not sync is this phone's own: not kept,
+     * and the last word on its key, as one still waiting would go up over it
+     * later. Returns the ones now waiting, by key; nothing is written once
+     * the data was wiped since [generation].
      */
-    private suspend fun record(changes: List<Change>, generation: Int): Map<String, PendingCourseOverride> =
+    private suspend fun record(
+        changes: List<Change>,
+        generation: Int,
+        version: Long? = null,
+    ): Map<String, PendingCourseOverride> =
         mutex.withLock {
             val waiting = waiting()
-            val seq = nextSeq(waiting)
+            val seq = version ?: nextSeq(waiting)
             val now = clock()
             val updated = LinkedHashMap(waiting)
             val recorded = LinkedHashMap<String, PendingCourseOverride>()
@@ -235,11 +250,11 @@ class PendingCourseOverrides internal constructor(
                     c.moodleId, c.colorHex, c.customName, c.locale, now, c.semester, c.courseNo, seq = seq,
                 )
                 val key = entry.key ?: continue
+                if ((waiting[key]?.seq ?: 0L) > seq) continue
                 if (!records(entry.isColor)) {
                     updated.remove(key)
                     continue
                 }
-                if ((waiting[key]?.seq ?: 0L) > seq) continue
                 updated[key] = entry
                 recorded[key] = entry
             }
@@ -249,10 +264,12 @@ class PendingCourseOverrides internal constructor(
             recorded
         }
 
-    // Under [mutex]: later than every version given out before, in this
-    // process or an earlier one, whose entries are still waiting. The clock
-    // where it is ahead, so versions mean something across restarts, else one
-    // past the last.
+    // Under [mutex]: later than every version an entry still waiting carries
+    // and than every one given out in this process, reservations included.
+    // A version is only ever compared with the entries waiting when it is
+    // used, and a reservation does not outlive the process, so it need not
+    // keep growing across restarts beyond theirs: the clock where it is
+    // ahead, else one past the last.
     private fun nextSeq(waiting: Map<String, PendingCourseOverride>): Long {
         val floor = maxOf(lastSeq, waiting.values.maxOfOrNull { it.seq } ?: 0L)
         lastSeq = maxOf(clock(), floor + 1)
