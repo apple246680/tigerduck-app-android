@@ -18,6 +18,21 @@ internal class ClassTableTermWarm(
 ) {
     private var started = false
 
+    // Per term, how many picks, foreground fetches and resets of it have
+    // begun; see supersede. Touched on the main thread only, as the rest of
+    // the view model's state is.
+    private val generations = HashMap<String, Int>()
+
+    /**
+     * A pick, a foreground fetch or a reset of [term] began. A warm of it
+     * still in its lookups would otherwise land its older rows over what that
+     * leaves — the wipe, or the fresh roster — so its `isCurrent` says no
+     * from here on; see [run].
+     */
+    fun supersede(term: String) {
+        generations[term] = (generations[term] ?: 0) + 1
+    }
+
     /**
      * Fetches each term with no cache, newest first and one at a time,
      * through [fetch], which says whether the school answered. The first term
@@ -26,15 +41,20 @@ internal class ClassTableTermWarm(
      * is checked again as its turn comes, so one picked or cached while an
      * earlier term ran is left to its own fetch.
      *
+     * [fetch] is handed `isCurrent`, which says whether nothing has
+     * [supersede]d the term since its warm began, to be asked right before
+     * anything of the term is saved or uploaded.
+     *
      * Once per sign-in: a later call returns at once, until [reset].
      */
-    suspend fun run(fetch: suspend (String) -> Boolean) {
+    suspend fun run(fetch: suspend (term: String, isCurrent: () -> Boolean) -> Boolean) {
         if (started) return
         started = true
         for (term in terms()) {
             if (!mayFetch()) return
             if (term == shownTerm() || isCached(term)) continue
-            if (!fetch(term)) return
+            val taken = generations[term] ?: 0
+            if (!fetch(term) { (generations[term] ?: 0) == taken }) return
         }
     }
 

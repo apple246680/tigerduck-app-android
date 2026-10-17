@@ -85,16 +85,39 @@ class ClassTableWiringTest {
         assertCalls("selectCourse", "_selectedPeriods.value = periods ?: ClassTableSelection.block(")
     }
 
-    /** tigerduck-app-android#264: mergeFetched keeps hand-added rows as stored, so a fetch looks them up first. */
+    /**
+     * tigerduck-app-android#264: mergeFetched keeps hand-added rows as stored, so a fetch looks
+     * them up first — through ClassTableTermFetch, which folds the answers onto the term's list
+     * as it is after the lookups: for the term on screen the list every edit writes.
+     */
     @Test
-    fun `a fetch looks the term's hand-added courses up again before the merge`() {
+    fun `a fetch looks the term's hand-added courses up again, onto the list as the user left it`() {
         assertCalls("fetchData", "fetchTermCourses(semester, orderedCourseNos, moodleByNo)")
+        assertCalls(
+            "fetchTermCourses",
+            "termFetch.run(",
+            "latest = { if (_currentSemester.value == semester) _courses.value else dataCache.loadCourses(semester) }",
+        )
+    }
+
+    /** A warm's older rows must not land over a reset of the term, or a fetch the user asked for. */
+    @Test
+    fun `a warm result superseded by a pick, a fetch or a reset is discarded, its upload included`() {
+        for (name in listOf("setSemester", "followNewestSemesterIfUnpicked", "fetchData", "resetCourses")) {
+            assertCalls(name, "termWarm.supersede(")
+        }
+        val reset = body("resetCourses")
+        assertTrue(
+            "resetCourses no longer supersedes the warm before anything else",
+            reset.indexOf("termWarm.supersede(") < reset.indexOf("viewModelScope.launch"),
+        )
+        assertCalls("warmTerm", "fetchTermCourses(semester, rosterNos, moodleByNo) {", "isCurrent()")
         val body = body("fetchTermCourses")
-        val lookedUp = body.indexOf("ClassTableCourseMerge.manualNosToLookUp(cached, rosterNos)")
-        val refreshed = body.indexOf("ClassTableCourseMerge.withLookedUp(cached,")
-        val merged = body.indexOf("ClassTableCourseMerge.mergeFetched(")
-        assertTrue("fetchTermCourses no longer looks the hand-added courses up", lookedUp in 0 until refreshed)
-        assertTrue("fetchTermCourses no longer merges over the refreshed rows", refreshed in 0 until merged)
+        val save = body.indexOf("dataCache.saveCourses(")
+        val upload = body.indexOf("pushApiClient.uploadCourses(")
+        val checks = Regex("""if \(!mayCommit\(\)\) return""").findAll(body).map { it.range.first }.toList()
+        assertTrue("fetchTermCourses no longer checks mayCommit before the save", checks.any { it in 0 until save })
+        assertTrue("fetchTermCourses no longer checks mayCommit before the upload", checks.any { it in save until upload })
     }
 
     /** tigerduck-app-android#264: rooms are announced late, and the page fetches on launch only. */

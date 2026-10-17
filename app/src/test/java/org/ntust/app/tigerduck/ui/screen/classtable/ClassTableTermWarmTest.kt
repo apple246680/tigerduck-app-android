@@ -6,6 +6,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -31,11 +32,48 @@ class ClassTableTermWarmTest {
     )
 
     /** The fetch the view model hands in: caches the term, and says whether the school answered. */
-    private suspend fun fetch(term: String): Boolean {
+    private suspend fun fetch(term: String, isCurrent: () -> Boolean = { true }): Boolean {
         fetched += term
         if (term in failing) return false
-        cached += term
+        if (isCurrent()) cached += term
         return true
+    }
+
+    @Test
+    fun `a reset, or a pick and fetch, of the term while its warm is suspended makes the warm's result stale`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val current = mutableMapOf<String, Pair<Boolean, Boolean>>()
+        val warm = warm()
+        val job = launch {
+            warm.run { term, isCurrent ->
+                val before = isCurrent()
+                if (term == "1151") gate.await()
+                current[term] = before to isCurrent()
+                fetch(term, isCurrent)
+            }
+        }
+        advanceUntilIdle()
+        // While 115-1's lookups run: the user resets it, or picks it and its own fetch starts.
+        // Either wipes or refetches the term, and the warm's older rows must not land over that.
+        warm.supersede("1151")
+        gate.complete(Unit)
+        advanceUntilIdle()
+        job.join()
+        assertEquals(true to false, current["1151"])
+        assertEquals(true to true, current["114H"])
+        assertEquals(setOf("114H", "1142", "1141"), cached)
+    }
+
+    @Test
+    fun `a supersede of another term, or before the term's warm began, does not make it stale`() = runTest {
+        val warm = warm()
+        warm.supersede("1151")
+        warm.run { term, isCurrent ->
+            if (term == "1151") warm.supersede("114H")
+            assertTrue("$term's warm counted as stale", isCurrent())
+            fetch(term, isCurrent)
+        }
+        assertEquals(listOf("1151", "114H", "1142", "1141"), fetched)
     }
 
     @Test
@@ -51,7 +89,7 @@ class ClassTableTermWarmTest {
         var inFlight = 0
         var mostInFlight = 0
         val job = launch {
-            warm().run { term ->
+            warm().run { term, _ ->
                 inFlight++
                 mostInFlight = maxOf(mostInFlight, inFlight)
                 gate.await()
@@ -96,7 +134,7 @@ class ClassTableTermWarmTest {
         assertEquals(emptyList<String>(), fetched)
 
         mayFetch = true
-        warm().run { term ->
+        warm().run { term, _ ->
             // The connection went after the first term.
             mayFetch = false
             fetch(term)
@@ -106,7 +144,7 @@ class ClassTableTermWarmTest {
 
     @Test
     fun `a term cached meanwhile, or picked meanwhile, is left to its own fetch`() = runTest {
-        warm().run { term ->
+        warm().run { term, _ ->
             // Picking a term fetches it, and so may a cache written while this one ran.
             if (term == "1151") {
                 shown = "114H"
