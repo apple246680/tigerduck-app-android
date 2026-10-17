@@ -72,12 +72,16 @@ object MoodlePage {
  * the website in the browser the Browser setting picks, signed in through a one-time key as iOS
  * opens it. A link the Moodle app takes asks for no key.
  */
-fun openMoodlePage(context: Context, path: String) {
+fun openMoodlePage(
+    context: Context,
+    path: String,
+    pages: () -> MoodleWebPages = { MoodleWebPages.of(context) },
+) {
     val app = Intent(Intent.ACTION_VIEW, MoodlePage.deepLink(path).toUri()).apply {
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
     }
     if (runCatching { context.startActivity(app) }.isSuccess) return
-    openMoodleWebPage(context, MoodlePage.webUrl(path))
+    openMoodleWebPage(context, MoodlePage.webUrl(path), pages = pages)
 }
 
 /**

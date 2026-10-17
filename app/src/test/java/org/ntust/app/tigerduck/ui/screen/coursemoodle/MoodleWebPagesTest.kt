@@ -168,4 +168,27 @@ class MoodleWebPagesTest {
         assertTrue(routed.isEmpty())
         assertEquals(listOf(Intent.ACTION_VIEW, Intent.ACTION_SENDTO), started.map { it.action })
     }
+
+    @Test
+    fun `a Moodle page opens in the Moodle app, and nothing else`() {
+        openMoodlePage(context, "/mod/assign/view.php?id=890") { recording }
+
+        assertEquals(listOf("moodlemobile://https://moodle2.ntust.edu.tw?redirect=/mod/assign/view.php?id%3D890"), started.map { it.dataString })
+        assertTrue("the website is not opened behind the app", routed.isEmpty())
+    }
+
+    @Test
+    fun `without the Moodle app a Moodle page opens on the website through the signed-in path`() {
+        val noMoodleApp = object : ContextWrapper(app) {
+            override fun startActivity(intent: Intent) {
+                if (intent.data?.scheme == "moodlemobile") throw ActivityNotFoundException()
+                started += intent
+            }
+        }
+
+        openMoodlePage(noMoodleApp, "/mod/assign/view.php?id=890") { recording }
+
+        assertEquals(listOf("https://moodle2.ntust.edu.tw/mod/assign/view.php?id=890" to null), routed)
+        assertTrue(started.isEmpty())
+    }
 }

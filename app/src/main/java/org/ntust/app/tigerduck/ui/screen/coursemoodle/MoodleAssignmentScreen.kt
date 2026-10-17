@@ -236,9 +236,26 @@ fun MoodleAssignmentScreen(
         onPauseOrDispose { }
     }
 
+    // One for the whole page, so of every file tapped only the latest opens, and a page opened
+    // on Moodle stops a file still downloading from opening over it.
+    val files = store?.let { rememberMoodleFileOpener(it, browserPreference) }
     Scaffold(
-        topBar = { MoodleTopBar(title = "", onBack = onBack, moodlePath = entry?.let(AssignmentPageRules::moodlePath)) },
-        bottomBar = { entry?.let { AssignmentSubmitButton(it, onOpen = viewModel::noteMoodleHandOff) } },
+        topBar = {
+            MoodleTopBar(
+                title = "",
+                onBack = onBack,
+                moodlePath = entry?.let(AssignmentPageRules::moodlePath),
+                willOpenPage = { files?.forgetPendingOpen() },
+            )
+        },
+        bottomBar = {
+            entry?.let {
+                AssignmentSubmitButton(it, onOpen = {
+                    files?.forgetPendingOpen()
+                    viewModel.noteMoodleHandOff()
+                })
+            }
+        },
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         Box(
@@ -255,6 +272,7 @@ fun MoodleAssignmentScreen(
                     submission = submission,
                     store = store,
                     browserPreference = browserPreference,
+                    files = files,
                     onRetry = { viewModel.refresh(entry, force = true) },
                 )
             }
@@ -270,6 +288,8 @@ internal fun AssignmentPageBody(
     submission: MoodleFeed.State<MoodleAssignmentSubmission>,
     store: MoodleCourseStore?,
     browserPreference: String,
+    // The page's one opener, over [store]; without it the files open as links on the site.
+    files: MoodleFileOpener? = null,
     onRetry: () -> Unit,
 ) {
     val record = entry.record
@@ -313,7 +333,7 @@ internal fun AssignmentPageBody(
             PageSection(stringResource(R.string.school_mail_attachments)) {
                 Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
                     Column {
-                        AssignmentFileRows(store, record.introAttachments, MoodleFileOwner.Module(record.cmid), browserPreference, moodlePath)
+                        AssignmentFileRows(store, files, record.introAttachments, MoodleFileOwner.Module(record.cmid), browserPreference, moodlePath)
                     }
                 }
             }
@@ -329,6 +349,7 @@ internal fun AssignmentPageBody(
                     AssignmentPageRules.dueSeconds(entry),
                 ),
                 store = store,
+                files = files,
                 browserPreference = browserPreference,
                 moodlePath = moodlePath,
                 onRetry = onRetry,
@@ -464,6 +485,7 @@ private fun SubmissionSection(
     submission: MoodleFeed.State<MoodleAssignmentSubmission>,
     badge: SubmissionBadge?,
     store: MoodleCourseStore?,
+    files: MoodleFileOpener?,
     browserPreference: String,
     moodlePath: String?,
     onRetry: () -> Unit,
@@ -478,7 +500,7 @@ private fun SubmissionSection(
             MoodleFirstLoad(failure = if (submission.isRefreshing) null else submission.failure, onRetry = onRetry)
         } else {
             if (AssignmentPageStatus.showsCard(value)) {
-                SubmissionCard(entry.record.assignId, value, store, browserPreference, moodlePath)
+                SubmissionCard(entry.record.assignId, value, store, files, browserPreference, moodlePath)
             }
             value.comments?.takeIf { it.isNotEmpty() }?.let { CommentList(it, browserPreference) }
         }
@@ -522,6 +544,7 @@ private fun SubmissionCard(
     assignId: Int,
     submission: MoodleAssignmentSubmission,
     store: MoodleCourseStore?,
+    files: MoodleFileOpener?,
     browserPreference: String,
     moodlePath: String?,
 ) {
@@ -536,7 +559,7 @@ private fun SubmissionCard(
             )
             if (submission.files.isNotEmpty()) {
                 HorizontalDivider(color = cardDividerColor())
-                AssignmentFileRows(store, submission.files, MoodleFileOwner.Submission(assignId), browserPreference, moodlePath)
+                AssignmentFileRows(store, files, submission.files, MoodleFileOwner.Submission(assignId), browserPreference, moodlePath)
             }
             submission.onlineText?.let { html ->
                 HorizontalDivider(color = cardDividerColor())
@@ -550,20 +573,20 @@ private fun SubmissionCard(
 
 /**
  * [files] as the materials and announcements list theirs, one under the other with a line between:
- * downloaded through [store] and opened from the copy, with the download's progress on the row.
- * A page whose assignment names no course has no store to download through, so its files open
- * as their own links on the site, with no key in them.
+ * downloaded through [store] and opened from the copy by the page's [opener], with the download's
+ * progress on the row. A page whose assignment names no course has no store to download through,
+ * so its files open as their own links on the site, with no key in them.
  */
 @Composable
 private fun AssignmentFileRows(
     store: MoodleCourseStore?,
+    opener: MoodleFileOpener?,
     files: List<MoodleFile>,
     owner: MoodleFileOwner,
     browserPreference: String,
     moodlePath: String?,
 ) {
     val context = LocalContext.current
-    val opener = store?.let { rememberMoodleFileOpener(it, browserPreference) }
     val snapshot = store?.downloads?.snapshot?.collectAsStateWithLifecycle()?.value
     val openInMoodle = {
         opener?.forgetPendingOpen()
