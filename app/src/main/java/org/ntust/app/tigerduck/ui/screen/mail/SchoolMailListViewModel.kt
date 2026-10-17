@@ -482,25 +482,27 @@ class SchoolMailListViewModel @Inject constructor(
     }
 
     /**
-     * [folders] were found recreated: the rows and cursors the list holds for them were read under
-     * a UIDVALIDITY the server no longer has, so they name other mail now and the list starts again
-     * from the top. Should that fail, they go rather than stay -- nothing may read them again, not
-     * the next scroll and not a search falling back to the loaded mail -- and the folder shows
-     * nothing until a first page lands, which Retry, a pull or the poll's next look brings. True
-     * once the list has reloaded.
+     * [folders], each with the UIDVALIDITY its rows were read under, were found recreated: the
+     * server no longer has that generation, so the rows and cursors the list holds for them name
+     * other mail now and the list starts again from the top. Should that fail, they go rather than
+     * stay -- nothing may read them again, not the next scroll and not a search falling back to the
+     * loaded mail -- and the folder shows nothing until a first page lands, which Retry, a pull or
+     * the poll's next look brings. True once the list has reloaded.
      *
      * The folder's cached page goes first, for the same reason: it is the old mailbox's too, and
      * [showCached] would otherwise paint it again, rows and cursor, on the next visit to the folder
-     * while the server keeps failing. A reload that lands writes the new page in its place.
+     * while the server keeps failing. Only a page of that same old generation, though: a refresh
+     * that failed on another folder may already have cached this one under the new generation, and
+     * that page is the only offline copy of the new mailbox. A reload that lands writes its own.
      */
-    private suspend fun reloadRecreated(folders: Set<String>): Boolean {
+    private suspend fun reloadRecreated(folders: Map<String, Long>): Boolean {
         val selection = _state.value.selected
         val generation = listGeneration
-        folders.forEach { repository.dropCachedPage(it) }
+        folders.forEach { (folder, obsolete) -> repository.dropCachedPage(folder, obsolete) }
         if (fetchFirstPage()) return true
         // Only while this is still the list that was found stale: a newer one owns its rows.
         if (_state.value.selected == selection && generation == listGeneration) {
-            _state.update { st -> st.copy(messages = st.messages.filterNot { it.folder in folders }, cursors = st.cursors - folders) }
+            _state.update { st -> st.copy(messages = st.messages.filterNot { it.folder in folders }, cursors = st.cursors - folders.keys) }
         }
         return false
     }
@@ -603,9 +605,11 @@ class SchoolMailListViewModel @Inject constructor(
                 if (_state.value.selected != selection || generation != listGeneration) return
                 // A folder recreated since its first page: the older page's UIDs name other mail
                 // than the list's, so it is not merged, and the list starts again from the top.
-                val recreated = pages.filter { (folder, page) -> folderValidity[folder].let { it != null && it != page.uidValidity } }
+                val recreated = pages.mapNotNull { (folder, page) ->
+                    folderValidity[folder]?.takeIf { it != page.uidValidity }?.let { folder to it }
+                }.toMap()
                 if (recreated.isNotEmpty()) {
-                    reloadRecreated(recreated.mapTo(HashSet()) { it.first })
+                    reloadRecreated(recreated)
                     return
                 }
                 _state.update { st ->
@@ -730,10 +734,11 @@ class SchoolMailListViewModel @Inject constructor(
                         return
                     }
                     if (_state.value.selected != selection || generation != searchGeneration) return
-                    if (matches.uidValidity != null && page.uidValidity != null && page.uidValidity != matches.uidValidity) {
+                    val searched = matches.uidValidity
+                    if (searched != null && page.uidValidity != null && page.uidValidity != searched) {
                         unfetchedMatches = unfetchedMatches - folder
                         _state.update { st -> st.copy(searchResults = st.searchResults?.filterNot { it.folder == folder }) }
-                        val reloaded = reloadRecreated(setOf(folder))
+                        val reloaded = reloadRecreated(mapOf(folder to searched))
                         // Not if the search was cleared or replaced meanwhile: that one is the
                         // user's, and this would be a second round trip for the same query. Nor
                         // after a reload that failed: the server was just found unreachable, or

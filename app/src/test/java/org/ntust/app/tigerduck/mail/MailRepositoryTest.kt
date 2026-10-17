@@ -69,11 +69,13 @@ class MailRepositoryTest {
         server.deliver("a")
         val repo = TestSetup(backgroundScope).signedIn()
         repo.loadPage("INBOX", null)
+        // Only a page of the generation found obsolete goes; this one is the server's current one.
+        repo.dropCachedPage("INBOX", server.uidValidity + 1)
         assertNotNull(repo.cachedPage("INBOX"))
-        repo.dropCachedPage("INBOX")
+        repo.dropCachedPage("INBOX", server.uidValidity)
         assertNull(repo.cachedPage("INBOX"))
         // Dropping a folder that has no cached page is nothing to fail over.
-        repo.dropCachedPage("INBOX")
+        repo.dropCachedPage("INBOX", server.uidValidity)
         assertEquals(listOf("a"), repo.loadPage("INBOX", null).messages.map { it.subject })
         assertEquals(listOf("a"), repo.cachedPage("INBOX")!!.messages.map { it.subject })
     }
@@ -81,7 +83,8 @@ class MailRepositoryTest {
     @Test
     fun `dropping a cached page leaves the demo mailbox as it is, having no cache behind it`() = runTest {
         val repo = TestSetup(backgroundScope).signedIn("B10000099", "demo")
-        repo.dropCachedPage("INBOX")
+        // The demo page reports validity 1, so this names exactly the page a real cache would drop.
+        repo.dropCachedPage("INBOX", 1)
         assertEquals(listOf("期中考時間公告"), repo.cachedPage("INBOX")!!.messages.map { it.subject })
         assertEquals(0, server.opens)
     }

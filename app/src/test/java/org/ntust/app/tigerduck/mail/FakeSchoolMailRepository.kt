@@ -24,6 +24,10 @@ class FakeSchoolMailRepository : SchoolMailRepository {
     var statusError: MailError? = null
     var statusCalls = 0
     var loadError: MailError? = null
+    /** When set, [loadError] is thrown for this folder alone: one folder's page lands and the next one's does not. */
+    var loadErrorFolder: String? = null
+    /** The UIDVALIDITY [loadPage] reports for its pages, and so caches them under; raised when the mailbox is "recreated". */
+    var pageValidity = 1L
     var searchUnsupported = false
     val bodies = mutableMapOf<Long, MailBody>()
     var bodyError: MailError? = null
@@ -149,13 +153,14 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         cachedPages.remove(folder)
     }
 
-    /** Every folder handed to [dropCachedPage], in order. */
-    val droppedCaches = mutableListOf<String>()
+    /** Every `(folder, obsolete validity)` handed to [dropCachedPage], in order. */
+    val droppedCaches = mutableListOf<Pair<String, Long>>()
 
-    override suspend fun dropCachedPage(folder: String) {
+    override suspend fun dropCachedPage(folder: String, obsoleteValidity: Long) {
         foldersTouched += folder
-        droppedCaches += folder
-        dropCache(folder)
+        droppedCaches += folder to obsoleteValidity
+        // Mirrors MailCache.deleteFolderUnder: a page of any other generation stays.
+        if (cachedPages[folder]?.uidValidity == obsoleteValidity) dropCache(folder)
     }
 
     override suspend fun loadPage(folder: String, beforeSeq: Int?, limit: Int, background: Boolean): MailPage {
@@ -172,7 +177,7 @@ class FakeSchoolMailRepository : SchoolMailRepository {
                     gate.await()
                 }
             }
-            loadError?.let { throw it }
+            loadError?.takeIf { loadErrorFolder == null || loadErrorFolder == folder }?.let { throw it }
             if (beforeSeq != null) olderPageGate?.await()
             if (beforeSeq != null) olderPage?.invoke(folder, beforeSeq)?.let { return it }
             val all = sorted(folder)
@@ -180,7 +185,7 @@ class FakeSchoolMailRepository : SchoolMailRepository {
             // `limit` is honoured, not just recorded: the real repository's rule about a warm
             // never shortening a cache only means anything if a warm can return a shorter page.
             val chunk = all.drop(from).take(minOf(pageSize, limit))
-            val page = MailPage(1, all.size, chunk, (from + chunk.size).takeIf { it < all.size })
+            val page = MailPage(pageValidity, all.size, chunk, (from + chunk.size).takeIf { it < all.size })
             // Mirrors MailRepository.loadPage: a first page replaces the cache, except for a
             // background warm that would leave less of the same mailbox behind than is there.
             if (beforeSeq == null) {

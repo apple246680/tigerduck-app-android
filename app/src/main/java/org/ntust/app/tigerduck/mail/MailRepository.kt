@@ -73,12 +73,15 @@ interface SchoolMailRepository {
     suspend fun cachedPage(folder: String): MailPage?
 
     /**
-     * Forgets [folder]'s cached page: the folder was found recreated on the server -- an older page,
-     * or a page of search results, came back under another UIDVALIDITY than the list's -- so the
-     * page names mail that no longer exists and must not be painted again before a first page
-     * replaces it. Nothing to forget for the demo mailbox.
+     * Forgets [folder]'s cached page while it is still the one of the mailbox generation
+     * [obsoleteValidity]: the folder was found recreated on the server -- an older page, or a page
+     * of search results, came back under another UIDVALIDITY than the list's -- so that page names
+     * mail that no longer exists and must not be painted again before a first page replaces it. A
+     * page already cached under the new generation, by a refresh that then failed on another
+     * folder, is left alone: it is the only offline copy of the new mailbox. Nothing to forget for
+     * the demo mailbox.
      */
-    suspend fun dropCachedPage(folder: String)
+    suspend fun dropCachedPage(folder: String, obsoleteValidity: Long)
     /**
      * @param background true for a warm nobody asked for. Such a call never shortens a cached
      *   page it did not improve on -- see [MailRepository.loadPage].
@@ -251,9 +254,9 @@ class MailRepository @Inject constructor(
     }
 
     /** A disk delete under the cache's own lock, as [runExpunging] drops the page it found stale. */
-    override suspend fun dropCachedPage(folder: String) {
+    override suspend fun dropCachedPage(folder: String, obsoleteValidity: Long) {
         if (account.isDemo) return
-        withContext(Dispatchers.IO) { cache.deleteFolder(folder) }
+        withContext(Dispatchers.IO) { cache.deleteFolderUnder(folder, obsoleteValidity) }
     }
 
     /**

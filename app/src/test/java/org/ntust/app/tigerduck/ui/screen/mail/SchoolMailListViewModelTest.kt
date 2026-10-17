@@ -387,6 +387,38 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
+    fun `a recreated folder's failed reload leaves a cache that already holds the new mailbox alone`() {
+        repo.pageSize = 2
+        repo.add("INBOX", mailSummary(1, sentAt = at(100)), mailSummary(2, sentAt = at(200)), mailSummary(3, sentAt = at(300)), mailSummary(4, sentAt = at(400)))
+        repo.add(SENT, mailSummary(9, sentAt = at(50)))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        // The inbox was recreated. A refresh of All mail caches its page under the new UIDVALIDITY
+        // but fails at Sent, so the rows on screen -- and the cursor into them -- stay the old
+        // mailbox's.
+        repo.pageValidity = 2
+        repo.loadError = MailError.Network()
+        repo.loadErrorFolder = SENT
+        selectAll()
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        assertEquals(2L, runBlocking { repo.cachedPage("INBOX") }!!.uidValidity)
+        assertEquals(mapOf("INBOX" to 2), vm.state.value.cursors)
+        // The older page comes down under the new validity, and the connection goes right after.
+        repo.olderPage = { _, _ ->
+            repo.loadErrorFolder = null
+            MailPage(2, 4, listOf(mailSummary(2, sentAt = at(200)), mailSummary(1, sentAt = at(100))), null)
+        }
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        // The old rows go, as they must. The page cached under the new validity is the only
+        // offline copy of the new mailbox there is, and it is not what was found obsolete: it stays.
+        assertTrue(vm.state.value.messages.none { it.folder == "INBOX" })
+        assertEquals(2L, runBlocking { repo.cachedPage("INBOX") }!!.uidValidity)
+        // So the inbox still paints from it while the server is away.
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        assertEquals(listOf(4L, 3L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
     fun `a scroll to the end fetches a few pages of search results at most`() {
         repo.pageSize = 2
         // Under unread only every match is read but the oldest, so page after page adds nothing.
