@@ -17,6 +17,9 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import org.ntust.app.tigerduck.R
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -74,6 +77,16 @@ class SystemPermissions @Inject constructor(
      * of the list, and the next cold start asks — and so records — afresh.
      */
     private val unacknowledgedRefusals = mutableSetOf<AppPermission>()
+
+    // Whether PermissionWarningDialogHost has its dialog up, told by the host
+    // itself: the dialog's state lives in its composition, and the Play
+    // rating ask (ReviewPromptHost) must not open over it.
+    private val _warningShowing = MutableStateFlow(false)
+    val warningShowing: StateFlow<Boolean> = _warningShowing.asStateFlow()
+
+    fun setWarningShowing(showing: Boolean) {
+        _warningShowing.value = showing
+    }
 
     /**
      * Read once: none of the inputs — API level, manufacturer, skin version —

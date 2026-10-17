@@ -200,9 +200,14 @@ class AnnouncementsSyncedAtTest {
         vm.load()
         eventually("the first page lands") { vm.state.value.loadState == LoadState.Loaded }
         assertEquals(listOf(2), vm.state.value.items.map { it.id })
-        // The walk waits a moment after the first page, on the test clock.
-        main.dispatcher.scheduler.advanceUntilIdle()
-        eventually("the older page is asked for") { listRequests.get() == 2 }
+        // The walk waits a moment after the first page, on the test clock -- and queues that
+        // wait only once the page is saved, on an IO thread, after loadState already says
+        // Loaded. So the clock is moved with each look rather than once up front: moved before
+        // the wait is queued, it would move nothing, and the walk would never start.
+        eventually("the older page is asked for") {
+            main.dispatcher.scheduler.advanceUntilIdle()
+            listRequests.get() == 2
+        }
 
         signOut()
         gate.countDown()

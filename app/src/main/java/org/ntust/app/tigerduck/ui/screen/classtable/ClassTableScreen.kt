@@ -82,6 +82,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.ntust.app.tigerduck.AppConstants
 import org.ntust.app.tigerduck.R
@@ -261,6 +264,17 @@ fun ClassTableScreen(
         viewModel.onPageShown()
     }
     PageLeftEffect(viewModel::onPageLeft)
+    // The page's own resume, not the activity's: delivered on coming to the
+    // page and on each return from the background with it showing. The
+    // page's lifecycle answers, right before the launch, whether it still
+    // is; the back stack entry's, so another page on top ends it.
+    val pageLifecycle = LocalLifecycleOwner.current.lifecycle
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.onPageResumed { pageLifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
+    }
+    // Paused with the activity — a background trip, a system prompt: the
+    // moment it offered is withdrawn.
+    LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { viewModel.onPagePaused() }
     LaunchedEffect(viewModel) {
         viewModel.noNetworkEvent.collect {
             snackbarHostState.showSnackbar(errorNetworkUnavailable)

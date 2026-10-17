@@ -1,26 +1,33 @@
 // The rules the Moodle screens follow, kept apart from the screens and the store so they can be
-// tested on the JVM: which section rows show, the order of a forum's discussions, the role
-// sections of the members list, and the grades a course total and its items show.
+// tested on the JVM: which section rows show, the order of a forum's discussions and the layout
+// of a thread, the rows of a course's materials, the role sections of the members list, and the
+// grades a course total and its items show.
 
 package org.ntust.app.tigerduck.data.moodle
 
 import org.ntust.app.tigerduck.network.moodle.MoodleCourseApi
 import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseGrades
+import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseMaterials
 import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseSummary
 import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussion
 import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussionList
+import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussionThread
+import org.ntust.app.tigerduck.network.model.moodle.MoodleFile
 import org.ntust.app.tigerduck.network.model.moodle.MoodleForum
 import org.ntust.app.tigerduck.network.model.moodle.MoodleGradeItem
+import org.ntust.app.tigerduck.network.model.moodle.MoodleMaterial
+import org.ntust.app.tigerduck.network.model.moodle.MoodleMaterialSection
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMember
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberList
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberRole
+import org.ntust.app.tigerduck.network.model.moodle.MoodlePost
 import org.ntust.app.tigerduck.network.model.moodle.MoodleTermForums
 import java.text.Collator
 import java.util.Locale
 
-/** A row of the course detail's Moodle section. Materials join in phase 2. */
+/** A row of the course detail's Moodle section. */
 data class MoodleSectionRow(val kind: Kind, val count: Int, val hasUnread: Boolean) {
-    enum class Kind { ANNOUNCEMENTS, GRADES, MEMBERS, FORUMS }
+    enum class Kind { ANNOUNCEMENTS, MATERIALS, GRADES, MEMBERS, FORUMS }
 }
 
 object MoodleSections {
@@ -45,20 +52,20 @@ object MoodleSections {
     fun generalForums(term: MoodleTermForums?, courseId: Int): List<MoodleForum> =
         courseForums(term, courseId).filter { !it.isNews && it.discussionCount > 0 }
 
-    /**
-     * The section's rows, in its order; a kind with nothing to count has no row. Forums show in
-     * phase 2, with their screens, so [includeForums] is off until then.
-     */
+    /** The section's rows, in its order; a kind with nothing to count has no row. */
     fun rows(
         term: MoodleTermForums?,
         courseId: Int,
         grades: MoodleCourseGrades?,
         members: MoodleMemberList?,
-        includeForums: Boolean = false,
+        materials: MoodleCourseMaterials? = null,
     ): List<MoodleSectionRow> {
         val rows = mutableListOf<MoodleSectionRow>()
         newsForum(term, courseId)?.takeIf { it.discussionCount > 0 }?.let {
             rows += MoodleSectionRow(MoodleSectionRow.Kind.ANNOUNCEMENTS, it.discussionCount, it.unreadPostCount > 0)
+        }
+        materials?.let(MoodleMaterials::count)?.takeIf { it > 0 }?.let {
+            rows += MoodleSectionRow(MoodleSectionRow.Kind.MATERIALS, it, false)
         }
         val graded = grades?.let(MoodleGrades::graded)?.size ?: 0
         // A course total shown is worth the row on its own, graded activities shown or none.
@@ -68,15 +75,13 @@ object MoodleSections {
         if (members != null && MoodleMembers.showsOthers(members)) {
             rows += MoodleSectionRow(MoodleSectionRow.Kind.MEMBERS, members.members.size, false)
         }
-        if (includeForums) {
-            val general = generalForums(term, courseId)
-            if (general.isNotEmpty()) {
-                rows += MoodleSectionRow(
-                    MoodleSectionRow.Kind.FORUMS,
-                    general.sumOf { it.discussionCount },
-                    general.any { it.unreadPostCount > 0 },
-                )
-            }
+        val general = generalForums(term, courseId)
+        if (general.isNotEmpty()) {
+            rows += MoodleSectionRow(
+                MoodleSectionRow.Kind.FORUMS,
+                general.sumOf { it.discussionCount },
+                general.any { it.unreadPostCount > 0 },
+            )
         }
         return rows
     }
@@ -262,4 +267,179 @@ object MoodleMembers {
     private fun matches(member: MoodleMember, needle: String): Boolean =
         listOfNotNull(member.name, member.studentId, member.department)
             .any { it.contains(needle, ignoreCase = true) }
+}
+
+/** Who a file belongs to, which keeps two files of one name apart on the device. */
+sealed interface MoodleFileOwner {
+    /** The folder the owner's files are kept in, under the course's. */
+    val folderName: String
+
+    /** A course module: a resource or a folder on the course's page. */
+    data class Module(val id: Int) : MoodleFileOwner {
+        override val folderName: String get() = "m$id"
+    }
+
+    /** A forum post, an announcement's included. */
+    data class Post(val id: Int) : MoodleFileOwner {
+        override val folderName: String get() = "p$id"
+    }
+}
+
+/** A file with its owner: the owner is part of where its copy is kept. */
+data class MoodleFileRef(val file: MoodleFile, val owner: MoodleFileOwner)
+
+/** A row of a section of the materials screen. */
+sealed interface MoodleMaterialRow {
+    val material: MoodleMaterial
+    val key: String
+
+    /** A resource's file, or one of a folder's, listed under it. */
+    data class File(override val material: MoodleMaterial, val file: MoodleFile, val inFolder: Boolean) : MoodleMaterialRow {
+        override val key: String get() = "f${material.id}${file.path ?: "/"}${file.name}"
+        val ref: MoodleFileRef get() = MoodleFileRef(file, MoodleFileOwner.Module(material.id))
+    }
+
+    data class Link(override val material: MoodleMaterial, val url: String) : MoodleMaterialRow {
+        override val key: String get() = "l${material.id}"
+    }
+
+    /** Not a button: a folder only heads the files listed under it. */
+    data class Folder(override val material: MoodleMaterial, val fileCount: Int) : MoodleMaterialRow {
+        override val key: String get() = "d${material.id}"
+    }
+}
+
+object MoodleMaterials {
+
+    /** What the course detail counts: files and links, a folder by the files in it. */
+    fun count(materials: MoodleCourseMaterials): Int =
+        materials.sections.sumOf { section -> section.materials.sumOf { if (it.isLink) 1 else it.files.size } }
+
+    fun fileRefs(material: MoodleMaterial): List<MoodleFileRef> =
+        material.files.map { MoodleFileRef(it, MoodleFileOwner.Module(material.id)) }
+
+    fun fileRefs(materials: MoodleCourseMaterials): List<MoodleFileRef> =
+        materials.sections.flatMap { section -> section.materials.flatMap(::fileRefs) }
+
+    /** [section]'s rows: a folder heads its files, which are listed under it. */
+    fun rows(section: MoodleMaterialSection): List<MoodleMaterialRow> = section.materials.flatMap { material ->
+        when {
+            material.isLink -> listOfNotNull(material.link?.let { MoodleMaterialRow.Link(material, it) })
+            material.isFolder -> listOf(MoodleMaterialRow.Folder(material, material.files.size)) +
+                material.files.map { MoodleMaterialRow.File(material, it, inFolder = true) }
+            else -> material.files.take(1).map { MoodleMaterialRow.File(material, it, inFolder = false) }
+        }
+    }
+
+    /** The call that logs a view of each kind of module, with the name it takes the instance by. */
+    val VIEW_CALLS: Map<String, Pair<String, String>> = mapOf(
+        MoodleMaterial.RESOURCE to ("mod_resource_view_resource" to "resourceid"),
+        MoodleMaterial.FOLDER to ("mod_folder_view_folder" to "folderid"),
+        MoodleMaterial.URL to ("mod_url_view_url" to "urlid"),
+    )
+
+    /** A link's site for its row: the host without its `www.`, which says where it goes in fewer characters. */
+    fun site(url: String): String {
+        val host = runCatching { java.net.URI(url).host }.getOrNull() ?: return url
+        return if (host.lowercase().startsWith("www.")) host.substring(4) else host
+    }
+}
+
+/** A post as a thread shows it: how deep it is indented, and whom a reply deeper than that answers. */
+data class MoodleThreadEntry(val post: MoodlePost, val depth: Int, val replyingTo: String?)
+
+object MoodleThreads {
+    /** Replies are indented this many levels at most; deeper ones say whom they answer. */
+    const val MAX_DEPTH = 3
+
+    /** The first post as a discussion list gives it, which does not say what is unread in it. */
+    fun firstPost(discussion: MoodleDiscussion) = MoodlePost(
+        id = discussion.postId,
+        parentId = null,
+        subject = discussion.title,
+        message = discussion.message,
+        created = discussion.created.takeIf { it > 0 },
+        authorName = discussion.authorName,
+        authorId = discussion.authorId,
+        attachments = discussion.attachments,
+        isUnread = false,
+        isDeleted = false,
+    )
+
+    /**
+     * [thread]'s posts in reading order, each reply under the post it answers. Missing parents and
+     * parents that answer each other in a loop must not hide a reply. The cached first post keeps
+     * a discussion readable before its thread arrives.
+     */
+    fun entries(discussion: MoodleDiscussion, thread: MoodleDiscussionThread?): List<MoodleThreadEntry> {
+        val posts = thread?.posts.orEmpty()
+        if (posts.isEmpty()) return listOf(MoodleThreadEntry(firstPost(discussion), 0, null))
+        val ids = posts.map { it.id }.toSet()
+        val replies = mutableMapOf<Int, MutableList<MoodlePost>>()
+        val roots = mutableListOf<MoodlePost>()
+        for (post in posts) {
+            val parent = post.parentId
+            if (parent != null && parent != post.id && parent in ids) {
+                replies.getOrPut(parent) { mutableListOf() } += post
+            } else {
+                roots += post
+            }
+        }
+        val entries = mutableListOf<MoodleThreadEntry>()
+        val shown = mutableSetOf<Int>()
+        fun add(post: MoodlePost, level: Int, answering: MoodlePost?) {
+            if (!shown.add(post.id)) return
+            val name = answering?.authorName?.let(MoodlePersonName::displayName)?.takeIf { it.isNotEmpty() }
+            entries += MoodleThreadEntry(post, minOf(level, MAX_DEPTH), if (level > MAX_DEPTH) name else null)
+            replies[post.id]?.forEach { add(it, level + 1, post) }
+        }
+        roots.forEachIndexed { index, root -> add(root, if (index == 0) 0 else 1, null) }
+        // Posts whose parents answer each other in a loop reach no root; they still show.
+        posts.filter { it.id !in shown }.forEach { add(it, 1, null) }
+        return entries
+    }
+}
+
+/** What a Moodle file holds, for its icon: by MIME type, else by extension. */
+enum class MoodleFileKind {
+    PDF, DOCUMENT, PRESENTATION, SPREADSHEET, IMAGE, VIDEO, AUDIO, ARCHIVE, TEXT, OTHER;
+
+    companion object {
+        fun of(mimeType: String?, fileName: String): MoodleFileKind =
+            byType(mimeType?.substringBefore(';')?.trim()?.lowercase().orEmpty())
+                ?: byExtension(fileName.substringAfterLast('.', "").lowercase())
+                ?: OTHER
+
+        private fun byType(type: String): MoodleFileKind? = when {
+            type.isEmpty() -> null
+            type == "application/pdf" -> PDF
+            "presentation" in type || "powerpoint" in type -> PRESENTATION
+            "spreadsheet" in type || "excel" in type || type == "text/csv" -> SPREADSHEET
+            "wordprocessing" in type || type == "application/msword" -> DOCUMENT
+            type.startsWith("image/") -> IMAGE
+            type.startsWith("video/") -> VIDEO
+            type.startsWith("audio/") -> AUDIO
+            type in ARCHIVE_TYPES -> ARCHIVE
+            type == "text/plain" -> TEXT
+            else -> null
+        }
+
+        private fun byExtension(extension: String): MoodleFileKind? = when (extension) {
+            "pdf" -> PDF
+            "doc", "docx", "odt", "rtf", "pages" -> DOCUMENT
+            "ppt", "pptx", "odp", "key" -> PRESENTATION
+            "xls", "xlsx", "ods", "csv", "numbers" -> SPREADSHEET
+            "png", "jpg", "jpeg", "gif", "heic", "webp", "bmp", "tif", "tiff", "svg" -> IMAGE
+            "mp4", "mov", "m4v", "avi", "mkv", "webm" -> VIDEO
+            "mp3", "m4a", "wav", "aac", "flac", "ogg" -> AUDIO
+            "zip", "rar", "7z", "gz", "tar", "tgz" -> ARCHIVE
+            "txt", "md" -> TEXT
+            else -> null
+        }
+
+        private val ARCHIVE_TYPES = setOf(
+            "application/zip", "application/x-zip-compressed", "application/x-7z-compressed",
+            "application/x-rar-compressed", "application/vnd.rar", "application/gzip", "application/x-tar",
+        )
+    }
 }

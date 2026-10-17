@@ -4,23 +4,25 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
+import org.ntust.app.tigerduck.data.moodle.MoodleMaterials
 import org.ntust.app.tigerduck.network.MoodleWebserviceError
+import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseMaterials
 import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseSummary
 import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussion
 import org.ntust.app.tigerduck.network.model.moodle.MoodleFile
 import org.ntust.app.tigerduck.network.model.moodle.MoodleForum
 import org.ntust.app.tigerduck.network.model.moodle.MoodleGradeItem
+import org.ntust.app.tigerduck.network.model.moodle.MoodleMaterial
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberList
+import org.ntust.app.tigerduck.network.model.moodle.MoodlePost
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
  * The Moodle calls behind a course's Moodle screens. The live one runs each under the stored
  * token, renewed as for any Moodle call; the demo account has its own, which never leaves the
- * device, and tests pass stand-ins.
- *
- * Phase 2 adds the posts of a discussion, a course's materials, file downloads and view logging
- * here, beside the calls they sit next to on iOS.
+ * device, and tests pass stand-ins. Calls only some screens make have defaults, so a stand-in for
+ * another screen's tests keeps to the calls it is about, as on iOS.
  */
 interface MoodleCourseApi {
     /** The web-service functions the site allows this account. Each feature hides without its own. */
@@ -31,6 +33,18 @@ interface MoodleCourseApi {
 
     /** Page [page] (from 0) of forum [forumId]'s discussions, [DISCUSSIONS_PER_PAGE] to a page. */
     suspend fun discussions(forumId: Int, page: Int): List<MoodleDiscussion>
+
+    /** Every post of discussion [discussionId], oldest first: Moodle answers with the whole thread. */
+    suspend fun posts(discussionId: Int): List<MoodlePost> = emptyList()
+
+    /** Course [courseId]'s materials: its sections with their files, folders and links. */
+    suspend fun materials(courseId: Int): MoodleCourseMaterials = MoodleCourseMaterials(emptyList())
+
+    /**
+     * Logs a view of [material], which may count toward its completion. [isCurrent] is asked once
+     * the token is in hand, as for [markViewed].
+     */
+    suspend fun markMaterialViewed(material: MoodleMaterial, isCurrent: () -> Boolean) {}
 
     /**
      * Logs a view of discussion [discussionId], which marks it read. [isCurrent] is asked once the
@@ -52,10 +66,11 @@ interface MoodleCourseApi {
 
     /**
      * Downloads [file], a file Moodle's own site serves, into [target], stopping past [maxBytes].
-     * The account's key goes in the request only, which never leaves the app; another app gets
-     * the copy, not the link. Cancelling the caller cancels the request.
+     * [progress] gets the share received so far. The account's key goes in the request only,
+     * which never leaves the app; another app gets the copy, not the link. Cancelling the caller
+     * cancels the request.
      */
-    suspend fun download(file: MoodleFile, target: java.io.File, maxBytes: Long)
+    suspend fun download(file: MoodleFile, target: java.io.File, maxBytes: Long, progress: (Float) -> Unit)
 
     companion object {
         const val FORUMS_FUNCTION = "mod_forum_get_forums_by_courses"
@@ -65,6 +80,7 @@ interface MoodleCourseApi {
         const val MEMBERS_FUNCTION = "core_enrol_get_enrolled_users"
         const val GRADE_ITEMS_FUNCTION = "gradereport_user_get_grade_items"
         const val COURSES_FUNCTION = "core_course_get_courses_by_field"
+        const val CONTENTS_FUNCTION = "core_course_get_contents"
 
         /** Asked for explicitly: Moodle's default `perpage` of 0 returns every discussion at once. */
         const val DISCUSSIONS_PER_PAGE = 20
@@ -125,6 +141,38 @@ class LiveMoodleCourseApi internal constructor(
             withContext(parse) { MoodleJson.discussions(answer) }
         }
 
+    /** Sorted by Moodle, oldest first, so a reply follows what it answers. */
+    override suspend fun posts(discussionId: Int): List<MoodlePost> = webservice.withToken { token ->
+        val answer = webservice.call(
+            MoodleCourseApi.DISCUSSION_POSTS_FUNCTION,
+            token,
+            listOf(
+                "discussionid" to discussionId.toString(),
+                "sortby" to "created",
+                "sortdirection" to "ASC",
+                "moodlewssettingfilter" to "true",
+            ),
+        )
+        withContext(parse) { MoodleJson.posts(answer) }
+    }
+
+    override suspend fun materials(courseId: Int): MoodleCourseMaterials = webservice.withToken { token ->
+        val answer = webservice.call(
+            MoodleCourseApi.CONTENTS_FUNCTION,
+            token,
+            listOf("courseid" to courseId.toString()),
+        )
+        withContext(parse) { MoodleJson.materials(answer) }
+    }
+
+    override suspend fun markMaterialViewed(material: MoodleMaterial, isCurrent: () -> Boolean) {
+        val (function, parameter) = MoodleMaterials.VIEW_CALLS[material.module] ?: return
+        webservice.withToken { token ->
+            if (!isCurrent()) return@withToken
+            webservice.call(function, token, listOf(parameter to material.instance.toString()))
+        }
+    }
+
     override suspend fun markViewed(discussionId: Int, isCurrent: () -> Boolean) {
         webservice.withToken { token ->
             if (!isCurrent()) return@withToken
@@ -182,11 +230,26 @@ class LiveMoodleCourseApi internal constructor(
         }
     }
 
-    override suspend fun download(file: MoodleFile, target: java.io.File, maxBytes: Long) {
+    /**
+     * The share is of the length the reply gives, else of the size Moodle lists. A file whose type
+     * Moodle does not list is checked against a page standing in for it: a web page is refused
+     * unless the file's own name says it is one.
+     */
+    override suspend fun download(file: MoodleFile, target: java.io.File, maxBytes: Long, progress: (Float) -> Unit) {
         webservice.withToken { token ->
             val url = MoodleFileUrls.downloadUrl(file.url, webservice.siteInfo(token).privateAccessKey, token)
                 ?: throw MoodleWebserviceError.MalformedResponse("not a Moodle file")
-            webservice.downloadTo(Request.Builder().url(url).get().build(), target, file.checkableMimeType(), maxBytes)
+            val expected = file.checkableMimeType()
+            webservice.downloadTo(
+                Request.Builder().url(url).get().build(),
+                target,
+                expected,
+                maxBytes,
+                refusesPage = expected == null && !file.isWebPage(),
+            ) { read, length ->
+                val total = if (length > 0) length else file.size
+                if (total > 0) progress((read.toFloat() / total).coerceIn(0f, 1f))
+            }
         }
     }
 

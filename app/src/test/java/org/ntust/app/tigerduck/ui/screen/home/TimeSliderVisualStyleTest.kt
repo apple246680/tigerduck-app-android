@@ -88,7 +88,7 @@ class TimeSliderVisualStyleTest {
                             courses = listOf(calculus),
                             quietDays = QuietDays(AcademicCalendar.EMPTY, emptySet()),
                             invertDirection = false,
-                            onSelectCourse = { _, _ -> },
+                            onSelectCourse = {},
                         )
                     }
                 }

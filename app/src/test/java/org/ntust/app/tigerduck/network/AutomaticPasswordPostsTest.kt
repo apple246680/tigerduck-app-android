@@ -106,11 +106,15 @@ class AutomaticPasswordPostsTest {
         assertTrue(latch.isRejected)
     }
 
-    private class Tokens : MoodleTokenCoordinator.Tokens {
+    private class Tokens : MoodleTokenPairStore {
         override var token: String? = null
+        override var privateToken: String? = null
         override val studentId: String = STUDENT
         override val password: String = PASSWORD
-        override fun storeIfSignedIn(studentId: String, token: String) = true.also { this.token = token }
+        override fun storeIfSignedIn(studentId: String, token: String, privateToken: String?) = true.also {
+            this.token = token
+            this.privateToken = privateToken
+        }
     }
 
     private fun client(answer: (Request) -> Pair<String, String>) = OkHttpClient.Builder().addInterceptor { chain ->

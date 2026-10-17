@@ -52,7 +52,7 @@ fun effectiveCloudSyncEnabled(storedValue: Boolean, flavor: String = BuildConfig
 
 @Singleton
 class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
-    FirstTriggerSeenStore, AssignmentReminderPrefs {
+    FirstTriggerSeenStore, AssignmentReminderPrefs, ReviewPromptStore {
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences("tigerduck_prefs", Context.MODE_PRIVATE)
@@ -300,6 +300,23 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
     var skippedUpdateVersionCode: Int
         get() = prefs.getInt("skippedUpdateVersionCode", -1)
         set(value) = prefs.edit().putInt("skippedUpdateVersionCode", value).apply()
+
+    // --- Play Store rating (issue #332) ---
+    // ReviewPromptStore; the rule is in ReviewPrompt. Primitives with
+    // "nothing yet" defaults, so an install upgraded into this starts
+    // counting from zero with nothing to migrate. Not cleared at sign-out:
+    // the ask is once per install, whatever account is on it.
+    override var reviewPromptDaysUsed: Int
+        get() = prefs.getInt("reviewPromptDaysUsed", 0)
+        set(value) = prefs.edit().putInt("reviewPromptDaysUsed", value).apply()
+
+    override var reviewPromptLastDay: String?
+        get() = prefs.getString("reviewPromptLastDay", null)
+        set(value) = prefs.edit().putString("reviewPromptLastDay", value).apply()
+
+    override var reviewPromptAsked: Boolean
+        get() = prefs.getBoolean("reviewPromptAsked", false)
+        set(value) = prefs.edit().putBoolean("reviewPromptAsked", value).apply()
 
     // --- "What's new" dialog ---
     // WHATS_NEW_UNSET (-1) means no versionCode has been recorded yet — either

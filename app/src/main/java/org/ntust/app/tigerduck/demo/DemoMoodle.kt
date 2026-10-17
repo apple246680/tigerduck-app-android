@@ -3,24 +3,29 @@ package org.ntust.app.tigerduck.demo
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
+import org.ntust.app.tigerduck.data.moodle.MoodleMaterials
 import org.ntust.app.tigerduck.network.moodle.MoodleCourseApi
 import org.ntust.app.tigerduck.network.moodle.MoodleHtmlText
+import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseMaterials
 import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseSummary
 import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussion
 import org.ntust.app.tigerduck.network.model.moodle.MoodleFile
 import org.ntust.app.tigerduck.network.model.moodle.MoodleForum
 import org.ntust.app.tigerduck.network.model.moodle.MoodleGradeItem
+import org.ntust.app.tigerduck.network.model.moodle.MoodleMaterial
+import org.ntust.app.tigerduck.network.model.moodle.MoodleMaterialSection
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMember
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberList
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberRole
+import org.ntust.app.tigerduck.network.model.moodle.MoodlePost
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeParseException
 
 /**
  * The demo student's courses on Moodle, from `assets/demo.json`'s `moodle` section: a few
- * announcements, grades, members and a summary per course, so the course detail's Moodle screens
- * have something to show without a network. Read in the app's own models, so the screens take
+ * announcements, grades, members and a summary per course, and for one a forum with threads and
+ * materials, so the course detail's Moodle screens have something to show without a network. Read in the app's own models, so the screens take
  * exactly the path they take for a real account.
  */
 data class DemoMoodle(
@@ -37,9 +42,22 @@ data class DemoMoodleCourse(
     val announcements: List<MoodleDiscussion>,
     val grades: List<MoodleGradeItem>,
     val members: List<MoodleMember>,
+    /** The course's general forums, with every post of their discussions. */
+    val forums: List<DemoMoodleForum> = emptyList(),
+    val materials: MoodleCourseMaterials = MoodleCourseMaterials(emptyList()),
 ) {
     val newsForumId: Int get() = moodleId * 10 + 1
 }
+
+/** A general forum of a demo course: its discussions as a list gives them, and each one's posts. */
+data class DemoMoodleForum(
+    val id: Int,
+    val cmid: Int,
+    val name: String,
+    val intro: String?,
+    val discussions: List<MoodleDiscussion>,
+    val posts: Map<Int, List<MoodlePost>>,
+)
 
 object DemoMoodleFixture {
     private val ZONE: ZoneId = ZoneId.of("Asia/Taipei")
@@ -67,6 +85,107 @@ object DemoMoodleFixture {
                 .mapIndexedNotNull { i, el -> (el as? JsonObject)?.let { grade(it, moodleId, i, lang) } },
             members = (o.get("members") as? JsonArray).orEmpty()
                 .mapNotNull { el -> (el as? JsonObject)?.let { member(it, lang) } },
+            forums = (o.get("forums") as? JsonArray).orEmpty()
+                .mapIndexedNotNull { i, el -> (el as? JsonObject)?.let { forum(it, moodleId, i, lang) } },
+            materials = MoodleCourseMaterials(
+                (o.get("materials") as? JsonArray).orEmpty()
+                    .mapNotNull { el -> (el as? JsonObject)?.let { materialSection(it, lang) } },
+            ),
+        )
+    }
+
+    private fun forum(o: JsonObject, moodleId: Int, index: Int, lang: String): DemoMoodleForum? {
+        val id = o.int("id") ?: return null
+        val threads = (o.get("discussions") as? JsonArray).orEmpty().mapNotNull { el ->
+            val d = el as? JsonObject ?: return@mapNotNull null
+            val discussionId = d.int("id") ?: return@mapNotNull null
+            val title = localized(d, "title", lang)
+            val posts = (d.get("posts") as? JsonArray).orEmpty()
+                .mapNotNull { (it as? JsonObject)?.let { p -> post(p, lang) } }
+                // As Moodle titles them: the first post by the discussion, a reply "Re:" it.
+                .mapIndexed { i, post -> post.copy(subject = if (i == 0) title else "Re: $title") }
+            val first = posts.firstOrNull() ?: return@mapNotNull null
+            val discussion = MoodleDiscussion(
+                id = discussionId,
+                postId = first.id,
+                title = title,
+                message = first.message,
+                preview = MoodleHtmlText.plainText(first.message),
+                created = first.created ?: 0,
+                modified = posts.maxOf { it.created ?: 0 },
+                isPinned = d.bool("pinned"),
+                unreadCount = posts.count { it.isUnread },
+                replyCount = posts.size - 1,
+                authorName = first.authorName,
+                authorId = first.authorId,
+                attachments = first.attachments,
+            )
+            discussion to posts
+        }
+        return DemoMoodleForum(
+            id = id,
+            cmid = moodleId * 10 + 3 + index,
+            name = localized(o, "name", lang),
+            intro = localized(o, "intro", lang).ifEmpty { null },
+            discussions = threads.map { it.first },
+            posts = threads.associate { (discussion, posts) -> discussion.id to posts },
+        )
+    }
+
+    private fun post(o: JsonObject, lang: String): MoodlePost? {
+        val id = o.int("id") ?: return null
+        return MoodlePost(
+            id = id,
+            parentId = o.int("parent"),
+            subject = "",
+            message = localized(o, "message", lang),
+            created = time(o.str("created")),
+            authorName = localized(o, "author", lang).ifEmpty { null },
+            authorId = o.int("authorId"),
+            attachments = (o.get("attachments") as? JsonArray).orEmpty().mapNotNull { el ->
+                (el as? JsonObject)?.let { file(it, "mod_forum/attachment/$id", time(o.str("created"))) }
+            },
+            isUnread = o.bool("unread"),
+            isDeleted = o.bool("deleted"),
+        )
+    }
+
+    private fun materialSection(o: JsonObject, lang: String): MoodleMaterialSection? {
+        val id = o.int("id") ?: return null
+        val materials = (o.get("items") as? JsonArray).orEmpty().mapNotNull { el ->
+            val m = el as? JsonObject ?: return@mapNotNull null
+            val cmid = m.int("id") ?: return@mapNotNull null
+            val area = "mod_${m.str("type")}/content/$cmid"
+            when (m.str("type")) {
+                "file" -> (m.get("file") as? JsonObject)?.let { file(it, area, null) }?.let {
+                    MoodleMaterial(cmid, cmid, MoodleMaterial.RESOURCE, localized(m, "name", lang), listOf(it), null)
+                }
+                "folder" -> MoodleMaterial(
+                    cmid, cmid, MoodleMaterial.FOLDER, localized(m, "name", lang),
+                    (m.get("files") as? JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.let { f -> file(f, area, null) } },
+                    null,
+                ).takeIf { it.files.isNotEmpty() }
+                "link" -> m.str("url")?.let { MoodleMaterial(cmid, cmid, MoodleMaterial.URL, localized(m, "name", lang), emptyList(), it) }
+                else -> null
+            }
+        }
+        if (materials.isEmpty()) return null
+        return MoodleMaterialSection(id, localized(o, "name", lang), materials)
+    }
+
+    /**
+     * A file under the Moodle site's own web-service path, so a tap takes the path a real file
+     * takes, to the demo account's download, which has no network and says so.
+     */
+    private fun file(o: JsonObject, area: String, created: Long?): MoodleFile? {
+        val name = o.str("name") ?: return null
+        return MoodleFile(
+            name = name,
+            size = o.long("size") ?: 0,
+            url = "https://moodle2.ntust.edu.tw/webservice/pluginfile.php/0/$area/$name",
+            mimeType = o.str("mime"),
+            modified = time(o.str("modified")) ?: created,
+            path = "/",
         )
     }
 
@@ -182,34 +301,63 @@ class DemoMoodleCourseApi(
     override suspend fun functions(): Set<String> = setOf(
         MoodleCourseApi.FORUMS_FUNCTION,
         MoodleCourseApi.DISCUSSIONS_FUNCTION,
+        MoodleCourseApi.DISCUSSION_POSTS_FUNCTION,
         MoodleCourseApi.VIEW_DISCUSSION_FUNCTION,
         MoodleCourseApi.MEMBERS_FUNCTION,
         MoodleCourseApi.GRADE_ITEMS_FUNCTION,
         MoodleCourseApi.COURSES_FUNCTION,
-    )
+        MoodleCourseApi.CONTENTS_FUNCTION,
+    ) + MoodleMaterials.VIEW_CALLS.values.map { it.first }
 
     override suspend fun forums(courseIds: List<Int>): List<MoodleForum> =
-        moodle.courses.filter { it.moodleId in courseIds }.map { c ->
-            MoodleForum(
-                id = c.newsForumId,
-                courseId = c.moodleId,
-                type = "news",
-                name = "",
-                cmid = c.moodleId * 10 + 2,
-                discussionCount = c.announcements.size,
-                unreadPostCount = c.announcements.sumOf(::unread),
-                intro = null,
-            )
+        moodle.courses.filter { it.moodleId in courseIds }.flatMap { c ->
+            listOf(
+                MoodleForum(
+                    id = c.newsForumId,
+                    courseId = c.moodleId,
+                    type = "news",
+                    name = "",
+                    cmid = c.moodleId * 10 + 2,
+                    discussionCount = c.announcements.size,
+                    unreadPostCount = c.announcements.sumOf(::unread),
+                    intro = null,
+                ),
+            ) + c.forums.map { f ->
+                MoodleForum(
+                    id = f.id,
+                    courseId = c.moodleId,
+                    type = "general",
+                    name = f.name,
+                    cmid = f.cmid,
+                    discussionCount = f.discussions.size,
+                    unreadPostCount = f.discussions.sumOf(::unread),
+                    intro = f.intro,
+                )
+            }
         }
 
     override suspend fun discussions(forumId: Int, page: Int): List<MoodleDiscussion> {
-        val course = moodle.courses.firstOrNull { it.newsForumId == forumId } ?: return emptyList()
-        return course.announcements
-            .sortedByDescending { it.created }
+        val list = moodle.courses.firstOrNull { it.newsForumId == forumId }?.announcements
+            ?: moodle.courses.flatMap { it.forums }.firstOrNull { it.id == forumId }?.discussions
+            ?: return emptyList()
+        return list
+            .sortedByDescending { it.modified }
             .drop(page * MoodleCourseApi.DISCUSSIONS_PER_PAGE)
             .take(MoodleCourseApi.DISCUSSIONS_PER_PAGE)
             .map { it.copy(unreadCount = unread(it)) }
     }
+
+    /** A discussion opened once has every post read, as Moodle marks the whole of it. */
+    override suspend fun posts(discussionId: Int): List<MoodlePost> {
+        val posts = moodle.courses.flatMap { it.forums }.firstNotNullOfOrNull { it.posts[discussionId] } ?: return emptyList()
+        return if (discussionId in readIds()) posts.map { it.copy(isUnread = false) } else posts
+    }
+
+    override suspend fun materials(courseId: Int): MoodleCourseMaterials =
+        course(courseId)?.materials ?: MoodleCourseMaterials(emptyList())
+
+    /** Nothing to count a view toward without a server. */
+    override suspend fun markMaterialViewed(material: MoodleMaterial, isCurrent: () -> Boolean) = Unit
 
     override suspend fun markViewed(discussionId: Int, isCurrent: () -> Boolean) {
         if (isCurrent()) markRead(discussionId)
@@ -233,6 +381,6 @@ class DemoMoodleCourseApi(
     }
 
     /** The demo account has no network to fetch a file on. */
-    override suspend fun download(file: MoodleFile, target: java.io.File, maxBytes: Long) =
+    override suspend fun download(file: MoodleFile, target: java.io.File, maxBytes: Long, progress: (Float) -> Unit) =
         throw java.io.IOException("demo mode has no files")
 }

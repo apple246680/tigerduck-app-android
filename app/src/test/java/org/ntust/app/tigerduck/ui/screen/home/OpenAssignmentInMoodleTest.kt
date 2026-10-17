@@ -11,6 +11,7 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.ntust.app.tigerduck.data.model.Assignment
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleWebPages
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
@@ -45,7 +46,7 @@ class OpenAssignmentInMoodleTest {
     }
 
     @Test
-    fun `the browser takes the page when no app takes the link`() {
+    fun `the website takes the page when no app takes the link`() {
         // A device without the Moodle app refuses the moodlemobile:// link.
         val context: Context = object : ContextWrapper(app) {
             override fun startActivity(intent: Intent) {
@@ -53,10 +54,16 @@ class OpenAssignmentInMoodleTest {
                 super.startActivity(intent)
             }
         }
+        val opened = mutableListOf<String>()
 
-        openAssignmentInMoodle(context, assignment("https://moodle2.ntust.edu.tw/mod/assign/view.php?id=890"))
+        openAssignmentInMoodle(
+            context,
+            assignment("https://moodle2.ntust.edu.tw/mod/assign/view.php?id=890"),
+            pages = { MoodleWebPages { _, url, _ -> opened += url } },
+        )
 
-        assertEquals("https://moodle2.ntust.edu.tw/mod/assign/view.php?id=890", started()?.dataString)
+        assertEquals("signed in on the website, as every Open in Moodle", listOf("https://moodle2.ntust.edu.tw/mod/assign/view.php?id=890"), opened)
+        assertNull(started())
     }
 
     @Test

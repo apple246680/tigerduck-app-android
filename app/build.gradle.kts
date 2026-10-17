@@ -556,6 +556,8 @@ dependencies {
     implementation(project(":shared"))
     "playImplementation"(libs.play.services.wearable)
     "playImplementation"(libs.play.app.update.ktx)
+    // In-app review (issue #332): Play only, as fdroid has no Play Store to rate on.
+    "playImplementation"(libs.play.review)
     // WearScheduleBridge / WearDebugClockBridge use kotlinx.coroutines.tasks.await();
     // declare it directly instead of leaning on firebase-messaging's transitive edge.
     "playImplementation"(libs.kotlinx.coroutines.play.services)

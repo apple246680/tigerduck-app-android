@@ -1,6 +1,8 @@
 package org.ntust.app.tigerduck.data.moodle
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -33,7 +35,11 @@ class MoodleCourseRepositoryTest {
         override suspend fun gradeItems(courseId: Int) =
             listOf(MoodleGradeItem(1, "HW", "mod", "assign", 2, grade, 100.0, false, ""))
         override suspend fun summary(courseId: Int) = MoodleCourseSummary.EMPTY
-        override suspend fun download(file: MoodleFile, target: java.io.File, maxBytes: Long) = Unit
+        var downloadGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+        override suspend fun download(file: MoodleFile, target: java.io.File, maxBytes: Long, progress: (Float) -> Unit) {
+            target.writeText("half")
+            downloadGate?.await()
+        }
     }
 
     private val authState = MutableStateFlow(true)
@@ -58,7 +64,8 @@ class MoodleCourseRepositoryTest {
         idMap = { mapOf("1151CS3005301" to 5) },
         cachePort = { account -> cachedFor += account; noCache },
         picturesDir = { null },
-        openedFilesDir = { null },
+        downloads = null,
+        downloadsDir = { null },
         decode = { null },
         authState = authState,
         appScope = backgroundScope,
@@ -151,5 +158,89 @@ class MoodleCourseRepositoryTest {
         demo = false
         repository().store(5)
         assertEquals(listOf("B11300001"), cachedFor)
+    }
+
+    @get:org.junit.Rule
+    val tmp = org.junit.rules.TemporaryFolder()
+
+    @Test
+    fun `sign-out stops every download, so none lands for the account that left`() = runTest(UnconfinedTestDispatcher()) {
+        live.downloadGate = kotlinx.coroutines.CompletableDeferred()
+        val downloads = MoodleFileDownloads(root = { tmp.root }, scope = backgroundScope)
+        val repository = MoodleCourseRepository(
+            signedIn = { authState.value },
+            account = { account },
+            isDemo = { false },
+            liveApi = live,
+            demoApi = { null },
+            idMap = { emptyMap() },
+            cachePort = { noCache },
+            picturesDir = { null },
+            downloads = downloads,
+            downloadsDir = { java.io.File(tmp.root, "account") },
+            decode = { null },
+            authState = authState,
+            appScope = backgroundScope,
+            newScope = { kotlinx.coroutines.CoroutineScope(backgroundScope.coroutineContext + kotlinx.coroutines.SupervisorJob()) },
+        )
+        val store = repository.store(5)!!
+        val file = MoodleFile(
+            name = "hw.pdf", size = 4, mimeType = "application/pdf", modified = 1L, path = "/",
+            url = "https://moodle2.ntust.edu.tw/webservice/pluginfile.php/1/mod_forum/attachment/9/hw.pdf",
+        )
+        val opening = backgroundScope.async { store.download(MoodleFileRef(file, MoodleFileOwner.Post(9))) }
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            kotlinx.coroutines.withTimeout(5_000) { downloads.snapshot.first { it.progress.isNotEmpty() } }
+        }
+
+        authState.value = false
+
+        assertEquals(MoodleAttachment.Dropped, opening.await())
+        assertTrue(downloads.snapshot.value.progress.isEmpty())
+        assertTrue(tmp.root.walkTopDown().none { it.isFile })
+    }
+
+    @Test
+    fun `sign-out deletes the account's downloaded files, once its downloads have stopped`() = runTest(UnconfinedTestDispatcher()) {
+        // Every step on the disk runs where it is called, so the wipe is done once the sign-out is.
+        val direct = object : kotlinx.coroutines.CoroutineDispatcher() {
+            override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) = block.run()
+        }
+        val downloads = MoodleFileDownloads(root = { tmp.root }, scope = backgroundScope, io = direct)
+        val repository = MoodleCourseRepository(
+            signedIn = { authState.value },
+            account = { account },
+            isDemo = { false },
+            liveApi = live,
+            demoApi = { null },
+            idMap = { emptyMap() },
+            cachePort = { noCache },
+            picturesDir = { null },
+            downloads = downloads,
+            downloadsDir = { java.io.File(tmp.root, "account") },
+            decode = { null },
+            authState = authState,
+            appScope = backgroundScope,
+            newScope = { kotlinx.coroutines.CoroutineScope(backgroundScope.coroutineContext + kotlinx.coroutines.SupervisorJob()) },
+        )
+        val store = repository.store(5)!!
+        val hw = MoodleFile(
+            name = "hw.pdf", size = 4, mimeType = "application/pdf", modified = 1L, path = "/",
+            url = "https://moodle2.ntust.edu.tw/webservice/pluginfile.php/1/mod_forum/attachment/9/hw.pdf",
+        )
+        val kept = (store.download(MoodleFileRef(hw, MoodleFileOwner.Post(9))) as MoodleAttachment.Local).file
+        live.downloadGate = kotlinx.coroutines.CompletableDeferred()
+        val notes = hw.copy(name = "notes.pdf", url = hw.url.replace("hw.pdf", "notes.pdf"))
+        val opening = backgroundScope.async { store.download(MoodleFileRef(notes, MoodleFileOwner.Post(9))) }
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            kotlinx.coroutines.withTimeout(5_000) { downloads.snapshot.first { it.progress.isNotEmpty() } }
+        }
+        assertTrue(kept.isFile)
+
+        authState.value = false
+
+        assertEquals(MoodleAttachment.Dropped, opening.await())
+        assertFalse("the copy downloaded before the sign-out stayed", kept.exists())
+        assertTrue(tmp.root.walkTopDown().none { it.isFile })
     }
 }
