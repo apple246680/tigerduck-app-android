@@ -149,12 +149,13 @@ class MoodleCourseRepository internal constructor(
     }
 
     /**
-     * Drops every store and stops what they were fetching and downloading. Their files go with the
-     * cache wipe.
+     * Drops every store and stops what they were fetching and downloading, and deletes the
+     * downloaded files once the downloads have wound down, so none of the account's is left to
+     * the next; the cache wipe deletes the rest.
      */
     private suspend fun clear() = lock.withLock {
         generation++
-        downloads?.cancelAll()
+        downloads?.clear()
         scope.cancel()
         scope = newScope()
         stores = mutableMapOf()

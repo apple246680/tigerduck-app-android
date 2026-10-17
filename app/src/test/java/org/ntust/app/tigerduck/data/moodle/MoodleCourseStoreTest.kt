@@ -518,7 +518,7 @@ class MoodleCourseStoreTest {
         api.downloadStarted.receive()
         assertTrue("the partial file is there while it downloads", tmp.root.walkTopDown().any { it.isFile })
 
-        downloads.cancelAll()
+        downloads.clear()
 
         assertEquals(MoodleAttachment.Dropped, opening.await())
         assertTrue(tmp.root.walkTopDown().none { it.isFile })

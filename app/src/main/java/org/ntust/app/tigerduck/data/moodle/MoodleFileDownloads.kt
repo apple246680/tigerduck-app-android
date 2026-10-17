@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
@@ -14,6 +15,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.di.ApplicationScope
@@ -39,8 +43,8 @@ sealed interface MoodleDownloadState {
  * The Moodle files downloaded on this device: under [root], a folder per account (named so it
  * does not spell the student ID, as it shows in the content URI another app is handed), then per
  * course, owner and file, then the version Moodle lists, which a newer one replaces. A file
- * downloads once at a time however many screens ask, and goes on when they close; a sign-out
- * stops every download, and the cache wipe deletes the files. Ported from iOS
+ * downloads once at a time however many screens ask, and goes on when they close; a sign-out, as
+ * the cache wipe, stops every download and deletes the files. Ported from iOS
  * `MoodleFileDownloads`.
  */
 @Singleton
@@ -67,6 +71,13 @@ class MoodleFileDownloads internal constructor(
 
     /** The download on its way for each copy, by path. Every read and write holds this map's lock. */
     private val running = HashMap<String, Deferred<File?>>()
+
+    /**
+     * Held while a download keeps its file under its final name, and while a wipe deletes the
+     * folders: a wipe lists a folder once, so a file renamed as it lists would stay, under the
+     * name it did not see.
+     */
+    private val keeping = Mutex()
 
     /**
      * Where [file] of [owner] is kept in [courseDir], the account's folder for the course: one
@@ -99,7 +110,7 @@ class MoodleFileDownloads internal constructor(
         val found = withContext(io) {
             sweepPartials(dir)
             dir.walkTopDown()
-                .filter { it.isFile && !it.name.endsWith(PART_SUFFIX) }
+                .filter { it.isFile && !isPartial(it) }
                 .map { it.path }
                 .toSet()
         }
@@ -108,11 +119,13 @@ class MoodleFileDownloads internal constructor(
 
     /** Partial files in [dir] no download on its way is writing, as an app ended mid-way leaves. */
     private fun sweepPartials(dir: File) {
-        val writing = synchronized(running) { running.keys.mapNotNull { File(it).parentFile }.toSet() }
-        dir.walkTopDown()
-            .filter { it.isFile && it.name.endsWith(PART_SUFFIX) && it.parentFile !in writing }
-            .toList()
-            .forEach { it.delete() }
+        dir.walkTopDown().filter { it.isFile && isPartial(it) }.toList().forEach { part ->
+            // Asked as each is deleted, not once before the walk: a download started during the
+            // walk is on the map before it makes its file, so one whose file the walk found is.
+            synchronized(running) {
+                if (running.keys.none { File(it).parentFile == part.parentFile }) part.delete()
+            }
+        }
     }
 
     /**
@@ -166,11 +179,12 @@ class MoodleFileDownloads internal constructor(
         job?.cancel()
     }
 
-    /** Stops every download, as a sign-out does, so none writes for the account that left. */
-    fun cancelAll() {
+    /** Stops every download, so none writes for an account that left, and returns them winding down. */
+    private fun stopAll(): List<Job> {
         val jobs = synchronized(running) { running.values.toList().also { running.clear() } }
         _snapshot.value = Snapshot()
         jobs.forEach { it.cancel() }
+        return jobs
     }
 
     /** The bytes the downloaded files take, once the partial files left behind are swept. */
@@ -179,11 +193,16 @@ class MoodleFileDownloads internal constructor(
         totalBytes(root())
     }
 
-    /** Deletes every downloaded file, stopping the downloads on their way, and returns the bytes left. */
+    /**
+     * Deletes every downloaded file, stopping the downloads on their way, as a sign-out and the
+     * cache wipe do, and returns the bytes left.
+     */
     suspend fun clear(): Long {
-        cancelAll()
+        // Stopped and wound down before the folder goes: a download past its last check would
+        // otherwise keep its file under the wipe, and one stopped deletes its partial file itself.
+        stopAll().joinAll()
         return withContext(io) {
-            root().deleteRecursively()
+            keeping.withLock { root().deleteRecursively() }
             _snapshot.update { it.copy(copies = emptySet()) }
             totalBytes(root())
         }
@@ -205,7 +224,8 @@ class MoodleFileDownloads internal constructor(
         synchronized(running) {
             running.keys.filter { key -> prefixes.any { key.startsWith(it) } }.mapNotNull { running.remove(it) }
         }.forEach { it.cancel() }
-        withContext(io) { stale.forEach { it.deleteRecursively() } }
+        // Under the lock: a stopped download keeps no file past this, and one kept before is listed.
+        withContext(io) { keeping.withLock { stale.forEach { it.deleteRecursively() } } }
         _snapshot.update { snap ->
             snap.copy(
                 copies = snap.copies.filterTo(mutableSetOf()) { key -> prefixes.none { key.startsWith(it) } },
@@ -233,17 +253,23 @@ class MoodleFileDownloads internal constructor(
             withContext(io) {
                 val dir = location.parentFile ?: throw IOException("no folder for the file")
                 dir.mkdirs()
-                part = File.createTempFile(".dl", PART_SUFFIX, dir)
+                part = File.createTempFile(PART_PREFIX, PART_SUFFIX, dir)
             }
             val target = part ?: throw IOException("no partial file")
             fetch(target, progress)
-            currentCoroutineContext().ensureActive()
-            // Landed after a sign-out: the next account must not find it.
-            if (!isCurrent()) return null
-            withContext(io) {
-                location.delete()
-                if (!target.renameTo(location)) throw IOException("could not keep the file")
+            // Checked and kept under the lock a wipe holds: either the wipe lists this file by
+            // its final name, or a stop or sign-out landed first and the partial file goes below.
+            // Landed after a sign-out, the next account must not find it.
+            val kept = withContext(io) {
+                keeping.withLock {
+                    currentCoroutineContext().ensureActive()
+                    if (!isCurrent()) return@withLock false
+                    location.delete()
+                    if (!target.renameTo(location)) throw IOException("could not keep the file")
+                    true
+                }
             }
+            if (!kept) return null
             _snapshot.update { it.copy(copies = it.copies + key, failures = it.failures - key) }
             return location
         } catch (e: CancellationException) {
@@ -286,6 +312,9 @@ class MoodleFileDownloads internal constructor(
 
     companion object {
         private const val TAG = "MoodleFileDownloads"
+
+        /** How a partial file is named, around the number the system gives it. */
+        private const val PART_PREFIX = ".dl"
         private const val PART_SUFFIX = ".part"
 
         /** Under the 255 bytes most file systems allow a name, with room for the partial file's. */
@@ -293,6 +322,14 @@ class MoodleFileDownloads internal constructor(
 
         private fun totalBytes(dir: File): Long =
             dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+
+        /**
+         * Whether [file] is a partial file: by the name [transfer] gives them, not its ending
+         * alone, which a file Moodle lists can share. The leading dot sets them apart, since
+         * [safeFileName] leaves no downloaded file's name beginning with one.
+         */
+        private fun isPartial(file: File): Boolean =
+            file.name.startsWith(PART_PREFIX) && file.name.endsWith(PART_SUFFIX)
 
         /**
          * [name] as one file name: no slash, backslash or NUL, no leading dot to hide or climb
