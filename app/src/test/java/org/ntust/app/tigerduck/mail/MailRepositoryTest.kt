@@ -541,7 +541,9 @@ class MailRepositoryTest {
     @Test
     fun `a mail read, moved or deleted is told to whoever keeps a list of its folder`() = runTest {
         val uid = server.deliver("a")
-        val repo = TestSetup(backgroundScope).signedIn()
+        val setup = TestSetup(backgroundScope)
+        val repo = setup.signedIn()
+        val generation = setup.account.accountGeneration
         val changes = mutableListOf<MailChange>()
         backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { repo.changes.collect { changes += it } }
         repo.loadPage("INBOX", null)
@@ -552,10 +554,10 @@ class MailRepositoryTest {
         runCurrent()
         assertEquals(
             listOf(
-                MailChange.Seen("INBOX", uid, true),
-                MailChange.Removed("INBOX", uid),
-                MailChange.Changed("回收筒"),
-                MailChange.Removed("回收筒", trashUid),
+                MailChange.Seen("INBOX", uid, true, generation),
+                MailChange.Removed("INBOX", uid, generation),
+                MailChange.Changed("回收筒", generation),
+                MailChange.Removed("回收筒", trashUid, generation),
             ),
             changes,
         )
@@ -563,7 +565,9 @@ class MailRepositoryTest {
 
     @Test
     fun `a sent copy and a saved or discarded draft are told the same way`() = runTest {
-        val repo = TestSetup(backgroundScope).signedIn()
+        val setup = TestSetup(backgroundScope)
+        val repo = setup.signedIn()
+        val generation = setup.account.accountGeneration
         val changes = mutableListOf<MailChange>()
         backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { repo.changes.collect { changes += it } }
         repo.send(OutgoingMail(repo.selfAddress(), listOf(MailAddress(null, "a@x.tw")), emptyList(), emptyList(), "s", "hi"), answered = null)
@@ -573,9 +577,34 @@ class MailRepositoryTest {
         repo.discardDraft(uid)
         runCurrent()
         assertEquals(
-            listOf(MailChange.Changed("寄件備份匣"), MailChange.Changed("草稿匣"), MailChange.Removed("草稿匣", uid)),
+            listOf(
+                MailChange.Changed("寄件備份匣", generation),
+                MailChange.Changed("草稿匣", generation),
+                MailChange.Removed("草稿匣", uid, generation),
+            ),
             changes,
         )
+    }
+
+    @Test
+    fun `a write that ends after another student signed in over this one is told as the first student's`() = runTest {
+        val uid = server.deliver("a")
+        val setup = TestSetup(backgroundScope)
+        val repo = setup.signedIn()
+        val first = setup.account.accountGeneration
+        val changes = mutableListOf<MailChange>()
+        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { repo.changes.collect { changes += it } }
+        server.passwords["B10000002"] = "pw"
+        // The other student signs in while the first's mark-read is on the server; a list loaded
+        // for them since must not take the write as theirs.
+        server.onSetSeen = {
+            server.onSetSeen = null
+            runBlocking { setup.account.signIn("b10000002", "pw") }
+        }
+        repo.setSeen("INBOX", uid, true)
+        runCurrent()
+        assertTrue(first != setup.account.accountGeneration)
+        assertEquals(listOf(MailChange.Seen("INBOX", uid, true, first)), changes)
     }
 
     @Test

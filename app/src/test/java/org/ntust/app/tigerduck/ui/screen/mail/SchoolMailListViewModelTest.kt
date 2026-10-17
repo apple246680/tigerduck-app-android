@@ -5,6 +5,7 @@ package org.ntust.app.tigerduck.ui.screen.mail
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -77,6 +78,9 @@ class SchoolMailListViewModelTest {
         runBlocking { account.signIn("b10000001", "pw") }
         notices = SentCopyNotices(account, CoroutineScope(main.dispatcher))
         checker = MailChecker(account, state, server.factory(), RecordingNotifier(), MailCache(tmp.root)) { now }
+        // What a write is told under, as the real repository reads it: the list takes only the
+        // signed-in account's own.
+        repo.accountGeneration = { account.accountGeneration }
         vm = SchoolMailListViewModel(
             repo, account, checker, schoolMailSite(),
             { main.dispatcher.scheduler.currentTime }, notices,
@@ -958,6 +962,107 @@ class SchoolMailListViewModelTest {
         assertEquals(listOf(1L), vm.state.value.displayed.map { it.uid })
         vm.loadIfNeeded()
         assertEquals(loads, repo.loadsSent.size)
+    }
+
+    @Test
+    fun `a mark-read that finishes after another student signed in over this one leaves their list alone`() {
+        repo.add("INBOX", mailSummary(1))
+        vm.loadIfNeeded()
+        // The first student's mail screen marks a mail read, and the write waits on the connection.
+        val gate = CompletableDeferred<Unit>()
+        repo.seenGate = gate
+        val late = CoroutineScope(main.dispatcher).launch { repo.setSeen("INBOX", 1, true) }
+        assertTrue(late.isActive)
+        // Another student signs in over the first, and the page loads their mail -- in which the
+        // same folder and UID name another mail altogether.
+        signInAnotherOverThisOne()
+        vm.loadIfNeeded()
+        assertFalse(vm.state.value.displayed.single().summary.flags.seen)
+        repo.seenGate = null
+        gate.complete(Unit)
+        main.dispatcher.scheduler.runCurrent()
+        assertFalse(late.isActive)
+        assertFalse("the first student's write marked the second's mail read", vm.state.value.displayed.single().summary.flags.seen)
+    }
+
+    /**
+     * Holds the answer to [folder]'s next page on its way up, so the fetch that asked for it is
+     * still out while the test writes; the page was read before the write and has none of it.
+     */
+    private fun holdAnswerOf(folder: String): CompletableDeferred<Unit> {
+        val gate = CompletableDeferred<Unit>()
+        repo.onLoaded = {
+            if (it == folder) {
+                repo.onLoaded = null
+                repo.answerGate = gate
+            }
+        }
+        return gate
+    }
+
+    private fun releaseAnswer(gate: CompletableDeferred<Unit>) {
+        repo.answerGate = null
+        gate.complete(Unit)
+        main.dispatcher.scheduler.runCurrent()
+    }
+
+    @Test
+    fun `a mail marked read while its page was being fetched is read once the page lands`() {
+        repo.add("INBOX", mailSummary(1))
+        repo.add("寄件備份匣", mailSummary(7))
+        vm.loadIfNeeded()
+        assertEquals(FolderSelection.AllMail, vm.state.value.selected)
+        val gate = holdAnswerOf("INBOX")
+        vm.refresh()
+        // The inbox's page is read and on its way, and the mail's own screen marks the mail read.
+        runBlocking { repo.setSeen("INBOX", 1, true) }
+        assertTrue(vm.state.value.displayed.first { it.uid == 1L }.summary.flags.seen)
+        releaseAnswer(gate)
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Loaded)
+        assertTrue("the page put the flag back", vm.state.value.displayed.first { it.uid == 1L }.summary.flags.seen)
+    }
+
+    @Test
+    fun `a mail moved away while its page was being fetched does not come back with the page`() {
+        repo.add("INBOX", mailSummary(1), mailSummary(2))
+        repo.add("寄件備份匣", mailSummary(7))
+        vm.loadIfNeeded()
+        val gate = holdAnswerOf("INBOX")
+        vm.refresh()
+        runBlocking { repo.move("INBOX", 2, repo.resolved.nameOf(SpecialFolder.TRASH)!!) }
+        assertEquals(listOf(1L), vm.state.value.displayed.filter { it.folder == "INBOX" }.map { it.uid })
+        releaseAnswer(gate)
+        assertEquals(listOf(1L), vm.state.value.displayed.filter { it.folder == "INBOX" }.map { it.uid })
+    }
+
+    @Test
+    fun `a folder changed while its page was being fetched is still fetched again as the page appears`() {
+        repo.add("INBOX", mailSummary(1))
+        vm.loadIfNeeded()
+        val sentFolder = repo.resolved.nameOf(SpecialFolder.SENT)!!
+        val mail = OutgoingMail(repo.self, listOf(MailAddress(null, "a@x.tw")), emptyList(), emptyList(), "s", "b")
+        val gate = holdAnswerOf(sentFolder)
+        vm.refresh()
+        // Sent's page is read and on its way, without the copy of a mail sent now.
+        runBlocking { repo.send(mail, null) }
+        releaseAnswer(gate)
+        val loads = repo.loadsSent.size
+        vm.loadIfNeeded()
+        assertTrue(sentFolder in repo.loadsSent.drop(loads))
+    }
+
+    @Test
+    fun `an older page in flight does not put back a read flag set meanwhile`() {
+        repo.add("INBOX", *(1L..60L).map { mailSummary(it) }.toTypedArray())
+        vm.loadIfNeeded()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        val gate = holdAnswerOf("INBOX")
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        // The older page is read and on its way, and the mail's own screen marks one of its rows read.
+        runBlocking { repo.setSeen("INBOX", 5, true) }
+        releaseAnswer(gate)
+        assertEquals(60, vm.state.value.displayed.size)
+        assertTrue(vm.state.value.displayed.first { it.uid == 5L }.summary.flags.seen)
     }
 
     @Test
