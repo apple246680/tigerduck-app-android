@@ -121,8 +121,9 @@ class PushRegistrationServiceTest {
     private val owed = object : PendingUnregisterStore {
         var pending: PendingUnregister? = null
         override fun load() = pending
-        override fun save(pending: PendingUnregister) {
+        override fun save(pending: PendingUnregister): Boolean {
             this.pending = pending
+            return true
         }
         override fun clear() {
             pending = null

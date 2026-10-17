@@ -730,16 +730,45 @@ class AuthTokenManagerRefreshTest {
     }
 
     @Test
-    fun `the departing session carries the session's own sends without a reply`() = runTest {
+    fun `a departing refresh turned away or never sent did not use the token, and says so`() = runTest {
+        // A 429 comes from the limiter before the refresh runs; a connect refused never left the
+        // phone. Neither counts as a send, unlike a 5xx, which may follow the backend's rotation.
+        assertEquals(DepartingRefresh.Unused, manager(Reply.Status(429)).refreshDeparting(departing(), sendsWithoutReply = 0))
+        assertEquals(DepartingRefresh.Unused, manager(Reply.Unsent).refreshDeparting(departing(), sendsWithoutReply = 0))
+    }
+
+    @Test
+    fun `the departing session carries every send of the token that may have been used, the one on its way too`() = runTest {
         val manager = manager(Reply.Lost, Reply.Lost)
-        // Signed out as the resend goes, after the first send's reply was lost.
+        // Signed out as the resend goes, after the first send's reply was lost: either may have
+        // reached the backend, and each is counted on disk before it goes out.
         var departing: DepartingSession? = null
         var sends = 0
         onRefreshSent = { if (++sends == 2) departing = manager.logout() }
 
         assertNull(manager.authHeader())
 
-        assertEquals(1, departing?.sendsWithoutReply)
+        assertEquals(2, departing?.sendsWithoutReply)
+    }
+
+    @Test
+    fun `a send answered with a 5xx and one on its way at sign-out are both counted, so the unregister never sends a third`() = runTest {
+        val manager = manager(Reply.Status(503), Reply.Lost, Reply.Pair("access-3", "refresh-3"))
+        // A 5xx may come from a gateway after the backend rotated: the send stays counted.
+        assertNull(manager.authHeader())
+        assertEquals(1, tokens.refreshTokenSends)
+        clock += 60_000
+        // The next refresh is on its way as the account signs out, and its reply is lost.
+        var departing: DepartingSession? = null
+        onRefreshSent = { departing = manager.logout() }
+        assertNull(manager.authHeader())
+
+        assertEquals(2, departing?.sendsWithoutReply)
+        assertEquals(
+            DepartingRefresh.Refused,
+            manager.refreshDeparting(departing!!, sendsWithoutReply = departing!!.sendsWithoutReply),
+        )
+        assertEquals(listOf("refresh-1", "refresh-1"), sentRefreshTokens)
     }
 
     @Test

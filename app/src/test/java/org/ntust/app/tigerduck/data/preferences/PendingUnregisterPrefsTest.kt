@@ -2,6 +2,7 @@ package org.ntust.app.tigerduck.data.preferences
 
 import android.app.Application
 import android.content.Context
+import android.content.SharedPreferences
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -42,6 +43,25 @@ class PendingUnregisterPrefsTest {
 
         PendingUnregisterPrefs(prefs).clear()
         assertNull(PendingUnregisterPrefs(prefs).load())
+    }
+
+    @Test
+    fun `a save the disk refuses says so, for the send it counts not to go out`() {
+        // SharedPreferences keeps the edit in memory and reports the failed write with commit().
+        class RefusingEditor(private val inner: SharedPreferences.Editor) : SharedPreferences.Editor by inner {
+            override fun putString(key: String, value: String?) = apply { inner.putString(key, value) }
+            override fun putLong(key: String, value: Long) = apply { inner.putLong(key, value) }
+            override fun putInt(key: String, value: Int) = apply { inner.putInt(key, value) }
+            override fun remove(key: String) = apply { inner.remove(key) }
+            override fun commit() = false
+        }
+        val refusing = object : SharedPreferences by prefs {
+            override fun edit(): SharedPreferences.Editor = RefusingEditor(prefs.edit())
+        }
+        val pending = PendingUnregister("device-1", DepartingSession("access-1", "refresh-1", 42L, "https://backend.example/v3"), 7L)
+
+        assertTrue(PendingUnregisterPrefs(prefs).save(pending))
+        assertFalse(PendingUnregisterPrefs(refusing).save(pending.with(unansweredRefreshes = 1)))
     }
 
     @Test

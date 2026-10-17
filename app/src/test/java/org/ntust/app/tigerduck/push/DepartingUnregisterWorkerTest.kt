@@ -28,8 +28,9 @@ class DepartingUnregisterWorkerTest {
     private var pending: PendingUnregister? = null
     private val store = object : PendingUnregisterStore {
         override fun load() = pending
-        override fun save(pending: PendingUnregister) {
+        override fun save(pending: PendingUnregister): Boolean {
             this@DepartingUnregisterWorkerTest.pending = pending
+            return true
         }
         override fun clear() {
             pending = null

@@ -26,9 +26,15 @@ class DepartingDeviceUnregisterTest {
 
     private class MemoryStore : PendingUnregisterStore {
         var pending: PendingUnregister? = null
+
+        /** A disk that refuses every write from now on, as SharedPreferences reports with a failed commit. */
+        var refuseSaves = false
+
         override fun load() = pending
-        override fun save(pending: PendingUnregister) {
+        override fun save(pending: PendingUnregister): Boolean {
+            if (refuseSaves) return false
             this.pending = pending
+            return true
         }
         override fun clear() {
             pending = null
@@ -170,14 +176,16 @@ class DepartingDeviceUnregisterTest {
     }
 
     @Test
-    fun `a refresh that could not be sent keeps it`() = runTest {
+    fun `a refresh that could not be sent keeps it, uncounted`() = runTest {
         owe(expiresAt = now - 1)
-        refreshReplies += DepartingRefresh.Unavailable
+        refreshReplies += DepartingRefresh.Unused
 
         assertEquals(Outcome.RETRY, unregister().send())
 
         assertEquals(emptyList<String>(), deletes)
         assertEquals("refresh-1", store.pending?.session?.refreshToken)
+        // The backend did not use the token: the send is not held against it.
+        assertEquals(0, store.pending?.unansweredRefreshes)
     }
 
     @Test
@@ -319,7 +327,7 @@ class DepartingDeviceUnregisterTest {
     fun `saving the endpoint over a debt that cannot be read does not fail`() = runTest {
         val broken = object : PendingUnregisterStore {
             override fun load(): PendingUnregister = throw SecurityException("unreadable")
-            override fun save(pending: PendingUnregister) {}
+            override fun save(pending: PendingUnregister) = true
             override fun clear() {}
         }
         val unregister = DepartingDeviceUnregister(
@@ -411,6 +419,38 @@ class DepartingDeviceUnregisterTest {
 
         assertEquals(listOf("refresh-1", "refresh-1"), refreshes)
         assertEquals(emptyList<String>(), deletes)
+    }
+
+    @Test
+    fun `a refresh answered with a 5xx stays counted, as the backend may have rotated before a gateway answered`() = runTest {
+        owe(expiresAt = now - 1)
+        refreshReplies += DepartingRefresh.Unavailable
+        refreshReplies += DepartingRefresh.Unavailable
+
+        assertEquals(Outcome.RETRY, unregister().send())
+        assertEquals(1, store.pending?.unansweredRefreshes)
+        assertEquals(Outcome.RETRY, unregister().send())
+        assertEquals(2, store.pending?.unansweredRefreshes)
+
+        // Counted twice, the token is not sent a third time: the debt ends unsent.
+        assertEquals(Outcome.DONE, unregister().send())
+        assertEquals(listOf("refresh-1", "refresh-1"), refreshes)
+        assertNull(store.pending)
+    }
+
+    @Test
+    fun `a send whose count the disk does not take is not made`() = runTest {
+        // Sent anyway, a process ended during it would come back with the count before it, and a
+        // later launch could make the token's third send.
+        owe(expiresAt = now - 1)
+        store.refuseSaves = true
+        refreshReplies += refreshed("access-2", "refresh-2")
+
+        assertEquals(Outcome.RETRY, unregister().send())
+
+        assertEquals(emptyList<String>(), refreshes)
+        assertEquals(emptyList<String>(), deletes)
+        assertEquals(0, store.pending?.unansweredRefreshes)
     }
 
     @Test

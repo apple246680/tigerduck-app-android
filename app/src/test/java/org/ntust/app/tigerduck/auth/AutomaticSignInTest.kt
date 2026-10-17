@@ -226,7 +226,7 @@ class AutomaticSignInTest {
         )
         val store = object : PendingUnregisterStore {
             override fun load() = pending
-            override fun save(pending: PendingUnregister) {}
+            override fun save(pending: PendingUnregister) = true
             override fun clear() {
                 pending = null
             }

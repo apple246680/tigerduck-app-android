@@ -27,9 +27,10 @@ class PendingUnregisterPrefs internal constructor(private val prefs: SharedPrefe
 
     /**
      * Committed, as [V3TokenStore.save] is: a rotated refresh token still queued by `apply()`
-     * when the process dies would bring the replaced one back on the next try.
+     * when the process dies would bring the replaced one back on the next try. Says whether the
+     * disk took it, so a send whose count it refused is not made.
      */
-    override fun save(pending: PendingUnregister) {
+    override fun save(pending: PendingUnregister): Boolean {
         val written = prefs.edit()
             .putString(KEY_DEVICE_ID, pending.deviceId)
             .putString(KEY_ACCESS_TOKEN, pending.session.accessToken)
@@ -41,6 +42,7 @@ class PendingUnregisterPrefs internal constructor(private val prefs: SharedPrefe
             .apply { pending.session.studentId?.let { putString(KEY_STUDENT_ID, it) } ?: remove(KEY_STUDENT_ID) }
             .commit()
         if (!written) Log.w(TAG, "owed unregister not written to disk")
+        return written
     }
 
     override fun clear() {

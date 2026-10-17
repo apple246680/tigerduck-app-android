@@ -24,8 +24,10 @@ class PendingUnregister(
     /** When the sign-out owed it, epoch ms. */
     val owedAt: Long,
     /**
-     * How many sends of [session]'s refresh token in a row got no reply, raised before each goes
-     * out: kept across launches, so a process ended during a send cannot lead to a third.
+     * How many sends of [session]'s refresh token may have reached the backend without a pair
+     * coming back (no reply, or a 5xx), raised on disk before each goes out: kept across
+     * launches, so a process ended during a send cannot lead to a third. Only a send the backend
+     * certainly did not use ([DepartingRefresh.Unused]) is taken off again.
      */
     val unansweredRefreshes: Int = 0,
 ) {
@@ -36,7 +38,9 @@ class PendingUnregister(
 /** Keeps the owed unregister between launches. It holds tokens, so it is stored encrypted. */
 interface PendingUnregisterStore {
     fun load(): PendingUnregister?
-    fun save(pending: PendingUnregister)
+
+    /** Says whether the disk took it: a send counted in memory only is not made. */
+    fun save(pending: PendingUnregister): Boolean
     fun clear()
 }
 
@@ -219,22 +223,32 @@ class DepartingDeviceUnregister internal constructor(
         var current = pending
         var reply: DepartingRefresh
         do {
-            // Counted before it goes out: a process ended during the send has it counted. A reply
-            // that cannot be read throws, and stays counted, as one that never came.
+            // Counted on disk before it goes out: a process ended during the send has it counted.
+            // A reply that cannot be read throws, and stays counted, as one that never came.
             val sending = current.with(unansweredRefreshes = current.unansweredRefreshes + 1)
-            store.save(sending)
+            if (!store.save(sending)) {
+                // Counted in memory only, a process ended during the send would come back with
+                // the count before it, and a later launch could make the token's third send.
+                Log.w(TAG, "the refresh's send was not counted on disk; it is left for a later try")
+                refreshUnavailable = true
+                return@withContext null
+            }
             reply = refresh(current.session, current.unansweredRefreshes)
             // Sent once more at most: the next call refuses at two.
             if (reply == DepartingRefresh.NoReply) current = sending
         } while (reply == DepartingRefresh.NoReply)
-        refreshUnavailable = reply == DepartingRefresh.Unavailable
+        refreshUnavailable = reply == DepartingRefresh.Unavailable || reply == DepartingRefresh.Unused
         when (reply) {
             // Kept before the DELETE: the server rotated the refresh token, and would take the one
             // it replaced for reuse if a later retry sent it.
             is DepartingRefresh.Refreshed ->
                 current.with(session = reply.session, unansweredRefreshes = 0).also(store::save)
-            DepartingRefresh.Unavailable -> {
-                // Not taken, or never sent: the count stands as it was.
+            // A 5xx: the send stays counted, as the backend may have rotated before a gateway
+            // answered. The count on disk is already the send's.
+            DepartingRefresh.Unavailable -> null
+            DepartingRefresh.Unused -> {
+                // Turned away, or never sent: the backend did not use the token, so the count
+                // stands as it was. A put-back the disk refuses only leaves the send counted.
                 store.save(current)
                 null
             }

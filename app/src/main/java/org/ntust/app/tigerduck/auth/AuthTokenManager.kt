@@ -261,15 +261,15 @@ class AuthTokenManager(
         val access = tokens.accessToken ?: return null
         val refresh = tokens.refreshToken ?: return null
         // The backend recorded at sign-in; the one set now for a pair stored before that was.
-        // The sends counted on disk are taken with this process's own: a send from before a
-        // restart, or one answered with a 5xx, may have reached the backend too, and the
-        // departing refresh must not be the token's third send (MAX_REFRESH_TOKEN_SENDS). A
-        // send still on its way is counted there before it goes out; refreshDeparting waits
-        // for that one instead, and this process counts it once its reply is lost.
-        val onItsWay = if (refreshOnItsWay?.first == refresh) 1 else 0
+        // The count of the token's sends goes with it as the disk has it: every send that may
+        // have reached the backend, from before a restart or answered with a 5xx too, and one
+        // still on its way, counted there before it went out. That one stays counted even when
+        // it comes back unused: once the pair is gone the count cannot be put back on disk, and
+        // the departing refresh must never be the token's third send (MAX_REFRESH_TOKEN_SENDS).
+        // This process's own count of replies lost is taken as well; the disk's is never below it.
         DepartingSession(
             access, refresh, tokens.expiresAt, tokens.issuedBy ?: baseUrl, tokens.studentId,
-            maxOf(sendsWithoutReply(refresh), tokens.refreshTokenSends - onItsWay),
+            maxOf(sendsWithoutReply(refresh), tokens.refreshTokenSends),
         )
     }
 
@@ -278,11 +278,15 @@ class AuthTokenManager(
      * unregister. Stores nothing: the pair is the departing account's, and the
      * session here is whoever signs in next.
      *
-     * [sendsWithoutReply] is how many sends of the token got no reply, which
-     * the caller keeps with the debt across launches; this process's own count
-     * is taken too. At two, nothing is sent and the refresh is
-     * [DepartingRefresh.Refused]: within its grace the backend answers a
-     * rotated token once more, and takes a later send of it for reuse.
+     * [sendsWithoutReply] is how many sends of the token may have reached the
+     * backend without a pair coming back, which the caller keeps with the debt
+     * across launches, counted before each send goes out; this process's own
+     * count of replies lost is taken too. At two, nothing is sent and the
+     * refresh is [DepartingRefresh.Refused]: within its grace the backend
+     * answers a rotated token once more, and takes a later send of it for
+     * reuse. A send the backend did not use is [DepartingRefresh.Unused], for
+     * the caller to leave uncounted; a 5xx is [DepartingRefresh.Unavailable],
+     * which stays counted.
      */
     suspend fun refreshDeparting(departing: DepartingSession, sendsWithoutReply: Int): DepartingRefresh {
         val token = departing.refreshToken
@@ -313,8 +317,10 @@ class AuthTokenManager(
                 )
                 RefreshOutcome.Refused -> DepartingRefresh.Refused
                 RefreshOutcome.NoReply -> DepartingRefresh.NoReply
-                // Not taken, or never sent: the same token goes out on a later try.
-                RefreshOutcome.Unavailable, RefreshOutcome.Unused -> DepartingRefresh.Unavailable
+                // A 5xx: the same token goes out on a later try, this send counted.
+                RefreshOutcome.Unavailable -> DepartingRefresh.Unavailable
+                // Turned away or never sent: the same token goes out on a later try, uncounted.
+                RefreshOutcome.Unused -> DepartingRefresh.Unused
             }
         }
     }

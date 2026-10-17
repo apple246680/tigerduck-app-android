@@ -18,7 +18,12 @@ class DepartingSession(
     val baseUrl: String,
     /** The student it is for; null for a session stored before that was recorded. */
     val studentId: String? = null,
-    /** How many of the session's own sends of [refreshToken] in a row got no reply, at sign-out. */
+    /**
+     * How many of the session's own sends of [refreshToken] may have reached the backend without
+     * this device getting the pair they were answered with, at sign-out: those that got no reply
+     * or a 5xx, and one still on its way then. The backend takes a third send of the token for
+     * reuse, so the debt keeps this count and never lets the token go out past two.
+     */
     val sendsWithoutReply: Int = 0,
 )
 
@@ -30,8 +35,17 @@ sealed interface DepartingRefresh {
     /** Turned down: the session is over on the server, and nothing can go out as it any more. */
     data object Refused : DepartingRefresh
 
-    /** A 429 or a 5xx, or a send that never left the phone: worth trying again later with the same token. */
+    /**
+     * A 5xx: worth trying again later with the same token, but counted as a send, as a gateway's
+     * 5xx may come after the backend rotated the token.
+     */
     data object Unavailable : DepartingRefresh
+
+    /**
+     * A 429, or a send that never left the phone: the backend did not use the token, so the send
+     * is not counted; worth trying again later with the same token.
+     */
+    data object Unused : DepartingRefresh
 
     /**
      * Sent, and no reply came back: the backend may have rotated the token. Sent again at most
