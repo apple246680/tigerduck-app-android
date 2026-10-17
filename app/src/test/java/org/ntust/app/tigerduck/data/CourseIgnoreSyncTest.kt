@@ -68,7 +68,6 @@ class CourseIgnoreSyncTest {
 
     /** A snapshot whose [ignores] a device set; the courses are AAA and BBB. */
     private fun snapshot(fetchedAtMs: Long, vararg ignores: Pair<String, Boolean>) = BackendSyncResult(
-        assignments = emptyList(),
         ignoredIds = emptySet(),
         completedIds = emptySet(),
         courseOverrides = ignores.map { (courseNo, ignore) ->

@@ -344,7 +344,7 @@ private fun AssignmentRow(assignment: Assignment, onClick: () -> Unit) {
             .format(assignment.dueDate)
     }
     ListItem(
-        modifier = Modifier.clickable(role = Role.Button, onClick = onClick),
+        modifier = if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier,
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
         leadingContent = {
             Icon(Icons.Outlined.Description, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -429,8 +429,7 @@ private fun EmphasisCard(
  * Open course id [moodleCourseId] in the Moodle Mobile app via the
  * `moodlemobile://` deep link envelope, falling back to the browser if
  * Moodle Mobile isn't installed or the OS refuses to route the intent.
- * Mirrors the assignment-row pattern in [HomeScreen.openAssignmentInMoodle]
- * so the two surfaces behave identically.
+ * Falls back the way every "Open in Moodle" does, through [openMoodlePage].
  */
 internal fun openCourseInMoodle(context: Context, moodleCourseId: Int) {
     openMoodlePage(context, MoodlePage.course(moodleCourseId))

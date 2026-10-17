@@ -89,7 +89,6 @@ class KeptMarksTest {
     }
 
     private fun snapshot(ignored: Set<String>) = BackendSyncResult(
-        assignments = emptyList(),
         ignoredIds = ignored,
         completedIds = emptySet(),
         courseOverrides = emptyList(),
