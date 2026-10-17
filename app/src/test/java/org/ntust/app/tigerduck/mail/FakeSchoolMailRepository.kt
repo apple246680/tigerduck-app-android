@@ -149,6 +149,15 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         cachedPages.remove(folder)
     }
 
+    /** Every folder handed to [dropCachedPage], in order. */
+    val droppedCaches = mutableListOf<String>()
+
+    override suspend fun dropCachedPage(folder: String) {
+        foldersTouched += folder
+        droppedCaches += folder
+        dropCache(folder)
+    }
+
     override suspend fun loadPage(folder: String, beforeSeq: Int?, limit: Int, background: Boolean): MailPage {
         openLoads++
         maxConcurrentLoads = maxOf(maxConcurrentLoads, openLoads)

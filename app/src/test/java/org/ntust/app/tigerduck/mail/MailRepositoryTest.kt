@@ -65,6 +65,28 @@ class MailRepositoryTest {
     }
 
     @Test
+    fun `a dropped cached page is gone until the next first page writes a new one`() = runTest {
+        server.deliver("a")
+        val repo = TestSetup(backgroundScope).signedIn()
+        repo.loadPage("INBOX", null)
+        assertNotNull(repo.cachedPage("INBOX"))
+        repo.dropCachedPage("INBOX")
+        assertNull(repo.cachedPage("INBOX"))
+        // Dropping a folder that has no cached page is nothing to fail over.
+        repo.dropCachedPage("INBOX")
+        assertEquals(listOf("a"), repo.loadPage("INBOX", null).messages.map { it.subject })
+        assertEquals(listOf("a"), repo.cachedPage("INBOX")!!.messages.map { it.subject })
+    }
+
+    @Test
+    fun `dropping a cached page leaves the demo mailbox as it is, having no cache behind it`() = runTest {
+        val repo = TestSetup(backgroundScope).signedIn("B10000099", "demo")
+        repo.dropCachedPage("INBOX")
+        assertEquals(listOf("期中考時間公告"), repo.cachedPage("INBOX")!!.messages.map { it.subject })
+        assertEquals(0, server.opens)
+    }
+
+    @Test
     fun `a mail's source is downloaded once and served from the cache on every later visit`() = runTest {
         server.deliver("a")
         val repo = TestSetup(backgroundScope).signedIn()

@@ -355,6 +355,38 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
+    fun `a recreated folder whose reload fails is not painted from its cache again`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..5L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        repo.searchPageValidity = 2
+        repo.loadError = MailError.Network()
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertTrue(vm.state.value.messages.isEmpty())
+        // Away and back while the server stays unreachable. The folder's cache still held the old
+        // mailbox's page, and painting it again would put the rows -- and a cursor into them --
+        // back for the next scroll and the next failing search to read.
+        vm.setSearchText("")
+        vm.selectFolder(FolderSelection.Real("回收筒"))
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        assertEquals(emptyList<Long>(), vm.state.value.messages.map { it.uid })
+        assertTrue(vm.state.value.cursors.isEmpty())
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        repo.searchError = MailError.Network()
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        assertEquals(emptyList<Long>(), vm.state.value.displayed.map { it.uid })
+        // Once the server answers again, the folder loads afresh.
+        repo.loadError = null
+        vm.setSearchText("")
+        vm.refresh()
+        assertEquals(listOf(5L, 4L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
     fun `a scroll to the end fetches a few pages of search results at most`() {
         repo.pageSize = 2
         // Under unread only every match is read but the oldest, so page after page adds nothing.
@@ -538,10 +570,12 @@ class SchoolMailListViewModelTest {
         }
         vm.loadMoreIfNeeded(vm.state.value.displayed.last())
         // The list's rows and cursor belong to the mailbox before: with the reload failed, they
-        // go rather than stay to be paged again or shown as another mailbox's mail.
+        // go rather than stay to be paged again or shown as another mailbox's mail -- and so does
+        // the cached page they came from, or the next visit would paint them again.
         assertEquals(emptyList<Long>(), vm.state.value.displayed.map { it.uid })
         assertTrue(vm.state.value.cursors.isEmpty())
         assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        assertNull(runBlocking { repo.cachedPage("INBOX") })
         // And a search that cannot reach the server has nothing of the old mailbox to fall back to.
         repo.searchError = MailError.Network()
         vm.setSearchText("期中")

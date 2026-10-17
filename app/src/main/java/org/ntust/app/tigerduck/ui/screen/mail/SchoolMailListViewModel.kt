@@ -488,10 +488,15 @@ class SchoolMailListViewModel @Inject constructor(
      * the next scroll and not a search falling back to the loaded mail -- and the folder shows
      * nothing until a first page lands, which Retry, a pull or the poll's next look brings. True
      * once the list has reloaded.
+     *
+     * The folder's cached page goes first, for the same reason: it is the old mailbox's too, and
+     * [showCached] would otherwise paint it again, rows and cursor, on the next visit to the folder
+     * while the server keeps failing. A reload that lands writes the new page in its place.
      */
     private suspend fun reloadRecreated(folders: Set<String>): Boolean {
         val selection = _state.value.selected
         val generation = listGeneration
+        folders.forEach { repository.dropCachedPage(it) }
         if (fetchFirstPage()) return true
         // Only while this is still the list that was found stale: a newer one owns its rows.
         if (_state.value.selected == selection && generation == listGeneration) {
