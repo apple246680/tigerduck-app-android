@@ -2,6 +2,8 @@ package org.ntust.app.tigerduck.data.cache
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentRecord
+import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentSubmission
 import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseGrades
 import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseSummary
 import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussion
@@ -13,6 +15,7 @@ import org.ntust.app.tigerduck.network.model.moodle.MoodleMember
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberField
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberList
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberRole
+import org.ntust.app.tigerduck.network.model.moodle.MoodleSubmissionComment
 import org.ntust.app.tigerduck.network.model.moodle.MoodleTermForums
 import java.lang.reflect.Modifier
 
@@ -24,10 +27,10 @@ import java.lang.reflect.Modifier
 class MoodleCacheSchemaTest {
 
     private val persisted = listOf(
-        MoodleCourseGrades::class, MoodleCourseSummary::class, MoodleDiscussion::class,
+        MoodleAssignmentRecord::class, MoodleAssignmentSubmission::class, MoodleCourseGrades::class, MoodleCourseSummary::class, MoodleDiscussion::class,
         MoodleDiscussionList::class, MoodleFile::class, MoodleForum::class, MoodleGradeItem::class,
         MoodleMember::class, MoodleMemberField::class, MoodleMemberList::class, MoodleMemberRole::class,
-        MoodleTermForums::class,
+        MoodleSubmissionComment::class, MoodleTermForums::class,
     )
 
     private fun shape(): String = persisted.joinToString("\n") { kind ->
@@ -48,6 +51,8 @@ class MoodleCacheSchemaTest {
         val PACKAGE = Regex("""\b(?:[a-z]\w*\.)+""")
 
         val SHAPE_AT_SCHEMA_1 = """
+            MoodleAssignmentRecord(allowSubmissionsFrom: long, assignId: int, cmid: int, courseId: int, cutoffDate: long, dueDate: long, intro: String, introAttachments: List<MoodleFile>, name: String, noSubmissions: boolean, teamSubmission: boolean)
+            MoodleAssignmentSubmission(comments: List<MoodleSubmissionComment>, files: List<MoodleFile>, groupId: Integer, groupName: String, id: Integer, modified: Long, onlineText: String, status: String, takesComments: boolean)
             MoodleCourseGrades(items: List<MoodleGradeItem>)
             MoodleCourseSummary(html: String, names: List<String>, text: String)
             MoodleDiscussion(attachments: List<MoodleFile>, authorId: Integer, authorName: String, created: long, id: int, isPinned: boolean, message: String, modified: long, postId: int, preview: String, replyCount: int, title: String, unreadCount: int)
@@ -59,6 +64,7 @@ class MoodleCacheSchemaTest {
             MoodleMemberField(name: String, value: String)
             MoodleMemberList(members: List<MoodleMember>, ownId: Integer)
             MoodleMemberRole(name: String, shortName: String, sortOrder: int)
+            MoodleSubmissionComment(authorName: String, content: String, created: long, id: int)
             MoodleTermForums(courseIds: List<Integer>, forums: List<MoodleForum>)
         """.trimIndent()
     }

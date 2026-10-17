@@ -64,4 +64,26 @@ class MoodleHtmlTextTest {
         assertEquals("````\nshell\n```\ndone\n````", MoodleHtmlText.markdown("<pre>shell\n```\ndone</pre>"))
         assertEquals("```\nplain\n```", MoodleHtmlText.markdown("<pre>plain</pre>"))
     }
+
+    @Test
+    fun `online text points its own files at their links, drops an image with no file and unwraps a link with none`() {
+        val file = { name: String ->
+            org.ntust.app.tigerduck.network.model.moodle.MoodleFile(
+                name = name, size = 1, mimeType = null, modified = null, path = "/",
+                url = "https://moodle2.ntust.edu.tw/webservice/pluginfile.php/1/assignsubmission_onlinetext/submissions_onlinetext/5/$name",
+            )
+        }
+        val resolved = MoodleHtmlText.resolvingPluginFiles(
+            "<p>Chart: <img src=\"@@PLUGINFILE@@/chart.png\" alt=\"chart\"> <img src=\"@@PLUGINFILE@@/gone.png\" alt=\"gone\"></p>" +
+                "<p><a href=\"@@PLUGINFILE@@/notes%20v2.pdf?forcedownload=1\">Notes</a> <a href=\"@@PLUGINFILE@@/old.pdf\">Old notes</a></p>",
+            listOf(file("chart.png"), file("notes v2.pdf")),
+        )
+
+        assertEquals(
+            "<p>Chart: <img src=\"https://moodle2.ntust.edu.tw/webservice/pluginfile.php/1/assignsubmission_onlinetext/submissions_onlinetext/5/chart.png\" alt=\"chart\"> </p>" +
+                "<p><a href=\"https://moodle2.ntust.edu.tw/webservice/pluginfile.php/1/assignsubmission_onlinetext/submissions_onlinetext/5/notes v2.pdf\">Notes</a> Old notes</p>",
+            resolved,
+        )
+        assertEquals("text without the placeholder is left as it is", "<p>x</p>", MoodleHtmlText.resolvingPluginFiles("<p>x</p>", emptyList()))
+    }
 }

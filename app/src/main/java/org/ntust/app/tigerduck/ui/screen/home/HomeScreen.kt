@@ -40,7 +40,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -78,8 +77,9 @@ fun HomeScreen(
     appState: AppState,
     viewModel: HomeViewModel = hiltViewModel(),
     onOpenSignInSettings: () -> Unit = {},
+    /** Opens an assignment's page in the app; the page's own button is what opens Moodle. */
+    onOpenAssignment: (Assignment) -> Unit = {},
 ) {
-    val context = LocalContext.current
     val resources = LocalResources.current
     val sections by viewModel.sections.collectAsStateWithLifecycle()
     // Slow pulse (60s, plus every debug-clock flip) so the term gate below
@@ -307,7 +307,7 @@ fun HomeScreen(
                                 }
                             },
                             onAssignmentClick = {
-                                if (!isEditing) openAssignmentInMoodle(context, it)
+                                if (!isEditing) onOpenAssignment(it)
                             },
                             onToggleIgnore = {
                                 if (!isEditing) viewModel.toggleIgnore(it)

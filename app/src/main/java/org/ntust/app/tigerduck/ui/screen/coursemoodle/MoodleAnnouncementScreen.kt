@@ -69,6 +69,7 @@ import org.ntust.app.tigerduck.data.moodle.MoodleLookup
 import org.ntust.app.tigerduck.data.moodle.MoodlePersonName
 import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussion
 import org.ntust.app.tigerduck.network.model.moodle.MoodleFile
+import org.ntust.app.tigerduck.network.moodle.MoodleFileUrls
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
 
 /**
@@ -224,33 +225,40 @@ private fun Attachments(store: MoodleCourseStore, discussion: MoodleDiscussion, 
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.semantics { heading() },
         )
-        Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
-            Column {
-                discussion.attachments.forEachIndexed { index, file ->
-                    if (index > 0) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = 56.dp),
-                            color = cardDividerColor(),
-                        )
-                    }
-                    AttachmentRow(store, file, discussion, browserPreference)
+        MoodleAttachmentCard(store, discussion.attachments, browserPreference, MoodlePage.discussion(discussion.id))
+    }
+}
+
+/** [files] as a card of [MoodleAttachmentRow]s. */
+@Composable
+internal fun MoodleAttachmentCard(store: MoodleCourseStore?, files: List<MoodleFile>, browserPreference: String, moodlePath: String?) {
+    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
+        Column {
+            files.forEachIndexed { index, file ->
+                if (index > 0) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 56.dp),
+                        color = cardDividerColor(),
+                    )
                 }
+                MoodleAttachmentRow(store, file, browserPreference, moodlePath)
             }
         }
     }
 }
 
 /**
- * A file the post carries. A tap downloads it into the app, with a spinner while it does, and
- * opens the copy in another app; a file off the Moodle site opens as its own link. A long press
- * offers "Open in Moodle".
+ * A file a post or an assignment carries. A tap downloads it through [store] into the app, with a
+ * spinner while it does, and opens the copy in another app; a file off the Moodle site, or any
+ * file while the page has no store to download through, opens as its own link, with no key in it.
+ * A long press offers "Open in Moodle" for [moodlePath].
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AttachmentRow(store: MoodleCourseStore, file: MoodleFile, discussion: MoodleDiscussion, browserPreference: String) {
+internal fun MoodleAttachmentRow(store: MoodleCourseStore?, file: MoodleFile, browserPreference: String, moodlePath: String?) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val downloading by store.downloading.collectAsStateWithLifecycle()
+    val downloading = store?.downloading?.collectAsStateWithLifecycle()?.value.orEmpty()
     val busy = file.url in downloading
     var menu by remember { mutableStateOf(false) }
     val openInMoodle = stringResource(R.string.action_open_in_moodle)
@@ -259,11 +267,13 @@ private fun AttachmentRow(store: MoodleCourseStore, file: MoodleFile, discussion
             modifier = Modifier.combinedClickable(
                 enabled = !busy,
                 role = Role.Button,
-                onLongClickLabel = openInMoodle,
-                onLongClick = { menu = true },
+                onLongClickLabel = moodlePath?.let { openInMoodle },
+                onLongClick = moodlePath?.let { { menu = true } },
                 onClick = {
                     scope.launch {
-                        when (val opened = store.openAttachment(file)) {
+                        val opened = store?.openAttachment(file)
+                            ?: MoodleAttachment.Link(MoodleFileUrls.webUrl(file.url) ?: file.url)
+                        when (opened) {
                             // The system's chooser tells the reader itself when no app takes the file.
                             is MoodleAttachment.Local ->
                                 launchMoodleFile(context, opened.file, moodleFileType(file.mimeType, file.name))
@@ -294,15 +304,17 @@ private fun AttachmentRow(store: MoodleCourseStore, file: MoodleFile, discussion
                 null
             },
         )
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            DropdownMenuItem(
-                text = { Text(openInMoodle) },
-                leadingIcon = { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
-                onClick = {
-                    menu = false
-                    openMoodlePage(context, MoodlePage.discussion(discussion.id))
-                },
-            )
+        if (moodlePath != null) {
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                DropdownMenuItem(
+                    text = { Text(openInMoodle) },
+                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
+                    onClick = {
+                        menu = false
+                        openMoodlePage(context, moodlePath)
+                    },
+                )
+            }
         }
     }
 }

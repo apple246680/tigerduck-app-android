@@ -33,6 +33,9 @@ class MoodleCourseRepositoryTest {
         override suspend fun gradeItems(courseId: Int) =
             listOf(MoodleGradeItem(1, "HW", "mod", "assign", 2, grade, 100.0, false, ""))
         override suspend fun summary(courseId: Int) = MoodleCourseSummary.EMPTY
+        override suspend fun submission(assignId: Int) = throw UnsupportedOperationException("not asked here")
+        override suspend fun comments(cmid: Int, submissionId: Int) = emptyList<org.ntust.app.tigerduck.network.model.moodle.MoodleSubmissionComment>()
+        override suspend fun groups(courseId: Int) = emptyMap<Int, String>()
         override suspend fun download(file: MoodleFile, target: java.io.File, maxBytes: Long) = Unit
     }
 

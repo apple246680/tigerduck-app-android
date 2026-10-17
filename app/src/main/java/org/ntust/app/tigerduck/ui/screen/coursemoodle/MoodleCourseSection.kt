@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Assignment
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandLess
@@ -112,6 +113,7 @@ internal fun MoodleCourseSection(
 
 private fun route(kind: MoodleSectionRow.Kind, courseId: Int): String? = when (kind) {
     MoodleSectionRow.Kind.ANNOUNCEMENTS -> MoodleRoutes.announcements(courseId)
+    MoodleSectionRow.Kind.ASSIGNMENTS -> MoodleRoutes.assignments(courseId)
     MoodleSectionRow.Kind.GRADES -> MoodleRoutes.grades(courseId)
     MoodleSectionRow.Kind.MEMBERS -> MoodleRoutes.members(courseId)
     // Phase 2: the forums list, or the one forum a course has.
@@ -131,6 +133,8 @@ private fun MoodleSectionRefresh(store: MoodleCourseStore) {
 private fun MoodleSectionRowItem(row: MoodleSectionRow, onClick: () -> Unit) {
     val (icon, title) = when (row.kind) {
         MoodleSectionRow.Kind.ANNOUNCEMENTS -> Icons.Outlined.Campaign to stringResource(R.string.feature_announcements)
+        MoodleSectionRow.Kind.ASSIGNMENTS ->
+            Icons.AutoMirrored.Outlined.Assignment to stringResource(R.string.course_detail_assignments_label)
         MoodleSectionRow.Kind.GRADES -> Icons.Outlined.BarChart to stringResource(R.string.course_detail_moodle_grades_label)
         MoodleSectionRow.Kind.MEMBERS -> Icons.Outlined.Groups to stringResource(R.string.course_detail_members_label)
         MoodleSectionRow.Kind.FORUMS -> Icons.AutoMirrored.Outlined.Chat to stringResource(R.string.course_detail_forums_label)

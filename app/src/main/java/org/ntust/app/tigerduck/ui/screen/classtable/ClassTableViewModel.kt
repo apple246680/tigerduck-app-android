@@ -185,6 +185,18 @@ class ClassTableViewModel @Inject constructor(
     private val _selectedCourse = MutableStateFlow<Course?>(null)
     val selectedCourse: StateFlow<Course?> = _selectedCourse
 
+    private val _courseSheetRoutes = MutableStateFlow<List<String?>>(emptyList())
+
+    /**
+     * The routes on the course detail sheet's own back stack while it shows, none otherwise: what
+     * a reminder's link asks before closing the sheet (see `CourseDetailSheetRules.closesForLink`).
+     */
+    val courseSheetRoutes: StateFlow<List<String?>> = _courseSheetRoutes
+
+    fun setCourseSheetRoutes(routes: List<String?>) {
+        _courseSheetRoutes.value = routes
+    }
+
     // Cached idnumber → numeric Moodle course id, harvested off the
     // `fetchEnrolledCourses` response. The course-detail popup uses this
     // to build the `/course/view.php?id=<N>` deep link — Moodle's web
@@ -1409,7 +1421,7 @@ class ClassTableViewModel @Inject constructor(
                             )
                             if (merged != null) {
                                 _assignments.value = merged
-                                dataCache.saveAssignments(merged)
+                                moodleService.storeAssignments(merged)
                                 // The reminders and the Live Update follow the
                                 // cache, as Home and the worker make them do.
                                 notificationScheduler.rescheduleFromCache(dataCache, appPreferences)

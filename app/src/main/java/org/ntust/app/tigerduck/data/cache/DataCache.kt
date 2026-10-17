@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.ntust.app.tigerduck.data.model.Assignment
+import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentRecord
 import org.ntust.app.tigerduck.data.model.CalendarEvent
 import org.ntust.app.tigerduck.data.model.PendingCourseIgnore
 import org.ntust.app.tigerduck.data.model.UnsentMark
@@ -62,6 +63,20 @@ class DataCache @Inject constructor(
     private val _backgroundSyncVersion = MutableStateFlow(0)
     val backgroundSyncVersion: StateFlow<Int> = _backgroundSyncVersion.asStateFlow()
     fun notifyBackgroundSyncComplete() { _backgroundSyncVersion.update { it + 1 } }
+
+    private val _assignmentsVersion = MutableStateFlow(0)
+
+    /**
+     * Bumped after every write of the cached assignments, for a screen that shows one of them
+     * beside Home, such as an assignment's page, to read it again. Home itself follows
+     * [backgroundSyncVersion], which a round's writer bumps once its whole round is in.
+     */
+    val assignmentsVersion: StateFlow<Int> = _assignmentsVersion.asStateFlow()
+
+    private val _assignmentRecordsVersion = MutableStateFlow(0)
+
+    /** Bumped after every write of [saveAssignmentRecords]. */
+    val assignmentRecordsVersion: StateFlow<Int> = _assignmentRecordsVersion.asStateFlow()
 
     private val _assignmentMarksVersion = MutableStateFlow(0)
 
@@ -282,8 +297,10 @@ class DataCache @Inject constructor(
 
     // --- Assignments ---
 
-    suspend fun saveAssignments(assignments: List<Assignment>) =
+    suspend fun saveAssignments(assignments: List<Assignment>) {
         save(assignments, "assignments.json")
+        _assignmentsVersion.update { it + 1 }
+    }
 
     suspend fun loadAssignments(): List<Assignment> {
         val type = object : TypeToken<List<Assignment>>() {}.type
@@ -305,7 +322,7 @@ class DataCache @Inject constructor(
     ): Boolean {
         val expected = generation ?: writeGeneration()
         val type = object : TypeToken<List<Assignment>>() {}.type
-        return cacheMutex.withLock {
+        val written = cacheMutex.withLock {
             if (expected != userDataGeneration) return@withLock false
             withContext(Dispatchers.IO) {
                 val file = File(cacheDir, "assignments.json")
@@ -314,6 +331,40 @@ class DataCache @Inject constructor(
             }
             true
         }
+        if (written) _assignmentsVersion.update { it + 1 }
+        return written
+    }
+
+    // --- The assignment records of the last round ---
+    // What `mod_assign_get_assignments` said of every assignment of the term,
+    // for an assignment's page and a course's list; see MoodleAssignmentRecord.
+    // In the Moodle cache's envelope, under its schema number, as the records
+    // hold the same classes: a bump of MOODLE_CACHE_SCHEMA drops them too.
+
+    /**
+     * Keeps [records] as the round's answer; false, and nothing written, when the data was wiped
+     * since [generation], as after a sign-out the round outlived.
+     */
+    suspend fun saveAssignmentRecords(records: List<MoodleAssignmentRecord>, generation: Int? = null): Boolean {
+        val expected = generation ?: writeGeneration()
+        val written = cacheMutex.withLock {
+            if (expected != userDataGeneration) return@withLock false
+            withContext(Dispatchers.IO) {
+                writeMoodleEnvelope(File(cacheDir, ASSIGNMENT_RECORDS_FILE), records, System.currentTimeMillis())
+            }
+            true
+        }
+        if (written) _assignmentRecordsVersion.update { it + 1 }
+        return written
+    }
+
+    suspend fun loadAssignmentRecords(): List<MoodleAssignmentRecord> {
+        val type = object : TypeToken<List<MoodleAssignmentRecord>>() {}.type
+        return cacheMutex.withLock {
+            withContext(Dispatchers.IO) {
+                readMoodleEnvelope<List<MoodleAssignmentRecord>>(File(cacheDir, ASSIGNMENT_RECORDS_FILE), type)?.value
+            }
+        }.orEmpty()
     }
 
     /**
@@ -694,34 +745,41 @@ class DataCache @Inject constructor(
         val generation = writeGeneration()
         cacheMutex.withLock {
             if (generation != userDataGeneration) return@withLock
-            withContext(Dispatchers.IO) {
-                val envelope = JsonObject().apply {
-                    addProperty("v", MOODLE_CACHE_SCHEMA)
-                    addProperty("fetchedAt", fetchedAtMs)
-                    add("value", gson.toJsonTree(value))
-                }
-                val file = moodleFile(name, account)
-                file.parentFile?.mkdirs()
-                atomicWrite(file, gson.toJson(envelope))
-            }
+            withContext(Dispatchers.IO) { writeMoodleEnvelope(moodleFile(name, account), value, fetchedAtMs) }
         }
     }
 
     suspend fun <T> loadMoodleData(type: java.lang.reflect.Type, name: String, account: String): MoodleCached<T>? =
         cacheMutex.withLock {
-            withContext(Dispatchers.IO) {
-                try {
-                    val file = moodleFile(name, account)
-                    if (!file.exists()) return@withContext null
-                    val envelope = JsonParser.parseString(file.readText()).asJsonObject
-                    if (envelope.get("v")?.asInt != MOODLE_CACHE_SCHEMA) return@withContext null
-                    val value: T = gson.fromJson(envelope.get("value"), type) ?: return@withContext null
-                    MoodleCached(value, envelope.get("fetchedAt").asLong)
-                } catch (_: Exception) {
-                    null
-                }
+            withContext(Dispatchers.IO) { readMoodleEnvelope(moodleFile(name, account), type) }
+        }
+
+    /** Writes [value] to [file] under the Moodle cache's schema number, with when it was fetched. */
+    private fun writeMoodleEnvelope(file: File, value: Any, fetchedAtMs: Long) {
+        val envelope = JsonObject().apply {
+            addProperty("v", MOODLE_CACHE_SCHEMA)
+            addProperty("fetchedAt", fetchedAtMs)
+            add("value", gson.toJsonTree(value))
+        }
+        file.parentFile?.mkdirs()
+        atomicWrite(file, gson.toJson(envelope))
+    }
+
+    /** What [writeMoodleEnvelope] wrote to [file]; null for a file in another shape, or none. */
+    private fun <T> readMoodleEnvelope(file: File, type: java.lang.reflect.Type): MoodleCached<T>? = try {
+        if (!file.exists()) {
+            null
+        } else {
+            val envelope = JsonParser.parseString(file.readText()).asJsonObject
+            if (envelope.get("v")?.asInt != MOODLE_CACHE_SCHEMA) {
+                null
+            } else {
+                gson.fromJson<T>(envelope.get("value"), type)?.let { MoodleCached(it, envelope.get("fetchedAt").asLong) }
             }
         }
+    } catch (_: Exception) {
+        null
+    }
 
     /** Where files of [account]'s Moodle data that are not JSON, such as member pictures, go. */
     fun moodleFilesDir(account: String): File = File(moodleDir, moodleAccountFolder(account))
@@ -865,6 +923,7 @@ class DataCache @Inject constructor(
                     "course_lookups.json",
                     "moodle_course_ids.json",
                     "closed_assignments.json",
+                    ASSIGNMENT_RECORDS_FILE,
                 ).forEach { name ->
                     runCatching { File(cacheDir, name).delete() }
                 }
@@ -1010,6 +1069,7 @@ class DataCache @Inject constructor(
         private const val TAG = "DataCache"
 
         private const val MOODLE_DIR = "moodle"
+        private const val ASSIGNMENT_RECORDS_FILE = "moodle_assignments.json"
         private const val MOODLE_OPENED_DIR = "moodle_open"
         private const val MOODLE_SALT_PREFS = "moodle_files"
         private const val MOODLE_SALT_KEY = "folder_salt"

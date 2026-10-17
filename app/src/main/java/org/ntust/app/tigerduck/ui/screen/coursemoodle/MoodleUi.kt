@@ -103,12 +103,27 @@ internal fun moodleScreenShouldClose(signedIn: Boolean, store: MoodleCourseStore
  */
 @Composable
 internal fun MoodleSignedOutEffect(viewModel: MoodleCourseViewModel, onClose: () -> Unit) {
-    val signedIn by viewModel.signedIn.collectAsStateWithLifecycle()
     val store by viewModel.store.collectAsStateWithLifecycle()
+    MoodleSignedOutEffect(viewModel.signedIn, held = store, isCurrent = { it.isCurrent() }, onClose = onClose)
+}
+
+/**
+ * [MoodleSignedOutEffect] for a page holding [held], the account's data it shows, which
+ * [isCurrent] says still belongs to the account signed in; null while the page has none yet.
+ */
+@Composable
+internal fun <T : Any> MoodleSignedOutEffect(
+    signedIn: kotlinx.coroutines.flow.StateFlow<Boolean>,
+    held: T?,
+    isCurrent: (T) -> Boolean,
+    onClose: () -> Unit,
+) {
+    val isSignedIn by signedIn.collectAsStateWithLifecycle()
     val latestClose by rememberUpdatedState(onClose)
-    if (moodleScreenShouldClose(signedIn, store)) LaunchedEffect(Unit) { latestClose() }
-    LifecycleResumeEffect(store) {
-        if (moodleScreenShouldClose(viewModel.signedIn.value, store)) latestClose()
+    fun shouldClose(signedInNow: Boolean) = !signedInNow || held?.let(isCurrent) == false
+    if (shouldClose(isSignedIn)) LaunchedEffect(Unit) { latestClose() }
+    LifecycleResumeEffect(held) {
+        if (shouldClose(signedIn.value)) latestClose()
         onPauseOrDispose { }
     }
 }
@@ -400,4 +415,7 @@ internal object MoodleDates {
 
     /** `yyyy/MM/dd HH:mm`, for the masthead of a post. */
     fun dateTime(epochSeconds: Long): String = format("yyyy/MM/dd HH:mm").format(Date(epochSeconds * 1000))
+
+    /** `M/d HH:mm`, as the course detail writes an assignment's due time; never seconds. */
+    fun minute(epochSeconds: Long): String = format("M/d HH:mm").format(Date(epochSeconds * 1000))
 }

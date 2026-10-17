@@ -704,7 +704,7 @@ class HomeViewModel @Inject constructor(
                     // See CourseRosterMerge.assignmentsToStore.
                     if (remoteAssignments != null) {
                         assignments = remoteAssignments
-                        dataCache.saveAssignments(remoteAssignments)
+                        moodleService.storeAssignments(remoteAssignments)
                         runCatching { pushApiClient.uploadAssignments(remoteAssignments) }
                             .onFailure {
                                 prefs.setLastSyncSource(SyncSource.LOCAL)

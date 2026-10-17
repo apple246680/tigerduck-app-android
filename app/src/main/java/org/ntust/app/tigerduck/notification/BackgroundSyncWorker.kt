@@ -474,7 +474,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
                 remote = moodleService.fetchAssignments(enrolled),
                 cached = dataCache.loadAssignments(),
             ) ?: return true
-            dataCache.saveAssignments(merged)
+            moodleService.storeAssignments(merged)
             runCatching { pushApiClient.uploadAssignments(merged) }
                 .onFailure {
                     prefs.setLastSyncSource(SyncSource.LOCAL)

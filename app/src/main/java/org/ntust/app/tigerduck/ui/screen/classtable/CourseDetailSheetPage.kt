@@ -29,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.outlined.Description
@@ -72,9 +73,9 @@ import org.ntust.app.tigerduck.ui.haptics.Haptics
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleCourseSection
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleCourseViewModel
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodlePage
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleRoutes
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.cardDividerColor
 import org.ntust.app.tigerduck.ui.screen.coursemoodle.openMoodlePage
-import org.ntust.app.tigerduck.ui.screen.home.openAssignmentInMoodle
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.formatCredits
@@ -86,8 +87,8 @@ import java.util.Locale
  *   1. Title, rename and "Open in Moodle", with the course colour under the title
  *   2. Two emphasis cards side by side: classroom | time
  *   3. The info rows: instructor, code (tap to copy), dimension, duration, credits, enrollment
- *   4. Incomplete assignments, each opening in Moodle, then the course's Moodle section, whose
- *      rows push the Moodle screens inside the sheet
+ *   4. Incomplete assignments, each opening its page inside the sheet, then the course's Moodle
+ *      section, whose rows push the Moodle screens inside the sheet
  *
  * A course on someone else's class table shows read-only: no rename, and none of the Moodle
  * course or assignments, which are the signed-in student's. The sheet closes when there is no
@@ -155,6 +156,7 @@ internal fun CourseDetailSheetPage(
                 assignments = assignments,
                 onRename = if (readOnly) null else ({ renaming = true }),
                 onOpenInMoodle = moodleCourseId?.takeIf { showsMoodle }?.let { id -> { openCourseInMoodle(context, id) } },
+                onOpenAssignment = { onOpenRoute(MoodleRoutes.assignment(moodleCourseId ?: 0, it.assignmentId)) },
             )
             val current = store
             if (showsMoodle && moodleCourseId != null && current != null && current.courseId == moodleCourseId) {
@@ -180,6 +182,8 @@ internal fun CourseDetailContent(
     onRename: (() -> Unit)?,
     /** Null for a course with no Moodle course of the user's. */
     onOpenInMoodle: (() -> Unit)?,
+    /** Opens an incomplete assignment's page inside the sheet. */
+    onOpenAssignment: (Assignment) -> Unit = {},
 ) {
     val courseColor = TigerDuckTheme.courseColor(course.courseNo)
     val dash = "—"
@@ -324,7 +328,7 @@ internal fun CourseDetailContent(
                                 color = cardDividerColor(),
                             )
                         }
-                        AssignmentRow(assignment) { openAssignmentInMoodle(context, assignment) }
+                        AssignmentRow(assignment) { onOpenAssignment(assignment) }
                     }
                 }
             }
@@ -332,7 +336,7 @@ internal fun CourseDetailContent(
     }
 }
 
-/** An outstanding assignment: its title and due time, opening it in Moodle. */
+/** An outstanding assignment: its title and due time, opening its page. */
 @Composable
 private fun AssignmentRow(assignment: Assignment, onClick: () -> Unit) {
     val due = remember(assignment.dueDate) {
@@ -354,10 +358,9 @@ private fun AssignmentRow(assignment: Assignment, onClick: () -> Unit) {
         },
         trailingContent = {
             Icon(
-                Icons.AutoMirrored.Filled.OpenInNew,
+                Icons.Filled.ChevronRight,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY),
-                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.DISABLED),
             )
         },
     )

@@ -5,12 +5,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import org.ntust.app.tigerduck.network.MoodleWebserviceError
+import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentSubmission
 import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseSummary
 import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussion
 import org.ntust.app.tigerduck.network.model.moodle.MoodleFile
 import org.ntust.app.tigerduck.network.model.moodle.MoodleForum
 import org.ntust.app.tigerduck.network.model.moodle.MoodleGradeItem
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberList
+import org.ntust.app.tigerduck.network.model.moodle.MoodleSubmissionComment
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -50,6 +52,18 @@ interface MoodleCourseApi {
 
     suspend fun summary(courseId: Int): MoodleCourseSummary
 
+    /** The account's submission for assignment [assignId], as its page shows it. */
+    suspend fun submission(assignId: Int): MoodleAssignmentSubmission
+
+    /**
+     * Every comment on submission [submissionId] of the assignment with course module [cmid],
+     * oldest first; see [MoodleCommentPages].
+     */
+    suspend fun comments(cmid: Int, submissionId: Int): List<MoodleSubmissionComment>
+
+    /** The account's groups on course [courseId], by id, their names as text. */
+    suspend fun groups(courseId: Int): Map<Int, String>
+
     /**
      * Downloads [file], a file Moodle's own site serves, into [target], stopping past [maxBytes].
      * The account's key goes in the request only, which never leaves the app; another app gets
@@ -65,6 +79,9 @@ interface MoodleCourseApi {
         const val MEMBERS_FUNCTION = "core_enrol_get_enrolled_users"
         const val GRADE_ITEMS_FUNCTION = "gradereport_user_get_grade_items"
         const val COURSES_FUNCTION = "core_course_get_courses_by_field"
+        const val SUBMISSION_STATUS_FUNCTION = "mod_assign_get_submission_status"
+        const val COMMENTS_FUNCTION = "core_comment_get_comments"
+        const val GROUPS_FUNCTION = "core_group_get_course_user_groups"
 
         /** Asked for explicitly: Moodle's default `perpage` of 0 returns every discussion at once. */
         const val DISCUSSIONS_PER_PAGE = 20
@@ -188,6 +205,49 @@ class LiveMoodleCourseApi internal constructor(
                 ?: throw MoodleWebserviceError.MalformedResponse("not a Moodle file")
             webservice.downloadTo(Request.Builder().url(url).get().build(), target, file.checkableMimeType(), maxBytes)
         }
+    }
+
+    override suspend fun submission(assignId: Int): MoodleAssignmentSubmission = webservice.withToken { token ->
+        val userId = webservice.siteInfo(token).userId
+        val answer = webservice.call(
+            MoodleCourseApi.SUBMISSION_STATUS_FUNCTION,
+            token,
+            listOf("assignid" to assignId.toString(), "userid" to userId.toString()),
+        )
+        withContext(parse) { MoodleJson.submission(answer) }
+    }
+
+    /**
+     * Moodle keeps a submission's comments on the assignment's module, under the submission's
+     * record, a page at a time.
+     */
+    override suspend fun comments(cmid: Int, submissionId: Int): List<MoodleSubmissionComment> =
+        webservice.withToken { token ->
+            MoodleCommentPages.all { page ->
+                val answer = webservice.call(
+                    MoodleCourseApi.COMMENTS_FUNCTION,
+                    token,
+                    listOf(
+                        "contextlevel" to "module",
+                        "instanceid" to cmid.toString(),
+                        "component" to "assignsubmission_comments",
+                        "itemid" to submissionId.toString(),
+                        "area" to "submission_comments",
+                        "page" to page.toString(),
+                    ),
+                )
+                withContext(parse) { MoodleJson.comments(answer) }
+            }
+        }
+
+    override suspend fun groups(courseId: Int): Map<Int, String> = webservice.withToken { token ->
+        val userId = webservice.siteInfo(token).userId
+        val answer = webservice.call(
+            MoodleCourseApi.GROUPS_FUNCTION,
+            token,
+            listOf("courseid" to courseId.toString(), "userid" to userId.toString()),
+        )
+        withContext(parse) { MoodleJson.groups(answer) }
     }
 
     override suspend fun summary(courseId: Int): MoodleCourseSummary = webservice.withToken { token ->

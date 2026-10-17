@@ -24,6 +24,8 @@ object MoodlePage {
     fun forum(cmid: Int) = "/mod/forum/view.php?id=$cmid"
     fun discussion(discussionId: Int) = "/mod/forum/discuss.php?d=$discussionId"
     fun gradeReport(courseId: Int) = "/grade/report/user/index.php?id=$courseId"
+    fun assignment(cmid: Int) = "/mod/assign/view.php?id=$cmid"
+    fun assignments(courseId: Int) = "/mod/assign/index.php?id=$courseId"
     fun participants(courseId: Int) = "/user/index.php?id=$courseId"
     fun profile(userId: Int, courseId: Int) = "/user/view.php?id=$userId&course=$courseId"
 

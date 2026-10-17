@@ -4,8 +4,6 @@
 
 package org.ntust.app.tigerduck.ui.screen.home
 
-import android.content.Context
-import android.content.Intent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -55,7 +53,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.model.Assignment
@@ -340,15 +337,5 @@ internal fun SwipeableAssignmentRow(
                 onClick = onClick,
             )
         }
-    }
-}
-internal fun openAssignmentInMoodle(context: Context, assignment: Assignment) {
-    val targets = listOfNotNull(assignment.moodleDeepLink, assignment.moodleUrl)
-    for (target in targets) {
-        val intent = Intent(Intent.ACTION_VIEW, target.toUri()).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
-        }
-        val opened = runCatching { context.startActivity(intent) }.isSuccess
-        if (opened) return
     }
 }

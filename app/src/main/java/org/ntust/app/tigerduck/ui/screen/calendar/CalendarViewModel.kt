@@ -457,7 +457,7 @@ class CalendarViewModel @Inject constructor(
                 remote = moodleService.fetchAssignments(enrolled),
                 cached = cached,
             ) ?: return cached
-            dataCache.saveAssignments(assignments)
+            moodleService.storeAssignments(assignments)
             // The reminders and the Live Update follow the cache, as Home
             // and the worker make them do.
             notificationScheduler.rescheduleFromCache(dataCache, prefs)
