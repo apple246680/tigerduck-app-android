@@ -85,10 +85,14 @@ class ReviewPromptWiringTest {
         }
     }
 
-    /** A return from the background can find the course detail sheet open. */
+    /**
+     * A return from the background can find the class table's course sheet open. Home opens a
+     * course as the navigation's course detail sheet, a window of its own, which the launch's
+     * window-focus check covers.
+     */
     @Test
     fun `no moment over the course detail sheet`() {
-        for (rel in listOf(classTable, home)) {
+        for (rel in listOf(classTable)) {
             val body = body(rel, "onPageResumed")
             val sheet = body.indexOf("_selectedCourse.value != null")
             assertTrue("$rel: onPageResumed no longer holds the moment back over the course sheet", sheet in 0 until body.indexOf("reviewPrompt.calmMoment("))
