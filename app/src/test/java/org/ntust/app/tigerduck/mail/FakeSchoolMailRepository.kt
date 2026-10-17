@@ -191,12 +191,16 @@ class FakeSchoolMailRepository : SchoolMailRepository {
     /** Fires once the folder list went out and before it is returned: a test acts while the LIST is out. */
     var onFolders: (() -> Unit)? = null
 
+    /** Set, a folder list that went out waits on it before it answers: a LIST still out, for as long as the test needs. */
+    var foldersAnswerGate: CompletableDeferred<Unit>? = null
+
     override suspend fun folders(stillWanted: () -> Boolean): ResolvedFolders {
         foldersCalls++
         foldersGate?.await()
         unlessAbandoned(stillWanted)
         foldersSent++
         onFolders?.invoke()
+        foldersAnswerGate?.await()
         foldersError?.let { throw it }
         return resolved
     }
@@ -346,7 +350,9 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         onSearched?.invoke(folder)
         // The server could not search: as the real repository, only the folder's cached newest
         // page is searched here; the list page substitutes the rows it has loaded.
-        if (searchUnsupported) return SearchOutcome.LoadedOnly(cachedPages[folder]?.messages.orEmpty().filter { query in it.subject })
+        if (searchUnsupported) {
+            return cachedPages[folder].let { cached -> SearchOutcome.LoadedOnly(cached?.messages.orEmpty().filter { query in it.subject }, cached?.uidValidity) }
+        }
         // Paged like the real repository: the newest [pageSize] matches, the rest left to fetch.
         return SearchOutcome.Server(hits.take(pageSize), hits.drop(pageSize).map { it.uid }, uidValidity = 1)
     }

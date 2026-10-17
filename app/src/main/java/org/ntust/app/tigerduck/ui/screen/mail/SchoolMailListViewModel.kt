@@ -179,6 +179,19 @@ class SchoolMailListViewModel @Inject constructor(
     /** The [load] in progress, so a second call -- Retry tapped twice, a pull -- waits on it instead of starting another. */
     private var loadJob: Job? = null
 
+    /** The [MailAccount.accountGeneration] that [loadJob] loads for. */
+    private var loadGeneration = 0
+
+    /**
+     * True while a load asked for by another account than [loadJob]'s waits for that one to end:
+     * a student who signed in over the one whose folder list was still out -- through the sign-in
+     * sheet a rejected password shows -- and whose screen asked for its load at once. The single
+     * flight refuses that call, the old load then comes back for nobody, and nothing else would
+     * start theirs: the screen's load effect does not run again, and polling resolves no folders.
+     * So it starts as soon as the old one has ended.
+     */
+    private var loadPending = false
+
     /**
      * True once a warm queue has run to the end, so a resume knows there is nothing left to warm.
      * Reset whenever a new queue is built, and whenever the account goes away.
@@ -242,9 +255,21 @@ class SchoolMailListViewModel @Inject constructor(
 
     fun load() {
         if (!account.signedIn.value) return
-        if (loadJob?.isActive == true) return
+        loadJob?.takeIf { it.isActive }?.let { running ->
+            // Not discarded when it is another account's than the running load's; see [loadPending].
+            if (!loadPending && loadGeneration != account.accountGeneration) {
+                loadPending = true
+                viewModelScope.launch {
+                    running.join()
+                    loadPending = false
+                    load()
+                }
+            }
+            return
+        }
         showFetchedAt()
         val generation = account.accountGeneration
+        loadGeneration = generation
         // At once, not when the first page is asked for: the folder list comes first, and a failed
         // state left up meanwhile is a Retry button that starts a second load.
         _state.update { it.copy(loadState = LoadState.Loading) }
@@ -722,8 +747,16 @@ class SchoolMailListViewModel @Inject constructor(
                         val outcome = repository.search(folder, query) { stillCurrent(selection, generation) && search == searchGeneration }
                         // The server could not search: the repository's fallback knows only the
                         // folder's cached newest page, while the list may have paged further, so
-                        // the matches are read from the rows it has loaded, as a failed folder's are.
-                        if (outcome is SearchOutcome.LoadedOnly) loadedMatches() else outcome
+                        // the matches are read from the rows it has loaded, as a failed folder's
+                        // are -- but only rows read under the UIDVALIDITY that page has. A refresh
+                        // can have cached a recreated folder's new page and then failed on another
+                        // folder, leaving the old mailbox's rows on screen; those must not stand in
+                        // for the new mailbox, whose matches the repository found.
+                        if (outcome is SearchOutcome.LoadedOnly && (outcome.uidValidity == null || outcome.uidValidity == folderValidity[folder])) {
+                            loadedMatches()
+                        } else {
+                            outcome
+                        }
                     } catch (e: MailError) {
                         if (dropped(e, generation)) return
                         if (failure == null) failure = e

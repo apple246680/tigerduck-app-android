@@ -49,8 +49,12 @@ sealed interface SearchOutcome {
         /** The folder's UIDVALIDITY the matches were found under, which [remaining] only means anything in; null where unknown. */
         val uidValidity: Long? = null,
     ) : SearchOutcome
-    /** The server couldn't search; these are matches among already-loaded mail. */
-    data class LoadedOnly(override val messages: List<MailSummary>) : SearchOutcome
+    /**
+     * The server couldn't search; these are matches among the folder's cached newest page, with
+     * [uidValidity] the page was read under (null where unknown). The list page substitutes the
+     * rows it has loaded, pages back included, where they were read under the same UIDVALIDITY.
+     */
+    data class LoadedOnly(override val messages: List<MailSummary>, val uidValidity: Long? = null) : SearchOutcome
 }
 
 /**
@@ -437,7 +441,7 @@ class MailRepository @Inject constructor(
 
     override suspend fun search(folder: String, query: String, stillWanted: () -> Boolean): SearchOutcome {
         val q = query.trim()
-        if (account.isDemo) return SearchOutcome.LoadedOnly(demoPage(folder).messages.filter { matchesLoadedMail(it, q) })
+        if (account.isDemo) return demoPage(folder).let { page -> SearchOutcome.LoadedOnly(page.messages.filter { matchesLoadedMail(it, q) }, page.uidValidity) }
         return try {
             // Newest first, so the first page is the newest matches and the rest page back. One
             // hold of the connection, so the page and the UIDVALIDITY are those the search saw.
@@ -448,8 +452,8 @@ class MailRepository @Inject constructor(
                 SearchOutcome.Server(session.fetchByUids(folder, newest), matches.drop(newest.size), validity)
             }
         } catch (e: MailError.SearchUnsupported) {
-            val loaded = cachedPage(folder)?.messages.orEmpty()
-            SearchOutcome.LoadedOnly(loaded.filter { matchesLoadedMail(it, q) })
+            val cached = cachedPage(folder)
+            SearchOutcome.LoadedOnly(cached?.messages.orEmpty().filter { matchesLoadedMail(it, q) }, cached?.uidValidity)
         }
     }
 

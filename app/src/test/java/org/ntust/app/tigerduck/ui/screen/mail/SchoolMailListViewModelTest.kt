@@ -456,6 +456,27 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
+    fun `a student who signs in over another while that one's folder list is out gets their own load`() {
+        repo.add("INBOX", mailSummary(1))
+        val answer = CompletableDeferred<Unit>()
+        repo.foldersAnswerGate = answer
+        vm.load()
+        assertEquals(1, repo.foldersSent)
+        // B signs in over A through the sign-in sheet, and B's screen asks for its load at once --
+        // while A's folder list is still out, so the single flight refuses it.
+        signInAnotherOverThisOne()
+        vm.load()
+        repo.foldersAnswerGate = null
+        answer.complete(Unit)
+        // A's list came back for nobody, and B's own load ran once it had: B's folders and inbox
+        // are on screen, not a blank page waiting for a pull.
+        assertEquals(2, repo.foldersSent)
+        assertTrue(vm.state.value.chips.isNotEmpty())
+        assertEquals(listOf(1L), vm.state.value.displayed.map { it.uid })
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Loaded)
+    }
+
+    @Test
     fun `a certificate failure of a search the user has cleared still stays on screen`() {
         repo.add("INBOX", mailSummary(1, subject = "期中考"))
         vm.load()
@@ -506,6 +527,34 @@ class SchoolMailListViewModelTest {
         vm.setSearchText("期中")
         vm.submitSearch()
         assertEquals(listOf(5L, 4L, 3L, 2L), vm.state.value.displayed.map { it.uid })
+        assertTrue(vm.state.value.searchLocalOnly)
+    }
+
+    @Test
+    fun `a server that cannot search does not match rows of a mailbox generation the server has replaced`() {
+        repo.pageSize = 2
+        repo.add("INBOX", mailSummary(1, subject = "期中考 1", sentAt = at(100)), mailSummary(2, subject = "期中考 2", sentAt = at(200)))
+        repo.add(SENT, mailSummary(9, subject = "other", sentAt = at(50)))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        // The inbox was recreated, with one mail that reads differently under the same UID. A
+        // refresh of All mail caches its page under the new UIDVALIDITY but fails at Sent, so the
+        // rows on screen stay the old mailbox's.
+        repo.mail.getValue("INBOX").clear()
+        repo.add("INBOX", mailSummary(1, subject = "期中考 新", sentAt = at(300)))
+        repo.pageValidity = 2
+        repo.loadError = MailError.Network()
+        repo.loadErrorFolder = SENT
+        selectAll()
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        assertEquals(listOf(2L, 1L, 9L), vm.state.value.displayed.map { it.uid })
+        assertEquals(2L, runBlocking { repo.cachedPage("INBOX") }!!.uidValidity)
+        // The server cannot search. The repository matched the new mailbox's cached page; the
+        // inbox rows on screen were read under the old UIDVALIDITY and must not stand in for it.
+        repo.searchUnsupported = true
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        assertEquals(listOf(1L to "期中考 新"), vm.state.value.displayed.map { it.uid to it.summary.subject })
         assertTrue(vm.state.value.searchLocalOnly)
     }
 
