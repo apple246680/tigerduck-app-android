@@ -286,8 +286,6 @@ class HomeViewModel @Inject constructor(
     )
     val noNetworkEvent: SharedFlow<Unit> = _noNetworkEvent.asSharedFlow()
 
-    private val _selectedCourse = MutableStateFlow<SelectedCourseInfo?>(null)
-    val selectedCourse: StateFlow<SelectedCourseInfo?> = _selectedCourse
 
     private val _syncCompleteEvent = MutableSharedFlow<Unit>(
         extraBufferCapacity = 1,
@@ -902,14 +900,6 @@ class HomeViewModel @Inject constructor(
             markedCompletedIds = _markedCompletedIds.value,
         )
 
-    fun assignmentsFor(courseNo: String): List<Assignment> =
-        HomeAssignmentFilters.unfinishedFor(
-            all = _allAssignments.value,
-            courseNo = courseNo,
-            ignoredIds = ignoredIncludingCourses(_allAssignments.value),
-            markedCompletedIds = _markedCompletedIds.value,
-        )
-
     fun setAssignmentFilter(filter: AssignmentFilter) {
         _assignmentFilter.value = filter
         prefs.homeAssignmentFilter = filter
@@ -999,10 +989,6 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun selectCourse(info: SelectedCourseInfo?) {
-        _selectedCourse.value = info
-    }
-
     // 翹課 — see the block above _skippedDates.
     // fun toggleSkip(course: Course, date: Date) {
     //     val key = date.toInstant().atZone(AppConstants.TAIPEI_ZONE).toLocalDate().format(SKIP_DATE_FMT)
@@ -1067,9 +1053,3 @@ internal suspend fun reloadAdoptedMarks(
     apply(ignored, completed)
 }
 
-/**
- * Selection context for the Home detail dialog. Carries the slot-resolved
- * classroom so the popup renders the room for the tapped period only, not
- * the union across the whole day's split rooms.
- */
-data class SelectedCourseInfo(val course: Course, val classroom: String)

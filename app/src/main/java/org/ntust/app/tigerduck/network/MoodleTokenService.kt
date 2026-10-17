@@ -46,8 +46,11 @@ import javax.inject.Singleton
 class MoodleTokenService internal constructor(
     /** The client the OIDC flow builds on; the session manager's, so it shares its cookie jar. */
     private val clientFor: () -> OkHttpClient,
-    /** Where the token and the account it is harvested with are stored. */
-    private val tokens: MoodleTokenCoordinator.Tokens,
+    /**
+     * Where the tokens and the account they are harvested with are stored: the wstoken, and the
+     * private token kept beside it; see [MoodleTokenPairs].
+     */
+    tokenStore: MoodleTokenPairStore,
     passwordLatch: StoredPasswordLatch,
     scope: CoroutineScope,
     now: () -> Long,
@@ -60,16 +63,21 @@ class MoodleTokenService internal constructor(
         passwordLatch: StoredPasswordLatch,
     ) : this(
         clientFor = { sessionManager.client },
-        tokens = object : MoodleTokenCoordinator.Tokens {
+        tokenStore = object : MoodleTokenPairStore {
             override var token: String?
                 get() = credentialManager.moodleToken
                 set(value) {
                     credentialManager.moodleToken = value
                 }
+            override var privateToken: String?
+                get() = credentialManager.moodlePrivateToken
+                set(value) {
+                    credentialManager.moodlePrivateToken = value
+                }
             override val studentId: String? get() = credentialManager.ntustStudentId
             override val password: String? get() = credentialManager.ntustPassword
-            override fun storeIfSignedIn(studentId: String, token: String): Boolean =
-                credentialManager.storeMoodleTokenIfSignedIn(studentId, token)
+            override fun storeIfSignedIn(studentId: String, token: String, privateToken: String?): Boolean =
+                credentialManager.storeMoodleTokenIfSignedIn(studentId, token, privateToken)
         },
         passwordLatch = passwordLatch,
         scope = appScope,
@@ -110,10 +118,18 @@ class MoodleTokenService internal constructor(
 
     fun currentToken(): String? = tokens.token
 
+    /** The private token is kept beside the wstoken it came with; see [MoodleTokenPairs]. */
+    private val tokens = MoodleTokenPairs(tokenStore)
+
+    /** The stored private token, which only asks Moodle for an autologin key. Never logged. */
+    fun currentPrivateToken(): String? = tokens.privateToken
+
     private val coordinator = MoodleTokenCoordinator(
         tokens = tokens,
         login = { studentId, password, posting ->
-            performOidcLogin(studentId, password, posting).wstoken.also {
+            val triple = performOidcLogin(studentId, password, posting)
+            tokens.harvested(triple.wstoken, triple.privatetoken)
+            triple.wstoken.also {
                 Log.i("MoodleTokenService", "harvested wstoken (len=${it.length})")
             }
         },

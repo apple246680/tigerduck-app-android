@@ -229,6 +229,13 @@ class ClassTableViewModel @Inject constructor(
     // `<term><courseNo>` — see moodleCourseIdFor.
     private var selectedCourseSemester: String? = null
 
+    // Whether the selected course is someone else's; see ClassTableSelection.isSomeoneElses. Set
+    // with the selection, which a switch of class tables clears.
+    private var selectedIsSomeoneElses = false
+
+    /** Whether the selected course is of someone else's class table, which its detail shows read-only. */
+    val selectedCourseIsSomeoneElses: Boolean get() = selectedIsSomeoneElses
+
     // Stored pick, else the newest published term, else the pinned term.
     // The catalogue can land after construction on a cold launch, so
     // followNewestSemesterIfUnpicked re-applies the rule once it does.
@@ -749,7 +756,7 @@ class ClassTableViewModel @Inject constructor(
             val course = _selectedCourse.value ?: return null
             course.customCourseName?.let { return it }
             // Someone else's course shows the name it was looked up with.
-            if (isShowingSomeoneElse) return null
+            if (selectedIsSomeoneElses) return null
             return courseService.cachedFullCourseName(_currentSemester.value, course.courseNo)
         }
 
@@ -842,6 +849,7 @@ class ClassTableViewModel @Inject constructor(
             ).map { it.id },
         )
         selectedCourseSemester = if (fromLiveTerm) liveCoursesTerm else _currentSemester.value
+        selectedIsSomeoneElses = ClassTableSelection.isSomeoneElses(isShowingSomeoneElse, fromLiveTerm)
         _selectedCourse.value = course
     }
 
@@ -853,7 +861,7 @@ class ClassTableViewModel @Inject constructor(
         ClassTableSelection.detailTitle(
             course,
             // Someone else's course shows the name it was looked up with.
-            if (isShowingSomeoneElse) {
+            if (selectedIsSomeoneElses) {
                 null
             } else {
                 courseService.cachedFullCourseName(selectedCourseSemester ?: _currentSemester.value, course.courseNo)
@@ -876,7 +884,7 @@ class ClassTableViewModel @Inject constructor(
      */
     fun moodleCourseIdFor(course: Course): Int? {
         // Someone else's class table opens nothing of theirs in the user's Moodle.
-        if (isShowingSomeoneElse) return null
+        if (selectedIsSomeoneElses) return null
         val semester = selectedCourseSemester ?: _currentSemester.value
         val idnumber = course.moodleIdNumber?.takeIf { it.isNotEmpty() }
             ?: "$semester${course.courseNo}"
@@ -891,6 +899,7 @@ class ClassTableViewModel @Inject constructor(
     fun clearSelection() {
         _selectedCourse.value = null
         selectedCourseSemester = null
+        selectedIsSomeoneElses = false
     }
 
     val existingCourseNos: Set<String>

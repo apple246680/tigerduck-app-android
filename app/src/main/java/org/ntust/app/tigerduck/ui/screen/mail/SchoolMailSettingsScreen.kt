@@ -126,13 +126,14 @@ fun SchoolMailSettingsScreen(
 }
 
 /**
- * Cache size plus Clear cache. The figure covers everything under the mail cache root, so it is the
- * disk the mailbox actually occupies, not just the message bodies. It reads "…" until the first
+ * Cache size plus Clear cache. For the mail, the figure covers everything under the mail cache
+ * root, so it is the disk the mailbox actually occupies, not just the message bodies; Settings'
+ * Moodle materials use it for the downloaded Moodle files. It reads "…" until the first
  * measurement lands, and clearing is offered only when there is something to clear — no
  * confirmation, since all of it is re-downloadable.
  */
 @Composable
-private fun CacheSizeRow(cacheBytes: Long?, onClear: () -> Unit) {
+internal fun CacheSizeRow(cacheBytes: Long?, onClear: () -> Unit) {
     val context = LocalContext.current
     Row(
         modifier = Modifier

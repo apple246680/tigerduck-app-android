@@ -65,7 +65,7 @@ class MoodleRefreshFailureTest {
             return listOf(graded)
         }
         override suspend fun summary(courseId: Int) = MoodleCourseSummary.EMPTY
-        override suspend fun download(file: org.ntust.app.tigerduck.network.model.moodle.MoodleFile, target: java.io.File, maxBytes: Long) = Unit
+        override suspend fun download(file: org.ntust.app.tigerduck.network.model.moodle.MoodleFile, target: java.io.File, maxBytes: Long, progress: (Float) -> Unit) = Unit
     }
 
     private fun cache(grades: MoodleCourseGrades?) = object : MoodleCachePort {

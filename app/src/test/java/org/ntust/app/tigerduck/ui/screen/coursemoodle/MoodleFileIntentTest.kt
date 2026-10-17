@@ -30,12 +30,12 @@ class MoodleFileIntentTest {
     @Test
     fun `an attachment leaves as a content URI, a web page or XML through the share sheet, nothing else at all`() {
         val context = RuntimeEnvironment.getApplication()
-        fun file(path: String) = File(context.cacheDir, path).apply {
+        fun file(path: String) = File(context.filesDir, path).apply {
             parentFile!!.mkdirs()
             writeText("x")
         }
 
-        val chooser = moodleFileIntent(context, file("TigerDuckCache/moodle_open/a1/s1/hw3.pdf"), "application/pdf")
+        val chooser = moodleFileIntent(context, file("moodle_files/a1/5/p90/s1/1/hw3.pdf"), "application/pdf")
         // The system's own chooser, which says so itself when no app takes the file.
         assertEquals(Intent.ACTION_CHOOSER, chooser.action)
         assertNull("no title of the app's own", chooser.getCharSequenceExtra(Intent.EXTRA_TITLE))
@@ -56,7 +56,7 @@ class MoodleFileIntentTest {
             "upper.html" to "Text/HTML; charset=utf-8",
         )
         for ((name, type) in scripted) {
-            val shareChooser = moodleFileIntent(context, file("TigerDuckCache/moodle_open/a1/s1/$name"), type)
+            val shareChooser = moodleFileIntent(context, file("moodle_files/a1/5/p90/s1/1/$name"), type)
             @Suppress("DEPRECATION")
             val shared = shareChooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
             assertEquals(name, Intent.ACTION_SEND, shared.action)
@@ -72,18 +72,34 @@ class MoodleFileIntentTest {
 
         // Listed as anything, a copy whose name says web page is a web page to the app that reads it.
         val named = moodleFileIntent(
-            context, file("TigerDuckCache/moodle_open/a1/s1/a_html.html"), "application/octet-stream",
+            context, file("moodle_files/a1/5/p90/s1/1/a_html.html"), "application/octet-stream",
         ) { if (it == "html") "text/html" else null }
         @Suppress("DEPRECATION")
         val namedShared = named.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
         assertEquals(Intent.ACTION_SEND, namedShared.action)
         assertEquals("text/html", namedShared.type)
 
+        // A saved web page the system has no type for goes to the share sheet by its name alone, as iOS sends it.
+        for (name in listOf("page.mht", "page.mhtml", "logo.SVG")) {
+            val archived = moodleFileIntent(context, file("moodle_files/a1/5/p90/s1/1/$name"), "application/octet-stream") { null }
+            @Suppress("DEPRECATION")
+            assertEquals(name, Intent.ACTION_SEND, archived.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!.action)
+        }
+
+        // Share sends any file to the share sheet, the copy and never a link.
+        val asked = moodleFileIntent(context, file("moodle_files/a1/5/p90/s1/1/hw5.pdf"), "application/pdf", share = true)
+        @Suppress("DEPRECATION")
+        val sent = asked.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
+        assertEquals(Intent.ACTION_SEND, sent.action)
+        assertEquals("application/pdf", sent.type)
+        @Suppress("DEPRECATION")
+        assertEquals("content", sent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)!!.scheme)
+
         ShadowLog.clear()
         val noApp = object : ContextWrapper(context) {
             override fun startActivity(intent: Intent) = throw ActivityNotFoundException("week1-s1234567.pdf")
         }
-        assertFalse(launchMoodleFile(noApp, file("TigerDuckCache/moodle_open/a1/s1/week1-s1234567.pdf"), "application/pdf"))
+        assertFalse(launchMoodleFile(noApp, file("moodle_files/a1/5/p90/s1/1/week1-s1234567.pdf"), "application/pdf"))
         val line = ShadowLog.getLogsForTag("MoodleLinks").single()
         assertEquals(Log.WARN, line.type)
         assertEquals("logged by the failure's class alone", "attachment not opened: ActivityNotFoundException", line.msg)
@@ -92,10 +108,13 @@ class MoodleFileIntentTest {
         val viewer = object : ContextWrapper(context) {
             override fun startActivity(intent: Intent) { launched = intent }
         }
-        assertTrue(launchMoodleFile(viewer, file("TigerDuckCache/moodle_open/a1/s1/hw4.pdf"), "application/pdf"))
+        assertTrue(launchMoodleFile(viewer, file("moodle_files/a1/5/p90/s1/1/hw4.pdf"), "application/pdf"))
         assertEquals(Intent.ACTION_CHOOSER, launched!!.action)
 
-        val cached = file("TigerDuckCache/moodle/B1/courses/5/grades.json")
+        val cached = File(context.cacheDir, "TigerDuckCache/moodle/B1/courses/5/grades.json").apply {
+            parentFile!!.mkdirs()
+            writeText("{}")
+        }
         val refused = runCatching { moodleFileIntent(context, cached, "application/json") }.exceptionOrNull()
         assertTrue("got $refused", refused is IllegalArgumentException)
     }

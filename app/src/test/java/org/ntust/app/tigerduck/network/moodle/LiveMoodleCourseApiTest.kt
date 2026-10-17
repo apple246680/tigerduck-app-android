@@ -82,8 +82,93 @@ class LiveMoodleCourseApiTest {
         )
         val target = tmp.newFile()
 
-        api.download(file, target, maxBytes = 1_000)
+        api.download(file, target, maxBytes = 1_000) {}
 
         assertEquals("PK zip bytes", target.readText())
+    }
+
+    private class Recorded(val function: String?, val body: String)
+
+    private fun recordingClient(
+        calls: MutableList<Recorded>,
+        file: Pair<String, String> = "bytes" to "application/octet-stream",
+    ) = OkHttpClient.Builder().addInterceptor { chain ->
+        val request = chain.request()
+        val function = request.url.queryParameter("wsfunction")
+        val sent = request.body?.let { okio.Buffer().also(it::writeTo).readUtf8() }.orEmpty()
+        calls += Recorded(function, sent)
+        val (body, type) = when (function) {
+            "core_webservice_get_site_info" -> """{"userid":7,"functions":[],"userprivateaccesskey":"key"}""" to "application/json"
+            "mod_forum_get_discussion_posts" -> """{"posts":[{"id":1,"subject":"S","message":"M"}]}""" to "application/json"
+            "core_course_get_contents" -> "[]" to "application/json"
+            null -> file
+            else -> """{"status":true}""" to "application/json"
+        }
+        Response.Builder()
+            .request(request)
+            .protocol(Protocol.HTTP_1_1)
+            .code(200)
+            .message("")
+            .body(body.toResponseBody(type.toMediaType()))
+            .build()
+    }.build()
+
+    @Test
+    fun `a thread is asked for oldest first, filtered as the Moodle app asks`() = runTest {
+        val calls = mutableListOf<Recorded>()
+        val api = LiveMoodleCourseApi(MoodleWebservice({ recordingClient(calls) }, tokens), Recording())
+
+        assertEquals(1, api.posts(40).single().id)
+        val body = calls.single { it.function == "mod_forum_get_discussion_posts" }.body
+        assertEquals("discussionid=40&sortby=created&sortdirection=ASC&moodlewssettingfilter=true", body)
+    }
+
+    @Test
+    fun `opening a material logs its module's own view with its instance, and an unknown module none`() = runTest {
+        val calls = mutableListOf<Recorded>()
+        val api = LiveMoodleCourseApi(MoodleWebservice({ recordingClient(calls) }, tokens), Recording())
+        fun material(module: String) = org.ntust.app.tigerduck.network.model.moodle.MoodleMaterial(
+            id = 101, instance = 7, module = module, name = "M", files = emptyList(), link = null,
+        )
+
+        api.markMaterialViewed(material("resource")) { true }
+        api.markMaterialViewed(material("folder")) { true }
+        api.markMaterialViewed(material("url")) { true }
+        api.markMaterialViewed(material("quiz")) { true }
+        api.markMaterialViewed(material("resource")) { false }
+
+        assertEquals(
+            listOf(
+                "mod_resource_view_resource" to "resourceid=7",
+                "mod_folder_view_folder" to "folderid=7",
+                "mod_url_view_url" to "urlid=7",
+            ),
+            calls.map { it.function to it.body },
+        )
+    }
+
+    @Test
+    fun `a file with no listed type refuses a page in its place, and reports its progress`() = runTest {
+        val untyped = org.ntust.app.tigerduck.network.model.moodle.MoodleFile(
+            name = "notes.key", size = 5, mimeType = null, modified = 1L, path = "/",
+            url = "https://moodle2.ntust.edu.tw/webservice/pluginfile.php/1/mod_resource/content/1/notes.key",
+        )
+        val page = LiveMoodleCourseApi(
+            MoodleWebservice({ recordingClient(mutableListOf(), "<html>Sign in</html>" to "text/html") }, tokens),
+            Recording(),
+        )
+        val refused = runCatching { page.download(untyped, tmp.newFile(), maxBytes = 1_000) {} }.exceptionOrNull()
+        assertTrue("got $refused", refused is org.ntust.app.tigerduck.network.MoodleWebserviceError.MalformedResponse)
+
+        val shares = mutableListOf<Float>()
+        val file = LiveMoodleCourseApi(MoodleWebservice({ recordingClient(mutableListOf()) }, tokens), Recording())
+        val target = tmp.newFile()
+        file.download(untyped, target, maxBytes = 1_000) { shares += it }
+        assertEquals("bytes", target.readText())
+        assertEquals(1f, shares.last())
+
+        // A web page by its own name is taken as one.
+        val html = untyped.copy(name = "notes.html", url = untyped.url.replace("notes.key", "notes.html"))
+        page.download(html, tmp.newFile(), maxBytes = 1_000) {}
     }
 }
