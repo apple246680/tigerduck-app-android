@@ -84,4 +84,44 @@ class ClassTableWiringTest {
     fun `a selection opens on its block`() {
         assertCalls("selectCourse", "_selectedPeriods.value = periods ?: ClassTableSelection.block(")
     }
+
+    /** tigerduck-app-android#264: mergeFetched keeps hand-added rows as stored, so a fetch looks them up first. */
+    @Test
+    fun `a fetch looks the term's hand-added courses up again before the merge`() {
+        assertCalls("fetchData", "fetchTermCourses(semester, orderedCourseNos, moodleByNo)")
+        val body = body("fetchTermCourses")
+        val lookedUp = body.indexOf("ClassTableCourseMerge.manualNosToLookUp(cached, rosterNos)")
+        val refreshed = body.indexOf("ClassTableCourseMerge.withLookedUp(cached,")
+        val merged = body.indexOf("ClassTableCourseMerge.mergeFetched(")
+        assertTrue("fetchTermCourses no longer looks the hand-added courses up", lookedUp in 0 until refreshed)
+        assertTrue("fetchTermCourses no longer merges over the refreshed rows", refreshed in 0 until merged)
+    }
+
+    /** tigerduck-app-android#264: rooms are announced late, and the page fetches on launch only. */
+    @Test
+    fun `each visit looks the courses without a room up again, and a hit reaches the widget`() {
+        assertCalls("onPageShown", "lookUpMissingRooms()")
+        assertCalls(
+            "lookUpMissingRooms",
+            "ClassTableCourseMerge.nosWithoutRoom(",
+            "ClassTableCourseMerge.withRoomsFound(",
+            "dataCache.saveCourses(",
+            "widgetUpdater.requestUpdate()",
+        )
+    }
+
+    /** tigerduck-app-android#265. */
+    @Test
+    fun `the first fetch of a session warms the other terms, and a sign-out ends the warm`() {
+        val fetch = body("fetchData")
+        val synced = fetch.indexOf("_syncCompleteEvent.tryEmit(Unit)")
+        val warmed = fetch.indexOf("warmTerms(")
+        assertTrue("fetchData no longer warms the other terms once its own is done", synced in 0 until warmed)
+        assertCalls("warmTerms", "termWarm.run {")
+        assertCalls("warmTerm", "fetchTermCourses(semester, rosterNos, moodleByNo)")
+        val source = source().joinToString("\n")
+        for (call in listOf("warmJob?.cancel()", "termWarm.reset()")) {
+            assertTrue("a sign-out no longer calls $call", call in source)
+        }
+    }
 }

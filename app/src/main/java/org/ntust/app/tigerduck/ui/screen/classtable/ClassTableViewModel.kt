@@ -63,6 +63,7 @@ import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.SingleFlight
 import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
+import kotlin.time.Duration.Companion.minutes
 
 /**
  * When the class table fetches on its own — see [RefreshPolicy]. The default:
@@ -70,6 +71,14 @@ import javax.inject.Inject
  * and a pull covers those.
  */
 internal val ClassTableRefreshPolicy = RefreshPolicy()
+
+/**
+ * How often a visit to the page looks a term's courses without a room up
+ * again (tigerduck-app-android#264). CourseService keeps a lookup this long,
+ * so asking sooner would be answered from memory for a course it knows — and
+ * one it does not know, it asks the school about each time.
+ */
+internal val MissingRoomLookupInterval = 30.minutes
 
 @HiltViewModel
 class ClassTableViewModel @Inject constructor(
@@ -136,6 +145,19 @@ class ClassTableViewModel @Inject constructor(
 
     // A term's reset as far as files and the backend go; see resetCourses.
     private val termReset = ClassTableTermReset(dataCache)
+
+    // The other terms' caches, filled after the first fetch; see warmTerms.
+    private val termWarm = ClassTableTermWarm(
+        terms = { semesterCatalog.availableSemesters() },
+        isCached = { dataCache.loadCourses(it).isNotEmpty() },
+        mayFetch = { authService.authState.value && !debugFixtures.demoMode && networkChecker.isAvailable() },
+        shownTerm = { _currentSemester.value },
+    )
+    private var warmJob: Job? = null
+
+    // When each term's courses without a room were last looked up again, on
+    // the monotonic clock; see lookUpMissingRooms.
+    private val roomLookupsAtMs = HashMap<String, Long>()
 
     /** What the course detail lists: see [OutstandingAssignments]. */
     val outstandingAssignments: StateFlow<List<Assignment>> = combine(
@@ -441,9 +463,13 @@ class ClassTableViewModel @Inject constructor(
                 wasAuthed = isAuthed
                 if (!isAuthed) {
                     // A fetch still running belongs to the account that
-                    // left, and so does a load still reading its cache.
+                    // left, and so does a load still reading its cache, and
+                    // the warm of its other terms.
                     fetchFlight.cancel()
                     loadJob?.cancel()
+                    warmJob?.cancel()
+                    termWarm.reset()
+                    roomLookupsAtMs.clear()
                     _courses.value = emptyList()
                     _shareTerms.value = emptyList()
                     _assignments.value = emptyList()
@@ -1180,7 +1206,12 @@ class ClassTableViewModel @Inject constructor(
     /** The class table was shown: on launch, or on coming back to it from another page. */
     fun onPageShown() {
         if (!authService.authState.value) return
-        if (refreshTriggers.onShown()) viewModelScope.launch { fetchFlight.join(::fetchData) }
+        if (refreshTriggers.onShown()) {
+            viewModelScope.launch { fetchFlight.join(::fetchData) }
+        } else {
+            // A visit that fetches looks every course up anyway.
+            lookUpMissingRooms()
+        }
     }
 
     /** The page left the screen for another page; see PageLeftEffect. An ask it offered goes with it. */
@@ -1417,46 +1448,7 @@ class ClassTableViewModel @Inject constructor(
             // independent — run them concurrently and apply each result as
             // soon as it lands.
             coroutineScope {
-                val coursesJob = if (orderedCourseNos.isNotEmpty()) {
-                    launch {
-                        // QueryCourse only indexes the latest term or two;
-                        // lookupOrFallback drops to Moodle metadata for
-                        // historical courses so they still render, with the
-                        // name and credits but no schedule.
-                        val courses = orderedCourseNos.map { courseNo ->
-                            async {
-                                courseService.lookupOrFallback(
-                                    semester, courseNo, moodleByNo[courseNo],
-                                )
-                            }
-                        }.awaitAll().filterNotNull()
-
-                        if (courses.isNotEmpty()) {
-                            val merged = ClassTableCourseMerge.mergeFetched(
-                                fetched = courses,
-                                cached = dataCache.loadCourses(semester),
-                                names = courseCustomNames,
-                                locale = currentCourseLocale,
-                                deletedNos = CourseTombstoneKeys.hiddenIn(
-                                    semester, dataCache.loadDeletedCourseNos()
-                                ),
-                            )
-                            // Only apply if the user hasn't flipped to a
-                            // different semester mid-flight.
-                            if (_currentSemester.value == semester) {
-                                _courses.value = merged
-                                TigerDuckTheme.buildCourseColorMap(merged)
-                            }
-                            dataCache.saveCourses(merged, semester)
-                            // The class table loaded: a day of use towards
-                            // the Play rating ask (issue #332).
-                            reviewPrompt.classTableLoaded()
-                            runCatching { pushApiClient.uploadCourses(merged, semester) }
-                                .onFailure { Log.w("ClassTableVM", "uploadCourses failed (non-fatal): ${it.logSummary()}") }
-                            widgetUpdater.requestUpdate()
-                        }
-                    }
-                } else null
+                val coursesJob = launch { fetchTermCourses(semester, orderedCourseNos, moodleByNo) }
 
                 // Assignments are always "upcoming from now", so they belong
                 // to the active enrolment — fetch only when viewing the
@@ -1491,10 +1483,13 @@ class ClassTableViewModel @Inject constructor(
                     }
                 } else null
 
-                coursesJob?.join()
+                coursesJob.join()
                 assignmentsJob?.join()
             }
             _syncCompleteEvent.tryEmit(Unit)
+            // The other terms, now that Moodle has answered once for all of
+            // them; without that answer their rosters would be empty anyway.
+            if (moodleAll.isNotEmpty()) warmTerms(studentId, password, moodleAll)
         } catch (e: CancellationException) {
             // Structured concurrency: viewModelScope cancellation has to keep
             // propagating, or navigating away mid-refresh leaves this coroutine
@@ -1512,6 +1507,181 @@ class ClassTableViewModel @Inject constructor(
             reviewPrompt.loadFailed()
         } finally {
             _isLoading.value = false
+        }
+    }
+
+    /**
+     * [semester]'s courses as the school has them now, folded onto its cache
+     * and, when it is the term on screen, shown; then saved, uploaded and sent
+     * to the widget. [rosterNos] are looked up course by course — QueryCourse
+     * only indexes the latest term or two, so lookupOrFallback drops to Moodle
+     * metadata for historical courses, which still render with the name and
+     * credits but no schedule. The courses the user added by hand, or that
+     * were merged from another device, which the roster does not list are
+     * looked up again too (tigerduck-app-android#264): mergeFetched keeps
+     * those as stored, so a room or time the school changed since they were
+     * added never reached them. One the query does not answer keeps its
+     * snapshot. The term is left as it is when neither brings anything.
+     *
+     * Returns whether every query went through: false when one failed, which
+     * [warmTerms] stops on — the Moodle metadata a failed lookup falls back
+     * to cannot be told from a term QueryCourse no longer indexes.
+     */
+    private suspend fun fetchTermCourses(
+        semester: String,
+        rosterNos: List<String>,
+        moodleByNo: Map<String, MoodleEnrolledCourse>,
+    ): Boolean = coroutineScope {
+        // Read before the lookups: the roster's merge and the hand-added rows'
+        // refresh both fold onto it.
+        val cached = dataCache.loadCourses(semester)
+        val manualNos = ClassTableCourseMerge.manualNosToLookUp(cached, rosterNos)
+        if (rosterNos.isEmpty() && manualNos.isEmpty()) return@coroutineScope true
+        var failed = false
+        val noteFailure = { failed = true }
+        val roster = rosterNos.map { courseNo ->
+            async { courseService.lookupOrFallback(semester, courseNo, moodleByNo[courseNo], noteFailure) }
+        }
+        // Without Moodle to fall back on: a hand-added course the query does
+        // not answer keeps its snapshot, where a stub would take its times.
+        val manual = manualNos.map { courseNo ->
+            async { courseNo to courseService.lookupOrFallback(semester, courseNo, moodle = null, noteFailure) }
+        }
+        val fetched = roster.awaitAll().filterNotNull()
+        val lookedUp = manual.awaitAll().mapNotNull { (courseNo, course) -> course?.let { courseNo to it } }.toMap()
+        val refreshed = ClassTableCourseMerge.withLookedUp(cached, lookedUp)
+        val merged = when {
+            fetched.isNotEmpty() -> ClassTableCourseMerge.mergeFetched(
+                fetched = fetched,
+                cached = refreshed,
+                names = courseCustomNames,
+                locale = currentCourseLocale,
+                deletedNos = CourseTombstoneKeys.hiddenIn(semester, dataCache.loadDeletedCourseNos()),
+            )
+            // The roster brought nothing, so the term stays as it is, its
+            // hand-added rows refreshed; a merge over nothing would drop the
+            // rest.
+            lookedUp.isNotEmpty() -> resolveCustomNames(refreshed)
+            else -> return@coroutineScope !failed
+        }
+        // Only apply if the user hasn't flipped to a different semester
+        // mid-flight.
+        if (_currentSemester.value == semester) {
+            _courses.value = merged
+            TigerDuckTheme.buildCourseColorMap(merged)
+        }
+        dataCache.saveCourses(merged, semester)
+        // The class table loaded: a day of use towards the Play rating ask
+        // (issue #332).
+        reviewPrompt.classTableLoaded()
+        runCatching { pushApiClient.uploadCourses(merged, semester) }
+            .onFailure { Log.w("ClassTableVM", "uploadCourses failed (non-fatal): ${it.logSummary()}") }
+        widgetUpdater.requestUpdate()
+        !failed
+    }
+
+    /**
+     * After the first fetch of a session: every term the picker offers that
+     * has no cache yet, fetched in the background, one at a time, so a term
+     * picked later shows at once (tigerduck-app-android#265); see
+     * [ClassTableTermWarm], which runs it once per sign-in. Reuses the fetch's
+     * [moodleAll], Moodle's one answer for every term. On a job of its own,
+     * not the fetch's: a pull must not wait on the other terms, and a
+     * sign-out cancels it.
+     */
+    private fun warmTerms(studentId: String, password: String, moodleAll: List<MoodleEnrolledCourse>) {
+        if (warmJob?.isActive == true) return
+        warmJob = viewModelScope.launch {
+            try {
+                termWarm.run { term -> warmTerm(term, studentId, password, moodleAll) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // The only boundary on this job, as fetchData's catch is on
+                // its own: with no CoroutineExceptionHandler in the app, a
+                // cache row Gson could not populate would otherwise kill the
+                // process over a term nobody asked for.
+                Log.e("ClassTableVM", "warm failed: ${e.logSummary()}")
+            }
+        }
+    }
+
+    /**
+     * One term of [warmTerms], fetched as [fetchData] fetches the term on
+     * screen: 選課's roster when 選課 serves it, else Moodle's, looked up course
+     * by course and cached. Says whether the school answered.
+     */
+    private suspend fun warmTerm(
+        semester: String,
+        studentId: String,
+        password: String,
+        moodleAll: List<MoodleEnrolledCourse>,
+    ): Boolean {
+        // A reset in progress wipes the term; a roster saved under it would
+        // be the old one, kept. Its own refetch fills the term.
+        if (semester in dataCache.resettingSemesters()) return true
+        val selectionNos = if (semester == semesterCatalog.selectionSemesterCode()) {
+            try {
+                courseService.fetchEnrolledCourseNos(studentId, password)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("ClassTableVM", "warm: failed to fetch course list for $semester: ${e.logSummary()}")
+                return false
+            }
+        } else {
+            emptyList()
+        }
+        dataCache.recordSelectionRoster(semester, selectionNos)
+        val moodleForSem = CourseRosterMerge.moodleCoursesFor(semester, moodleAll)
+        val rosterNos = CourseRosterMerge.rosterOrder(selectionNos, moodleForSem)
+        val moodleByNo = moodleForSem.associateBy { it.courseNo }
+        Log.i("ClassTableVM", "warm: $semester roster=${rosterNos.size}")
+        val answered = fetchTermCourses(semester, rosterNos, moodleByNo)
+        // The today strip reads the live term off its own copy while the
+        // picker shows another term, and that copy was empty until now.
+        if (semester == liveSemesterCode) refreshLiveSemesterCourses()
+        return answered
+    }
+
+    /**
+     * Looks the courses of the user's term that still have no room up again,
+     * and shows, saves and sends to the widget the rooms found
+     * (tigerduck-app-android#264). Rooms are announced late, and the page
+     * fetches on launch only, so a room the school added since would wait for
+     * a pull. On each visit, at most once per [MissingRoomLookupInterval] per
+     * term, and only after the first load: its fetch looks every course up.
+     *
+     * Folded onto [courses] as they are when the lookups land, as every edit
+     * is, so a course added meanwhile is not written over; a term switched
+     * meanwhile is left to its own fetch.
+     */
+    private fun lookUpMissingRooms() {
+        if (!_hasSettled.value || _isLoading.value) return
+        val semester = _currentSemester.value
+        val now = SystemClock.elapsedRealtime()
+        if (!RefreshPolicy.hasPassed(roomLookupsAtMs[semester] ?: 0L, now, MissingRoomLookupInterval)) return
+        val courseNos = ClassTableCourseMerge.nosWithoutRoom(_courses.value)
+        if (courseNos.isEmpty() || !networkChecker.isAvailable()) return
+        roomLookupsAtMs[semester] = now
+        val account = authService.storedStudentId
+        viewModelScope.launch {
+            val found = courseNos.map { courseNo ->
+                // Without Moodle to fall back on: null for a query that failed
+                // or a course it does not know, which the row then waits out.
+                async { courseNo to courseService.lookupOrFallback(semester, courseNo, moodle = null) }
+            }.awaitAll().mapNotNull { (courseNo, course) -> course?.let { courseNo to it } }.toMap()
+            if (!authService.isStillSignedInAs(account) || _currentSemester.value != semester) return@launch
+            val updated = ClassTableCourseMerge.withRoomsFound(_courses.value, found) ?: return@launch
+            _courses.value = updated
+            TigerDuckTheme.buildCourseColorMap(updated)
+            dataCache.saveCourses(updated, semester)
+            widgetUpdater.requestUpdate()
+            if (semester == liveSemesterCode) {
+                // Home and the Live Update read today's courses off the cache.
+                liveActivityManager.refresh()
+                dataCache.notifyBackgroundSyncComplete()
+            }
         }
     }
 }
