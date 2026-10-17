@@ -923,6 +923,9 @@ class ClassTableViewModel @Inject constructor(
         val flagged = course.copy(isManual = true)
         val updated = _courses.value + flagged
         _courses.value = updated
+        // Now, not once the writes below are done: a removal asked after this
+        // add must read as the newer action however long they take.
+        val reAddedAt = pendingCourseDeletes.stamp()
         viewModelScope.launch {
             val semester = _currentSemester.value
             val deleted = dataCache.loadDeletedCourseNos()
@@ -935,7 +938,7 @@ class ClassTableViewModel @Inject constructor(
             // A delete of it still queued goes first, or it could land after
             // this add and take the course off the server again; as the
             // iPhone's `discardCourseDeletes` before an add.
-            pendingCourseDeletes.forget(semester, course.courseNo)
+            pendingCourseDeletes.forget(semester, course.courseNo, reAddedAt)
             // Kept until it lands: in a term the server already has, no
             // sync would send it again otherwise.
             pendingCourseAdds.send(updated, semester, course.courseNo)
@@ -1097,6 +1100,9 @@ class ClassTableViewModel @Inject constructor(
                 ignoredCoursesSaved(edit)
             }
         }
+        // Now, as for an add: a re-add asked before this removal must not
+        // let its delete go, however long the writes below take.
+        val queuedAt = pendingCourseDeletes.stamp()
         viewModelScope.launch {
             if (tombstone) {
                 val deleted = CourseTombstoneKeys.hide(
@@ -1114,7 +1120,7 @@ class ClassTableViewModel @Inject constructor(
             // add of it already under way, which landing later would bring it
             // back: the outbox takes PendingCourseAdds.removing itself, so it
             // is not taken here. See PendingCourseDeletes.
-            pendingCourseDeletes.send(semester, courseNo)
+            pendingCourseDeletes.send(semester, courseNo, queuedAt)
             runCatching { pushApiClient.uploadCourses(updated, semester) }
                 .onFailure { e -> Log.w("ClassTable", "uploadCourses after delete failed: ${e.logSummary()}") }
         }

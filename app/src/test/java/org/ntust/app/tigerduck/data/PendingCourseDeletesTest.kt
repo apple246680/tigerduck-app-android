@@ -7,6 +7,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -74,29 +75,35 @@ class PendingCourseDeletesTest {
             sent += Sent(courseKey, account = signIn)
             answer(courseKey)
             events += "DELETE"
-        }, signInGeneration = { signIn })
+        }, signInGeneration = { signIn }, clock = { ++tick })
     }
 
+    // A clock that stands still between ticks, as a real one does within a millisecond.
+    private var tick = 0L
+
     private fun keys() = sent.map { it.courseKey }
+
+    /** The queued course numbers by term, without the moments they were asked at. */
+    private suspend fun queued() = cache.loadPendingCourseDeletes().mapValues { (_, entries) -> entries.keys.sorted() }
 
     @Test
     fun `a delete that fails is kept, and the next sync sends it again with the same key`() = runTest {
         answer = { throw IOException("offline") }
         deletes.send(term, typed)
         assertEquals(listOf("client:1151:MA1010002"), keys())
-        assertEquals(mapOf(term to listOf(typed)), cache.loadPendingCourseDeletes())
+        assertEquals(mapOf(term to listOf(typed)), queued())
         // What the reconcile keeps out of the term meanwhile.
         assertEquals(setOf(typed), deletes.waitingIn(term))
         assertEquals(emptySet<String>(), deletes.waitingIn("1142"))
 
         answer = { throw PushApiException("deleteCourse failed: HTTP 500") }
         deletes.retry()
-        assertEquals(mapOf(term to listOf(typed)), cache.loadPendingCourseDeletes())
+        assertEquals(mapOf(term to listOf(typed)), queued())
 
         answer = {}
         deletes.retry()
         assertEquals(listOf("client:1151:MA1010002", "client:1151:MA1010002", "client:1151:MA1010002"), keys())
-        assertEquals(emptyMap<String, List<String>>(), cache.loadPendingCourseDeletes())
+        assertEquals(emptyMap<String, List<String>>(), queued())
         assertEquals(emptySet<String>(), deletes.waitingIn(term))
     }
 
@@ -104,7 +111,7 @@ class PendingCourseDeletesTest {
     fun `a delete that lands is not kept`() = runTest {
         deletes.send(term, typed)
         assertEquals(listOf("client:1151:MA1010002"), keys())
-        assertEquals(emptyMap<String, List<String>>(), cache.loadPendingCourseDeletes())
+        assertEquals(emptyMap<String, List<String>>(), queued())
     }
 
     /** Adding the course back, or resetting its term under the adds lock, drops the delete still queued for it. */
@@ -116,10 +123,10 @@ class PendingCourseDeletesTest {
         deletes.send("1142", typed)
 
         deletes.forget(term, typed)
-        assertEquals(mapOf(term to listOf(other), "1142" to listOf(typed)), cache.loadPendingCourseDeletes())
+        assertEquals(mapOf(term to listOf(other), "1142" to listOf(typed)), queued())
 
         adds.removing { deletes.forgetTerm(term) }
-        assertEquals(mapOf("1142" to listOf(typed)), cache.loadPendingCourseDeletes())
+        assertEquals(mapOf("1142" to listOf(typed)), queued())
 
         deletes.retry()
         assertEquals(listOf("client:1142:MA1010002"), keys().drop(3))
@@ -133,7 +140,7 @@ class PendingCourseDeletesTest {
 
         cache.clearAllUserData()
 
-        assertEquals(emptyMap<String, List<String>>(), cache.loadPendingCourseDeletes())
+        assertEquals(emptyMap<String, List<String>>(), queued())
         deletes.retry()
         assertEquals(1, sent.size)
     }
@@ -153,7 +160,7 @@ class PendingCourseDeletesTest {
         deletes.retry()
 
         assertEquals(emptyList<Sent>(), sent.filter { it.account == 2 })
-        assertEquals(emptyMap<String, List<String>>(), cache.loadPendingCourseDeletes())
+        assertEquals(emptyMap<String, List<String>>(), queued())
     }
 
     /** The retry read both deletes; the second course was added back while the first was sent. */
@@ -188,7 +195,62 @@ class PendingCourseDeletesTest {
         // The add went up (the term's list, as an add sends it), after the first course's DELETE.
         assertEquals(listOf(listOf(typed, other)), uploads)
         assertEquals(listOf("DELETE", "upload"), events)
-        assertEquals(emptyMap<String, List<String>>(), cache.loadPendingCourseDeletes())
+        assertEquals(emptyMap<String, List<String>>(), queued())
+    }
+
+    /**
+     * The first DELETE is slow; the user adds the course back (its forget waits for the lock)
+     * and removes it again (a second delete). The first DELETE then fails: the re-add's forget
+     * may let go only of the delete asked before it, not of the second one, which must stay
+     * queued and be sent, or the server keeps the course with no delete queued.
+     */
+    @Test
+    fun `a delete asked after a re-add survives the re-add's forget`() = runTest {
+        cache.saveCourses(listOf(course(typed)), term)
+        val sending = CompletableDeferred<Unit>()
+        val landed = CompletableDeferred<Unit>()
+        answer = {
+            sending.complete(Unit)
+            landed.await()
+            throw IOException("timed out")
+        }
+        val first = launch { deletes.send(term, typed) }
+        sending.await()
+        val readd = launch { deletes.forget(term, typed) }
+        runCurrent()
+        val again = launch { deletes.send(term, typed) }
+        runCurrent()
+        landed.complete(Unit)
+        first.join()
+        readd.join()
+        again.join()
+
+        assertEquals("the second delete stays queued", setOf(typed), deletes.waitingIn(term))
+        answer = {}
+        deletes.retry()
+        assertEquals(emptySet<String>(), deletes.waitingIn(term))
+        assertEquals("client:1151:MA1010002", keys().last())
+    }
+
+    /**
+     * The view model stamps a re-add and a removal as the user asks for them; the work that
+     * follows each may reach the lock in either order. A forget lets go only of a delete asked
+     * before its re-add; stamps are later than every earlier one, whatever the clock does.
+     */
+    @Test
+    fun `a re-add lets go only of a delete asked before it`() = runTest {
+        answer = { throw IOException("offline") }
+        val before = deletes.stamp()
+        tick = 0 // The clock stands still, or goes back.
+        val removedAt = deletes.stamp()
+        assertTrue("later than the one before it", removedAt > before)
+        deletes.send(term, typed, queuedAt = removedAt)
+
+        deletes.forget(term, typed, askedAt = before)
+        assertEquals("a re-add asked before the removal keeps it", setOf(typed), deletes.waitingIn(term))
+
+        deletes.forget(term, typed, askedAt = deletes.stamp())
+        assertEquals("one asked after it lets it go", emptySet<String>(), deletes.waitingIn(term))
     }
 
     /** A delete under way holds the adds back, as a delete by hand did before it was queued. */

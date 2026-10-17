@@ -629,22 +629,25 @@ class DataCache @Inject constructor(
             .toMap()
     }
 
-    // --- Pending course deletes (semester → course numbers) ---
+    // --- Pending course deletes (semester → course number → when it was asked) ---
     // Courses deleted on the class table whose backend DELETE has not
-    // landed; see PendingCourseDeletes, the only writer. A new file, so an
-    // older install simply has none; read tolerantly all the same.
+    // landed, each with the moment it was asked (PendingCourseDeletes.stamp);
+    // see PendingCourseDeletes, the only writer. A new file, so an older
+    // install simply has none; read tolerantly all the same.
 
     /** False, and nothing written, when the data was wiped since [generation]. */
-    suspend fun savePendingCourseDeletes(pending: Map<String, List<String>>, generation: Int? = null): Boolean =
+    suspend fun savePendingCourseDeletes(pending: Map<String, Map<String, Long>>, generation: Int? = null): Boolean =
         saveToUserDataIf(pending, "pending_course_deletes.json", generation ?: writeGeneration())
 
     /** Null and blank entries are left out, and so is a term left with none. */
-    suspend fun loadPendingCourseDeletes(): Map<String, List<String>> {
-        val type = object : TypeToken<Map<String, List<String?>?>>() {}.type
-        return loadFromUserData<Map<String?, List<String?>?>>(type, "pending_course_deletes.json")
+    suspend fun loadPendingCourseDeletes(): Map<String, Map<String, Long>> {
+        val type = object : TypeToken<Map<String?, Map<String?, Long?>?>>() {}.type
+        return loadFromUserData<Map<String?, Map<String?, Long?>?>>(type, "pending_course_deletes.json")
             .orEmpty()
-            .mapNotNull { (semester, nos) ->
-                val kept = nos.orEmpty().filterNotNull().filter(String::isNotBlank)
+            .mapNotNull { (semester, entries) ->
+                val kept = entries.orEmpty().mapNotNull { (courseNo, queuedAt) ->
+                    if (courseNo.isNullOrBlank() || queuedAt == null) null else courseNo to queuedAt
+                }.toMap()
                 if (semester.isNullOrBlank() || kept.isEmpty()) null else semester to kept
             }
             .toMap()
