@@ -212,6 +212,31 @@ class MailRepositoryTest {
         assertEquals(opened, opens.get())
     }
 
+    /**
+     * Another student can sign in over this one without a sign-out -- the one account change the
+     * sign-out collector never sees. A LIST already out when that happens comes back under the new
+     * student's generation, and must not be what their own first request finds resolved.
+     */
+    @Test
+    fun `a folder list that returns after another student signed in over this one is not kept as theirs`() = runTest {
+        val setup = TestSetup(backgroundScope)
+        setup.signedIn()
+        val before = setup.account.accountGeneration
+        server.onListFolders = {
+            server.onListFolders = null
+            server.passwords["B10000002"] = "pw"
+            runBlocking { setup.account.signIn("b10000002", "pw") }
+        }
+        // The first student's LIST was sent, and comes back for nobody.
+        setup.repository.folders { setup.account.accountGeneration == before }
+        assertTrue(setup.account.accountGeneration != before)
+        val lists = server.listCalls
+
+        // The second student's first request asks the server, not what the first one's LIST resolved.
+        setup.repository.folders()
+        assertEquals(lists + 1, server.listCalls)
+    }
+
     @Test
     fun `a dropped cached page is gone until the next first page writes a new one`() = runTest {
         server.deliver("a")

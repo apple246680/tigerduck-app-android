@@ -254,6 +254,13 @@ class SchoolMailListViewModel @Inject constructor(
                 // fetchFirstPage): a folder list that waited for the session across a sign-out
                 // must not be fetched as the next account.
                 val folders = repository.folders { account.accountGeneration == generation }
+                // A LIST already out when another student signed in over this one comes back
+                // under their generation. No sign-out reset the screen, so it is refused here;
+                // their own load resolves their folders.
+                if (account.accountGeneration != generation) {
+                    loadDropped()
+                    return@launch
+                }
                 val merged = FolderSelection.AllMail.MERGED.mapNotNull { folders.nameOf(it) }
                 val real = SpecialFolder.entries.mapNotNull { kind ->
                     folders.nameOf(kind)?.let { FolderChip(FolderSelection.Real(it), kind) }
@@ -275,7 +282,7 @@ class SchoolMailListViewModel @Inject constructor(
                 // The folders on screen are known now, and so is their date.
                 showFetchedAt()
             } catch (e: MailError) {
-                if (!dropped(e, generation)) fail(e)
+                if (dropped(e, generation)) loadDropped() else fail(e)
                 return@launch
             }
             showCached()
@@ -522,10 +529,16 @@ class SchoolMailListViewModel @Inject constructor(
     private suspend fun reloadRecreated(folders: Map<String, Long>): Boolean {
         val selection = _state.value.selected
         val list = listGeneration
+        val generation = account.accountGeneration
         folders.forEach { (folder, obsolete) -> repository.dropCachedPage(folder, obsolete) }
+        // The eviction is a disk write the user can tap through, or sign out during. A chip or an
+        // account that moved meanwhile has its own load, and this request -- the one that found
+        // the folder recreated -- starts none for it: [fetchFirstPage] would otherwise take the new
+        // selection and account for its own and send, cache and date a load on their behalf.
+        if (!stillCurrent(selection, generation) || list != listGeneration) return false
         if (fetchFirstPage()) return true
         // Only while this is still the list that was found stale: a newer one owns its rows.
-        if (_state.value.selected == selection && list == listGeneration) {
+        if (stillCurrent(selection, generation) && list == listGeneration) {
             _state.update { st -> st.copy(messages = st.messages.filterNot { it.folder in folders }, cursors = st.cursors - folders.keys) }
         }
         return false
@@ -706,7 +719,11 @@ class SchoolMailListViewModel @Inject constructor(
                     loadedMatches()
                 } else {
                     try {
-                        repository.search(folder, query) { stillCurrent(selection, generation) && search == searchGeneration }
+                        val outcome = repository.search(folder, query) { stillCurrent(selection, generation) && search == searchGeneration }
+                        // The server could not search: the repository's fallback knows only the
+                        // folder's cached newest page, while the list may have paged further, so
+                        // the matches are read from the rows it has loaded, as a failed folder's are.
+                        if (outcome is SearchOutcome.LoadedOnly) loadedMatches() else outcome
                     } catch (e: MailError) {
                         if (dropped(e, generation)) return
                         if (failure == null) failure = e
@@ -716,7 +733,15 @@ class SchoolMailListViewModel @Inject constructor(
                     }
                 }
             }
-            if (!stillCurrent(selection, generation) || search != searchGeneration) return
+            if (!stillCurrent(selection, generation) || search != searchGeneration) {
+                // The results are nobody's now, but a failure that must stick is still this
+                // account's: a certificate that could not be trusted is the interception case the
+                // page stays failed for, and a rejected password reaches the account and the
+                // screen as it would have. Anything else -- a busy server behind a search the
+                // user has moved on from -- is not worth a toast.
+                failure?.takeIf { it is MailError.Certificate || it is MailError.AuthFailed }?.let(::searchFail)
+                return
+            }
             val rows = outcomes.flatMap { (folder, outcome) -> outcome.messages.map { MailRow(folder, it) } }
             unfetchedMatches = outcomes.mapNotNull { (folder, outcome) ->
                 (outcome as? SearchOutcome.Server)?.takeIf { it.remaining.isNotEmpty() }
@@ -942,6 +967,13 @@ class SchoolMailListViewModel @Inject constructor(
      */
     private fun dropped(e: MailError, generation: Int): Boolean =
         e is MailError.Abandoned || account.accountGeneration != generation
+
+    /**
+     * A [load] dropped for an account that has left announced [LoadState.Loading] up front; that
+     * is over, and whoever is signed in now starts their own. A sign-out has reset the state
+     * already; another student signing in over this one has not, and must not inherit a spinner.
+     */
+    private fun loadDropped() = _state.update { if (it.loadState is LoadState.Loading) it.copy(loadState = LoadState.Idle) else it }
 
     /**
      * The date of the folders on screen: the older of All mail's two, and 0 while one of them has

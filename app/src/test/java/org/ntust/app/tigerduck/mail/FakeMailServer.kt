@@ -56,6 +56,12 @@ class FakeMailServer {
     var opens = 0
         private set
 
+    /** How many LISTs sessions were asked for; a folder list the repository serves from its own resolution adds nothing here. */
+    var listCalls = 0
+
+    /** Fires inside a LIST, before it answers: a test acts while a folder list is out. */
+    var onListFolders: (() -> Unit)? = null
+
     /** How many times a session was actually asked for a mail's raw source -- a cache hit adds nothing here. */
     var rawSourceFetches = 0
         private set
@@ -110,7 +116,11 @@ class FakeMailServer {
 
         override fun noop() = call { Unit }
 
-        override fun listFolders() = call { folders.keys.toList() }
+        override fun listFolders() = call {
+            listCalls++
+            onListFolders?.invoke()
+            folders.keys.toList()
+        }
 
         override fun createFolder(name: String) = call {
             createAttempts += name

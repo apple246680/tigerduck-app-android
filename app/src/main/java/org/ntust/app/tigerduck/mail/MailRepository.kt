@@ -160,7 +160,10 @@ class MailRepository @Inject constructor(
 ) : SchoolMailRepository {
     @VisibleForTesting
     internal val holder = SessionHolder(sessions, scope)
-    @Volatile private var resolved: ResolvedFolders? = null
+    /** The server's folders as resolved for one account: [generation] is the [MailAccount.accountGeneration] that asked, and the list is nobody else's. */
+    private class Resolved(val generation: Int, val folders: ResolvedFolders)
+
+    @Volatile private var resolved: Resolved? = null
     private val demoFolders = mutableMapOf<String, MutableList<DemoMail>>()
 
     /** Next UID handed to a demo message composed in this session (draft save, or a sent copy) --
@@ -272,8 +275,14 @@ class MailRepository @Inject constructor(
 
     override suspend fun folders(stillWanted: () -> Boolean): ResolvedFolders {
         if (account.isDemo) return DEMO_FOLDERS
-        resolved?.let { return it }
-        return withSession(stillWanted) { MailFolders.resolve(it.listFolders()) }.also { resolved = it }
+        val generation = account.accountGeneration
+        resolved?.takeIf { it.generation == generation }?.let { return it.folders }
+        val folders = withSession(stillWanted) { MailFolders.resolve(it.listFolders()) }
+        // Kept for the account that asked alone. Another student can sign in over this one with
+        // no sign-out for the collector above to see; a LIST already out then comes back under
+        // their generation, and must not be what their own first request finds resolved.
+        if (account.accountGeneration == generation) resolved = Resolved(generation, folders)
+        return folders
     }
 
     override suspend fun cachedPage(folder: String): MailPage? = withContext(Dispatchers.IO) {
@@ -615,13 +624,14 @@ class MailRepository @Inject constructor(
         require(role in CREATED_ON_DEMAND) { "$role is never created on demand" }
         folders().nameOf(role)?.let { return it }
         if (account.isDemo) return null
+        val generation = account.accountGeneration
         return withSession { session ->
             // The CREATE's own answer is deliberately ignored -- a refusal because the folder
             // already exists is a success -- so it is the LIST below, and only the LIST, that
             // decides. A LIST that never completes is not an answer and is not swallowed here.
             runCatching { session.createFolder(role.decodedName) }
             MailFolders.resolve(session.listFolders())
-        }.also { resolved = it }.nameOf(role)
+        }.also { if (account.accountGeneration == generation) resolved = Resolved(generation, it) }.nameOf(role)
     }
 
     /**
