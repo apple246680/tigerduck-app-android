@@ -6,6 +6,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -29,11 +30,12 @@ class CourseOverrideHoldTest {
 
     private val backend = ScriptedBackend()
     private lateinit var api: PushApiClient
+    private lateinit var prefs: AppPreferences
 
     @Before
     fun setUp() {
         val context = RuntimeEnvironment.getApplication()
-        val prefs = AppPreferences(context).apply { announcementApiBaseUrlOverride = "http://127.0.0.1:9/v3" }
+        prefs = AppPreferences(context).apply { announcementApiBaseUrlOverride = "http://127.0.0.1:9/v3" }
         // Never the real backend, even past the scripted one.
         assertTrue(resolveAnnouncementEndpoint(prefs).overrideApplied)
         val tokens = V3TokenStore(context.getSharedPreferences("v3-tokens-override-hold-test", Context.MODE_PRIVATE))
@@ -43,6 +45,8 @@ class CourseOverrideHoldTest {
 
     @Test
     fun `a PATCH no longer allowed once its header is made does not go, and says so`() = runTest {
+        // TigerSync is off for good on F-Droid, where no override PATCH goes out at all.
+        assumeTrue(prefs.cloudSyncEnabled)
         var allowed = true
         assertTrue(api.patchCourseOverride("1151CS1", colorHex = "#FF0000", allowed = { allowed }))
         assertEquals(listOf("PATCH /sync/courses/1151CS1/override"), backend.endpoints())
