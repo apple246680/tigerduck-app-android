@@ -3,12 +3,14 @@ package org.ntust.app.tigerduck.ui.screen.classtable
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.ntust.app.tigerduck.data.CourseTombstoneKeys
 import org.ntust.app.tigerduck.shared.Course
 
 /**
@@ -113,5 +115,80 @@ class ClassTableTermFetchTest {
         val answers = lookUp(listOf("A"), before = listOf(course("A"), manual("MINE")))
         assertTrue(answers.isEmpty)
         assertTrue(answers.answered)
+    }
+
+    /** The snapshot the fold is taken over, with the term's cache and the tombstone file each behind a gate. */
+    private class Snapshot {
+        val edits = ClassTableTombstoneEdits()
+        val cacheGate = CompletableDeferred<Unit>()
+        val fileGate = CompletableDeferred<Unit>()
+        var cached = listOf<Course>()
+        var file = emptySet<String>()
+        /** The list on screen while it is this term's, else null. */
+        var shown: List<Course>? = null
+
+        /** A delete as the view model makes one: off the list at once, the tombstone's write after. */
+        fun delete(courseNo: String, written: Boolean) {
+            shown = shown?.filter { it.courseNo != courseNo }
+            val id = edits.edit { CourseTombstoneKeys.hide(courseNo, "1151", it) }
+            if (!written) return
+            file = CourseTombstoneKeys.hide(courseNo, "1151", file)
+            edits.saved(id)
+        }
+    }
+
+    private fun TestScope.foldLatest(answers: ClassTableTermFetch.Answers, snapshot: Snapshot): () -> List<Course> {
+        var out: List<Course>? = null
+        launch {
+            out = fetch.foldLatest(
+                answers, "1151",
+                cachedCourses = { snapshot.cacheGate.await(); snapshot.cached },
+                storedTombstones = { snapshot.fileGate.await(); snapshot.file },
+                shownCourses = { snapshot.shown },
+                withPendingEdits = snapshot.edits::over,
+                names = { emptyMap() },
+                locale = "zh",
+            )
+        }
+        return { out!! }
+    }
+
+    @Test
+    fun `a delete written while the term's cache is read stays deleted`() = runTest {
+        // The term was not on screen when the commit began, so its list comes from the cache.
+        // While that read runs, the term comes on screen, GONE is deleted, and the tombstone's
+        // write lands, retiring the pending edit: only the file knows the delete now, so the
+        // file has to be read after the cache, and the list chosen once both are in.
+        gate.complete(Unit)
+        val answers = lookUp(listOf("A", "GONE"), before = listOf(course("A"), course("GONE")))
+        // The file answers at once; only the cache read is slow.
+        val snapshot = Snapshot().apply {
+            cached = listOf(course("A"), course("GONE"))
+            fileGate.complete(Unit)
+        }
+        val out = foldLatest(answers, snapshot)
+        advanceUntilIdle()
+        snapshot.shown = listOf(course("A"), course("GONE"))
+        snapshot.delete("GONE", written = true)
+        snapshot.cacheGate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(listOf("A"), out().map { it.courseNo })
+    }
+
+    @Test
+    fun `a delete not yet written while the tombstones are read stays deleted`() = runTest {
+        gate.complete(Unit)
+        val answers = lookUp(listOf("A", "GONE"), before = listOf(course("A"), course("GONE")))
+        val snapshot = Snapshot().apply {
+            shown = listOf(course("A"), course("GONE"))
+            cacheGate.complete(Unit)
+        }
+        val out = foldLatest(answers, snapshot)
+        advanceUntilIdle()
+        // Tapped while the file is read: the pending edit is what carries it.
+        snapshot.delete("GONE", written = false)
+        snapshot.fileGate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(listOf("A"), out().map { it.courseNo })
     }
 }

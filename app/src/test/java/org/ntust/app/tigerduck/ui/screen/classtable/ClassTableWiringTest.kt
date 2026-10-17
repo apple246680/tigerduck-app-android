@@ -94,7 +94,7 @@ class ClassTableWiringTest {
     @Test
     fun `a fetch looks the term's hand-added courses up again, onto the list as the user left it`() {
         assertCalls("fetchData", "fetchTermCourses(semester, orderedCourseNos, moodleByNo)")
-        assertCalls("fetchTermCourses", "termFetch.lookUp(", "termFetch.fold(", "latestCourses(semester)")
+        assertCalls("fetchTermCourses", "termFetch.lookUp(", "termFetch.foldLatest(", "latestCourses(semester)")
         assertCalls("latestCourses", "if (coursesSemester == semester) _courses.value else dataCache.loadCourses(semester)")
     }
 
@@ -118,7 +118,7 @@ class ClassTableWiringTest {
             assertTrue("$name no longer notes its tombstone edit before launching the write", edit in 0 until body.indexOf("viewModelScope.launch"))
             assertTrue("$name no longer retires the edit once written", "tombstoneEdits.saved(" in body)
         }
-        assertCalls("fetchTermCourses", "tombstoneEdits.over(")
+        assertCalls("fetchTermCourses", "withPendingEdits = tombstoneEdits::over")
     }
 
     /** A warm's older rows must not land over a reset of the term, or a fetch the user asked for. */
@@ -136,17 +136,25 @@ class ClassTableWiringTest {
         // The commit — the generation check, the snapshot, the fold, the save and the upload —
         // in the order the backend's DELETEs run in, and held through the upload: a reset's
         // DELETE waits for an upload under way, and an upload after it finds the term superseded.
+        // The snapshot's own read order (the cache, then the file, then the list chosen and
+        // folded with nothing suspending in between) is ClassTableTermFetch.foldLatest's, under
+        // its coroutine tests; what is pinned here is that the commit hands it the right sources.
         val body = body("fetchTermCourses")
         val commit = body.indexOf("pendingCourseAdds.uploading {")
-        val tombstones = body.indexOf("dataCache.loadDeletedCourseNos()")
-        val fold = body.indexOf("termFetch.fold(")
+        val fold = body.indexOf("termFetch.foldLatest(")
         val save = body.indexOf("dataCache.saveCourses(")
         val upload = body.indexOf("pushApiClient.uploadCourses(")
         val checks = Regex("""if \(!mayCommit\(\)\) return""").findAll(body).map { it.range.first }.toList()
-        assertTrue("fetchTermCourses no longer commits under PendingCourseAdds.uploading", commit in 0 until tombstones)
-        assertTrue("fetchTermCourses no longer checks mayCommit under the lock before the snapshot", checks.any { it in commit until tombstones })
-        assertTrue("fetchTermCourses no longer folds onto a snapshot taken under the lock", tombstones < fold && fold < save)
+        assertTrue("fetchTermCourses no longer commits under PendingCourseAdds.uploading", commit in 0 until fold)
+        assertTrue("fetchTermCourses no longer checks mayCommit under the lock before the snapshot", checks.any { it in commit until fold })
+        assertTrue("fetchTermCourses no longer folds onto a snapshot taken under the lock", fold in commit until save)
         assertTrue("fetchTermCourses no longer checks mayCommit before the upload", checks.any { it in save until upload })
+        assertCalls(
+            "fetchTermCourses",
+            "cachedCourses = { dataCache.loadCourses(semester) }",
+            "storedTombstones = { dataCache.loadDeletedCourseNos() }",
+            "shownCourses = { _courses.value.takeIf { coursesSemester == semester } }",
+        )
     }
 
     /** tigerduck-app-android#264: rooms are announced late, and the page fetches on launch only. */

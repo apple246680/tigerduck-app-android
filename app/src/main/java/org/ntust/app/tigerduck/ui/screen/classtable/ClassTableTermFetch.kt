@@ -10,6 +10,7 @@ package org.ntust.app.tigerduck.ui.screen.classtable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import org.ntust.app.tigerduck.data.CourseTombstoneKeys
 import org.ntust.app.tigerduck.network.model.MoodleEnrolledCourse
 import org.ntust.app.tigerduck.shared.Course
 
@@ -80,6 +81,34 @@ internal class ClassTableTermFetch(
      * before the lookups would write it over, and a course deleted then is
      * not brought back by its own answer.
      */
+    /**
+     * [fold] over a snapshot of the term taken in the one order that cannot
+     * miss a delete made meanwhile. Every read that suspends comes first:
+     * [cachedCourses], and [storedTombstones] after it, so a tombstone whose
+     * write landed during the cache read — retiring its pending edit, which
+     * leaves the file as the only record of it — is in what is read. Then,
+     * with nothing suspending in between: the list is chosen, [shownCourses]
+     * when the list on screen is this term's by now, else the cache just
+     * read; the edits still on their way are laid over the file
+     * ([withPendingEdits]); and the fold is made. The term can come on screen
+     * during the reads, which is why the list is chosen after them.
+     */
+    suspend fun foldLatest(
+        answers: Answers,
+        semester: String,
+        cachedCourses: suspend () -> List<Course>,
+        storedTombstones: suspend () -> Set<String>,
+        shownCourses: () -> List<Course>?,
+        withPendingEdits: (Set<String>) -> Set<String>,
+        names: () -> CustomNameMap,
+        locale: String,
+    ): List<Course> {
+        val cached = cachedCourses()
+        val stored = storedTombstones()
+        val latest = shownCourses() ?: cached
+        return fold(answers, latest, names(), locale, CourseTombstoneKeys.hiddenIn(semester, withPendingEdits(stored)))
+    }
+
     fun fold(
         answers: Answers,
         latest: List<Course>,

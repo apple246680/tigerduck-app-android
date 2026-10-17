@@ -1592,16 +1592,16 @@ class ClassTableViewModel @Inject constructor(
         if (answers.isEmpty) return answers.answered
         pendingCourseAdds.uploading {
             if (!mayCommit()) return@uploading
-            // The file first; then the list, the tombstones with this screen's
-            // edits still on their way on top, and the fold in one go, with
-            // nothing suspending in between for an edit to slip into.
-            val stored = dataCache.loadDeletedCourseNos()
-            val merged = termFetch.fold(
-                answers,
-                latest = latestCourses(semester),
-                names = courseCustomNames,
+            // The reads that suspend first, the list chosen and folded after
+            // them with nothing in between; the order is foldLatest's.
+            val merged = termFetch.foldLatest(
+                answers, semester,
+                cachedCourses = { dataCache.loadCourses(semester) },
+                storedTombstones = { dataCache.loadDeletedCourseNos() },
+                shownCourses = { _courses.value.takeIf { coursesSemester == semester } },
+                withPendingEdits = tombstoneEdits::over,
+                names = { courseCustomNames },
                 locale = currentCourseLocale,
-                deletedNos = CourseTombstoneKeys.hiddenIn(semester, tombstoneEdits.over(stored)),
             )
             // Only apply if the user hasn't flipped to a different semester
             // mid-flight.
