@@ -31,8 +31,9 @@ data class LocalEdits(
 
 /**
  * Edits the server has not confirmed, which a sign-out deletes even with their kind synced: a
- * course added by hand that has not been uploaded, an ignore not yet confirmed, and edits whose
- * upload the re-enable check holds back (the sign-out drops the hold).
+ * course added by hand that has not been uploaded, an ignore not yet confirmed, a done or ignored
+ * mark still waiting to be sent (UnsentMarks), and edits whose upload the re-enable check holds
+ * back (the sign-out drops the hold).
  */
 data class Unconfirmed(
     val courses: Boolean = false,
@@ -106,7 +107,9 @@ class SignOutLossCheck @Inject constructor(
             courseNames = edits.courseNames && "course_names" in held,
             courseColours = edits.courseColours && "course_colors" in held,
             assignments = (edits.assignmentMarks && "assignments" in held) ||
-                dataCache.loadPendingCourseIgnores().isNotEmpty(),
+                dataCache.loadPendingCourseIgnores().isNotEmpty() ||
+                // A mark tapped offline waits in unsent_marks.json for the next sync.
+                dataCache.loadUnsentMarks().isNotEmpty(),
         )
         return signOutLosses(edits, synced, importedClassTables.load().hasImportedClassTables, unconfirmed)
     }

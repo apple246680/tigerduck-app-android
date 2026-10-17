@@ -11,6 +11,7 @@ import org.junit.runner.RunWith
 import org.ntust.app.tigerduck.academic.AcademicCalendarStore
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.model.PendingCourseIgnore
+import org.ntust.app.tigerduck.data.model.UnsentMark
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.sharing.ClassTableShareCode
 import org.ntust.app.tigerduck.data.sharing.ImportedClassTableStore
@@ -151,6 +152,18 @@ class SignOutConfirmationTest {
         dataCache.savePendingCourseIgnores(
             listOf(PendingCourseIgnore("1141", "CS1001301", "1141CS1001301", null, ignore = true, changedAtMs = 1L)),
         )
+
+        assertEquals(setOf(UNSYNCED_DATA), check.losses())
+    }
+
+    @Test
+    fun `a done or ignored mark the server has not confirmed is asked about`() = runTest {
+        syncOn()
+        assertEquals(emptySet<SignOutLoss>(), check.losses())
+
+        // Marked done offline: the mark waits in unsent_marks.json for the next sync, and the
+        // sign-out would delete it before the server ever had it.
+        dataCache.saveUnsentMarks(listOf(UnsentMark("a1", "locally_completed")))
 
         assertEquals(setOf(UNSYNCED_DATA), check.losses())
     }
