@@ -72,7 +72,7 @@ class AnnouncementsChipRowTest {
         val tokens = V3TokenStore(context.getSharedPreferences("v3-tokens-test", Context.MODE_PRIVATE))
         val api = BulletinApiClient(client, prefs, AuthTokenManager(tokens, client, prefs, "device-1"))
         val vm = AnnouncementsViewModel(
-            api, cache, repository, BulletinReadStateStore(context), prefs, testDemoAccount(context, prefs, cache),
+            api, cache, repository, BulletinReadStateStore(context), prefs, testDemoAccount(context, prefs, cache), testCredentials(context),
         )
         composeRule.setContent {
             MaterialTheme { AnnouncementsScreen(onOpenBulletin = {}, onOpenSubscriptions = {}, viewModel = vm) }

@@ -66,6 +66,7 @@ class LibraryViewModel @Inject constructor(
         now = SystemClock::elapsedRealtime,
         // The demo library's code comes from the device, not the library.
         onFetched = { if (fixtureQr == null) prefs.markLibrarySynced(System.currentTimeMillis()) },
+        fetchedAt = prefs.librarySyncedAtMs,
     )
 
     private val _errorMessage = pass.errors
@@ -76,8 +77,8 @@ class LibraryViewModel @Inject constructor(
     val isLoadingQR: StateFlow<Boolean> = pass.isLoading
     val isLoggedIn: StateFlow<Boolean> = pass.isLoggedIn
 
-    /** For the sync dot's "Last synced" row; see [AppPreferences.librarySyncedAtMs]. */
-    val syncedAtMs: StateFlow<Long> = prefs.librarySyncedAtMs
+    /** For the sync dot's "Last synced" row; see [LibraryPassState.syncedAt]. */
+    val syncedAtMs: StateFlow<Long> = pass.syncedAt
 
     /**
      * The demo account's QR payload, or null to ask the backend for a real
