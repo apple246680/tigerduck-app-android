@@ -49,15 +49,15 @@ class AssignmentStatusWriter internal constructor(
 
     /**
      * Takes [answer] for the cached assignment it names, when it is newer than the one the
-     * assignment holds and the data was not wiped since [generation], the one the page's request
-     * went out under. A status the cache already has writes and publishes nothing. Whether it wrote.
+     * assignment holds and the data was not wiped since the generation the page's request went
+     * out under. A status the cache already has writes and publishes nothing. Whether it wrote.
      */
-    suspend fun take(answer: SubmissionStatusAnswer, generation: Int): Boolean {
+    suspend fun take(answer: SubmissionStatusAnswer): Boolean {
         // Checked before the ledger takes the answer: an answer for the account that left must
         // not stand in the way of the next account's round for the same id.
-        if (generation != dataCache.userDataGeneration) return false
+        if (answer.generation != dataCache.userDataGeneration) return false
         var written: List<Assignment>? = null
-        val wrote = dataCache.updateAssignments(generation) { assignments ->
+        val wrote = dataCache.updateAssignments(answer.generation) { assignments ->
             // Offered under the cache's lock, which a round's write holds too, so a round that
             // writes between the offer and this write cannot be overwritten by an older answer.
             if (!ledger.offer(answer)) return@updateAssignments assignments

@@ -41,8 +41,8 @@ class MoodleAccountAssignments(
     records: Flow<List<MoodleAssignmentRecord>>,
     /** Home's rows, which keep what Moodle said of each submission, read again after each write. */
     listed: Flow<List<Assignment>>,
-    /** Takes the status a page fetched for the cached list, with the generation the request went out under. */
-    private val takeStatus: suspend (SubmissionStatusAnswer, generation: Int) -> Unit,
+    /** Takes the status a page fetched for the cached list. */
+    private val takeStatus: suspend (SubmissionStatusAnswer) -> Unit,
     /** The cache's generation now; see `DataCache.userDataGeneration`. */
     private val generation: () -> Int,
     /** A monotonic clock, which stamps each request before it goes out. */
@@ -98,7 +98,8 @@ class MoodleAccountAssignments(
      * An opening or a return to the app asks Moodle only once the copy is [SUBMISSION_FRESH_MS]
      * old, or [SUBMISSION_RETRY_MS] after a failed try: a return a few seconds after a success
      * would repeat the status, comment and group requests for nothing. [force] asks at once, for
-     * Retry and for the way back from Moodle, where a submission may just have been made.
+     * Retry and for the way back from Moodle, where a submission may just have been made: with a
+     * request of its own, after any still out, whose answer may be from before the submission.
      */
     suspend fun refreshSubmission(entry: MoodleAssignmentEntry, force: Boolean = false) {
         val record = entry.record
@@ -107,7 +108,7 @@ class MoodleAccountAssignments(
         feed.awaitCache()
         val failedAt = synchronized(this) { failedAtMs[record.assignId] }
         if (!force && !submissionRefreshDue(feed.state.value.fetchedAtMs, failedAt, context.now())) return
-        feed.refresh {
+        feed.refresh(joinRunning = !force) {
             val functions = api.functions()
             val generation = generation()
             val askedAt = monotonicNowMs()
@@ -132,8 +133,8 @@ class MoodleAccountAssignments(
                     submitted = submission.isSubmitted,
                     submittedAtMs = submission.submittedAt?.let { it * 1000 },
                     askedAtMs = askedAt,
+                    generation = generation,
                 ),
-                generation,
             )
             submission
         }

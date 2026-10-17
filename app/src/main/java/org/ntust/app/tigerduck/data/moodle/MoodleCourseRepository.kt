@@ -57,7 +57,7 @@ class MoodleCourseRepository internal constructor(
     /** Home's assignment rows, read again after each write. */
     private val listedAssignments: () -> Flow<List<Assignment>> = { kotlinx.coroutines.flow.emptyFlow() },
     /** Where a page's submission status goes, for the cached list; see [AssignmentStatusWriter]. */
-    private val takeStatus: suspend (SubmissionStatusAnswer, generation: Int) -> Unit = { _, _ -> },
+    private val takeStatus: suspend (SubmissionStatusAnswer) -> Unit = {},
     /** The cache's generation now, which a page's request goes out under. */
     private val cacheGeneration: () -> Int = { 0 },
     private val monotonicNowMs: () -> Long = SystemClock::elapsedRealtime,
@@ -92,7 +92,7 @@ class MoodleCourseRepository internal constructor(
         languageChanges = uiLanguage.changes,
         assignmentRecords = { dataCache.assignmentRecordsVersion.map { dataCache.loadAssignmentRecords() } },
         listedAssignments = { dataCache.assignmentsVersion.map { dataCache.loadAssignments() } },
-        takeStatus = { answer, generation -> statusWriter.take(answer, generation) },
+        takeStatus = { answer -> statusWriter.take(answer) },
         cacheGeneration = { dataCache.userDataGeneration },
     )
 

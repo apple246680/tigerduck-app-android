@@ -1,6 +1,8 @@
 package org.ntust.app.tigerduck.data.moodle
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,10 +54,13 @@ class MoodleAccountAssignmentsTest {
         var submissionCalls = 0
         var commentCalls = mutableListOf<Pair<Int, Int>>()
         var groupCalls = mutableListOf<Int>()
+        /** Holds the submission call open while set, so a second refresh meets one in flight. */
+        var submissionGate: CompletableDeferred<Unit>? = null
 
         override suspend fun functions() = allowed
         override suspend fun submission(assignId: Int): MoodleAssignmentSubmission {
             submissionCalls++
+            submissionGate?.await()
             return submissionAnswer()
         }
         override suspend fun comments(cmid: Int, submissionId: Int): List<MoodleSubmissionComment> {
@@ -75,7 +80,7 @@ class MoodleAccountAssignmentsTest {
     private var clock = 1_000L
     private val records = MutableSharedFlow<List<org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentRecord>>(replay = 1)
     private val listed = MutableSharedFlow<List<Assignment>>(replay = 1)
-    private val taken = mutableListOf<Pair<SubmissionStatusAnswer, Int>>()
+    private val taken = mutableListOf<SubmissionStatusAnswer>()
 
     private var wall = 1_790_000_000_000L
 
@@ -85,7 +90,7 @@ class MoodleAccountAssignmentsTest {
         scope = backgroundScope,
         records = records,
         listed = listed,
-        takeStatus = { answer, generation -> taken += answer to generation },
+        takeStatus = { answer -> taken += answer },
         generation = { generation },
         monotonicNowMs = { clock++ },
     )
@@ -194,12 +199,12 @@ class MoodleAccountAssignmentsTest {
 
         assignments.refreshSubmission(MoodleAssignmentEntry(team, null))
 
-        val (answer, generation) = taken.single()
+        val answer = taken.single()
         assertEquals("702", answer.assignmentId)
         assertTrue(answer.submitted)
         assertEquals(1_790_500_000_000L, answer.submittedAtMs)
         assertEquals("stamped before the request went out", before, answer.askedAtMs)
-        assertEquals(7, generation)
+        assertEquals(7, answer.generation)
     }
 
     @Test
@@ -290,4 +295,30 @@ class MoodleAccountAssignmentsTest {
         assignments.refreshSubmission(entry)
         assertEquals("and the next return after the backoff tries again", 3, api.submissionCalls)
     }
+
+    @Test
+    fun `a forced refresh does not join a request sent before the hand-off, while an ordinary one does`() =
+        runTest(UnconfinedTestDispatcher()) {
+            // The opening fetch is still out when the user submits on Moodle and comes back.
+            var calls = 0
+            api.submissionAnswer = { if (calls++ == 0) submitted.copy(status = "new", modified = null) else submitted }
+            api.submissionGate = CompletableDeferred()
+            val assignments = assignments()
+            val entry = MoodleAssignmentEntry(team, null)
+
+            val opening = async { assignments.refreshSubmission(entry) }
+            val ordinary = async { assignments.refreshSubmission(entry) }
+            val forced = async { assignments.refreshSubmission(entry, force = true) }
+            runCurrent()
+            assertEquals("the opening request alone is out; the forced one waits its turn", 1, api.submissionCalls)
+            api.submissionGate!!.complete(Unit)
+            opening.await()
+            ordinary.await()
+            forced.await()
+
+            assertEquals("the forced refresh asked on its own, after the opening fetch", 2, api.submissionCalls)
+            assertTrue("and the page shows the answer asked for after the hand-off", assignments.submission(702).value!!.isSubmitted)
+            assertEquals(listOf(false, true), taken.map { it.submitted })
+            assertTrue("asked for after the first", taken[1].askedAtMs > taken[0].askedAtMs)
+        }
 }

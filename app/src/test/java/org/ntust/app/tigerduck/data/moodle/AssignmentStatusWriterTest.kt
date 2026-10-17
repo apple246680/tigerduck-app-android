@@ -24,7 +24,7 @@ import java.util.Date
 class AssignmentStatusWriterTest {
 
     private lateinit var cache: DataCache
-    private val ledger = AssignmentStatusLedger()
+    private lateinit var ledger: AssignmentStatusLedger
     private val published = mutableListOf<List<Assignment>>()
     private lateinit var writer: AssignmentStatusWriter
 
@@ -32,6 +32,7 @@ class AssignmentStatusWriterTest {
     fun setUp() {
         val context = RuntimeEnvironment.getApplication()
         cache = DataCache(context, AcademicCalendarStore(context, OkHttpClient(), AppPreferences(context)))
+        ledger = AssignmentStatusLedger { cache.userDataGeneration }
         writer = AssignmentStatusWriter(ledger, cache) { published += it }
     }
 
@@ -40,14 +41,14 @@ class AssignmentStatusWriterTest {
         dueDate = Date(1_790_600_000_000L), isCompleted = completed,
     )
 
-    private fun answer(id: String, askedAtMs: Long, submitted: Boolean = true) =
-        SubmissionStatusAnswer(id, submitted, if (submitted) 1_790_500_000_000L else null, askedAtMs)
+    private fun answer(id: String, askedAtMs: Long, submitted: Boolean = true, generation: Int = cache.userDataGeneration) =
+        SubmissionStatusAnswer(id, submitted, if (submitted) 1_790_500_000_000L else null, askedAtMs, generation)
 
     @Test
     fun `a status the page fetched reaches the cached assignment and is published, and the same one again writes nothing`() = runTest {
         cache.saveAssignments(listOf(row("701"), row("702")))
 
-        assertTrue(writer.take(answer("701", askedAtMs = 10), cache.userDataGeneration))
+        assertTrue(writer.take(answer("701", askedAtMs = 10)))
 
         val written = cache.loadAssignments()
         assertTrue(written.first { it.assignmentId == "701" }.isCompleted)
@@ -55,16 +56,16 @@ class AssignmentStatusWriterTest {
         assertFalse(written.first { it.assignmentId == "702" }.isCompleted)
         assertEquals(listOf(written), published)
 
-        assertFalse(writer.take(answer("701", askedAtMs = 20), cache.userDataGeneration))
+        assertFalse(writer.take(answer("701", askedAtMs = 20)))
         assertEquals("a status the cache already has is not published again", 1, published.size)
     }
 
     @Test
     fun `an answer asked for before the round's request is dropped`() = runTest {
         cache.saveAssignments(listOf(row("701")))
-        ledger.reconcile(listOf(row("701")), mapOf("701" to 100L))
+        ledger.reconcile(listOf(row("701")), mapOf("701" to answer("701", 100L, submitted = false)), cache.userDataGeneration)
 
-        assertFalse(writer.take(answer("701", askedAtMs = 50), cache.userDataGeneration))
+        assertFalse(writer.take(answer("701", askedAtMs = 50)))
 
         assertFalse(cache.loadAssignments().single().isCompleted)
         assertTrue(published.isEmpty())
@@ -78,7 +79,7 @@ class AssignmentStatusWriterTest {
         // The next account has an assignment of the same id, as a teammate would.
         cache.saveAssignments(listOf(row("701")))
 
-        assertFalse(writer.take(answer("701", askedAtMs = 10), generation))
+        assertFalse(writer.take(answer("701", askedAtMs = 10, generation = generation)))
 
         assertFalse(cache.loadAssignments().single().isCompleted)
         assertTrue(published.isEmpty())
@@ -88,7 +89,7 @@ class AssignmentStatusWriterTest {
     fun `an assignment the cache does not list writes nothing`() = runTest {
         cache.saveAssignments(listOf(row("701")))
 
-        assertFalse(writer.take(answer("999", askedAtMs = 10), cache.userDataGeneration))
+        assertFalse(writer.take(answer("999", askedAtMs = 10)))
 
         assertTrue(published.isEmpty())
     }

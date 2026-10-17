@@ -80,10 +80,17 @@ class MoodleAssignmentViewModel @Inject constructor(
         handedOffToMoodle = true
     }
 
-    /** What the page does as it opens and on each return to the app. */
+    /**
+     * What the page does as it opens and on each return to the app. A hand-off is spent only by
+     * the request it forces, which goes out on its own after any still running, so a return before
+     * the account's assignments are in hand keeps it for the next.
+     */
     fun refreshOnResume(entry: MoodleAssignmentEntry) {
-        val force = handedOffToMoodle
-        handedOffToMoodle = false
-        refresh(entry, force)
+        viewModelScope.launch {
+            val assignments = _assignments.value ?: return@launch
+            val force = handedOffToMoodle
+            if (force) handedOffToMoodle = false
+            assignments.refreshSubmission(entry, force)
+        }
     }
 }

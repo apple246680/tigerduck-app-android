@@ -12,6 +12,7 @@ import okhttp3.Request
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.moodle.AssignmentStatusLedger
 import org.ntust.app.tigerduck.data.moodle.AssignmentStatusWriter
+import org.ntust.app.tigerduck.data.moodle.SubmissionStatusAnswer
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.di.ApplicationScope
@@ -63,8 +64,14 @@ class MoodleService @Inject constructor(
      */
     class AssignmentsAnswer internal constructor(
         val assignments: List<Assignment>,
-        /** By assignment id, on the monotonic clock the [AssignmentStatusLedger] reads. */
-        internal val askedAtMs: Map<String, Long>,
+        /**
+         * What Moodle answered for each status the round asked and got, by assignment id: the
+         * only statuses the write accepts as the round's, by their own request times. One kept
+         * from the cache, confirmed or whose request failed, is not among them.
+         */
+        internal val statuses: Map<String, SubmissionStatusAnswer>,
+        /** The cache's generation the round ran under. */
+        internal val generation: Int,
     )
 
     /** The network half of [fetchAssignments]: what every caller asking for the same courses can share. */
@@ -79,6 +86,8 @@ class MoodleService @Inject constructor(
          * for all would let a page's answer asked for in between pass for newer than one asked after it.
          */
         val askedAtMs: Map<Int, Long>,
+        /** The cache's generation the round ran under; see [DataCache.userDataGeneration]. */
+        val generation: Int,
     )
 
     // Refreshes in progress that every assignment round starting meanwhile
@@ -249,7 +258,12 @@ class MoodleService @Inject constructor(
                     semester = currentSemester,
                 )
             }
-        AssignmentsAnswer(assignments, round.askedAtMs.mapKeys { it.key.toString() })
+        val statuses = round.statuses.mapNotNull { (id, status) ->
+            val askedAt = round.askedAtMs[id] ?: return@mapNotNull null
+            val (submitted, submittedAt) = submissionState(id, emptyMap(), status.lastattempt)
+            SubmissionStatusAnswer(id.toString(), submitted, submittedAt?.time, askedAt, round.generation)
+        }.associateBy { it.assignmentId }
+        AssignmentsAnswer(assignments, statuses, round.generation)
     }
 
     /**
@@ -294,7 +308,7 @@ class MoodleService @Inject constructor(
                 }.filterNotNull()
                 val statuses = answers.associate { (id, status, _) -> id to status }
                 closedNow = closedUnsubmitted(all, statuses, askedAt, closedBefore)
-                AssignmentsRound(courses, statuses, confirmed, answers.associate { (id, _, sentAt) -> id to sentAt })
+                AssignmentsRound(courses, statuses, confirmed, answers.associate { (id, _, sentAt) -> id to sentAt }, generation)
             }
             // Only for the account that asked, as the stamp below.
             if (tokenService.currentToken() == askedWith) {
@@ -366,7 +380,7 @@ class MoodleService @Inject constructor(
      * The order of the status answers the cached assignments take, a round's and the pages';
      * see [storeAssignments] and [AssignmentStatusWriter].
      */
-    val statusLedger = AssignmentStatusLedger()
+    val statusLedger = AssignmentStatusLedger { dataCache.userDataGeneration }
 
     /**
      * Writes [assignments], a round's [answer] as the caller merged it, to the cache, with each
@@ -376,7 +390,7 @@ class MoodleService @Inject constructor(
      * data was wiped under the round.
      */
     suspend fun storeAssignments(assignments: List<Assignment>, answer: AssignmentsAnswer): Boolean =
-        dataCache.updateAssignments { statusLedger.reconcile(assignments, answer.askedAtMs) }
+        dataCache.updateAssignments(answer.generation) { statusLedger.reconcile(assignments, answer.statuses, answer.generation) }
 
     companion object {
         private val decodeGson = Gson()

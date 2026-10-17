@@ -3,7 +3,10 @@ package org.ntust.app.tigerduck.data.moodle
 import org.ntust.app.tigerduck.data.model.Assignment
 import java.util.Date
 
-/** What an assignment's page found of the submission, with when its request went out. */
+/**
+ * What Moodle answered for one assignment's submission status, to a page or a round, with when
+ * the request went out and the account it went out under.
+ */
 data class SubmissionStatusAnswer(
     val assignmentId: String,
     val submitted: Boolean,
@@ -11,6 +14,8 @@ data class SubmissionStatusAnswer(
     val submittedAtMs: Long?,
     /** A monotonic clock's reading before the request went out. */
     val askedAtMs: Long,
+    /** The cache's generation when the request went out; see `DataCache.userDataGeneration`. */
+    val generation: Int,
 )
 
 /**
@@ -23,46 +28,77 @@ data class SubmissionStatusAnswer(
  * round's list is reconciled against the accepted answers as it is written ([reconcile]), by the
  * round's own request times, rather than the page waiting the round out. Both the round's write
  * and a page's run under the cache's lock, so the two cannot pass each other.
+ *
+ * Every answer carries the cache's generation its request went out under, and the wipe at a
+ * sign-out moves that generation under the same lock. An answer of a generation that has gone is
+ * refused, and the answers kept under it go with it, so a departing account's round that writes
+ * between the sign-out and the wipe leaves nothing the next account's rounds could inherit.
  */
-class AssignmentStatusLedger {
+class AssignmentStatusLedger(
+    /** The cache's generation now, which the wipe at a sign-out moves under the cache's lock. */
+    private val currentGeneration: () -> Int,
+) {
     private data class Accepted(val askedAtMs: Long, val submitted: Boolean, val submittedAtMs: Long?)
 
     private val accepted = HashMap<String, Accepted>()
 
+    /** The generation the entries in [accepted] were taken under. */
+    private var generation: Int? = null
+
+    /**
+     * The entries, with those of a generation that has gone dropped first; null when [asked] is
+     * not the current generation, whose answers are refused.
+     */
+    private fun entriesFor(asked: Int): HashMap<String, Accepted>? {
+        val current = currentGeneration()
+        if (generation != current) {
+            accepted.clear()
+            generation = current
+        }
+        return accepted.takeIf { asked == current }
+    }
+
     /**
      * Keeps a page's [answer] as the assignment's accepted one, unless one asked for as late or
-     * later is accepted, a round's or another page's; whether it was kept.
+     * later is accepted, a round's or another page's, or the account it was asked for has signed
+     * out; whether it was kept.
      */
     @Synchronized
     fun offer(answer: SubmissionStatusAnswer): Boolean {
-        val current = accepted[answer.assignmentId]
+        val entries = entriesFor(answer.generation) ?: return false
+        val current = entries[answer.assignmentId]
         if (current != null && current.askedAtMs >= answer.askedAtMs) return false
-        accepted[answer.assignmentId] = Accepted(answer.askedAtMs, answer.submitted, answer.submittedAtMs)
+        entries[answer.assignmentId] = Accepted(answer.askedAtMs, answer.submitted, answer.submittedAtMs)
         return true
     }
 
     /**
-     * [assignments] as a round writes them, [askedAtMs] being when its own request for each went
-     * out, by id: an assignment whose accepted answer is newer than that request takes the
-     * accepted answer, and the rest take the round's, which is accepted from here on. One the
-     * round did not ask about, kept from the cache, takes any accepted answer and records none.
+     * [assignments] as a round of [generation] writes them, [answers] being what Moodle answered
+     * the round for each status it asked and got, by id. An assignment whose accepted answer is
+     * newer than the round's request for it takes the accepted answer; the rest the round got an
+     * answer for take that answer, which is accepted from here on, whatever the caller made of
+     * the cached status meanwhile. One the round got no answer for, kept from the cache, takes
+     * any accepted answer and is never stamped. A round of a generation that has gone writes
+     * nothing of its own.
      */
     @Synchronized
-    fun reconcile(assignments: List<Assignment>, askedAtMs: Map<String, Long>): List<Assignment> =
-        assignments.map { assignment ->
+    fun reconcile(assignments: List<Assignment>, answers: Map<String, SubmissionStatusAnswer>, generation: Int): List<Assignment> {
+        val entries = entriesFor(generation)
+        return assignments.map { assignment ->
             val id = assignment.assignmentId
-            val asked = askedAtMs[id]
-            val current = accepted[id]
+            val answer = answers[id]?.takeIf { it.generation == generation }
+            val current = entries?.get(id)
             when {
-                current != null && (asked == null || current.askedAtMs > asked) ->
+                current != null && (answer == null || current.askedAtMs > answer.askedAtMs) ->
                     assignment.copy(isCompleted = current.submitted, submittedAt = current.submittedAtMs?.let(::Date))
-                asked != null -> {
-                    accepted[id] = Accepted(asked, assignment.isCompleted, assignment.submittedAt?.time)
-                    assignment
+                answer != null && entries != null -> {
+                    entries[id] = Accepted(answer.askedAtMs, answer.submitted, answer.submittedAtMs)
+                    assignment.copy(isCompleted = answer.submitted, submittedAt = answer.submittedAtMs?.let(::Date))
                 }
                 else -> assignment
             }
         }
+    }
 
     /** Forgets everything, at a sign-out: the next account's answers are not ordered against this one's. */
     @Synchronized
