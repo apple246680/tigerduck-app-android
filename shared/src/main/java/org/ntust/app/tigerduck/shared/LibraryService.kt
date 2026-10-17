@@ -228,10 +228,15 @@ class LibraryService(
             // generation after this read it and before this joins.
             val key = SignInKey(username, credentials.libraryAccountGeneration)
             // One cancelled as abandoned but not yet done is not joined: its
-            // caller would get a cancellation it did not ask for. One that
-            // failed and is not yet removed is, and shares its outcome rather
-            // than sending the password again.
-            (pendingSignIns[key]?.takeUnless { it.abandoned } ?: startSignIn(key)).also { it.waiting++ }
+            // caller would get a cancellation it did not ask for. Nor is one
+            // whose answer is in: its outcome is recorded by then, and it
+            // leaves this map from a completion handler that runs after its
+            // waiters can see it done, so a caller landing in between would
+            // share an answer given before it asked. The Library page, opened
+            // right after a return's sign-in failed, would get that failure
+            // instead of sending again as it is meant to.
+            (pendingSignIns[key]?.takeUnless { it.abandoned || it.job.isCompleted } ?: startSignIn(key))
+                .also { it.waiting++ }
         }
         try {
             return attempt.job.await()
