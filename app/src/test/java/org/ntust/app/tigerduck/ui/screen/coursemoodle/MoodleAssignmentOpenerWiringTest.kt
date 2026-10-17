@@ -31,6 +31,7 @@ class MoodleAssignmentOpenerWiringTest {
         assertEquals("one opener in the file", 1, Regex("""rememberMoodleFileOpener\(""").findAll(text).count())
         val screen = text.substring(text.indexOf("fun MoodleAssignmentScreen("), text.indexOf("fun AssignmentPageBody("))
         assertTrue("the screen no longer makes the page's opener", "rememberMoodleFileOpener(" in screen)
+        assertTrue("the screen no longer hands its opener to the page's files", "files = files," in screen.substringAfter("AssignmentPageBody("))
         assertTrue("the bar no longer stops a pending open", "willOpenPage = { files?.forgetPendingOpen() }" in screen)
         val button = screen.substring(screen.indexOf("AssignmentSubmitButton("))
         assertTrue("the Submit button no longer stops a pending open", button.substringBefore("viewModel.noteMoodleHandOff()").contains("files?.forgetPendingOpen()"))
