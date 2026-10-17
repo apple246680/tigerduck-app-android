@@ -2,6 +2,7 @@ package org.ntust.app.tigerduck.ui.screen.announcements
 
 import android.app.Application
 import android.content.Context
+import androidx.lifecycle.SavedStateHandle
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -61,7 +62,8 @@ class AnnouncementsSyncedAtTest {
         val tokens = V3TokenStore(context.getSharedPreferences("v3-tokens-test", Context.MODE_PRIVATE))
         val api = BulletinApiClient(client, prefs, AuthTokenManager(tokens, client, prefs, "device-1"))
         return AnnouncementsViewModel(
-            api, cache, BulletinRepository(), BulletinReadStateStore(context), testDemoAccount(context, prefs, cache),
+            SavedStateHandle(), api, cache, BulletinRepository(), BulletinReadStateStore(context),
+            testDemoAccount(context, prefs, cache),
         )
     }
 

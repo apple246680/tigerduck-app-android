@@ -2,6 +2,7 @@ package org.ntust.app.tigerduck.ui.screen.announcements
 
 import android.app.Application
 import android.content.Context
+import androidx.lifecycle.SavedStateHandle
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -30,9 +31,9 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
- * The department chips start with nothing selected each time the page opens. An install from
- * before the "Remember bulletin filters" option went still has what that option stored: it
- * selects no chip, and it is dropped.
+ * The department chips start with nothing selected each time the page opens: a new back-stack
+ * entry has nothing saved. An install from before the "Remember bulletin filters" option went
+ * still has what that option stored: it selects no chip, and it is dropped.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
@@ -78,7 +79,8 @@ class AnnouncementsFilterStartsEmptyTest {
         val tokens = V3TokenStore(context.getSharedPreferences("v3-tokens-test", Context.MODE_PRIVATE))
         val api = BulletinApiClient(client, prefs, AuthTokenManager(tokens, client, prefs, "device-1"))
         return AnnouncementsViewModel(
-            api, cache, repository, BulletinReadStateStore(context), testDemoAccount(context, prefs, cache),
+            SavedStateHandle(), api, cache, repository, BulletinReadStateStore(context),
+            testDemoAccount(context, prefs, cache),
         )
     }
 
