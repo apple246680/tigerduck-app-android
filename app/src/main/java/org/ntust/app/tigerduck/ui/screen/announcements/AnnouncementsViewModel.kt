@@ -1,6 +1,7 @@
 package org.ntust.app.tigerduck.ui.screen.announcements
 
 import android.os.SystemClock
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -22,7 +23,6 @@ import org.ntust.app.tigerduck.data.BulletinReadStateStore
 import org.ntust.app.tigerduck.data.BulletinRepository
 import org.ntust.app.tigerduck.data.RefreshPolicy
 import org.ntust.app.tigerduck.data.cache.BulletinCache
-import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.demo.DemoAccount
 import org.ntust.app.tigerduck.notification.SyncSource
@@ -48,11 +48,11 @@ internal val AnnouncementsRefreshPolicy = RefreshPolicy()
  */
 @HiltViewModel
 class AnnouncementsViewModel @Inject constructor(
+    private val savedState: SavedStateHandle,
     private val api: BulletinApiClient,
     private val cache: BulletinCache,
     private val repository: BulletinRepository,
     private val readState: BulletinReadStateStore,
-    private val prefs: AppPreferences,
     private val demoAccount: DemoAccount,
     private val credentials: CredentialManager,
 ) : ViewModel() {
@@ -92,11 +92,13 @@ class AnnouncementsViewModel @Inject constructor(
     }
 
     private val _state = MutableStateFlow(
-        // A return visit finds the department list in memory, so the remembered
-        // departments go on before the cache seed's first applyFilters() pass,
-        // with no flash of unfiltered items. A first visit waits for
-        // fetchTaxonomyOnce().
-        repository.taxonomy().let { State(taxonomy = it, selectedOrgs = rememberedOrgs(it)) }
+        // A return visit finds the department list in memory, so the chips are
+        // there from the first frame, with whatever this entry saved; a first
+        // visit waits for fetchTaxonomyOnce(). A new entry has nothing saved,
+        // so its filters start empty.
+        repository.taxonomy().let {
+            State(taxonomy = it, selectedOrgs = savedOrgs(it), selectedTags = savedTags(it))
+        }
     )
     val state: StateFlow<State> = _state.asStateFlow()
 
@@ -116,10 +118,6 @@ class AnnouncementsViewModel @Inject constructor(
 
     // Main-thread-only — see nextCursor.
     private var hasLoaded = false
-
-    // Main-thread-only — see nextCursor. A department picked on this visit,
-    // which the remembered ones arriving later must not replace.
-    private var orgsPicked = false
 
     fun load() {
         if (hasLoaded) return
@@ -180,23 +178,31 @@ class AnnouncementsViewModel @Inject constructor(
             runCatching { api.fetchTaxonomy() }.getOrNull()
         } ?: return
         _state.update {
-            val orgs = if (orgsPicked) it.selectedOrgs else rememberedOrgs(tax)
-            applyFilters(it.copy(taxonomy = tax, selectedOrgs = orgs))
+            applyFilters(it.copy(taxonomy = tax, selectedOrgs = savedOrgs(tax), selectedTags = savedTags(tax)))
         }
     }
 
     /**
-     * The remembered departments the department chips can show: none until
-     * [taxonomy] has loaded, and only those it still lists. A filter with no
-     * chip on screen to show it or turn it off is what this keeps out — after
-     * a cold start offline the department list never loads, and the list
-     * stays unfiltered rather than filtered unseen. Matches the iPhone's
-     * `restoreRememberedOrgs(known:)`.
+     * The departments this back-stack entry has selected, from [savedState]: a
+     * selection belongs to the visit that made it, and when Android kills the
+     * process while a bulletin is open, Back arrives in a recreated view model
+     * that would otherwise start empty. None until the department list has
+     * loaded, and only those it still lists — a filter with no chip on screen
+     * to show it or turn it off is what this keeps out. A new entry has nothing
+     * saved; its filters start empty, as the Remember bulletin filters option
+     * once stopped doing (#376).
      */
-    private fun rememberedOrgs(taxonomy: TaxonomyResponse?): Set<String> {
-        if (taxonomy == null || !prefs.rememberAnnouncementFilter) return emptySet()
-        val known = taxonomy.orgs.mapTo(HashSet()) { it.id }
-        return prefs.savedAnnouncementOrgs intersect known
+    private fun savedOrgs(taxonomy: TaxonomyResponse?): Set<String> =
+        savedIds(KEY_SELECTED_ORGS, taxonomy?.orgs?.map { it.id })
+
+    /** The categories this entry has selected; see [savedOrgs]. */
+    private fun savedTags(taxonomy: TaxonomyResponse?): Set<String> =
+        savedIds(KEY_SELECTED_TAGS, taxonomy?.tags?.map { it.id })
+
+    private fun savedIds(key: String, known: List<String>?): Set<String> {
+        if (known == null) return emptySet()
+        val saved = savedState.get<Array<String>>(key) ?: return emptySet()
+        return saved.toSet() intersect known.toSet()
     }
 
     fun refresh() {
@@ -413,17 +419,14 @@ class AnnouncementsViewModel @Inject constructor(
     }
 
     fun setOrgFilter(orgs: Set<String>) {
-        // Always persist — the AppState setter for rememberAnnouncementFilter
-        // clears this key when the toggle goes false, so writing here can't
-        // accidentally revive a stale selection. Restore is gated by the
-        // toggle (see rememberedOrgs).
-        prefs.savedAnnouncementOrgs = orgs
-        orgsPicked = true
+        savedState[KEY_SELECTED_ORGS] = orgs.toTypedArray()
         _state.update { applyFilters(it.copy(selectedOrgs = orgs)) }
     }
 
-    fun setTagFilter(tags: Set<String>) =
+    fun setTagFilter(tags: Set<String>) {
+        savedState[KEY_SELECTED_TAGS] = tags.toTypedArray()
         _state.update { applyFilters(it.copy(selectedTags = tags)) }
+    }
 
     fun setSearch(text: String) =
         _state.update { applyFilters(it.copy(searchText = text)) }
@@ -485,4 +488,10 @@ class AnnouncementsViewModel @Inject constructor(
         } catch (_: Exception) {
             Instant.EPOCH
         }
+
+    private companion object {
+        /** [SavedStateHandle] keys: the ids selected on this back-stack entry, as string arrays. */
+        const val KEY_SELECTED_ORGS = "selectedOrgs"
+        const val KEY_SELECTED_TAGS = "selectedTags"
+    }
 }
