@@ -133,11 +133,53 @@ class MoodleLogicTest {
     }
 
     @Test
-    fun `the search matches name, student ID or department`() {
-        val members = listOf(member(1, "B11300001 @ Amy", "student"), member(2, "B11300002 @ Bob", "student"))
-        assertEquals(listOf(2), MoodleMembers.sections(members, "bob").flatMap { it.members }.map { it.id })
-        assertEquals(listOf(1), MoodleMembers.sections(members, "00001").flatMap { it.members }.map { it.id })
-        assertTrue(MoodleMembers.sections(members, "zzz").isEmpty())
+    fun `the search matches name, student ID or the department name the row shows`() {
+        val members = listOf(
+            member(1, "B11315001 @ Amy", "student"),
+            // Moodle's own field: the degree level, which the row no longer shows.
+            member(2, "B11300002 @ Bob", "student").copy(department = "大學部"),
+        )
+        val names = mapOf("cs" to "Computer Science and Information Engineering")
+        fun found(query: String) = MoodleMembers.sections(members, query, departmentNames = names).flatMap { it.members }.map { it.id }
+
+        assertEquals(listOf(2), found("bob"))
+        assertEquals(listOf(1), found("15001"))
+        assertEquals("the name shown beside the ID", listOf(1), found("computer science"))
+        assertTrue("Moodle's department field is not searched", found("大學部").isEmpty())
+        assertTrue(found("zzz").isEmpty())
+    }
+
+    @Test
+    fun `a bachelor's student ID names the department its code stands for`() {
+        assertEquals("15", MoodleDepartment.code("B11315999"))
+        assertEquals("cs", MoodleDepartment.key("B11315999"))
+        // The 12 confirmed codes, and no other (#697).
+        val confirmed = mapOf(
+            "B11301999" to "im", "B11302999" to "et", "B11303999" to "me", "B11304999" to "tx",
+            "B11305999" to "ct", "B11306999" to "ch", "B11307999" to "ee", "B11308999" to "ba",
+            "B11310999" to "dt", "B11313999" to "ad", "B11315999" to "cs", "B11330999" to "hc",
+        )
+        assertEquals(confirmed, confirmed.keys.associateWith(MoodleDepartment::key))
+        assertEquals(confirmed.values.toSet(), MoodleDepartment.keys)
+    }
+
+    @Test
+    fun `only a bachelor's ID has a department code`() {
+        for (id in listOf("M11315999", "D11315999", "T11315999", "b11315999")) {
+            assertNull(id, MoodleDepartment.code(id))
+            assertNull(id, MoodleDepartment.key(id))
+        }
+        assertNull(MoodleDepartment.key(null))
+        assertNull(MoodleDepartment.key(""))
+        assertNull("too short to carry a code", MoodleDepartment.key("B113"))
+    }
+
+    @Test
+    fun `a code the app has no name for shows no department`() {
+        assertEquals("09", MoodleDepartment.code("B11309999"))
+        assertNull(MoodleDepartment.key("B11309999"))
+        assertNull(MoodleDepartment.key("B11399999"))
+        assertNull(MoodleDepartment.key("B113AB999"))
     }
 
     @Test
