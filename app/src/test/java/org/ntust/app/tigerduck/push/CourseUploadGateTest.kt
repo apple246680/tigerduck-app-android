@@ -136,8 +136,13 @@ class CourseUploadGateTest {
         assertEquals(2, uploads())
     }
 
+    /**
+     * The sign-out here comes before the upload's answer, so the sign-in check alone turns the
+     * record away; the sign-out that comes between the check and the record is
+     * [UploadRecordLockTest]'s.
+     */
     @Test
-    fun `an upload answered after a sign-out records nothing, so the next account's same list goes`() = runTest {
+    fun `a sign-out before the upload's answer leaves no record, so the next account's same list goes`() = runTest {
         val held = backend.hold(UPLOAD)
         val departing = launch { runCatching { api.uploadCourses(roster("CS1"), "1151") } }
         held.arrived.await()
