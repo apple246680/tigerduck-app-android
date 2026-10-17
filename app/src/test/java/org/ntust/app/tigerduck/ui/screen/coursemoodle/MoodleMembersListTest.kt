@@ -4,8 +4,6 @@ import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotFocused
@@ -13,6 +11,7 @@ import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollToIndex
 import kotlinx.coroutines.CoroutineScope
@@ -20,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -92,16 +92,29 @@ class MoodleMembersListTest {
 
     private val search get() = RuntimeEnvironment.getApplication().getString(R.string.action_search)
 
+    /** The search's text, as the screen would hold it; a test types by setting it. */
+    private val query = mutableStateOf("")
+
     /** The list, with [members] fetched and on screen. */
     private fun showLoadedList() {
         val store = MoodleCourseStore(5, emptyList(), emptyList(), api, MoodleCacheContext("B1", cache, { true }), scope)
         composeRule.setContent {
-            var query by remember { mutableStateOf("") }
-            MembersList(store = store, query = query, onQueryChange = { query = it }, onOpen = {})
+            val text by query
+            MembersList(store = store, query = text, onQueryChange = { query.value = it }, onOpen = {})
         }
         composeRule.waitUntil(5_000) { store.members.value?.members?.size == members.size }
         composeRule.waitForIdle()
     }
+
+    private fun search(text: String) {
+        query.value = text
+        composeRule.waitForIdle()
+    }
+
+    private val studentsHeading get() = RuntimeEnvironment.getApplication().getString(R.string.course_members_students)
+
+    private fun headingTop(): Float =
+        composeRule.onNodeWithContentDescription(studentsHeading).fetchSemanticsNode().positionInRoot.y
 
     @Test
     fun `only the rows on screen fetch their pictures`() {
@@ -146,6 +159,34 @@ class MoodleMembersListTest {
         composeRule.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
 
         composeRule.onNodeWithText(search).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a query that shrinks a short class keeps the search field above the top`() {
+        members = students.take(6)
+        showLoadedList()
+
+        search("B11300003")
+
+        assertSearchFieldOffScreen()
+        composeRule.onNodeWithContentDescription("Student 3").assertIsDisplayed()
+    }
+
+    @Test
+    fun `a query cleared again leaves no blank room to scroll into below a short class`() {
+        members = students.take(2)
+        query.value = "B11300002"
+        showLoadedList()
+
+        search("")
+        val atRest = headingTop()
+        // As far down as the list goes: with the rows and the filler exactly a viewport tall, no
+        // further than it already is. The filler is the last item, after the search row, the
+        // heading and the members.
+        composeRule.onNode(hasScrollToIndexAction()).performScrollToIndex(1 + 1 + members.size)
+
+        assertEquals(atRest, headingTop(), 0.5f)
+        assertSearchFieldOffScreen()
     }
 
     @Test

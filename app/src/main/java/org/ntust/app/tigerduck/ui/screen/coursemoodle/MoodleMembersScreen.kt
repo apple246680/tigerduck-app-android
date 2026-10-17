@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -33,7 +33,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -145,6 +147,22 @@ internal fun MembersList(
         }
     }
 
+    // The rows below the search row, built in composition so that RowsBelowSearch learns of a
+    // change to them ahead of the measure pass that lays them out; see its note.
+    val failure = state.failureBesideCopy
+    val noMatches = sections.isEmpty() && query.isNotBlank()
+    val rowsBelow = remember(sections, failure, noMatches) {
+        buildList {
+            if (failure != null) add(MembersRow.Failure(failure))
+            if (noMatches) add(MembersRow.NoMatches)
+            sections.forEach { section ->
+                add(MembersRow.Header(section))
+                section.members.forEachIndexed { index, member -> add(MembersRow.Person(section, index, member)) }
+            }
+        }
+    }
+    val rowKeys = remember(rowsBelow) { rowsBelow.map { it.key } }
+
     PullToRefreshBox(
         isRefreshing = pulling,
         onRefresh = { pulling = true; refresher { pulling = false } },
@@ -154,7 +172,10 @@ internal fun MembersList(
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val paddingPx = with(LocalDensity.current) { MembersListVerticalPadding.roundToPx() }
             val minRowsPx = if (constraints.hasBoundedHeight) (constraints.maxHeight - 2 * paddingPx).coerceAtLeast(0) else 0
-            val rows = remember { RowsBelowSearch() }
+            val filler = remember { RowsBelowSearch() }
+            // Once this composition is in, before its layout: the filler's measure is then
+            // invalidated for the rows this pass lays out, not the ones before.
+            SideEffect { filler.rows(rowKeys) }
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
@@ -172,95 +193,103 @@ internal fun MembersList(
                 // Before everything the query decides, so a query that empties the list keeps the
                 // field, and the keyboard with it.
                 item(key = "search") { SearchRow(query, onQueryChange) }
-                rows.begin()
-                state.failureBesideCopy?.let { failure ->
-                    rows.row(this, "failure") {
-                        MoodleRefreshFailure(
-                            failure,
-                            onRetry = { scope.launch { store.refreshMembers() } },
-                            modifier = Modifier.padding(bottom = 12.dp),
-                        )
-                    }
-                }
-                if (sections.isEmpty() && query.isNotBlank()) {
-                    rows.row(this, "none") {
-                        EmptyStateView(
-                            icon = Icons.Filled.SearchOff,
-                            title = stringResource(R.string.desktop_bulletins_no_matches),
-                            message = null,
-                        )
-                    }
-                }
                 // One item per row, so a large class draws only the rows on screen, and only they
                 // fetch their pictures.
-                sections.forEach { section ->
-                    rows.row(this, "section-${section.placement}") { MemberSectionHeader(section) }
-                    section.members.forEachIndexed { index, member ->
-                        rows.row(this, "member-${member.id}") {
-                            MemberCardRow(
+                items(rowsBelow, key = { it.key }) { row ->
+                    Box(filler.measured(row.key)) {
+                        when (row) {
+                            is MembersRow.Failure -> MoodleRefreshFailure(
+                                row.failure,
+                                onRetry = { scope.launch { store.refreshMembers() } },
+                                modifier = Modifier.padding(bottom = 12.dp),
+                            )
+                            MembersRow.NoMatches -> EmptyStateView(
+                                icon = Icons.Filled.SearchOff,
+                                title = stringResource(R.string.desktop_bulletins_no_matches),
+                                message = null,
+                            )
+                            is MembersRow.Header -> MemberSectionHeader(row.section)
+                            is MembersRow.Person -> MemberCardRow(
                                 store = store,
-                                member = member,
-                                picture = member.pictureUrl?.let { pictures[it] },
-                                first = index == 0,
-                                last = index == section.members.lastIndex,
+                                member = row.member,
+                                picture = row.member.pictureUrl?.let { pictures[it] },
+                                first = row.index == 0,
+                                last = row.index == row.section.members.lastIndex,
                                 onOpen = onOpen,
                             )
                         }
                     }
                 }
-                rows.filler(this, minRowsPx)
+                item(key = "filler") { Spacer(filler.filling(minRowsPx)) }
             }
         }
+    }
+}
+
+/** A row below the search row, by what it shows; [key] is its list item's. */
+private sealed interface MembersRow {
+    val key: Any
+
+    class Failure(val failure: Throwable) : MembersRow {
+        override val key get() = "failure"
+    }
+
+    object NoMatches : MembersRow {
+        override val key get() = "none"
+    }
+
+    class Header(val section: MoodleMemberSection) : MembersRow {
+        override val key get() = "section-${section.placement}"
+    }
+
+    class Person(val section: MoodleMemberSection, val index: Int, val member: MoodleMember) : MembersRow {
+        override val key get() = "member-${member.id}"
     }
 }
 
 /**
  * The rows below the search row, and a filler after them that keeps them at least a viewport
  * tall together. Without it a class too short to fill the screen cannot open past the search
- * row: the list scrolls back to fill the space, and the row shows at rest. The filler is sized in
- * the measure pass, from the heights of the rows measured just before it in that same pass, so
- * the very first layout is already tall enough and the opening position holds; the list's own
- * layout info would say so a frame late, after the position had been clamped and kept.
+ * row: the list scrolls back to fill the space, and the row shows at rest.
+ *
+ * The filler is sized in the measure pass, from the heights of the rows measured just before it
+ * in that same pass, so the very first layout is already tall enough and the opening position
+ * holds; the list's own layout info would say so a frame late, after the position had been
+ * clamped and kept. Both things it reads are snapshot state, so its measure is never reused as it
+ * was when they have moved: the row keys, set from composition by [rows] so that a query which
+ * takes rows away or brings them back invalidates the filler ahead of the pass that lays them
+ * out (too little filler after rows went would let the clamp land for good; too much after rows
+ * came would leave blank room to scroll into), and the heights, so that a row which changes
+ * height does the same.
  */
 private class RowsBelowSearch {
-    /** Each row's height at its last measure, by key. */
-    private val heights = HashMap<Any, Int>()
+    private val keys = mutableStateOf<List<Any>>(emptyList())
+    private val heights = mutableStateMapOf<Any, Int>()
 
-    /** The rows of the current build of the list, in order. */
-    private val keys = ArrayList<Any>()
-
-    /** Starts a build of the list's items: the rows [row] adds until the next build are its rows. */
-    fun begin() = keys.clear()
-
-    fun row(list: LazyListScope, key: Any, content: @Composable () -> Unit) {
-        keys += key
-        list.item(key = key) {
-            Box(
-                Modifier.layout { measurable, constraints ->
-                    val placeable = measurable.measure(constraints)
-                    heights[key] = placeable.height
-                    layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-                },
-            ) { content() }
-        }
-    }
-
-    /** Ends the build with the filler: [minPx] less the rows' heights, and nothing once they fill it. */
-    fun filler(list: LazyListScope, minPx: Int) {
-        // A row the list no longer has must not count towards it.
+    /** The rows below the search row, in order, as composition has them. */
+    fun rows(keys: List<Any>) {
+        if (this.keys.value == keys) return
+        this.keys.value = keys
+        // A row the list no longer has must not count towards the filler.
         heights.keys.retainAll(keys.toSet())
-        list.item(key = "filler") {
-            Spacer(
-                Modifier
-                    .fillMaxWidth()
-                    .layout { measurable, constraints ->
-                        val height = (minPx - keys.sumOf { heights[it] ?: 0 }).coerceAtLeast(0)
-                        val placeable = measurable.measure(constraints.copy(minHeight = height, maxHeight = height))
-                        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-                    },
-            )
-        }
     }
+
+    /** On a row: records its height for the filler. */
+    fun measured(key: Any): Modifier = Modifier.layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        // Only on a change: a needless write here would invalidate the filler's measure for nothing.
+        if (heights[key] != placeable.height) heights[key] = placeable.height
+        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }
+
+    /** On the filler: [minPx] less the rows' heights, and nothing once they fill it. */
+    fun filling(minPx: Int): Modifier = Modifier
+        .fillMaxWidth()
+        .layout { measurable, constraints ->
+            val height = (minPx - keys.value.sumOf { heights[it] ?: 0 }).coerceAtLeast(0)
+            val placeable = measurable.measure(constraints.copy(minHeight = height, maxHeight = height))
+            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+        }
 }
 
 /** The list's padding above its first item and below its last, and the search row's below the field. */
