@@ -4,10 +4,13 @@ import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.awaitCancellation
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.model.CourseGrade
 import org.ntust.app.tigerduck.data.model.GradeStatus
 import org.ntust.app.tigerduck.shared.Course
@@ -77,6 +80,22 @@ class ScoreCourseDetailDialogTest {
         show { Course.fromSchedule(courseNo = "CS1001301", courseName = "Calculus") }
 
         (rosterLabels + noRoster).forEach { composeRule.onNodeWithText(it).assertDoesNotExist() }
+    }
+
+    /**
+     * A cache row DataCache accepts with only a number and a name: Gson's Unsafe path leaves
+     * instructor and classroom null despite their non-null types (CLAUDE.md), and the dialog
+     * must read them as empty rather than crash.
+     */
+    @Test
+    fun `a sparse cached row shows no roster rows and does not crash`() {
+        val json = """[{"courseNo":"CS1001301","courseName":"Calculus"}]"""
+        val type = object : TypeToken<List<Course>>() {}.type
+        val sparse = DataCache.usableRows(Gson().fromJson(json, type)).single()
+        show { sparse }
+
+        (rosterLabels + noRoster).forEach { composeRule.onNodeWithText(it).assertDoesNotExist() }
+        composeRule.onNodeWithText("CS1001301").assertExists()
     }
 
     /** The "no roster" card must not flash before the cache has answered for a course it knows. */

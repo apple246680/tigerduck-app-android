@@ -4,6 +4,7 @@
 
 package org.ntust.app.tigerduck.ui.screen.score
 
+import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.model.CourseGrade
 import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.shared.periodOrder
@@ -24,6 +25,68 @@ internal object ScoreCourseRoster {
         if (code.isEmpty()) return null
         return roster.firstOrNull { it.courseNo.trim() == code }
     }
+
+    /** The class table's own code: three digits of year and a term digit, or H for summer. */
+    private val classTableCode = Regex("""\d{3}[0-9A-Z]""")
+
+    /** The same term with a 0 before the term digit, as the parser's fixtures spell it. */
+    private val fiveCharacterCode = Regex("""\d{3}0[12]""")
+
+    /**
+     * The semester code the class table keys its cache by for a score row's
+     * [term], or null when the term is in no form the cache uses. The cache
+     * files are `courses_<code>.json` with the portal's four characters,
+     * "1141" or "114H" for a summer term. The score parsers — this app's,
+     * iOS's and the Python reference they mirror — hand the page's 學期 cell
+     * through untouched, and every term either app's score code formats is
+     * four characters; but this app's parser fixtures also carry the
+     * five-character "11201", which read as a file name would miss a
+     * populated courses_1121.json and say "no roster". That form is read as
+     * the year and the term digit. Anything else is left unmatched rather
+     * than guessed at, so no wrong term's roster is ever shown.
+     */
+    fun semesterCode(term: String): String? {
+        val code = term.trim().uppercase()
+        return when {
+            classTableCode.matches(code) -> code
+            fiveCharacterCode.matches(code) -> code.take(3) + code.last()
+            else -> null
+        }
+    }
+
+    /**
+     * The class table's rows for [roster], label resource to value, leaving
+     * out what the cache has nothing for: a course the portal lists without
+     * a cap or a room shows no "0 / 0" and no blank row, as on iOS.
+     */
+    fun rows(roster: Course): List<Pair<Int, String>> = buildList {
+        val instructor = roster.instructor.orEmptyField().trim()
+        if (instructor.isNotEmpty()) {
+            add(R.string.course_detail_instructor_label to instructor)
+        }
+        if (roster.maxCount > 0) {
+            add(R.string.score_course_detail_enrollment_label to "${roster.enrolledCount} / ${roster.maxCount}")
+        }
+        Course.dedupRooms(roster.classroom.orEmptyField()).trim().takeIf { it.isNotEmpty() }?.let {
+            add(R.string.course_detail_classroom_label to it)
+        }
+        scheduleCode(roster.schedule).takeIf { it.isNotEmpty() }?.let {
+            add(R.string.score_course_detail_schedule_label to it)
+        }
+    }
+
+    /**
+     * A String field of a cached [Course] as Gson may have left it. A row
+     * written before the field existed, or by hand with only a number and a
+     * name, takes Gson's Unsafe path, which skips the Kotlin default, so a
+     * field declared non-null holds null (CLAUDE.md, upgrade-safe
+     * persistence), and `DataCache.usableRows` vouches for courseNo and
+     * courseName only. The nullable receiver makes the check real: written
+     * against the field's own type the compiler calls it senseless, as
+     * `usableRows` has to suppress, and the value would otherwise reach the
+     * first `String` parameter check and throw there.
+     */
+    private fun String?.orEmptyField(): String = this ?: ""
 
     /**
      * Weekday number to the letter the school's course-selection pages use,

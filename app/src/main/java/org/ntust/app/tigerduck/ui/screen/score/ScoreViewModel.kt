@@ -181,8 +181,12 @@ class ScoreViewModel internal constructor(
      * demand, not with the report: a transcript spans years of terms, and
      * only the tapped course's roster is wanted.
      */
-    suspend fun rosterCourse(course: CourseGrade): Course? =
-        ScoreCourseRoster.match(rosterCourses(course.term), course)
+    suspend fun rosterCourse(course: CourseGrade): Course? {
+        // The cache is keyed by the class table's semester code, which the
+        // score page's term may not spell the same way; see semesterCode.
+        val semester = ScoreCourseRoster.semesterCode(course.term) ?: return null
+        return ScoreCourseRoster.match(rosterCourses(semester), course)
+    }
 
     private suspend fun refresh(force: Boolean) {
         if (_isRefreshing.value) return

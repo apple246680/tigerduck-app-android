@@ -93,7 +93,9 @@ internal fun CourseDetailDialogContent(course: CourseGrade, roster: RosterLookup
                 )
             }
             if (roster is RosterLookup.Found) {
-                rosterRows(roster.course).forEach { (label, value) -> add(stringResource(label) to value) }
+                ScoreCourseRoster.rows(roster.course).forEach { (label, value) ->
+                    add(stringResource(label) to value)
+                }
             }
         }
         if (rows.isNotEmpty()) {
@@ -117,26 +119,6 @@ internal fun CourseDetailDialogContent(course: CourseGrade, roster: RosterLookup
                 )
             }
         }
-    }
-}
-
-/**
- * The class table's rows for [roster], label resource to value, leaving out
- * what the cache has nothing for: a course the portal lists without a cap or
- * a room shows no "0 / 0" and no blank row, as on iOS.
- */
-private fun rosterRows(roster: Course): List<Pair<Int, String>> = buildList {
-    if (roster.instructor.isNotBlank()) {
-        add(R.string.course_detail_instructor_label to roster.instructor.trim())
-    }
-    if (roster.maxCount > 0) {
-        add(R.string.score_course_detail_enrollment_label to "${roster.enrolledCount} / ${roster.maxCount}")
-    }
-    Course.dedupRooms(roster.classroom).trim().takeIf { it.isNotEmpty() }?.let {
-        add(R.string.course_detail_classroom_label to it)
-    }
-    ScoreCourseRoster.scheduleCode(roster.schedule).takeIf { it.isNotEmpty() }?.let {
-        add(R.string.score_course_detail_schedule_label to it)
     }
 }
 
