@@ -140,7 +140,7 @@ private const val PULL_RING_MIN = 0.02f
  *   dot does not infer it, because "the page is fetching" and "a server last
  *   answered badly" are different questions and only the page knows the first.
  * @param syncedAtMs when the data the page shows was last fetched (epoch ms,
- *   0 for never), for a "Last synced" row under the sources. Null leaves the
+ *   0 for never), for a "Last updated" row under the sources. Null leaves the
  *   row out, for a page whose data has no such age.
  */
 @Composable
@@ -215,7 +215,7 @@ fun SyncStatusDot(
  * Deliberately not account-gated: this dot reports something the page owns.
  *
  * @param syncedAtMs as on the overload above: when the page's data was
- *   fetched, or null to leave the "Last synced" row out.
+ *   fetched, or null to leave the "Last updated" row out.
  */
 @Composable
 fun SyncStatusDot(
@@ -360,8 +360,8 @@ private fun SyncStatusDotBody(
                         color = Color.Transparent,
                         icon = Icons.Filled.Schedule,
                         name = stringResource(
-                            if (age == DataAge.Never) R.string.sync_status_never_synced
-                            else R.string.sync_status_last_synced
+                            if (age == DataAge.Never) R.string.sync_status_never_updated
+                            else R.string.sync_status_last_updated
                         ),
                         text = dataAgeText(age),
                     )

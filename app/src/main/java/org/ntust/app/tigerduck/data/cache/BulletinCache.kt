@@ -98,6 +98,24 @@ class BulletinCache @Inject constructor(@ApplicationContext context: Context) {
         }
     }
 
+    /**
+     * Saves [items], and the list's date when [fetchedAt] is given, unless [stillCurrent] says
+     * the account they were fetched for has signed out meanwhile. Asked under the cache's lock,
+     * which the sign-out's [clear] takes too -- and the sign-out moves what [stillCurrent] reads
+     * before it starts the clear -- so the answer cannot be overtaken between the asking and the
+     * write: either this write lands first and the clear removes it, or the clear has run and
+     * nothing is written. The same shape as
+     * [org.ntust.app.tigerduck.mail.store.MailCache.saveBodyIf]. Returns whether it wrote.
+     */
+    suspend fun saveIf(items: List<BulletinSummary>, fetchedAt: Long?, stillCurrent: () -> Boolean): Boolean = mutex.withLock {
+        if (!stillCurrent()) return@withLock false
+        withContext(Dispatchers.IO) {
+            writeAtomically(file, gson.toJson(items))
+            if (fetchedAt != null) writeAtomically(fetchedAtFile, fetchedAt.toString())
+        }
+        true
+    }
+
     /** One JSON file per id mirrors iOS DataCache.bulletinDetailDir(); keeps
      *  writes small and avoids rewriting an aggregated file on every open. */
     suspend fun loadDetail(id: Int): BulletinDetail? = withContext(Dispatchers.IO) {

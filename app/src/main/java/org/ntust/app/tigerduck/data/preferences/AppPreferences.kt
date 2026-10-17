@@ -57,6 +57,18 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
     private val prefs: SharedPreferences =
         context.getSharedPreferences("tigerduck_prefs", Context.MODE_PRIVATE)
 
+    init {
+        // The "Remember bulletin filters" option is gone: the bulletin page's
+        // chips start with nothing selected on every visit, so nothing reads
+        // the option or the departments it kept. An install that had them
+        // stored is rid of them here; once gone, these removals change nothing
+        // and skip the disk write.
+        prefs.edit()
+            .remove("rememberAnnouncementFilter")
+            .remove("savedAnnouncementOrgs")
+            .apply()
+    }
+
     // Where builds before the server-time course-reset check kept this
     // phone's clock at its last full sync; see legacyLastCourseSyncAtMs.
     private val legacySyncPrefs: SharedPreferences =
@@ -423,34 +435,6 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
     var visualPreset: VisualPreset
         get() = VisualPreset.fromRawValue(prefs.getString(VISUAL_PRESET_KEY, null))
         set(value) = prefs.edit().putString(VISUAL_PRESET_KEY, value.rawValue).apply()
-
-    var rememberAnnouncementFilter: Boolean
-        get() = prefs.getBoolean("rememberAnnouncementFilter", false)
-        set(value) = prefs.edit().putBoolean("rememberAnnouncementFilter", value).apply()
-
-    /**
-     * Persisted department (org) filter for the announcements list. Always
-     * written when the filter changes; restored on launch only when
-     * [rememberAnnouncementFilter] is true. Cleared whenever that toggle
-     * goes false so disabling actually wipes the saved selection.
-     */
-    var savedAnnouncementOrgs: Set<String>
-        get() {
-            val json = prefs.getString("savedAnnouncementOrgs", null) ?: return emptySet()
-            return try {
-                val type = object : TypeToken<List<String>>() {}.type
-                val list: List<String>? = gson.fromJson(json, type)
-                list?.toSet() ?: emptySet()
-            } catch (e: Exception) {
-                emptySet()
-            }
-        }
-        set(value) {
-            val editor = prefs.edit()
-            if (value.isEmpty()) editor.remove("savedAnnouncementOrgs")
-            else editor.putString("savedAnnouncementOrgs", gson.toJson(value.toList()))
-            editor.apply()
-        }
 
     var useEnglishCourseAbbreviation: Boolean
         get() = prefs.getBoolean("useEnglishCourseAbbreviation", true)

@@ -2,6 +2,7 @@
 
 package org.ntust.app.tigerduck.ui.screen.mail
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -330,19 +331,309 @@ class SchoolMailListViewModelTest {
     // --- the "Last synced" row --------------------------------------------------------------
 
     @Test
-    fun `loading the inbox dates it, and a load that fails leaves the date`() {
+    fun `loading the folders on screen dates them, and a load that fails leaves the date`() {
         now = 5_000
         repo.add("INBOX", mailSummary(1))
         vm.load()
-        assertEquals(5_000L, vm.state.value.inboxFetchedAt)
-        assertEquals(5_000L, state.inboxFetchedAt)
+        // All mail: the inbox and Sent, both read just now.
+        assertEquals(5_000L, vm.state.value.fetchedAt)
+        assertEquals(5_000L, state.fetchedAt("INBOX"))
+        assertEquals(5_000L, state.fetchedAt("寄件備份匣"))
 
         now = 9_000
         repo.loadError = MailError.Network()
         vm.refresh()
         assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
-        assertEquals(5_000L, vm.state.value.inboxFetchedAt)
-        assertEquals(5_000L, state.inboxFetchedAt)
+        assertEquals(5_000L, vm.state.value.fetchedAt)
+        assertEquals(5_000L, state.fetchedAt("INBOX"))
+        assertEquals(5_000L, state.fetchedAt("寄件備份匣"))
+    }
+
+    /**
+     * Each folder is dated on its own, and the row dates the folders on screen: the one
+     * selected, or for All mail the older of its two, as on the iPhone. Here a poll's check of
+     * Sent fails, so the inbox is dated and Sent is not, and All mail shows Sent's older date.
+     */
+    @Test
+    fun `the date is the folder on screen's, and All mail shows the older of its two`() {
+        now = 5_000
+        repo.add("INBOX", mailSummary(1))
+        repo.add("寄件備份匣", mailSummary(1))
+        repo.status = FolderStatus(server.uidValidity, 2, 1, 1)
+        vm.load()
+        assertEquals(FolderSelection.AllMail, vm.state.value.selected)
+        assertEquals(5_000L, vm.state.value.fetchedAt)
+
+        vm.startPolling()
+        now = 9_000
+        repo.folderStatusErrors["寄件備份匣"] = MailError.ServerBusy()
+        pollOnce()
+        assertEquals(9_000L, state.fetchedAt("INBOX"))
+        assertEquals(5_000L, state.fetchedAt("寄件備份匣"))
+        assertEquals(5_000L, vm.state.value.fetchedAt)
+        vm.stopPolling()
+
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        assertEquals(9_000L, vm.state.value.fetchedAt)
+
+        now = 12_000
+        vm.selectFolder(FolderSelection.Real("寄件備份匣"))
+        assertEquals(12_000L, vm.state.value.fetchedAt)
+        assertEquals(9_000L, state.fetchedAt("INBOX"))
+
+        vm.selectFolder(FolderSelection.AllMail)
+        assertEquals(12_000L, vm.state.value.fetchedAt)
+    }
+
+    /**
+     * A poll that finds nothing new must still move the row, or a user would read the time as
+     * stale and think the page had not synced -- in All mail too. So the poll asks every folder on
+     * screen for its STATUS, the inbox for new mail as always and Sent for nothing more than an
+     * answer, and dates each that answered; one whose check failed keeps its date.
+     */
+    @Test
+    fun `in All mail a poll that finds nothing new moves the visible date, having verified Sent too`() {
+        now = 5_000
+        repo.add("INBOX", mailSummary(1))
+        repo.add("寄件備份匣", mailSummary(1))
+        repo.status = FolderStatus(server.uidValidity, 2, 1, 1)
+        vm.load()
+        vm.startPolling()
+
+        now = 9_000
+        pollOnce()
+        assertEquals(listOf("寄件備份匣"), repo.folderStatusCalls)
+        assertEquals(9_000L, state.fetchedAt("INBOX"))
+        assertEquals(9_000L, state.fetchedAt("寄件備份匣"))
+        assertEquals(9_000L, vm.state.value.fetchedAt)
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Loaded)
+
+        now = 12_000
+        repo.folderStatusErrors["寄件備份匣"] = MailError.ServerBusy()
+        pollOnce()
+        assertEquals(12_000L, state.fetchedAt("INBOX"))
+        assertEquals(9_000L, state.fetchedAt("寄件備份匣"))
+        assertEquals(9_000L, vm.state.value.fetchedAt)
+        vm.stopPolling()
+    }
+
+    /** A folder viewed on its own is verified by the poll too; the inbox, off screen, is not asked. */
+    @Test
+    fun `a folder viewed on its own is verified by the poll, and dated when it answers`() {
+        now = 5_000
+        repo.add("INBOX", mailSummary(1))
+        repo.add("寄件備份匣", mailSummary(1))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("寄件備份匣"))
+        vm.startPolling()
+        val inboxChecks = repo.statusCalls
+
+        now = 9_000
+        pollOnce()
+        assertEquals(listOf("寄件備份匣"), repo.folderStatusCalls)
+        assertEquals(inboxChecks, repo.statusCalls)
+        assertEquals(9_000L, state.fetchedAt("寄件備份匣"))
+        assertEquals(5_000L, state.fetchedAt("INBOX"))
+        assertEquals(9_000L, vm.state.value.fetchedAt)
+        vm.stopPolling()
+    }
+
+    /**
+     * A load still out across a sign-out and another account's sign-in is the first account's:
+     * its rows must not go on the second account's screen, nor its dates on folders nothing was
+     * fetched for (spec §7.5). The load is not cancelled -- it is blocking IMAP I/O -- so its
+     * answer is dropped when it lands.
+     */
+    @Test
+    fun `a load that lands after a sign-out and another sign-in shows and dates nothing`() {
+        now = 5_000
+        repo.add("INBOX", mailSummary(1))
+        repo.loadGate = CompletableDeferred()
+        vm.load()
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Loading)
+
+        account.signOut()
+        main.dispatcher.scheduler.runCurrent()
+        server.passwords["B10000002"] = "pw"
+        runBlocking { account.signIn("b10000002", "pw") }
+        repo.loadGate!!.complete(Unit)
+
+        assertEquals(SchoolMailListViewModel.UiState(), vm.state.value)
+        assertEquals(0L, state.fetchedAt("INBOX"))
+        assertEquals(0L, state.fetchedAt("寄件備份匣"))
+    }
+
+    /** Each folder is dated as its own page lands, so a failure of Sent's does not lose the inbox's. */
+    @Test
+    fun `in All mail a folder that loads is dated even when the other one fails`() {
+        now = 5_000
+        repo.add("INBOX", mailSummary(1))
+        repo.folderLoadErrors["寄件備份匣"] = MailError.Network()
+        vm.load()
+
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        assertEquals(5_000L, state.fetchedAt("INBOX"))
+        assertEquals(0L, state.fetchedAt("寄件備份匣"))
+        // All mail is as fresh as its staler half, which never loaded.
+        assertEquals(0L, vm.state.value.fetchedAt)
+    }
+
+    /**
+     * A chip tapped while a load is out does not lose the date of a page already on its way
+     * back -- and the batch sends nothing more for the view that left.
+     */
+    @Test
+    fun `a page that lands after the chip moved on still dates its folder`() {
+        now = 5_000
+        repo.add("INBOX", mailSummary(1))
+        repo.add("寄件備份匣", mailSummary(1))
+        repo.onLoaded = { folder ->
+            if (folder == "INBOX") {
+                repo.onLoaded = null
+                now = 9_000
+                vm.selectFolder(FolderSelection.Real("寄件備份匣"))
+            }
+        }
+        vm.load()
+
+        assertEquals(FolderSelection.Real("寄件備份匣"), vm.state.value.selected)
+        assertEquals(9_000L, state.fetchedAt("INBOX"))
+        assertEquals(9_000L, state.fetchedAt("寄件備份匣"))
+        assertEquals(9_000L, vm.state.value.fetchedAt)
+        assertEquals(listOf(1L), vm.state.value.messages.map { it.uid })
+        // The inbox page, then Sent's own load; All mail's Sent request was never sent.
+        assertEquals(listOf("INBOX", "寄件備份匣"), repo.loadsSent)
+    }
+
+    /** The inbox answered the poll's STATUS; that it had grown and the refetch then failed takes nothing from that. */
+    @Test
+    fun `a poll whose STATUS finds new mail dates the inbox even when the reload then fails`() {
+        now = 5_000
+        repo.add("INBOX", mailSummary(1))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.startPolling()
+
+        now = 9_000
+        repo.status = FolderStatus(server.uidValidity, 5, 3, 3)
+        repo.loadError = MailError.Network()
+        pollOnce()
+
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        assertEquals(9_000L, state.fetchedAt("INBOX"))
+        assertEquals(9_000L, vm.state.value.fetchedAt)
+        vm.stopPolling()
+    }
+
+    /** A chip tapped while the poll's inbox STATUS is out: the poll asks nothing more for the view that left. */
+    @Test
+    fun `a poll does not STATUS a folder that left the screen while its inbox check was out`() {
+        now = 5_000
+        repo.add("INBOX", mailSummary(1))
+        repo.add("寄件備份匣", mailSummary(1))
+        repo.status = FolderStatus(server.uidValidity, 2, 1, 1)
+        vm.load()
+        vm.startPolling()
+        repo.statusGate = CompletableDeferred()
+        now = 9_000
+        pollOnce()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        repo.statusGate!!.complete(Unit)
+
+        assertEquals(emptyList<String>(), repo.folderStatusCalls)
+        assertEquals(9_000L, state.fetchedAt("INBOX"))
+        vm.stopPolling()
+    }
+
+    /**
+     * A's All mail load has its inbox page when A signs out and B signs in. The batch's next
+     * request would go out with B's credentials under A's generation, and B's answer -- a failure
+     * too, even a rejected password -- would be dropped as A's. So a batch stops before each
+     * further request once its account has left, and sends nothing more.
+     */
+    @Test
+    fun `a batch whose account left between two of its requests sends no more`() {
+        now = 5_000
+        repo.add("INBOX", mailSummary(1))
+        repo.add("寄件備份匣", mailSummary(1))
+        repo.onLoaded = { folder ->
+            if (folder == "INBOX") {
+                repo.onLoaded = null
+                signOutAndSignInAnother()
+            }
+        }
+        vm.load()
+
+        assertEquals(listOf("INBOX"), repo.loadsSent)
+        assertEquals(SchoolMailListViewModel.UiState(), vm.state.value)
+        assertEquals(0L, state.fetchedAt("INBOX"))
+        assertEquals(0L, state.fetchedAt("寄件備份匣"))
+    }
+
+    /** The folder list a load starts with is its first request, and waits for the session like any other. */
+    @Test
+    fun `a load whose folder list waits across the account change sends it for nobody`() {
+        repo.add("INBOX", mailSummary(1))
+        repo.foldersGate = CompletableDeferred()
+        vm.load()
+        signOutAndSignInAnother()
+        repo.foldersGate!!.complete(Unit)
+
+        assertEquals(0, repo.foldersSent)
+        assertEquals(emptyList<String>(), repo.loadsSent)
+        assertEquals(SchoolMailListViewModel.UiState(), vm.state.value)
+    }
+
+    /** A search is a batch too, one SEARCH per folder of the view. */
+    @Test
+    fun `a search whose account left between two of its folders sends no more`() {
+        repo.add("INBOX", mailSummary(1, subject = "期中考"))
+        repo.add("寄件備份匣", mailSummary(2, subject = "期中考"))
+        vm.load()
+        repo.onSearched = { folder ->
+            if (folder == "INBOX") {
+                repo.onSearched = null
+                signOutAndSignInAnother()
+            }
+        }
+        vm.setSearchText("期中考")
+        vm.submitSearch()
+
+        assertEquals(listOf("INBOX"), repo.searchesSent)
+        assertEquals(SchoolMailListViewModel.UiState(), vm.state.value)
+    }
+
+    /**
+     * The poll's check of Sent passed, but its STATUS then queued behind another request holding
+     * the session, and the user moved to Inbox meanwhile. Asked again with the session held, right
+     * before the command, the STATUS is not sent for a folder that has left the screen.
+     */
+    @Test
+    fun `a poll's STATUS queued behind the session is not sent once its folder left the screen`() {
+        now = 5_000
+        repo.add("INBOX", mailSummary(1))
+        repo.add("寄件備份匣", mailSummary(1))
+        repo.status = FolderStatus(server.uidValidity, 2, 1, 1)
+        vm.load()
+        vm.startPolling()
+        repo.folderStatusGate = CompletableDeferred()
+        now = 9_000
+        pollOnce()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        repo.folderStatusGate!!.complete(Unit)
+
+        assertEquals(emptyList<String>(), repo.folderStatusCalls)
+        assertEquals(9_000L, state.fetchedAt("INBOX"))
+        assertEquals(5_000L, state.fetchedAt("寄件備份匣"))
+        vm.stopPolling()
+    }
+
+    /** The account leaves and another arrives, as Settings does it, in the middle of whatever is running. */
+    private fun signOutAndSignInAnother() {
+        account.signOut()
+        main.dispatcher.scheduler.runCurrent()
+        server.passwords["B10000002"] = "pw"
+        runBlocking { account.signIn("b10000002", "pw") }
     }
 
     @Test
@@ -350,16 +641,17 @@ class SchoolMailListViewModelTest {
         repo.add("INBOX", mailSummary(1))
         repo.status = FolderStatus(server.uidValidity, 2, 1, 1)
         vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
         vm.startPolling()
 
         now = 9_000
         pollOnce()
-        assertEquals(9_000L, vm.state.value.inboxFetchedAt)
+        assertEquals(9_000L, vm.state.value.fetchedAt)
 
         now = 12_000
         repo.statusError = MailError.ServerBusy()
         pollOnce()
-        assertEquals(9_000L, vm.state.value.inboxFetchedAt)
+        assertEquals(9_000L, vm.state.value.fetchedAt)
         vm.stopPolling()
     }
 
@@ -367,11 +659,12 @@ class SchoolMailListViewModelTest {
     fun `a check that ran while the page was away shows when the page comes back`() {
         repo.add("INBOX", mailSummary(1))
         vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
         now = 7_000
         assertEquals(CheckOutcome.NoChange, runBlocking { checker.check(CheckSource.ALARM) })
 
         vm.startPolling()
-        assertEquals(7_000L, vm.state.value.inboxFetchedAt)
+        assertEquals(7_000L, vm.state.value.fetchedAt)
         vm.stopPolling()
     }
 
@@ -382,21 +675,23 @@ class SchoolMailListViewModelTest {
         repo.add("INBOX", mailSummary(1))
         vm.load()
         assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Loaded)
-        assertEquals(0L, vm.state.value.inboxFetchedAt)
-        assertEquals(0L, state.inboxFetchedAt)
+        assertEquals(0L, vm.state.value.fetchedAt)
+        assertEquals(0L, state.fetchedAt("INBOX"))
+        assertEquals(0L, state.fetchedAt("寄件備份匣"))
     }
 
     @Test
-    fun `signing out forgets the date with the rest of the mail state`() {
+    fun `signing out forgets every folder's date with the rest of the mail state`() {
         now = 5_000
         repo.add("INBOX", mailSummary(1))
         vm.load()
-        assertEquals(5_000L, vm.state.value.inboxFetchedAt)
+        assertEquals(5_000L, vm.state.value.fetchedAt)
 
         account.signOut()
         main.dispatcher.scheduler.runCurrent()
-        assertEquals(0L, vm.state.value.inboxFetchedAt)
-        assertEquals(0L, state.inboxFetchedAt)
+        assertEquals(0L, vm.state.value.fetchedAt)
+        assertEquals(0L, state.fetchedAt("INBOX"))
+        assertEquals(0L, state.fetchedAt("寄件備份匣"))
     }
 
     // --- a new mail's body ---------------------------------------------------------------

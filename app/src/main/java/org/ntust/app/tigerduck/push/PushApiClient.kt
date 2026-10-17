@@ -252,15 +252,25 @@ class PushApiClient @Inject constructor(
         }
     }
 
+    /**
+     * PATCH the colour of the course [courseId], or its name in [locale].
+     * Returns whether anything went out: false when TigerSync, or the switch
+     * for colours or names, is off, or when [allowed] says no right before
+     * the request goes, after the header is made. Throws when the request
+     * fails. [signIn], when given, pins the request to that sign-in, as
+     * [patchAssignmentOverride]'s is.
+     */
     suspend fun patchCourseOverride(
         courseId: Any,
         colorHex: String? = null,
         customName: String? = null,
         locale: String? = null,
-    ) = withContext(Dispatchers.IO) {
-        if (!isSyncCapable) return@withContext
-        if (colorHex != null && !prefs.syncCourseColors) return@withContext
-        if (customName != null && !prefs.syncCourseNames) return@withContext
+        signIn: Int? = null,
+        allowed: () -> Boolean = { true },
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!isSyncCapable) return@withContext false
+        if (colorHex != null && !prefs.syncCourseColors) return@withContext false
+        if (customName != null && !prefs.syncCourseNames) return@withContext false
         val payload = mutableMapOf<String, Any?>()
         if (colorHex != null) payload["color_hex"] = colorHex
         if (customName != null) payload["custom_name"] = customName
@@ -269,13 +279,18 @@ class PushApiClient @Inject constructor(
         val request = Request.Builder()
             .url("$baseUrl/sync/courses/$courseId/override")
             .patch(body)
-            .addAuthHeader()
+            .addAuthHeader(signIn)
             .build()
+        // Read once the header is made, which can renew the session and so
+        // suspend: a hold the course outbox put on the kind meanwhile must
+        // stop the request, which the switches above alone would let through.
+        if (!allowed()) return@withContext false
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                throw PushApiException("patchCourseOverride failed: HTTP ${response.code}")
+                throw PushApiException("patchCourseOverride failed: HTTP ${response.code}", response.code)
             }
         }
+        true
     }
 
     /**
