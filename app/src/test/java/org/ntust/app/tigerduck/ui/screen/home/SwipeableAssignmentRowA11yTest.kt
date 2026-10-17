@@ -5,6 +5,8 @@ import androidx.activity.ComponentActivity
 import androidx.annotation.StringRes
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import org.junit.Assert.assertEquals
@@ -42,7 +44,12 @@ class SwipeableAssignmentRowA11yTest {
 
     private fun text(@StringRes id: Int) = RuntimeEnvironment.getApplication().getString(id)
 
-    private fun show(isIgnored: Boolean = false, isMarkedCompleted: Boolean = false, swipeEnabled: Boolean = true) {
+    private fun show(
+        isIgnored: Boolean = false,
+        isMarkedCompleted: Boolean = false,
+        swipeEnabled: Boolean = true,
+        assignment: Assignment = this.assignment,
+    ) {
         composeRule.setContent {
             SwipeableAssignmentRow(
                 assignment = assignment,
@@ -95,5 +102,25 @@ class SwipeableAssignmentRowA11yTest {
         show(swipeEnabled = false)
 
         assertEquals(emptyList<String>(), actions().map { it.label })
+    }
+
+    @Test
+    fun `a row with a Moodle page is a button`() {
+        show(assignment = assignment.copy(moodleUrl = "https://moodle2.ntust.edu.tw/mod/assign/view.php?id=890"))
+
+        composeRule.onNodeWithText("Homework 3").assertHasClickAction()
+    }
+
+    @Test
+    fun `a row Moodle gave no address is not a button, and keeps its actions`() {
+        // A tap would open nothing, so TalkBack is not told to double-tap; the
+        // row still reads as one element, with its swipes (#313).
+        show()
+
+        composeRule.onNodeWithText("Homework 3").assertHasNoClickAction()
+        assertEquals(
+            listOf(text(R.string.assignment_mark_complete), text(R.string.assignment_ignore)),
+            actions().map { it.label },
+        )
     }
 }

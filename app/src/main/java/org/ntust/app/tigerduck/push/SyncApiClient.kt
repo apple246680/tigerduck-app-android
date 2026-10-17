@@ -9,9 +9,7 @@ import org.json.JSONObject
 import org.ntust.app.tigerduck.auth.AuthTokenManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.network.resolveAnnouncementEndpoint
-import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.shared.Course
-import java.util.Date
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -77,7 +75,6 @@ data class CourseTombstone(
 )
 
 data class BackendSyncResult(
-    val assignments: List<Assignment>,
     val ignoredIds: Set<String>,
     val completedIds: Set<String>,
     val courseOverrides: List<CourseOverrideResult>,
@@ -144,37 +141,13 @@ class SyncApiClient @Inject constructor(
     }
 
     private fun parseFullSync(json: JSONObject): BackendSyncResult {
-        val assignments = mutableListOf<Assignment>()
+        // The snapshot's assignment rows are not read as assignments: every
+        // cached assignment comes from Moodle itself (MoodleService). They
+        // only key the overrides below by server row id, for a server whose
+        // overrides carry no moodle_assignment_id of their own.
         val arr = json.optJSONArray("assignments") ?: return BackendSyncResult(
-            emptyList(), emptySet(), emptySet(), emptyList(), emptySet(), emptyList(), json.optLong("current_revision", 0)
+            emptySet(), emptySet(), emptyList(), emptySet(), emptyList(), json.optLong("current_revision", 0)
         )
-        for (i in 0 until arr.length()) {
-            val a = arr.getJSONObject(i)
-            if (!a.isNull("deleted_at")) continue
-            // moodle_assignment_id can legitimately be absent/null (see the
-            // pkToMoodleId fallback below and the assignment_overrides loop),
-            // so read it defensively and skip records we can't key — one bad
-            // record must not fail the entire /sync/full response.
-            val moodleAssignmentId = a.optInt("moodle_assignment_id", -1)
-            if (moodleAssignmentId <= 0) continue
-            val dueDate = nullStr(a, "due_at")?.let { parseIso(it) }
-                ?: Date(Long.MAX_VALUE)
-            assignments.add(
-                Assignment(
-                    assignmentId = moodleAssignmentId.toString(),
-                    courseNo = nullStr(a, "course_no") ?: "",
-                    courseName = nullStr(a, "course_name") ?: "",
-                    title = nullStr(a, "title") ?: "",
-                    dueDate = dueDate,
-                    isCompleted = a.optBoolean("provider_is_submitted", false),
-                    moodleUrl = nullStr(a, "moodle_url"),
-                    cutoffDate = nullStr(a, "cutoff_at")?.let { parseIso(it) },
-                    submittedAt = nullStr(a, "provider_submitted_at")?.let { parseIso(it) },
-                )
-            )
-        }
-
-        // PK → moodleId fallback for servers that don't include moodle_assignment_id in overrides
         val pkToMoodleId = mutableMapOf<Int, String>()
         for (i in 0 until arr.length()) {
             val a = arr.getJSONObject(i)
@@ -277,7 +250,6 @@ class SyncApiClient @Inject constructor(
         }
 
         return BackendSyncResult(
-            assignments = assignments,
             ignoredIds = ignoredIds,
             completedIds = completedIds,
             courseOverrides = courseOverrides,
@@ -305,17 +277,6 @@ class SyncApiClient @Inject constructor(
     }
 
     private fun nullStr(obj: JSONObject, key: String): String? = nullableString(obj, key)
-
-    private fun parseIso(s: String): Date? {
-        if (s.isBlank() || s == "null") return null
-        return try {
-            java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US).apply {
-                timeZone = java.util.TimeZone.getTimeZone("UTC")
-            }.parse(s.take(19))
-        } catch (_: Exception) {
-            null
-        }
-    }
 }
 
 /** A snapshot course row's `id`, or null when it has none. */

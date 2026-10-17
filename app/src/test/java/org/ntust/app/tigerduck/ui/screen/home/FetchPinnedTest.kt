@@ -14,7 +14,6 @@ import org.ntust.app.tigerduck.push.BackendSyncResult
 class FetchPinnedTest {
 
     private val snapshot = BackendSyncResult(
-        assignments = emptyList(),
         ignoredIds = emptySet(),
         completedIds = emptySet(),
         courseOverrides = emptyList(),
