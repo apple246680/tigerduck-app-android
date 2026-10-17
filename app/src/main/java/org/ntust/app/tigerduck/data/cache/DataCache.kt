@@ -629,6 +629,27 @@ class DataCache @Inject constructor(
             .toMap()
     }
 
+    // --- Pending course deletes (semester → course numbers) ---
+    // Courses deleted on the class table whose backend DELETE has not
+    // landed; see PendingCourseDeletes, the only writer. A new file, so an
+    // older install simply has none; read tolerantly all the same.
+
+    /** False, and nothing written, when the data was wiped since [generation]. */
+    suspend fun savePendingCourseDeletes(pending: Map<String, List<String>>, generation: Int? = null): Boolean =
+        saveToUserDataIf(pending, "pending_course_deletes.json", generation ?: writeGeneration())
+
+    /** Null and blank entries are left out, and so is a term left with none. */
+    suspend fun loadPendingCourseDeletes(): Map<String, List<String>> {
+        val type = object : TypeToken<Map<String, List<String?>?>>() {}.type
+        return loadFromUserData<Map<String?, List<String?>?>>(type, "pending_course_deletes.json")
+            .orEmpty()
+            .mapNotNull { (semester, nos) ->
+                val kept = nos.orEmpty().filterNotNull().filter(String::isNotBlank)
+                if (semester.isNullOrBlank() || kept.isEmpty()) null else semester to kept
+            }
+            .toMap()
+    }
+
     // --- Pending course overrides (a colour, or a name in one locale) ---
     // Colours and names set on the class table whose PATCH the backend has
     // not confirmed; see PendingCourseOverrides, the only writer. A new file,
@@ -935,6 +956,7 @@ class DataCache @Inject constructor(
                     "marked_completed_assignments.json",
                     "unsent_marks.json",
                     "pending_course_adds.json",
+                    "pending_course_deletes.json",
                     "pending_course_overrides.json",
                     "deleted_courses.json",
                     "course_custom_names.json",

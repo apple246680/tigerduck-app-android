@@ -92,6 +92,7 @@ class ClassTableViewModel @Inject constructor(
     private val importedClassTableStore: ImportedClassTableStore,
     private val importedCourseLookup: ImportedCourseLookup,
     private val pendingCourseAdds: org.ntust.app.tigerduck.data.PendingCourseAdds,
+    private val pendingCourseDeletes: org.ntust.app.tigerduck.data.PendingCourseDeletes,
     private val pendingCourseOverrides: org.ntust.app.tigerduck.data.PendingCourseOverrides,
     private val reviewPrompt: ReviewPrompt,
     @param:ApplicationScope private val appScope: CoroutineScope,
@@ -931,6 +932,10 @@ class ClassTableViewModel @Inject constructor(
                 )
             }
             dataCache.saveCourses(updated, _currentSemester.value)
+            // A delete of it still queued goes first, or it could land after
+            // this add and take the course off the server again; as the
+            // iPhone's `discardCourseDeletes` before an add.
+            pendingCourseDeletes.forget(semester, course.courseNo)
             // Kept until it lands: in a term the server already has, no
             // sync would send it again otherwise.
             pendingCourseAdds.send(updated, semester, course.courseNo)
@@ -944,14 +949,23 @@ class ClassTableViewModel @Inject constructor(
     /**
      * Takes back a course [addCourse] added in this Add course session, for
      * the sheet's tap-to-toggle: add a course, tap it again to back out.
-     * Without a tombstone: one in `deletedCourseNos` would later hide a real
-     * enrolled course with the same [courseNo] from cache and network merges.
-     * Otherwise the regular delete, so the backend row the add already
-     * uploaded goes too, or the next full sync brings the course back.
+     * Without a tombstone of its own: one in `deletedCourseNos` would later
+     * hide a real enrolled course with the same [courseNo] from cache and
+     * network merges. Otherwise the regular delete, so the backend row the
+     * add already uploaded goes too, or the next full sync brings the course
+     * back. As the iPhone's `removeUserAddedCourse`, which sends the same
+     * `DELETE /sync/courses/{key}`.
+     *
+     * That DELETE writes a server tombstone binding every device (the
+     * backend's `delete_course`), which the next full sync imports into
+     * `deletedCourseNos` here and on the iPhone alike, and which a portal
+     * upload cannot lift: the course stays hidden until it is added back by
+     * hand, whose upload forces its key. The two apps agree on this; whether
+     * the backend should tombstone a take-back is an open question for both.
      *
      * Only a hand-added course: the sheet gates on its own session, and this
      * is the net under it, so an enrolled course leaves only through
-     * [deleteCourse]. As the iPhone's `removeUserAddedCourse`.
+     * [deleteCourse].
      */
     fun removeAddedCourse(courseNo: String) {
         if (isShowingSomeoneElse) return
@@ -1063,8 +1077,10 @@ class ClassTableViewModel @Inject constructor(
 
     /**
      * Removes [courseNo] from the term, here and on the backend. With a
-     * [tombstone] the course stays gone through the next sync; without one,
-     * for [removeAddedCourse], a later sync may list it again.
+     * [tombstone] the course stays hidden here whatever the server lists;
+     * without one, for [removeAddedCourse], only the queued DELETE keeps it
+     * out, and the server tombstone that DELETE writes hides it from the next
+     * sync on.
      */
     fun deleteCourse(courseNo: String, tombstone: Boolean = true) {
         if (isShowingSomeoneElse) return
@@ -1093,12 +1109,12 @@ class ClassTableViewModel @Inject constructor(
             // PendingCourseOverrides.forget.
             pendingCourseOverrides.forget(listOfNotNull(moodleId))
             widgetUpdater.requestUpdate()
-            val courseKey = "client:$semester:$courseNo"
             // After an add of it already being sent, which landing later
-            // would bring it back; see PendingCourseAdds.removing.
+            // would bring it back; see PendingCourseAdds.removing. Kept and
+            // sent again by every full sync until it lands, which keeps the
+            // course out of the term meanwhile; see PendingCourseDeletes.
             pendingCourseAdds.removing {
-                runCatching { pushApiClient.deleteCourse(courseKey) }
-                    .onFailure { e -> Log.w("ClassTable", "deleteCourse backend failed: ${e.logSummary()}") }
+                pendingCourseDeletes.send(semester, courseNo)
             }
             runCatching { pushApiClient.uploadCourses(updated, semester) }
                 .onFailure { e -> Log.w("ClassTable", "uploadCourses after delete failed: ${e.logSummary()}") }
@@ -1309,6 +1325,8 @@ class ClassTableViewModel @Inject constructor(
         // Their names went from the file with the term.
         courseCustomNames = courseCustomNames - held
         pendingCourseOverrides.forget(moodleIds)
+        // The wipe took the term's rows, queued single deletes included.
+        pendingCourseDeletes.forget(semester)
         val inTerm = { key: String -> CourseIgnores.semesterOf(key) == semester }
         val edit = ignoredCourses.edit { keys -> keys.filterNotTo(mutableSetOf(), inTerm) }
         try {

@@ -47,11 +47,14 @@ class ClassTableWiringTest {
         assertCalls("resetCourses", "if (wiped) fetchData() else _resetFailedEvent.tryEmit(semester)")
     }
 
-    /** tigerduck-app-android#347: an add landing after the DELETE would bring the course back. */
+    /**
+     * tigerduck-app-android#347: an add landing after the DELETE would bring the course back.
+     * The DELETE goes through PendingCourseDeletes, which keeps it until it lands.
+     */
     @Test
     fun `a delete and a reset reach the backend with no course add being sent`() {
         for ((name, call) in listOf(
-            "deleteCourse" to "pushApiClient.deleteCourse(courseKey)",
+            "deleteCourse" to "pendingCourseDeletes.send(semester, courseNo)",
             "wipeTerm" to "termReset.run(semester)",
         )) {
             val body = body(name)
