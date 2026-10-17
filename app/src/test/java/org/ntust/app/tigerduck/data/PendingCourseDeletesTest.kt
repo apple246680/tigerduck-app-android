@@ -1,6 +1,9 @@
 package org.ntust.app.tigerduck.data
 
 import android.app.Application
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
@@ -8,9 +11,11 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.ntust.app.tigerduck.academic.AcademicCalendarStore
+import org.ntust.app.tigerduck.auth.NotSignedInException
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.push.PushApiException
+import org.ntust.app.tigerduck.shared.Course
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
@@ -23,35 +28,62 @@ import java.io.IOException
  * course (and a regular delete's tombstone did not help: the reconcile un-hides a course the
  * server still lists). Now the delete waits on disk, every full sync sends it again first,
  * and the reconcile keeps the course out until it lands.
+ *
+ * Sent under the lock course adds and term resets take ([PendingCourseAdds.removing]), pinned
+ * to the sign-in that queued it, and only while still queued: a retry read before a re-add or
+ * a reset must not take the restored course off the server, nor send as the next account.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
 class PendingCourseDeletesTest {
 
     private lateinit var cache: DataCache
+    private lateinit var adds: PendingCourseAdds
     private lateinit var deletes: PendingCourseDeletes
 
-    private val sent = mutableListOf<String>()
+    private data class Sent(val courseKey: String, val account: Int)
+
+    private val sent = mutableListOf<Sent>()
     private var answer: suspend (String) -> Unit = {}
+    private val uploads = mutableListOf<List<String>>()
+    private val events = mutableListOf<String>()
+
+    // AuthTokenManager.signInGeneration, and what happens before a request's header is made.
+    private var signIn = 1
+    private var beforeHeader: suspend () -> Unit = {}
 
     private val term = "1151"
     private val typed = "MA1010002"
+    private val other = "PE1010003"
+    private fun course(no: String) = Course(courseNo = no, courseName = no, isManual = true)
 
     @Before
     fun setUp() {
         val context = RuntimeEnvironment.getApplication()
         cache = DataCache(context, AcademicCalendarStore(context, OkHttpClient(), AppPreferences(context)))
-        deletes = PendingCourseDeletes(cache) { courseKey ->
-            sent += courseKey
+        adds = PendingCourseAdds(cache, { courses, _, _, pinned ->
+            if (pinned != signIn) throw NotSignedInException()
+            uploads += courses.map { it.courseNo }
+            events += "upload"
+            courses.map { it.courseNo }
+        }, signInGeneration = { signIn })
+        // As PushApiClient.deleteCourse: pinned to a sign-in, the header is that account's or none.
+        deletes = PendingCourseDeletes(cache, adds, { courseKey, pinned ->
+            beforeHeader()
+            if (pinned != signIn) throw NotSignedInException()
+            sent += Sent(courseKey, account = signIn)
             answer(courseKey)
-        }
+            events += "DELETE"
+        }, signInGeneration = { signIn })
     }
+
+    private fun keys() = sent.map { it.courseKey }
 
     @Test
     fun `a delete that fails is kept, and the next sync sends it again with the same key`() = runTest {
         answer = { throw IOException("offline") }
         deletes.send(term, typed)
-        assertEquals(listOf("client:1151:MA1010002"), sent)
+        assertEquals(listOf("client:1151:MA1010002"), keys())
         assertEquals(mapOf(term to listOf(typed)), cache.loadPendingCourseDeletes())
         // What the reconcile keeps out of the term meanwhile.
         assertEquals(setOf(typed), deletes.waitingIn(term))
@@ -63,7 +95,7 @@ class PendingCourseDeletesTest {
 
         answer = {}
         deletes.retry()
-        assertEquals(listOf("client:1151:MA1010002", "client:1151:MA1010002", "client:1151:MA1010002"), sent)
+        assertEquals(listOf("client:1151:MA1010002", "client:1151:MA1010002", "client:1151:MA1010002"), keys())
         assertEquals(emptyMap<String, List<String>>(), cache.loadPendingCourseDeletes())
         assertEquals(emptySet<String>(), deletes.waitingIn(term))
     }
@@ -71,26 +103,26 @@ class PendingCourseDeletesTest {
     @Test
     fun `a delete that lands is not kept`() = runTest {
         deletes.send(term, typed)
-        assertEquals(listOf("client:1151:MA1010002"), sent)
+        assertEquals(listOf("client:1151:MA1010002"), keys())
         assertEquals(emptyMap<String, List<String>>(), cache.loadPendingCourseDeletes())
     }
 
-    /** Adding the course back, or resetting its term, drops the delete still queued for it. */
+    /** Adding the course back, or resetting its term under the adds lock, drops the delete still queued for it. */
     @Test
     fun `a course added back or a term reset lets its queued delete go`() = runTest {
         answer = { throw IOException("offline") }
         deletes.send(term, typed)
-        deletes.send(term, "PE1010003")
+        deletes.send(term, other)
         deletes.send("1142", typed)
 
         deletes.forget(term, typed)
-        assertEquals(mapOf(term to listOf("PE1010003"), "1142" to listOf(typed)), cache.loadPendingCourseDeletes())
+        assertEquals(mapOf(term to listOf(other), "1142" to listOf(typed)), cache.loadPendingCourseDeletes())
 
-        deletes.forget(term)
+        adds.removing { deletes.forgetTerm(term) }
         assertEquals(mapOf("1142" to listOf(typed)), cache.loadPendingCourseDeletes())
 
         deletes.retry()
-        assertEquals(listOf("client:1142:MA1010002"), sent.drop(3))
+        assertEquals(listOf("client:1142:MA1010002"), keys().drop(3))
     }
 
     /** Account-scoped: a sign-out's wipe takes the queue with the rest of the user's data. */
@@ -104,5 +136,85 @@ class PendingCourseDeletesTest {
         assertEquals(emptyMap<String, List<String>>(), cache.loadPendingCourseDeletes())
         deletes.retry()
         assertEquals(1, sent.size)
+    }
+
+    @Test
+    fun `a delete read as one account is not sent as the next one`() = runTest {
+        answer = { throw IOException("offline") }
+        deletes.send(term, typed)
+
+        // The account signs out, and another signs in, before the retry's request has its header.
+        answer = {}
+        beforeHeader = {
+            beforeHeader = {}
+            cache.clearAllUserData()
+            signIn++
+        }
+        deletes.retry()
+
+        assertEquals(emptyList<Sent>(), sent.filter { it.account == 2 })
+        assertEquals(emptyMap<String, List<String>>(), cache.loadPendingCourseDeletes())
+    }
+
+    /** The retry read both deletes; the second course was added back while the first was sent. */
+    @Test
+    fun `a retried delete whose course was added back meanwhile is not sent`() = runTest {
+        cache.saveCourses(listOf(course(typed), course(other)), term)
+        answer = { throw IOException("offline") }
+        deletes.send(term, typed)
+        deletes.send(term, other)
+
+        val sending = CompletableDeferred<Unit>()
+        val landed = CompletableDeferred<Unit>()
+        answer = {
+            sending.complete(Unit)
+            landed.await()
+        }
+        val retry = launch { deletes.retry() }
+        sending.await()
+        // Added back by hand meanwhile, as ClassTableViewModel.addCourse does.
+        val readd = launch {
+            deletes.forget(term, other)
+            adds.send(listOf(course(typed), course(other)), term, other)
+        }
+        runCurrent()
+        answer = {}
+        landed.complete(Unit)
+        retry.join()
+        readd.join()
+
+        // Its stale DELETE would have taken the restored course off the server again.
+        assertEquals(1, keys().count { it == "client:1151:PE1010003" })
+        // The add went up (the term's list, as an add sends it), after the first course's DELETE.
+        assertEquals(listOf(listOf(typed, other)), uploads)
+        assertEquals(listOf("DELETE", "upload"), events)
+        assertEquals(emptyMap<String, List<String>>(), cache.loadPendingCourseDeletes())
+    }
+
+    /** A delete under way holds the adds back, as a delete by hand did before it was queued. */
+    @Test
+    fun `a course add waits for a delete being sent`() = runTest {
+        cache.saveCourses(listOf(course(typed)), term)
+        answer = { throw IOException("offline") }
+        deletes.send(term, typed)
+        events.clear()
+
+        val sending = CompletableDeferred<Unit>()
+        val landed = CompletableDeferred<Unit>()
+        answer = {
+            sending.complete(Unit)
+            landed.await()
+        }
+        val retry = launch { deletes.retry() }
+        sending.await()
+        val add = launch { adds.send(listOf(course(typed)), term, typed) }
+        runCurrent()
+        assertEquals("the add waits for the DELETE", emptyList<List<String>>(), uploads)
+        landed.complete(Unit)
+        retry.join()
+        add.join()
+
+        // The other way round, the add's force key would lose to the DELETE landing after it.
+        assertEquals(listOf("DELETE", "upload"), events)
     }
 }

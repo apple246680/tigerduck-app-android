@@ -1109,13 +1109,12 @@ class ClassTableViewModel @Inject constructor(
             // PendingCourseOverrides.forget.
             pendingCourseOverrides.forget(listOfNotNull(moodleId))
             widgetUpdater.requestUpdate()
-            // After an add of it already being sent, which landing later
-            // would bring it back; see PendingCourseAdds.removing. Kept and
-            // sent again by every full sync until it lands, which keeps the
-            // course out of the term meanwhile; see PendingCourseDeletes.
-            pendingCourseAdds.removing {
-                pendingCourseDeletes.send(semester, courseNo)
-            }
+            // Kept and sent again by every full sync until it lands, which
+            // keeps the course out of the term meanwhile, and sent after an
+            // add of it already under way, which landing later would bring it
+            // back: the outbox takes PendingCourseAdds.removing itself, so it
+            // is not taken here. See PendingCourseDeletes.
+            pendingCourseDeletes.send(semester, courseNo)
             runCatching { pushApiClient.uploadCourses(updated, semester) }
                 .onFailure { e -> Log.w("ClassTable", "uploadCourses after delete failed: ${e.logSummary()}") }
         }
@@ -1320,13 +1319,15 @@ class ClassTableViewModel @Inject constructor(
         // With no course add sent between the DELETE and the wipe; see PendingCourseAdds.removing.
         val held = pendingCourseAdds.removing {
             termReset.run(semester) { pushApiClient.deleteAllCourses(semester) }
+                // The wipe took the term's rows, queued single deletes included.
+                // Before the lock goes: a retry waiting behind the wipe would
+                // otherwise send one after the refetch re-uploads the roster.
+                ?.also { pendingCourseDeletes.forgetTerm(semester) }
         } ?: return false
         if (_currentSemester.value == semester) _courses.value = emptyList()
         // Their names went from the file with the term.
         courseCustomNames = courseCustomNames - held
         pendingCourseOverrides.forget(moodleIds)
-        // The wipe took the term's rows, queued single deletes included.
-        pendingCourseDeletes.forget(semester)
         val inTerm = { key: String -> CourseIgnores.semesterOf(key) == semester }
         val edit = ignoredCourses.edit { keys -> keys.filterNotTo(mutableSetOf(), inTerm) }
         try {
