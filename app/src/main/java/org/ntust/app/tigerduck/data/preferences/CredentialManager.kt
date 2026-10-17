@@ -113,16 +113,30 @@ class CredentialManager private constructor(
             prefs.edit().remove("moodle_token").apply()
 
     /**
-     * Stores the Moodle [token] only while [studentId] is still the stored account. Under the
-     * same lock as [clearNtustCredentials] and [clearAll], so a sign-out cannot land between the
-     * check and the store and leave the departing account's token for the next one.
+     * Stores the Moodle [token], with the [privateToken] harvested with it, only while [studentId]
+     * is still the stored account. Under the same lock as [clearNtustCredentials] and [clearAll],
+     * so a sign-out cannot land between the check and the store and leave the departing account's
+     * tokens for the next one.
      */
     @Synchronized
-    fun storeMoodleTokenIfSignedIn(studentId: String, token: String): Boolean {
+    fun storeMoodleTokenIfSignedIn(studentId: String, token: String, privateToken: String?): Boolean {
         if (ntustStudentId != studentId) return false
         moodleToken = token
+        moodlePrivateToken = privateToken
         return true
     }
+
+    /**
+     * The private token Moodle harvests with [moodleToken], which only ever asks Moodle for a
+     * one-time autologin key (`tool_mobile_get_autologin_key`). A secret: never logged, and sent
+     * nowhere but that request to the Moodle site. Cleared with the NTUST account.
+     */
+    var moodlePrivateToken: String?
+        get() = prefs.getString("moodle_private_token", null)
+        set(value) = if (value != null)
+            prefs.edit().putString("moodle_private_token", value).apply()
+        else
+            prefs.edit().remove("moodle_private_token").apply()
 
     // ── v3 JWT tokens ────────────────────────────────────────────────────────
 
@@ -135,6 +149,7 @@ class CredentialManager private constructor(
             .remove("ntust_student_id")
             .remove("ntust_password")
             .remove("moodle_token")
+            .remove("moodle_private_token")
             // Not the backend session, nor its refresh token's send count:
             // AuthTokenManager.logout() drops them under its own lock, and hands
             // the session to the sign-out's unregister as it does.

@@ -1660,10 +1660,6 @@
                 "hash": "d01ce9a0672d"
             },
             {
-                "name": "AndroidX annotation jvm library",
-                "hash": "d01ce9a0672d"
-            },
-            {
                 "name": "AndroidX annotation library",
                 "hash": "d01ce9a0672d"
             },
@@ -1677,10 +1673,6 @@
             },
             {
                 "name": "AndroidX asynclayoutinflater library",
-                "hash": "d01ce9a0672d"
-            },
-            {
-                "name": "AndroidX collection jvm library",
                 "hash": "d01ce9a0672d"
             },
             {
@@ -1840,12 +1832,246 @@
                 "hash": "283ea6cc2997"
             },
             {
+                "name": "Jakarta Inject",
+                "hash": "283ea6cc2997"
+            },
+            {
                 "name": "JsInterop Annotations",
                 "hash": "b3e17cd48de9"
             },
             {
                 "name": "Kotlin",
-                "hash": "4fe7bc606857"
+                "hash": "8f8bc2664f05"
+            },
+            {
+                "name": "Kotlin coroutines",
+                "hash": "283ea6cc2997"
+            },
+            {
+                "name": "Play Core Software Development Kit",
+                "hash": "62eefe4377b4"
+            },
+            {
+                "name": "SafeParcelable library",
+                "hash": "283ea6cc2997"
+            },
+            {
+                "name": "apksig",
+                "hash": "f1c19460de3a"
+            },
+            {
+                "name": "archive_patcher",
+                "hash": "f88587158735"
+            },
+            {
+                "name": "java_annotations",
+                "hash": "4639054894f3"
+            },
+            {
+                "name": "kotlinx_atomicfu",
+                "hash": "283ea6cc2997"
+            }
+        ],
+        "com.google.android.play:review": [
+            {
+                "name": "Android SDK Platforms",
+                "hash": "54b67013db98"
+            },
+            {
+                "name": "AndroidX activity library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX annotation experimental library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX annotation library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX architecture core common library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX architecture core runtime library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX asynclayoutinflater library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX collection library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX concurrent futures library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX coordinatorlayout library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX core ktx library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX core library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX cursoradapter library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX customview library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX documentfile library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX drawerlayout library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX fragment library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX interpolator library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX legacy coreui library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX legacy coreutils library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX legacy v4 library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX lifecycle common library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX lifecycle livedatacore library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX lifecycle runtime library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX lifecycle viewmodel library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX lifecycle viewmodel savedstate library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX loader library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX localbroadcastmanager library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX media base library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX print library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX savedstate library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX swiperefreshlayout library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX tracing library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "AndroidX versionedparcelable library",
+                "hash": "c17226aad8ed"
+            },
+            {
+                "name": "AndroidX viewpager library",
+                "hash": "d01ce9a0672d"
+            },
+            {
+                "name": "Animal Sniffer",
+                "hash": "b3202b38f5bd"
+            },
+            {
+                "name": "Checker Framework Annotations",
+                "hash": "6a0a75a8311d"
+            },
+            {
+                "name": "Dagger",
+                "hash": "283ea6cc2997"
+            },
+            {
+                "name": "Error Prone",
+                "hash": "283ea6cc2997"
+            },
+            {
+                "name": "Google Auto",
+                "hash": "283ea6cc2997"
+            },
+            {
+                "name": "Guava JDK5",
+                "hash": "283ea6cc2997"
+            },
+            {
+                "name": "Guava JDK7",
+                "hash": "283ea6cc2997"
+            },
+            {
+                "name": "J2ObjC",
+                "hash": "7fef2c083dbc"
+            },
+            {
+                "name": "JSR 250",
+                "hash": "283ea6cc2997"
+            },
+            {
+                "name": "JSR 305",
+                "hash": "ae6da0d96b1a"
+            },
+            {
+                "name": "JSR 330",
+                "hash": "4c718a6f819a"
+            },
+            {
+                "name": "JSpecify",
+                "hash": "283ea6cc2997"
+            },
+            {
+                "name": "Jakarta Inject",
+                "hash": "283ea6cc2997"
+            },
+            {
+                "name": "JsInterop Annotations",
+                "hash": "b3e17cd48de9"
+            },
+            {
+                "name": "Kotlin",
+                "hash": "8f8bc2664f05"
             },
             {
                 "name": "Kotlin coroutines",

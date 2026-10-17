@@ -92,11 +92,12 @@ class SignInFormHostTest {
 
     @Test
     fun `the Moodle token sign-in posts nothing to another host`() = runTest(UnconfinedTestDispatcher()) {
-        val tokens = object : MoodleTokenCoordinator.Tokens {
+        val tokens = object : MoodleTokenPairStore {
             override var token: String? = null
+            override var privateToken: String? = null
             override val studentId: String? = STUDENT
             override val password: String? = PASSWORD
-            override fun storeIfSignedIn(studentId: String, token: String) = true
+            override fun storeIfSignedIn(studentId: String, token: String, privateToken: String?) = true
         }
         val school = client("https://elsewhere.example/account/login")
         val service = MoodleTokenService({ school }, tokens, latch(), backgroundScope) { 0L }

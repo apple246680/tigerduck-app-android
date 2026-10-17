@@ -177,7 +177,7 @@ internal fun HomeSectionContent(
     hasUnfinishedAssignment: (String) -> Boolean,
     showAbsoluteTime: Boolean,
     invertDirection: Boolean,
-    onCourseClick: (Course, String) -> Unit,
+    onCourseClick: (CourseTimeSlot) -> Unit,
     onAssignmentClick: (Assignment) -> Unit,
     onToggleIgnore: (Assignment) -> Unit,
     onMarkCompleted: (Assignment) -> Unit,

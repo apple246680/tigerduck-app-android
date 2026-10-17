@@ -100,7 +100,7 @@ fun TimeSliderSection(
     // 翹課 — parked until after add-friend. See HomeViewModel._skippedDates.
     // skippedDates: Map<String, List<String>> = emptyMap(),
     // onSkipCourse: (Course, Date) -> Unit = { _, _ -> },
-    onSelectCourse: (Course, String) -> Unit
+    onSelectCourse: (CourseTimeSlot) -> Unit
 ) {
     val viewModel = remember { TimeSliderViewModel() }
 
@@ -205,7 +205,7 @@ private fun CourseTimeCard(
     state: CourseState,
     // skippedDates: Map<String, List<String>>,
     // onSkipCourse: (Course, Date) -> Unit,
-    onSelect: (Course, String) -> Unit
+    onSelect: (CourseTimeSlot) -> Unit
 ) {
     // val isoFmt = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US) }
     // val isSkippedFor: (CourseTimeSlot) -> Boolean = { slot ->
@@ -247,7 +247,7 @@ private fun CourseTimeCard(
                             muted = false,
                             // isSkipped = isSkippedFor(slot),
                             // onSkipToggle = { onSkipCourse(slot.course, slot.date) },
-                            onClick = { onSelect(slot.course, slot.classroom) },
+                            onClick = { onSelect(slot) },
                         )
                     }
                 }
@@ -258,7 +258,7 @@ private fun CourseTimeCard(
                             slot = it, muted = true,
                             // isSkipped = isSkippedFor(it),
                             // onSkipToggle = { onSkipCourse(it.course, it.date) },
-                            onClick = { onSelect(it.course, it.classroom) },
+                            onClick = { onSelect(it) },
                         )
                     }
                     state.next?.let {
@@ -266,7 +266,7 @@ private fun CourseTimeCard(
                             slot = it, muted = true,
                             // isSkipped = isSkippedFor(it),
                             // onSkipToggle = { onSkipCourse(it.course, it.date) },
-                            onClick = { onSelect(it.course, it.classroom) },
+                            onClick = { onSelect(it) },
                         )
                     }
                 }
@@ -276,7 +276,7 @@ private fun CourseTimeCard(
                         slot = state.next, muted = true,
                         // isSkipped = isSkippedFor(state.next),
                         // onSkipToggle = { onSkipCourse(state.next.course, state.next.date) },
-                        onClick = { onSelect(state.next.course, state.next.classroom) },
+                        onClick = { onSelect(state.next) },
                     )
                 }
 
@@ -285,7 +285,7 @@ private fun CourseTimeCard(
                         slot = state.previous, muted = true,
                         // isSkipped = isSkippedFor(state.previous),
                         // onSkipToggle = { onSkipCourse(state.previous.course, state.previous.date) },
-                        onClick = { onSelect(state.previous.course, state.previous.classroom) },
+                        onClick = { onSelect(state.previous) },
                     )
                 }
             }

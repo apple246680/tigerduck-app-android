@@ -126,10 +126,19 @@ class MoodleWebservice internal constructor(
      * Streams [request]'s file into [target], at most [maxBytes] of it. A Moodle error, which comes
      * as JSON whatever its length is said to be, throws its own case, so a dead token starts a
      * renewal; anything other than the file Moodle listed, such as a sign-in page, or more than
-     * [maxBytes], throws [MoodleWebserviceError.MalformedResponse]. Cancelling the caller cancels
-     * the request, which a blocking read would otherwise sit out.
+     * [maxBytes], throws [MoodleWebserviceError.MalformedResponse]. With no [expectedMime] to check,
+     * [refusesPage] refuses a web page in its place. [onProgress] gets the bytes read so far and
+     * the length the reply gives, -1 without one. Cancelling the caller cancels the request,
+     * which a blocking read would otherwise sit out.
      */
-    suspend fun downloadTo(request: Request, target: java.io.File, expectedMime: String?, maxBytes: Long) {
+    suspend fun downloadTo(
+        request: Request,
+        target: java.io.File,
+        expectedMime: String?,
+        maxBytes: Long,
+        refusesPage: Boolean = false,
+        onProgress: (read: Long, length: Long) -> Unit = { _, _ -> },
+    ) {
         val call = client().newCall(request)
         coroutineScope {
             val cancelOnCancel = launch(start = CoroutineStart.UNDISPATCHED) {
@@ -140,7 +149,7 @@ class MoodleWebservice internal constructor(
                 }
             }
             try {
-                withContext(Dispatchers.IO) { readFile(call, target, expectedMime, maxBytes) }
+                withContext(Dispatchers.IO) { readFile(call, target, expectedMime, maxBytes, refusesPage, onProgress) }
             } catch (e: java.io.IOException) {
                 // The request cancelled because its caller was: that is the cancellation, not a
                 // network failure to report.
@@ -152,14 +161,25 @@ class MoodleWebservice internal constructor(
         }
     }
 
-    private suspend fun readFile(call: okhttp3.Call, target: java.io.File, expectedMime: String?, maxBytes: Long) {
+    private suspend fun readFile(
+        call: okhttp3.Call,
+        target: java.io.File,
+        expectedMime: String?,
+        maxBytes: Long,
+        refusesPage: Boolean,
+        onProgress: (Long, Long) -> Unit,
+    ) {
         call.execute().use { response ->
             val type = response.body.contentType()?.toString() ?: response.header("Content-Type")
             if (baseType(type) == "application/json" || type == null) {
                 MoodleWebserviceError.fromJsonBody(response.peekBody(ERROR_REPLY_LIMIT).string())?.let { throw it }
             }
             checkFile(response.code, type, expectedMime)
-            if (response.body.contentLength() > maxBytes) throw MoodleWebserviceError.MalformedResponse("larger than listed")
+            if (refusesPage && expectedMime == null && baseType(type) in PAGE_TYPES) {
+                throw MoodleWebserviceError.MalformedResponse(baseType(type).orEmpty())
+            }
+            val length = response.body.contentLength()
+            if (length > maxBytes) throw MoodleWebserviceError.MalformedResponse("larger than listed")
             val source = response.body.source()
             target.outputStream().use { out ->
                 val chunk = ByteArray(64 * 1024)
@@ -171,6 +191,7 @@ class MoodleWebservice internal constructor(
                     total += read
                     if (total > maxBytes) throw MoodleWebserviceError.MalformedResponse("larger than listed")
                     out.write(chunk, 0, read)
+                    onProgress(total, length)
                 }
             }
         }
@@ -214,6 +235,9 @@ class MoodleWebservice internal constructor(
                 checkAnswer(response.code, response.header("Retry-After"), body)
                 body
             }
+
+        /** What a sign-in or error page is served as. */
+        private val PAGE_TYPES = setOf("text/html", "application/xhtml+xml")
 
         /** A Moodle error is a few hundred bytes, so a longer JSON reply is the file itself. */
         private const val ERROR_REPLY_LIMIT = 64 * 1024L

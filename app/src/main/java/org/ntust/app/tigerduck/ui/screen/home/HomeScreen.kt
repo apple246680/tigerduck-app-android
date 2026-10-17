@@ -1,6 +1,7 @@
-// The Home tab: greeting, the reorderable section list, and the two
-// dialogs it owns. Section bodies are in HomeSections.kt and the
-// assignment list in HomeAssignmentList.kt.
+// The Home tab: greeting, the reorderable section list, and the dialog
+// it owns. Section bodies are in HomeSections.kt and the assignment list
+// in HomeAssignmentList.kt. A course on the time slider opens the class
+// table's course detail.
 
 package org.ntust.app.tigerduck.ui.screen.home
 
@@ -12,7 +13,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -53,13 +53,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import org.ntust.app.tigerduck.AppConstants
 import org.ntust.app.tigerduck.R
-import org.ntust.app.tigerduck.data.model.Assignment
-import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.data.model.HomeSection
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.ui.AppState
 import org.ntust.app.tigerduck.ui.component.ComingSoonDialog
-import org.ntust.app.tigerduck.ui.component.TigerDuckDialog
 import org.ntust.app.tigerduck.ui.component.PageHeader
 import org.ntust.app.tigerduck.ui.component.ServerKind
 import org.ntust.app.tigerduck.ui.component.SyncStatusDot
@@ -70,7 +67,6 @@ import org.ntust.app.tigerduck.ui.screen.signin.AutoSignInFailedBanner
 import org.ntust.app.tigerduck.ui.screen.signin.NtustSignInViewModel
 import org.ntust.app.tigerduck.ui.screen.signin.bannerRejection
 import java.util.Calendar
-import org.ntust.app.tigerduck.util.formatCredits
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -78,6 +74,8 @@ fun HomeScreen(
     appState: AppState,
     viewModel: HomeViewModel = hiltViewModel(),
     onOpenSignInSettings: () -> Unit = {},
+    /** A course tapped on the time slider: the class table's course detail, as iOS opens it from Home. */
+    onOpenCourseDetail: (CourseDetailSelection) -> Unit = {},
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
@@ -113,7 +111,6 @@ fun HomeScreen(
     val schoolDataSyncedAtMs by viewModel.schoolDataSyncedAtMs.collectAsStateWithLifecycle()
     val initialLoadComplete by viewModel.initialLoadComplete.collectAsStateWithLifecycle()
     val isLoggedIn by viewModel.isLoggedIn.collectAsStateWithLifecycle()
-    val selectedCourse by viewModel.selectedCourse.collectAsStateWithLifecycle()
     // 翹課 — see HomeViewModel._skippedDates. Lands after add-friend.
     // val skippedDates by viewModel.skippedDates.collectAsStateWithLifecycle()
     val syncConflicts by viewModel.syncConflicts.collectAsStateWithLifecycle()
@@ -165,8 +162,14 @@ fun HomeScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.syncOnForeground()
+                // The page's own resume, for the Play rating's moment; its
+                // lifecycle answers, right before the launch, whether it
+                // still is resumed.
+                viewModel.onPageResumed { lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
             } else if (event == Lifecycle.Event.ON_PAUSE) {
                 viewModel.onHomePaused()
+                // The moment the page offered is withdrawn with its pause.
+                viewModel.onPagePaused()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -301,10 +304,8 @@ fun HomeScreen(
                             hasUnfinishedAssignment = hasUnfinishedAssignment,
                             showAbsoluteTime = appState.showAbsoluteAssignmentTime,
                             invertDirection = appState.invertSliderDirection,
-                            onCourseClick = { course, classroom ->
-                                if (!isEditing) {
-                                    viewModel.selectCourse(SelectedCourseInfo(course, classroom))
-                                }
+                            onCourseClick = { slot ->
+                                if (!isEditing) onOpenCourseDetail(slot.detailSelection)
                             },
                             onAssignmentClick = {
                                 if (!isEditing) openAssignmentInMoodle(context, it)
@@ -356,19 +357,6 @@ fun HomeScreen(
         )
     }
 
-    selectedCourse?.let { info ->
-        // Cache per courseNo so re-running the linear filter every parent
-        // recomposition (any state tick while the dialog is open) goes away.
-        val dialogAssignments = remember(info.course.courseNo, upcomingAssignments) {
-            viewModel.assignmentsFor(info.course.courseNo)
-        }
-        CourseDetailDialog(
-            course = info.course,
-            classroom = info.classroom,
-            assignments = dialogAssignments,
-            onDismiss = { viewModel.selectCourse(null) }
-        )
-    }
 }
 @Composable
 private fun greetingText(): String {
@@ -379,49 +367,6 @@ private fun greetingText(): String {
         hour < 18 -> stringResource(R.string.greeting_afternoon)
         else -> stringResource(R.string.greeting_evening)
     }
-}
-@Composable
-private fun CourseDetailDialog(
-    course: Course,
-    classroom: String,
-    assignments: List<Assignment>,
-    onDismiss: () -> Unit
-) {
-    TigerDuckDialog(
-        onDismissRequest = onDismiss,
-        title = course.displayName,
-        confirmText = stringResource(R.string.action_close),
-        onConfirm = onDismiss,
-        content = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    stringResource(R.string.course_instructor_value, course.instructor),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    stringResource(R.string.course_classroom_value, classroom),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    stringResource(R.string.course_credits_value, course.credits.formatCredits()),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                if (assignments.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        stringResource(R.string.home_pending_assignments),
-                        style = MaterialTheme.typography.titleSmall
-                    )
-                    assignments.forEach { a ->
-                        Text("• ${a.title}", style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-        },
-    )
 }
 @Composable
 private fun SyncConflictDialog(

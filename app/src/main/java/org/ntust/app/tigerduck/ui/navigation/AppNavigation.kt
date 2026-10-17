@@ -485,7 +485,13 @@ fun MainNavigation(
                     appState = appState,
                     viewModel = homeViewModel,
                     onOpenSignInSettings = openSignInSettings,
+                    onOpenCourseDetail = { picked ->
+                        // The slider shows the live term, as the class table's today strip does.
+                        classTableViewModel.selectCourse(picked.course, picked.weekday, picked.periodId, fromLiveTerm = true)
+                    },
                 )
+                // The class table's course detail sheet, as iOS opens the same sheet from Home.
+                CourseDetailSheetHost(classTableViewModel, appState.browserPreference)
             }
             page(Screen.ClassTable.route) {
                 ClassTableScreen(
