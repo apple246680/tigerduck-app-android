@@ -242,7 +242,8 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         foldersTouched += folder
         droppedCaches += folder to obsoleteValidity
         // Mirrors MailCache.deleteFolderUnder: a page of any other generation stays.
-        if (cachedPages[folder]?.uidValidity == obsoleteValidity) dropCache(folder)
+        // The list's own eviction, which the real repository tells nobody of (unlike [dropCache]).
+        if (cachedPages[folder]?.uidValidity == obsoleteValidity) cachedPages.remove(folder)
     }
 
     override suspend fun loadPage(folder: String, beforeSeq: Int?, limit: Int, background: Boolean, stillWanted: () -> Boolean): MailPage {

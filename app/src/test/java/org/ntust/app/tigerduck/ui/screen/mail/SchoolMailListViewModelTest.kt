@@ -1036,7 +1036,7 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
-    fun `a folder changed while its page was being fetched is still fetched again as the page appears`() {
+    fun `a folder changed while its page was being fetched is fetched again at once, and the page appearing then asks nothing`() {
         repo.add("INBOX", mailSummary(1))
         vm.loadIfNeeded()
         val sentFolder = repo.resolved.nameOf(SpecialFolder.SENT)!!
@@ -1045,14 +1045,16 @@ class SchoolMailListViewModelTest {
         vm.refresh()
         // Sent's page is read and on its way, without the copy of a mail sent now.
         runBlocking { repo.send(mail, null) }
-        releaseAnswer(gate)
         val loads = repo.loadsSent.size
-        vm.loadIfNeeded()
+        releaseAnswer(gate)
         assertTrue(sentFolder in repo.loadsSent.drop(loads))
+        val after = repo.loadsSent.size
+        vm.loadIfNeeded()
+        assertEquals(after, repo.loadsSent.size)
     }
 
     @Test
-    fun `an older page in flight does not put back a read flag set meanwhile`() {
+    fun `an older page in flight does not leave a read flag set meanwhile undone`() {
         repo.add("INBOX", *(1L..60L).map { mailSummary(it) }.toTypedArray())
         vm.loadIfNeeded()
         vm.selectFolder(FolderSelection.Real("INBOX"))
@@ -1061,8 +1063,64 @@ class SchoolMailListViewModelTest {
         // The older page is read and on its way, and the mail's own screen marks one of its rows read.
         runBlocking { repo.setSeen("INBOX", 5, true) }
         releaseAnswer(gate)
+        // Paging back down to it finds the flag as the server has it.
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
         assertEquals(60, vm.state.value.displayed.size)
         assertTrue(vm.state.value.displayed.first { it.uid == 5L }.summary.flags.seen)
+    }
+
+    @Test
+    fun `a swipe whose write ends after another student signed in over this one leaves their list alone`() {
+        repo.add("INBOX", mailSummary(1))
+        vm.loadIfNeeded()
+        val gate = CompletableDeferred<Unit>()
+        repo.seenGate = gate
+        vm.toggleRead(vm.state.value.displayed.single())
+        signInAnotherOverThisOne()
+        vm.loadIfNeeded()
+        assertFalse(vm.state.value.displayed.single().summary.flags.seen)
+        repo.seenGate = null
+        gate.complete(Unit)
+        main.dispatcher.scheduler.runCurrent()
+        assertFalse("the first student's swipe marked the second's mail read", vm.state.value.displayed.single().summary.flags.seen)
+    }
+
+    @Test
+    fun `a flag another client set after a mark-unread is what the list ends up showing`() {
+        repo.add("INBOX", mailSummary(1, seen = true))
+        vm.loadIfNeeded()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        val loads = repo.loadsSent.size
+        // A refresh is asked for and its page not read yet when a mark-unread from the mail's own
+        // screen lands -- and then another client marks the mail read again, which no change tells.
+        val gate = CompletableDeferred<Unit>()
+        repo.loadGate = gate
+        vm.refresh()
+        runBlocking { repo.setSeen("INBOX", 1, false) }
+        assertFalse(vm.state.value.displayed.single().summary.flags.seen)
+        repo.mail.getValue("INBOX").replaceAll { if (it.uid == 1L) it.copy(flags = it.flags.copy(seen = true)) else it }
+        repo.loadGate = null
+        gate.complete(Unit)
+        main.dispatcher.scheduler.runCurrent()
+        // The page read after both has the truth, and the list is fetched once more to be sure of it -- once.
+        assertTrue(vm.state.value.displayed.single().summary.flags.seen)
+        assertEquals(listOf("INBOX", "INBOX"), repo.loadsSent.drop(loads))
+    }
+
+    @Test
+    fun `a burst of changes while a page was out ends in the server's list, by one fetch more`() {
+        repo.add("INBOX", *(1L..70L).map { mailSummary(it) }.toTypedArray())
+        vm.loadIfNeeded()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        val gate = holdAnswerOf("INBOX")
+        vm.refresh()
+        val loads = repo.loadsSent.size
+        // Every mail marked read, newest first, while the page is on its way.
+        runBlocking { (70L downTo 1L).forEach { repo.setSeen("INBOX", it, true) } }
+        releaseAnswer(gate)
+        assertEquals(50, vm.state.value.displayed.size)
+        assertTrue(vm.state.value.displayed.all { it.summary.flags.seen })
+        assertEquals(listOf("INBOX"), repo.loadsSent.drop(loads))
     }
 
     @Test
