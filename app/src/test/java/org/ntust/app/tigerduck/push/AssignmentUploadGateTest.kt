@@ -5,6 +5,7 @@ import android.content.Context
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -37,6 +38,8 @@ class AssignmentUploadGateTest {
         prefs = AppPreferences(context).apply { announcementApiBaseUrlOverride = "http://127.0.0.1:9/v3" }
         // Never the real backend, even past the scripted one.
         assertTrue(resolveAnnouncementEndpoint(prefs).overrideApplied)
+        // TigerSync is off for good on F-Droid, where no upload goes out at all.
+        assumeTrue(prefs.cloudSyncEnabled)
         val tokens = V3TokenStore(context.getSharedPreferences("v3-tokens-assignment-upload-gate-test", Context.MODE_PRIVATE))
         tokens.save("access", "refresh", Long.MAX_VALUE)
         api = PushApiClient(backend.client, prefs, AuthTokenManager(tokens, backend.client, prefs, "device-1"))
