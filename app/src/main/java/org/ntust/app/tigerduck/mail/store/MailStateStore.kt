@@ -19,7 +19,15 @@ interface MailStateStore {
      * page can date the folder on screen. See [org.ntust.app.tigerduck.mail.sync.MailChecker.fetchedAt].
      */
     fun fetchedAt(folder: String): Long
-    fun setFetchedAt(folder: String, atMs: Long)
+
+    /**
+     * Dates [folder] at [atMs] while [stillCurrent] says the account the folder answered is still
+     * the signed-in one, and says whether it did. Asked under the store's lock, which [clear]
+     * takes too -- and a sign-out moves its account before it clears -- so a date it allows lands
+     * before that clear and goes with it; the same shape as
+     * [org.ntust.app.tigerduck.mail.store.MailCache.saveBodyIf].
+     */
+    fun setFetchedAtIf(folder: String, atMs: Long, stillCurrent: () -> Boolean): Boolean
     /** Newest first, at most 10, `"<epochMillis>|<source>|<outcome>"`. */
     var diagnostics: List<String>
     fun ownedDeleted(folder: String, uidValidity: Long): Set<Long>
@@ -76,7 +84,12 @@ class SharedPrefsMailStateStore(context: Context) : MailStateStore {
 
     override fun fetchedAt(folder: String): Long = prefs.getLong(fetchedKey(folder), 0L)
 
-    override fun setFetchedAt(folder: String, atMs: Long) = prefs.edit().putLong(fetchedKey(folder), atMs).apply()
+    @Synchronized
+    override fun setFetchedAtIf(folder: String, atMs: Long, stillCurrent: () -> Boolean): Boolean {
+        if (!stillCurrent()) return false
+        prefs.edit().putLong(fetchedKey(folder), atMs).apply()
+        return true
+    }
 
     /**
      * Every folder's date under its server name, except the inbox's, which keeps the one key the
@@ -104,6 +117,8 @@ class SharedPrefsMailStateStore(context: Context) : MailStateStore {
         prefs.edit().putStringSet(K_OWNED, (others + mine).toSet()).apply()
     }
 
+    // Under the lock [setFetchedAtIf] asks its question under; see there.
+    @Synchronized
     override fun clear() {
         prefs.edit().clear().apply()
     }

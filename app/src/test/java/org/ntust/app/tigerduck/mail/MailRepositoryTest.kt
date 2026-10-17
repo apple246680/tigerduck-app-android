@@ -22,8 +22,11 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.ntust.app.tigerduck.mail.compose.MessageBuilder
 import org.ntust.app.tigerduck.mail.compose.OutgoingMail
+import org.ntust.app.tigerduck.mail.imap.MailSession
+import org.ntust.app.tigerduck.mail.imap.MailSessionFactory
 import org.ntust.app.tigerduck.mail.imap.SpecialFolder
 import org.ntust.app.tigerduck.mail.model.MailAddress
+import org.ntust.app.tigerduck.mail.model.MailPage
 import org.ntust.app.tigerduck.mail.smtp.MailSender
 import org.ntust.app.tigerduck.mail.smtp.MailTransport
 import org.ntust.app.tigerduck.mail.smtp.SentCopy
@@ -46,13 +49,27 @@ class MailRepositoryTest {
         return repository
     }
 
-    private inner class TestSetup(scope: kotlinx.coroutines.CoroutineScope) {
+    private inner class TestSetup(
+        scope: kotlinx.coroutines.CoroutineScope,
+        /** What the repository opens its sessions with; the account signs in on the server itself. */
+        sessions: MailSessionFactory = server.factory(),
+    ) {
         val cache = MailCache(tmp.root)
-        val account = MailAccount(credentials, state, server.factory(), cache, demo, schoolMailSite(), RecordingScheduler(), RecordingNotifier(), scope)
+        val notifier = RecordingNotifier()
+        val account = MailAccount(credentials, state, server.factory(), cache, demo, schoolMailSite(), RecordingScheduler(), notifier, scope)
         val repository = MailRepository(
-            account, server.factory(), cache, state,
+            account, sessions, cache, state,
             MailSender(MessageBuilder(), transport, pause = {}), MessageBuilder(), demo, scope,
         )
+
+        /** Signs out as Settings does, and waits for the cleanup the sign-out then runs on its own. */
+        fun signOutAndSettle() {
+            val cleaned = CountDownLatch(1)
+            notifier.onCancelAll = { cleaned.countDown() }
+            account.signOut()
+            assertTrue("sign-out's cleanup never ran", cleaned.await(5, TimeUnit.SECONDS))
+            notifier.onCancelAll = null
+        }
     }
 
     @Test
@@ -62,6 +79,33 @@ class MailRepositoryTest {
         assertEquals("回收筒", repo.folders().nameOf(SpecialFolder.TRASH))
         assertEquals(listOf("b", "a"), repo.loadPage("INBOX", null).messages.map { it.subject })
         assertEquals(listOf("b", "a"), repo.cachedPage("INBOX")!!.messages.map { it.subject })
+    }
+
+    /**
+     * A page that lands after its account signed out is not cached: the sign-out cleared the
+     * cache, and whoever signs in next must not find the departing account's page in it. Asked
+     * under the cache's lock, which the clear takes too.
+     */
+    @Test
+    fun `a page that lands after the sign-out is not cached`() = runTest {
+        server.deliver("a")
+        lateinit var setup: TestSetup
+        val interrupting = MailSessionFactory { credentials ->
+            val session = server.factory().open(credentials)
+            object : MailSession by session {
+                override fun fetchPage(folder: String, beforeSeq: Int?, pageSize: Int): MailPage {
+                    val page = session.fetchPage(folder, beforeSeq, pageSize)
+                    setup.signOutAndSettle()
+                    return page
+                }
+            }
+        }
+        setup = TestSetup(backgroundScope, interrupting)
+        val repo = setup.signedIn()
+
+        assertEquals(listOf("a"), repo.loadPage("INBOX", null).messages.map { it.subject })
+
+        assertNull(setup.cache.loadFolder("INBOX"))
     }
 
     @Test

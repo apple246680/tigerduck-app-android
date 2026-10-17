@@ -20,8 +20,11 @@ class InMemoryMailStateStore : MailStateStore {
 
     override fun fetchedAt(folder: String): Long = fetchedAt[folder] ?: 0L
 
-    override fun setFetchedAt(folder: String, atMs: Long) {
+    @Synchronized
+    override fun setFetchedAtIf(folder: String, atMs: Long, stillCurrent: () -> Boolean): Boolean {
+        if (!stillCurrent()) return false
         fetchedAt[folder] = atMs
+        return true
     }
 
     /** Fires on every [ownedDeleted] read; with [beforeSetOwnedDeleted] it lets a test drive the
@@ -42,6 +45,7 @@ class InMemoryMailStateStore : MailStateStore {
         owned[folder to uidValidity] = uids
     }
 
+    @Synchronized
     override fun clear() {
         displayName = null; notificationsEnabled = true; authFailed = false; demoMailbox = false
         inboxUidValidity = 0; inboxSeenUidNext = 0; lastForegroundCheckAt = 0

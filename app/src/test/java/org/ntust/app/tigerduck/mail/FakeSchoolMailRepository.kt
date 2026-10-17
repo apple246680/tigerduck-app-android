@@ -24,6 +24,15 @@ class FakeSchoolMailRepository : SchoolMailRepository {
     var statusError: MailError? = null
     var statusCalls = 0
 
+    /** Set, every [inboxStatus] waits on it first: a poll's check held out while the test acts. */
+    var statusGate: CompletableDeferred<Unit>? = null
+
+    /** Set, every foreground [loadPage] waits on it first: a load held out while the test acts. */
+    var loadGate: CompletableDeferred<Unit>? = null
+
+    /** Thrown by [loadPage] for that folder alone, where [loadError] fails every folder. */
+    val folderLoadErrors = mutableMapOf<String, MailError>()
+
     /** Thrown by [status] for that folder -- the poll's check of a folder on screen other than the inbox. */
     val folderStatusErrors = mutableMapOf<String, MailError>()
     val folderStatusCalls = mutableListOf<String>()
@@ -145,7 +154,9 @@ class FakeSchoolMailRepository : SchoolMailRepository {
                     gate.await()
                 }
             }
+            if (!background) loadGate?.await()
             loadError?.let { throw it }
+            folderLoadErrors[folder]?.let { throw it }
             val all = sorted(folder)
             val from = beforeSeq ?: 0
             // `limit` is honoured, not just recorded: the real repository's rule about a warm
@@ -167,6 +178,7 @@ class FakeSchoolMailRepository : SchoolMailRepository {
     }
 
     override suspend fun inboxStatus(): FolderStatus {
+        statusGate?.await()
         statusCalls++
         statusError?.let { throw it }
         return status

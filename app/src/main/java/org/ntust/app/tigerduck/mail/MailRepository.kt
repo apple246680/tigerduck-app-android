@@ -229,9 +229,14 @@ class MailRepository @Inject constructor(
      */
     override suspend fun loadPage(folder: String, beforeSeq: Int?, limit: Int, background: Boolean): MailPage {
         if (account.isDemo) return demoPage(folder)
+        // The account the page is fetched for. A fetch is blocking I/O that a sign-out cannot
+        // cancel, so a page that lands after one is kept out of the cache the sign-out emptied,
+        // or whoever signs in next would open on it; asked under the cache's lock, which that
+        // clear takes too.
+        val generation = account.accountGeneration
         val page = withSession { it.fetchPage(folder, beforeSeq, limit) }
         if (beforeSeq == null && !(background && wouldShortenCache(folder, page))) {
-            withContext(Dispatchers.IO) { cache.saveFolder(folder, page) }
+            withContext(Dispatchers.IO) { cache.saveFolderIf(folder, page) { account.accountGeneration == generation } }
         }
         return page
     }
