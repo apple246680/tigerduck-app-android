@@ -46,6 +46,8 @@ import org.ntust.app.tigerduck.network.NetworkChecker
 import org.ntust.app.tigerduck.notification.BackgroundSyncWorker
 import org.ntust.app.tigerduck.push.FcmBootstrap
 import org.ntust.app.tigerduck.push.PushApiClient
+import org.ntust.app.tigerduck.review.InAppReview
+import org.ntust.app.tigerduck.review.ReviewPrompt
 import org.ntust.app.tigerduck.serverpush.ServerPopupRequest
 import org.ntust.app.tigerduck.serverpush.ServerPushIntentToken
 import org.ntust.app.tigerduck.serverpush.ServerPushPopupCoordinator
@@ -121,6 +123,12 @@ class MainActivity : AppCompatActivity() {
 
     @Inject
     lateinit var fcmBootstrap: FcmBootstrap
+
+    @Inject
+    lateinit var reviewPrompt: ReviewPrompt
+
+    @Inject
+    lateinit var inAppReview: InAppReview
 
     @Inject
     lateinit var mailChecker: org.ntust.app.tigerduck.mail.sync.MailChecker
@@ -276,6 +284,17 @@ class MainActivity : AppCompatActivity() {
                         ) {
                             FirstTriggerPromptHost(firstTriggerPromptController)
                         }
+
+                        // The one Play Store rating ask (issue #332), at a
+                        // moment ReviewPrompt picks and, like the prompt
+                        // above, not over another prompt.
+                        val popupPending by serverPushPopupCoordinator.pending.collectAsStateWithLifecycle()
+                        ReviewPromptHost(
+                            reviewPrompt = reviewPrompt,
+                            inAppReview = inAppReview,
+                            otherPromptShowing = whatsNewFlow.value != null || updatePending != null ||
+                                pendingPrompt != null || popupPending != null,
+                        )
 
                         // Operator-issued popup: rendered over whatever screen
                         // the user lands on after tapping the notification.
@@ -695,3 +714,26 @@ internal fun startRouteFor(link: AppLink): String? = when (link) {
 
 /** Page ids of a pending What's New sheet, kept across a config-change recreation. */
 private const val KEY_WHATS_NEW_PAGE_IDS = "whatsNewPageIds"
+
+/**
+ * Launches Play's in-app review when [ReviewPrompt] says the moment has come
+ * (issue #332), and not over another prompt: Play's sheet on top of What's
+ * new, the update prompt, a first-trigger question or an operator popup
+ * would be two asks at once. Held back, the ask waits for them to close, as
+ * the first-trigger prompt does. On fdroid [InAppReview] launches nothing
+ * and says so, which leaves the ask unrecorded.
+ */
+@Composable
+private fun ReviewPromptHost(
+    reviewPrompt: ReviewPrompt,
+    inAppReview: InAppReview,
+    otherPromptShowing: Boolean,
+) {
+    val pending by reviewPrompt.pending.collectAsStateWithLifecycle()
+    val activity = LocalContext.current as? Activity ?: return
+    if (!pending || otherPromptShowing) return
+    // Keyed on nothing: a recomposition while Play is being asked for the
+    // flow must not ask twice. Leaving composition — a failure withdrew the
+    // ask, or another prompt opened — cancels that request before a launch.
+    LaunchedEffect(Unit) { reviewPrompt.launched(inAppReview.launch(activity)) }
+}

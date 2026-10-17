@@ -58,6 +58,7 @@ import org.ntust.app.tigerduck.network.MoodleService
 import org.ntust.app.tigerduck.network.NetworkChecker
 import org.ntust.app.tigerduck.network.SemesterCatalog
 import org.ntust.app.tigerduck.notification.AssignmentNotificationScheduler
+import org.ntust.app.tigerduck.review.ReviewPrompt
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.SingleFlight
@@ -101,6 +102,7 @@ class HomeViewModel @Inject constructor(
     private val unsentMarks: UnsentMarks,
     private val localEdits: LocalEdits,
     private val reenableCheck: org.ntust.app.tigerduck.ui.screen.settings.ReenableCheck,
+    private val reviewPrompt: ReviewPrompt,
 ) : ViewModel() {
 
 
@@ -514,12 +516,18 @@ class HomeViewModel @Inject constructor(
     fun onAppForeground() {
         if (!hasLoaded || !authService.authState.value) return
         if (refreshTriggers.onForeground()) fetchOnReturn()
+        // A return with Home on screen is the Play rating's moment, if
+        // ReviewPrompt agrees (issue #332).
+        reviewPrompt.calmMoment()
     }
 
     /** Home was shown: on launch, or on coming back to it from another page. */
     fun onPageShown() {
         if (!authService.authState.value) return
         if (refreshTriggers.onShown()) fetchOnReturn()
+        // See onAppForeground; on the launch's first showing, before any
+        // load, ReviewPrompt declines.
+        reviewPrompt.calmMoment()
     }
 
     /** The page left the screen for another page; see PageLeftEffect. */
@@ -546,6 +554,8 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             if (!networkChecker.isAvailable()) {
                 _noNetworkEvent.tryEmit(Unit)
+                // The user just saw an error, not a moment to ask for a rating.
+                reviewPrompt.loadFailed()
                 return@launch
             }
             if (rerun) {
@@ -696,6 +706,10 @@ class HomeViewModel @Inject constructor(
                             deletedNos = hiddenNow(),
                         )
                         dataCache.saveCourses(courses)
+                        // The class table loaded: a day of use towards the
+                        // Play rating ask (issue #332). A source that failed
+                        // is a status dot, which ReviewPrompt reads.
+                        reviewPrompt.classTableLoaded()
                         widgetUpdater.requestUpdate()
                     }
 

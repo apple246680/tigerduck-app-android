@@ -57,6 +57,7 @@ import org.ntust.app.tigerduck.network.MoodleService
 import org.ntust.app.tigerduck.network.NetworkChecker
 import org.ntust.app.tigerduck.network.SemesterCatalog
 import org.ntust.app.tigerduck.network.model.MoodleEnrolledCourse
+import org.ntust.app.tigerduck.review.ReviewPrompt
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.SingleFlight
@@ -91,6 +92,7 @@ class ClassTableViewModel @Inject constructor(
     private val importedClassTableStore: ImportedClassTableStore,
     private val importedCourseLookup: ImportedCourseLookup,
     private val pendingCourseAdds: org.ntust.app.tigerduck.data.PendingCourseAdds,
+    private val reviewPrompt: ReviewPrompt,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
 
@@ -1139,12 +1141,18 @@ class ClassTableViewModel @Inject constructor(
     fun onAppForeground() {
         if (!hasLoaded || !authService.authState.value) return
         if (refreshTriggers.onForeground()) viewModelScope.launch { fetchFlight.join(::fetchData) }
+        // A return with the class table on screen is the Play rating's
+        // moment, if ReviewPrompt agrees (issue #332).
+        reviewPrompt.calmMoment()
     }
 
     /** The class table was shown: on launch, or on coming back to it from another page. */
     fun onPageShown() {
         if (!authService.authState.value) return
         if (refreshTriggers.onShown()) viewModelScope.launch { fetchFlight.join(::fetchData) }
+        // See onAppForeground; on the launch's first showing, before any
+        // load, ReviewPrompt declines.
+        reviewPrompt.calmMoment()
     }
 
     /** The page left the screen for another page; see PageLeftEffect. */
@@ -1237,6 +1245,8 @@ class ClassTableViewModel @Inject constructor(
             _isLoading.value = true
             if (!networkChecker.isAvailable()) {
                 _noNetworkEvent.tryEmit(Unit)
+                // The user just saw an error, not a moment to ask for a rating.
+                reviewPrompt.loadFailed()
                 kotlinx.coroutines.yield()
                 _isLoading.value = false
                 return@launch
@@ -1381,6 +1391,9 @@ class ClassTableViewModel @Inject constructor(
                                 TigerDuckTheme.buildCourseColorMap(merged)
                             }
                             dataCache.saveCourses(merged, semester)
+                            // The class table loaded: a day of use towards
+                            // the Play rating ask (issue #332).
+                            reviewPrompt.classTableLoaded()
                             runCatching { pushApiClient.uploadCourses(merged, semester) }
                                 .onFailure { Log.w("ClassTableVM", "uploadCourses failed (non-fatal): ${it.logSummary()}") }
                             widgetUpdater.requestUpdate()
@@ -1439,6 +1452,7 @@ class ClassTableViewModel @Inject constructor(
             // the default uncaught handler and killed the process instead of
             // failing one refresh. This is the only boundary in that path.
             Log.e("ClassTableVM", "fetchData failed: ${e.logSummary()}")
+            reviewPrompt.loadFailed()
         } finally {
             _isLoading.value = false
         }
