@@ -326,6 +326,35 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
+    fun `a recreated folder whose reload fails shows none of its old rows, not even as loaded matches`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..5L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        val searches = repo.searchCalls
+        // The folder was recreated, and the connection goes before the list can reload from it.
+        repo.searchPageValidity = 2
+        repo.loadError = MailError.Network()
+        repo.searchError = MailError.Network()
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        // The rows the list held were read under the old UIDVALIDITY. A search run again now would
+        // fail too and fall back to the loaded mail -- which must not be those rows, so it is not
+        // run, and the list keeps nothing of the old mailbox for a later one to fall back to.
+        assertEquals(emptyList<Long>(), vm.state.value.displayed.map { it.uid })
+        assertEquals(searches, repo.searchCalls)
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        vm.setSearchText("")
+        assertEquals(emptyList<Long>(), vm.state.value.displayed.map { it.uid })
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        assertEquals(emptyList<Long>(), vm.state.value.displayed.map { it.uid })
+        assertFalse(vm.state.value.isSearching)
+        assertFalse(vm.state.value.isPaginating)
+    }
+
+    @Test
     fun `a scroll to the end fetches a few pages of search results at most`() {
         repo.pageSize = 2
         // Under unread only every match is read but the oldest, so page after page adds nothing.
@@ -493,6 +522,31 @@ class SchoolMailListViewModelTest {
         assertEquals(listOf(4L, 3L), vm.state.value.displayed.map { it.uid })
         // The older page, then the first page again.
         assertEquals(firstPages + 2, repo.pageLimits.size)
+    }
+
+    @Test
+    fun `an older page from a recreated folder whose reload fails leaves none of the old rows to page or search`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..4L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        // The older page comes down under UIDVALIDITY 2, and the connection goes right after it,
+        // so the reload from the top fails.
+        repo.olderPage = { _, _ ->
+            repo.loadError = MailError.Network()
+            MailPage(2, 4, listOf(mailSummary(9), mailSummary(8)), null)
+        }
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        // The list's rows and cursor belong to the mailbox before: with the reload failed, they
+        // go rather than stay to be paged again or shown as another mailbox's mail.
+        assertEquals(emptyList<Long>(), vm.state.value.displayed.map { it.uid })
+        assertTrue(vm.state.value.cursors.isEmpty())
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        // And a search that cannot reach the server has nothing of the old mailbox to fall back to.
+        repo.searchError = MailError.Network()
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        assertEquals(emptyList<Long>(), vm.state.value.displayed.map { it.uid })
     }
 
     @Test

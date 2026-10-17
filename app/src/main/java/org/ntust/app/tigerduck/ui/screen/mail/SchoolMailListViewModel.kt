@@ -448,19 +448,22 @@ class SchoolMailListViewModel @Inject constructor(
      * two for All mail, however far the merged list has already been scrolled. That bound is the
      * reason the merged view refreshes only the newest page per folder -- Mail2000 caps
      * connections and starts answering "server busy" under load.
+     *
+     * True once the server's first page is on screen; false when the fetch failed, or when the
+     * selection changed before it landed and the page was dropped.
      */
-    private suspend fun fetchFirstPage() {
+    private suspend fun fetchFirstPage(): Boolean {
         val selection = _state.value.selected
         val targets = _state.value.targets
         if (targets.isEmpty()) {
             // Nothing to read, so nothing still loading either.
             _state.update { if (it.loadState is LoadState.Loading) it.copy(loadState = LoadState.Loaded) else it }
-            return
+            return false
         }
         _state.update { it.copy(loadState = LoadState.Loading) }
         try {
             val pages = targets.map { folder -> folder to repository.loadPage(folder, null) }
-            if (_state.value.selected != selection) return
+            if (_state.value.selected != selection) return false
             listGeneration++
             folderValidity = folderValidity + pages.associate { (folder, page) -> folder to page.uidValidity }
             _state.update { it.copy(messages = rowsOf(selection, pages), cursors = cursorsOf(pages), loadState = LoadState.Loaded) }
@@ -471,9 +474,30 @@ class SchoolMailListViewModel @Inject constructor(
                 inboxFetched()
                 runCatching { checker.noteSeenByPage(repository.inboxStatus()) }
             }
+            return true
         } catch (e: MailError) {
             fail(e)
+            return false
         }
+    }
+
+    /**
+     * [folders] were found recreated: the rows and cursors the list holds for them were read under
+     * a UIDVALIDITY the server no longer has, so they name other mail now and the list starts again
+     * from the top. Should that fail, they go rather than stay -- nothing may read them again, not
+     * the next scroll and not a search falling back to the loaded mail -- and the folder shows
+     * nothing until a first page lands, which Retry, a pull or the poll's next look brings. True
+     * once the list has reloaded.
+     */
+    private suspend fun reloadRecreated(folders: Set<String>): Boolean {
+        val selection = _state.value.selected
+        val generation = listGeneration
+        if (fetchFirstPage()) return true
+        // Only while this is still the list that was found stale: a newer one owns its rows.
+        if (_state.value.selected == selection && generation == listGeneration) {
+            _state.update { st -> st.copy(messages = st.messages.filterNot { it.folder in folders }, cursors = st.cursors - folders) }
+        }
+        return false
     }
 
     /**
@@ -574,8 +598,9 @@ class SchoolMailListViewModel @Inject constructor(
                 if (_state.value.selected != selection || generation != listGeneration) return
                 // A folder recreated since its first page: the older page's UIDs name other mail
                 // than the list's, so it is not merged, and the list starts again from the top.
-                if (pages.any { (folder, page) -> folderValidity[folder].let { it != null && it != page.uidValidity } }) {
-                    fetchFirstPage()
+                val recreated = pages.filter { (folder, page) -> folderValidity[folder].let { it != null && it != page.uidValidity } }
+                if (recreated.isNotEmpty()) {
+                    reloadRecreated(recreated.mapTo(HashSet()) { it.first })
                     return
                 }
                 _state.update { st ->
@@ -675,9 +700,11 @@ class SchoolMailListViewModel @Inject constructor(
      * page it was fetching stays unfetched for the next scroll to try again.
      *
      * A page read under another UIDVALIDITY than the search's means the folder was recreated since:
-     * its matches, listed and unfetched alike, name other mail now. They go, the list reloads, and
-     * the query runs again over the recreated folder: the results are what the screen shows while
-     * searching, so a reloaded list alone would leave a search of that one folder empty.
+     * its matches, listed and unfetched alike, name other mail now. They go, the list reloads
+     * ([reloadRecreated]), and the query runs again over the recreated folder: the results are what
+     * the screen shows while searching, so a reloaded list alone would leave a search of that one
+     * folder empty. Not after a reload that failed, though -- that search would fail the same way
+     * and fall back to the loaded mail, which is exactly the old rows the reload was to replace.
      */
     private suspend fun loadMoreSearchResults() {
         val selection = _state.value.selected
@@ -701,10 +728,12 @@ class SchoolMailListViewModel @Inject constructor(
                     if (matches.uidValidity != null && page.uidValidity != null && page.uidValidity != matches.uidValidity) {
                         unfetchedMatches = unfetchedMatches - folder
                         _state.update { st -> st.copy(searchResults = st.searchResults?.filterNot { it.folder == folder }) }
-                        fetchFirstPage()
+                        val reloaded = reloadRecreated(setOf(folder))
                         // Not if the search was cleared or replaced meanwhile: that one is the
-                        // user's, and this would be a second round trip for the same query.
-                        if (_state.value.selected != selection || generation != searchGeneration) return
+                        // user's, and this would be a second round trip for the same query. Nor
+                        // after a reload that failed: the server was just found unreachable, or
+                        // rejected the password, and a search now asks it again (spec §7.4).
+                        if (!reloaded || _state.value.selected != selection || generation != searchGeneration) return
                         runSearch()
                         return
                     }
