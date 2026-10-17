@@ -12,7 +12,6 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -46,11 +45,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -68,8 +73,9 @@ private val CardHeight = 88.dp
 /**
  * @param onOpen a card tapped outside edit mode; the caller decides between
  *   the feature's page and "Coming soon", as the More page does.
- * @param onMove one step of a drag: the card [WidgetItem.id] now lies over
- *   the given slot. Called only when the slot changed.
+ * @param onMove one step of a drag, or an accessibility action: the card
+ *   [WidgetItem.id] now belongs at the given slot. Called only when the slot
+ *   changed.
  * @param onAdd the empty state's button: opens the Add dialog, so a section
  *   created with nothing in it shows how to fill it instead of a bare title.
  */
@@ -95,9 +101,9 @@ internal fun ShortcutGrid(
 
     var draggingId by remember { mutableStateOf<String?>(null) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
-    // Every card is the same size (equal weights, fixed height), so the
-    // last one measured stands for all of them. Needed to turn a drag
-    // distance into a slot; until a card reports, a drag moves nothing.
+    // Every card is the same size (equal widths, fixed height), so the last
+    // one measured stands for all of them. Needed to turn a drag distance
+    // into a slot; until a card reports, a drag moves nothing.
     var cellSize by remember { mutableStateOf(IntSize.Zero) }
     val gapPx = with(LocalDensity.current) { CardGap.toPx() }
     // The drag runs inside pointerInput, which is keyed per card and does
@@ -137,65 +143,82 @@ internal fun ShortcutGrid(
         )
     }
 
-    Column(
-        modifier = Modifier.padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(CardGap),
-    ) {
-        widgets.chunked(COLUMNS).forEach { row ->
-            val rowHoldsDragged = row.any { it.id == draggingId }
-            Row(
-                // A dragged card must draw over the other rows too, and
-                // zIndex only orders siblings, so its row is raised as well.
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .zIndex(if (rowHoldsDragged) 1f else 0f),
-                horizontalArrangement = Arrangement.spacedBy(CardGap),
-            ) {
-                row.forEach { widget ->
-                    key(widget.id) {
-                        val isDragging = draggingId == widget.id
-                        ShortcutCard(
-                            widget = widget,
-                            isEditing = isEditing,
-                            isDragging = isDragging,
-                            onOpen = { onOpen(widget.feature) },
-                            onRemove = { onRemove(widget) },
-                            modifier = Modifier
-                                .weight(1f)
-                                .zIndex(if (isDragging) 1f else 0f)
-                                .offset {
-                                    if (isDragging) IntOffset(dragOffset.x.roundToInt(), dragOffset.y.roundToInt())
-                                    else IntOffset.Zero
+    // One parent for every card, not a Row per line: `key` keeps a card's
+    // composition — and the pointerInput carrying its drag — only while it
+    // stays under the same parent, so with rows a drag died the moment it
+    // crossed into the next one.
+    TwoColumnLayout(modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()) {
+        widgets.forEachIndexed { index, widget ->
+            key(widget.id) {
+                val isDragging = draggingId == widget.id
+                ShortcutCard(
+                    widget = widget,
+                    index = index,
+                    count = widgets.size,
+                    isEditing = isEditing,
+                    isDragging = isDragging,
+                    onOpen = { onOpen(widget.feature) },
+                    onRemove = { onRemove(widget) },
+                    onMoveTo = { onMove(widget.id, it) },
+                    modifier = Modifier
+                        // Over its neighbours while lifted; the layout
+                        // honours zIndex like any other.
+                        .zIndex(if (isDragging) 1f else 0f)
+                        .offset {
+                            if (isDragging) IntOffset(dragOffset.x.roundToInt(), dragOffset.y.roundToInt())
+                            else IntOffset.Zero
+                        }
+                        .onSizeChanged { cellSize = it }
+                        .then(
+                            if (isEditing) {
+                                // No long press: the section's own handle
+                                // starts on first touch-and-move too, and a
+                                // card has nothing else to do with a drag
+                                // while editing.
+                                Modifier.pointerInput(widget.id) {
+                                    detectDragGestures(
+                                        onDragStart = {
+                                            draggingId = widget.id
+                                            dragOffset = Offset.Zero
+                                        },
+                                        onDragEnd = { draggingId = null; dragOffset = Offset.Zero },
+                                        onDragCancel = { draggingId = null; dragOffset = Offset.Zero },
+                                        onDrag = { change, delta ->
+                                            change.consume()
+                                            settle(delta)
+                                        },
+                                    )
                                 }
-                                .onSizeChanged { cellSize = it }
-                                .then(
-                                    if (isEditing) {
-                                        // No long press: the section's own handle
-                                        // starts on first touch-and-move too, and a
-                                        // card has nothing else to do with a drag
-                                        // while editing.
-                                        Modifier.pointerInput(widget.id) {
-                                            detectDragGestures(
-                                                onDragStart = {
-                                                    draggingId = widget.id
-                                                    dragOffset = Offset.Zero
-                                                },
-                                                onDragEnd = { draggingId = null; dragOffset = Offset.Zero },
-                                                onDragCancel = { draggingId = null; dragOffset = Offset.Zero },
-                                                onDrag = { change, delta ->
-                                                    change.consume()
-                                                    settle(delta)
-                                                },
-                                            )
-                                        }
-                                    } else {
-                                        Modifier
-                                    }
-                                ),
-                        )
-                    }
-                }
-                repeat(COLUMNS - row.size) { Spacer(Modifier.weight(1f)) }
+                            } else {
+                                Modifier
+                            }
+                        ),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Its children in [COLUMNS] equal columns, [CardGap] apart, row after row.
+ * A child's own offset (the drag) moves it within the slot it is placed
+ * in, as it would in a Row.
+ */
+@Composable
+private fun TwoColumnLayout(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Layout(content = content, modifier = modifier) { measurables, constraints ->
+        val gap = CardGap.roundToPx()
+        val cellWidth = ((constraints.maxWidth - gap * (COLUMNS - 1)) / COLUMNS).coerceAtLeast(0)
+        val placeables = measurables.map { it.measure(Constraints.fixedWidth(cellWidth)) }
+        val cellHeight = placeables.maxOfOrNull { it.height } ?: 0
+        val rows = (placeables.size + COLUMNS - 1) / COLUMNS
+        val height = if (rows == 0) 0 else rows * cellHeight + (rows - 1) * gap
+        layout(constraints.maxWidth, height) {
+            placeables.forEachIndexed { i, placeable ->
+                placeable.placeRelative(
+                    x = (i % COLUMNS) * (cellWidth + gap),
+                    y = (i / COLUMNS) * (cellHeight + gap),
+                )
             }
         }
     }
@@ -204,10 +227,13 @@ internal fun ShortcutGrid(
 @Composable
 private fun ShortcutCard(
     widget: WidgetItem,
+    index: Int,
+    count: Int,
     isEditing: Boolean,
     isDragging: Boolean,
     onOpen: () -> Unit,
     onRemove: () -> Unit,
+    onMoveTo: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // The same ramp as a dragged section: elevation says "lifted", no wiggle.
@@ -215,46 +241,41 @@ private fun ShortcutCard(
         targetValue = if (isDragging) 12f else 0f,
         label = "shortcut-drag-elevation",
     )
-    val surface = MaterialTheme.colorScheme.surface
+    val shape = RoundedCornerShape(12.dp)
+    val colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    val cardModifier = Modifier
+        .fillMaxSize()
+        .then(if (isDragging) Modifier.shadow(elevation.dp, shape) else Modifier)
+    val featureName = stringResource(widget.feature.displayNameRes)
+    val removeLabel = stringResource(R.string.action_remove)
+    // The drag and the cross, as actions TalkBack can perform since it
+    // cannot drag: before and after in reading order, which is what the Mac
+    // sidebar's move labels say too, and removal, named for the card.
+    val moveUpLabel = stringResource(R.string.desktop_settings_sidebar_move_up)
+    val moveDownLabel = stringResource(R.string.desktop_settings_sidebar_move_down)
+    val latestOnMoveTo by rememberUpdatedState(onMoveTo)
+    val latestOnRemove by rememberUpdatedState(onRemove)
+    val editActions = remember(index, count, moveUpLabel, moveDownLabel, removeLabel) {
+        buildList {
+            if (index > 0) add(CustomAccessibilityAction(moveUpLabel) { latestOnMoveTo(index - 1); true })
+            if (index < count - 1) add(CustomAccessibilityAction(moveDownLabel) { latestOnMoveTo(index + 1); true })
+            add(CustomAccessibilityAction(removeLabel) { latestOnRemove(); true })
+        }
+    }
+
     Box(modifier = modifier.height(CardHeight)) {
-        Card(
-            onClick = onOpen,
-            // Disabled rather than a no-op click, so no ripple answers a tap
-            // in edit mode; the colours are pinned so "disabled" does not
-            // also mean dimmed, as the card is as live as ever, just editing.
-            enabled = !isEditing,
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = surface,
-                disabledContainerColor = surface,
-                disabledContentColor = MaterialTheme.colorScheme.onSurface,
-            ),
-            modifier = Modifier
-                .fillMaxSize()
-                .then(
-                    if (isDragging) Modifier.shadow(elevation.dp, RoundedCornerShape(12.dp))
-                    else Modifier
-                ),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Icon(
-                    imageVector = widget.feature.icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(28.dp),
-                )
-                Text(
-                    text = stringResource(widget.feature.displayNameRes),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+        if (isEditing) {
+            // Not a button while editing: a double tap would do nothing, so
+            // TalkBack is not told to try; the card reads as one element,
+            // its name, with the actions above.
+            Card(
+                shape = shape,
+                colors = colors,
+                modifier = cardModifier.semantics(mergeDescendants = true) { customActions = editActions },
+            ) { ShortcutCardContent(widget.feature, featureName) }
+        } else {
+            Card(onClick = onOpen, shape = shape, colors = colors, modifier = cardModifier) {
+                ShortcutCardContent(widget.feature, featureName)
             }
         }
         if (isEditing) {
@@ -268,12 +289,15 @@ private fun ShortcutCard(
                     .size(28.dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.error)
-                    .clickable(enabled = !isDragging) { onRemove() },
+                    .clickable(enabled = !isDragging) { onRemove() }
+                    // Three crosses that each said only "Remove" could not be
+                    // told apart; named as a recipient chip's cross is.
+                    .semantics { contentDescription = "$removeLabel $featureName" },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     Icons.Filled.Close,
-                    contentDescription = stringResource(R.string.action_remove),
+                    contentDescription = null,
                     tint = MaterialTheme.colorScheme.onError,
                     modifier = Modifier.size(16.dp),
                 )
@@ -289,5 +313,29 @@ private fun ShortcutCard(
                     .size(20.dp),
             )
         }
+    }
+}
+
+@Composable
+private fun ShortcutCardContent(feature: AppFeature, featureName: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Icon(
+            imageVector = feature.icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(28.dp),
+        )
+        Text(
+            text = featureName,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
