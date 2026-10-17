@@ -2,6 +2,7 @@ package org.ntust.app.tigerduck.auth
 
 import android.app.Application
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.SharedPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -83,6 +84,25 @@ class AuthTokenManagerRefreshTest {
 
     /** Runs as each sign-in reaches the fake backend, before its reply. */
     private var onLoginSent: () -> Unit = {}
+
+    /**
+     * Runs as a request resolves the backend's address from [endpointReadPrefs], which a refresh
+     * does after it is marked on its way and before it counts its send on disk.
+     */
+    private var onEndpointRead: () -> Unit = {}
+
+    /** [AppPreferences] whose read of the API endpoint setting runs [onEndpointRead]. */
+    private fun endpointReadPrefs(): AppPreferences = AppPreferences(object : ContextWrapper(context) {
+        override fun getSharedPreferences(name: String, mode: Int): SharedPreferences {
+            val real = super.getSharedPreferences(name, mode)
+            return object : SharedPreferences by real {
+                override fun getString(key: String, defValue: String?): String? {
+                    if (key == "announcementApiBaseUrlOverride") onEndpointRead()
+                    return real.getString(key, defValue)
+                }
+            }
+        }
+    })
 
     /** The requests the client of [networkManager] began. */
     private val calls = AtomicInteger()
@@ -752,6 +772,29 @@ class AuthTokenManagerRefreshTest {
     }
 
     @Test
+    fun `a sign-out between a refresh's start and the count of its send keeps the token in`() = runTest {
+        // The refresh marks itself on its way, then counts its send on disk. Signed out between
+        // the two, the session was taken with no send counted, so this one must not go out: a
+        // 5xx would leave nothing in this process to count it, and the unregister could send the
+        // token twice more, the second time as its third.
+        val manager = manager(Reply.Status(503), prefs = endpointReadPrefs())
+        var departing: DepartingSession? = null
+        onEndpointRead = {
+            onEndpointRead = {}
+            departing = manager.logout()
+        }
+
+        assertNull(manager.authHeader())
+
+        assertEquals("nothing went out as the account signed out", emptyList<String>(), sentRefreshTokens)
+        assertEquals(0, departing?.sendsWithoutReply)
+        assertEquals(0, relogins)
+        // The unregister's refresh is the token's first send.
+        assertEquals(DepartingRefresh.Unavailable, manager.refreshDeparting(departing!!, sendsWithoutReply = 0))
+        assertEquals(listOf("refresh-1"), sentRefreshTokens)
+    }
+
+    @Test
     fun `a send answered with a 5xx and one on its way at sign-out are both counted, so the unregister never sends a third`() = runTest {
         val manager = manager(Reply.Status(503), Reply.Lost, Reply.Pair("access-3", "refresh-3"))
         // A 5xx may come from a gateway after the backend rotated: the send stays counted.
@@ -867,10 +910,15 @@ class AuthTokenManagerRefreshTest {
         assertEquals(listOf("refresh-1", "refresh-1"), sentRefreshTokens)
     }
 
-    private fun manager(vararg replies: Reply, reloginSucceeds: Boolean = false, departingWaitMs: Long = 20_000) = AuthTokenManager(
+    private fun manager(
+        vararg replies: Reply,
+        reloginSucceeds: Boolean = false,
+        departingWaitMs: Long = 20_000,
+        prefs: AppPreferences = AppPreferences(context),
+    ) = AuthTokenManager(
         tokens = tokens,
         httpClient = backend(*replies),
-        prefs = AppPreferences(context),
+        prefs = prefs,
         deviceUuid = "device-1",
         now = { clock },
         departingWaitMs = departingWaitMs,

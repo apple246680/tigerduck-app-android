@@ -27,14 +27,16 @@ class DepartingDeviceUnregisterTest {
     private class MemoryStore : PendingUnregisterStore {
         var pending: PendingUnregister? = null
 
-        /** A disk that refuses every write from now on, as SharedPreferences reports with a failed commit. */
+        /**
+         * A disk that refuses every write from now on. As SharedPreferences does, the edit still
+         * lands in memory, and only the commit reports the failure.
+         */
         var refuseSaves = false
 
         override fun load() = pending
         override fun save(pending: PendingUnregister): Boolean {
-            if (refuseSaves) return false
             this.pending = pending
-            return true
+            return !refuseSaves
         }
         override fun clear() {
             pending = null
@@ -451,6 +453,25 @@ class DepartingDeviceUnregisterTest {
         assertEquals(emptyList<String>(), refreshes)
         assertEquals(emptyList<String>(), deletes)
         assertEquals(0, store.pending?.unansweredRefreshes)
+    }
+
+    @Test
+    fun `counts the disk refused are not taken for sends once it takes writes again`() = runTest {
+        // SharedPreferences keeps a refused edit in memory: left there, two refused tries would
+        // read as two sends made, and the next try would give up a debt still owed.
+        owe(expiresAt = now - 1)
+        store.refuseSaves = true
+        assertEquals(Outcome.RETRY, unregister().send())
+        assertEquals(Outcome.RETRY, unregister().send())
+        assertEquals(emptyList<String>(), refreshes)
+
+        store.refuseSaves = false
+        refreshReplies += refreshed("access-2", "refresh-2")
+        assertEquals(Outcome.DONE, unregister().send())
+
+        assertEquals(listOf("refresh-1"), refreshes)
+        assertEquals(listOf("device-1 access-2"), deletes)
+        assertNull(store.pending)
     }
 
     @Test

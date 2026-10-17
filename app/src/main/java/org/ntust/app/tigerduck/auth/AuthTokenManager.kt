@@ -646,11 +646,20 @@ class AuthTokenManager(
     }
 
     // Only while [refreshToken] is still the account's stored token: a pair
-    // stored since, by a sign-in or for the next account, has a count of its own.
-    // False when the disk did not take the count.
+    // stored since by a sign-in has a count of its own. False when the disk did
+    // not take the count, and once the account has signed out: the sign-out
+    // took the departing session under this lock with the count as it stood,
+    // so a send counted after it would be one the debt never knows of, and
+    // answered with a 5xx nothing here would count it either. A departing
+    // refresh ([DEPARTING]) is counted by its caller, with the debt.
     private fun countSends(refreshToken: String, count: Int, signIn: Int): Boolean =
         synchronized(signInLock) {
-            generation != signIn || tokens.refreshToken != refreshToken || tokens.saveRefreshTokenSends(count)
+            when {
+                signIn == DEPARTING -> true
+                generation != signIn -> false
+                tokens.refreshToken != refreshToken -> true
+                else -> tokens.saveRefreshTokenSends(count)
+            }
         }
 
     // OkHttp 5 raises these before it writes the request: the DNS lookup's

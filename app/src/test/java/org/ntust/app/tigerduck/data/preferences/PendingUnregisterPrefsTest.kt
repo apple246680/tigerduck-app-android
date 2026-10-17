@@ -47,13 +47,17 @@ class PendingUnregisterPrefsTest {
 
     @Test
     fun `a save the disk refuses says so, for the send it counts not to go out`() {
-        // SharedPreferences keeps the edit in memory and reports the failed write with commit().
+        // SharedPreferences puts the edit in memory first, and only then reports the failed write
+        // with commit(): what is read back in this process is the edit, not what the disk has.
         class RefusingEditor(private val inner: SharedPreferences.Editor) : SharedPreferences.Editor by inner {
             override fun putString(key: String, value: String?) = apply { inner.putString(key, value) }
             override fun putLong(key: String, value: Long) = apply { inner.putLong(key, value) }
             override fun putInt(key: String, value: Int) = apply { inner.putInt(key, value) }
             override fun remove(key: String) = apply { inner.remove(key) }
-            override fun commit() = false
+            override fun commit(): Boolean {
+                inner.commit()
+                return false
+            }
         }
         val refusing = object : SharedPreferences by prefs {
             override fun edit(): SharedPreferences.Editor = RefusingEditor(prefs.edit())
@@ -62,6 +66,7 @@ class PendingUnregisterPrefsTest {
 
         assertTrue(PendingUnregisterPrefs(prefs).save(pending))
         assertFalse(PendingUnregisterPrefs(refusing).save(pending.with(unansweredRefreshes = 1)))
+        assertEquals("the refused edit is what this process reads back", 1, PendingUnregisterPrefs(prefs).load()?.unansweredRefreshes)
     }
 
     @Test

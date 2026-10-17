@@ -229,6 +229,10 @@ class DepartingDeviceUnregister internal constructor(
             if (!store.save(sending)) {
                 // Counted in memory only, a process ended during the send would come back with
                 // the count before it, and a later launch could make the token's third send.
+                // SharedPreferences keeps the refused edit in memory, so the count before is
+                // written again: left, two refused tries would read as two sends made, and the
+                // next try would give up a debt still owed.
+                store.save(current)
                 Log.w(TAG, "the refresh's send was not counted on disk; it is left for a later try")
                 refreshUnavailable = true
                 return@withContext null
