@@ -8,10 +8,12 @@ import android.os.Build
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.ntust.app.tigerduck.AppConstants
 import org.ntust.app.tigerduck.academic.AcademicCalendar
+import org.ntust.app.tigerduck.network.SemesterCodes
 import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.shared.blockClassroom
 import org.ntust.app.tigerduck.shared.contiguousPeriodRuns
 import org.ntust.app.tigerduck.shared.clock.AppClock
+import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZonedDateTime
 import javax.inject.Inject
@@ -38,13 +40,16 @@ class ClassPreparingNotificationScheduler @Inject constructor(
     private val schedulerLock = Any()
 
     /**
+     * @param coursesByTerm each term's courses, by code: a day's reminders
+     *   come from the term [termOn] puts it in, and a day whose term is
+     *   missing here gets none.
      * @param calendar the school calendar, used to skip days classes do not
      *   meet; [AcademicCalendar.EMPTY] suppresses nothing.
      * @param optedInHolidayIds holidays this user asked to keep hearing
      *   about, which put their days back in.
      */
     override fun scheduleAll(
-        courses: List<Course>,
+        coursesByTerm: Map<String, List<Course>>,
         skippedDates: Map<String, List<String>>,
         leadTimeSec: Long,
         calendar: AcademicCalendar,
@@ -56,7 +61,7 @@ class ClassPreparingNotificationScheduler @Inject constructor(
         // across two different slots and silently overwrite the earlier alarm.
         val codeMap = loadCodeMap()
         cancelAllTrackedLocked(codeMap)
-        if (leadTimeSec <= 0 || courses.isEmpty()) return@synchronized null
+        if (leadTimeSec <= 0 || coursesByTerm.values.all { it.isEmpty() }) return@synchronized null
 
         val now = AppClock.nowMillis()
         val scheduled = mutableSetOf<String>()
@@ -64,7 +69,7 @@ class ClassPreparingNotificationScheduler @Inject constructor(
         var nextClassStart: Long? = null
 
         for (slot in upcomingSlots(
-            courses, skippedDates, daysAhead = DAYS_AHEAD,
+            coursesByTerm, skippedDates, daysAhead = DAYS_AHEAD,
             calendar = calendar, optedInHolidayIds = optedInHolidayIds,
         )) {
             // Before the trigger check: a class whose reminder has gone off
@@ -88,6 +93,7 @@ class ClassPreparingNotificationScheduler @Inject constructor(
                     ClassPreparingNotificationReceiver.EXTRA_INSTRUCTOR,
                     slot.course.instructor
                 )
+                putExtra(ClassPreparingNotificationReceiver.EXTRA_TERM, slot.term)
                 putExtra(ClassPreparingNotificationReceiver.EXTRA_START_MS, slot.startMs)
                 putExtra(ClassPreparingNotificationReceiver.EXTRA_END_MS, slot.endMs)
                 putExtra(ClassPreparingNotificationReceiver.EXTRA_NOTIFICATION_ID, requestCode)
@@ -186,6 +192,8 @@ class ClassPreparingNotificationScheduler @Inject constructor(
 
     private data class UpcomingSlot(
         val course: Course,
+        /** The term whose timetable [course] came from. */
+        val term: String,
         val startMs: Long,
         val endMs: Long,
         val id: String,
@@ -198,7 +206,7 @@ class ClassPreparingNotificationScheduler @Inject constructor(
     }
 
     private fun upcomingSlots(
-        courses: List<Course>,
+        coursesByTerm: Map<String, List<Course>>,
         skippedDates: Map<String, List<String>>,
         daysAhead: Int,
         calendar: AcademicCalendar,
@@ -222,6 +230,12 @@ class ClassPreparingNotificationScheduler @Inject constructor(
             // than at the call site because this loop reaches ten days ahead
             // and either 開學 or a holiday can land partway through that window.
             if (calendar.suppressesClasses(date, optedInHolidayIds)) continue
+            // Each day from its own term's timetable: the window reaches past
+            // 開學 while the term the app shows is still the last one, whose
+            // classes, times and rooms are not the new term's. A term with
+            // nothing cached arms nothing rather than borrow another's.
+            val term = termOn(calendar, date)
+            val courses = coursesByTerm[term] ?: continue
             val isoDate = date.toString()
             for (course in courses) {
                 val periods = course.schedule[weekdayIdx] ?: continue
@@ -238,6 +252,7 @@ class ClassPreparingNotificationScheduler @Inject constructor(
                     val endMs = endZdt.toInstant().toEpochMilli()
                     results += UpcomingSlot(
                         course = course,
+                        term = term,
                         startMs = startMs,
                         endMs = endMs,
                         id = "${course.courseNo}@${isoDate}#${first}-${last}",
@@ -256,6 +271,21 @@ class ClassPreparingNotificationScheduler @Inject constructor(
         private const val KEY_CODE_MAP = "slot_request_codes"
         private const val KEY_NEXT_CODE = "next_request_code"
         private const val DAYS_AHEAD = 10
+
+        /**
+         * The term whose timetable [date]'s reminders come from: the one the
+         * calendar puts that day in. With no calendar, the month guess
+         * DataCache falls back on too, the same term for every day.
+         */
+        internal fun termOn(calendar: AcademicCalendar, date: LocalDate): String =
+            calendar.currentTerm(date)?.code ?: SemesterCodes.heuristic()
+
+        /**
+         * The terms whose courses [scheduleAll] needs to arm the days ahead
+         * from [today]; see [termOn].
+         */
+        internal fun termsAhead(calendar: AcademicCalendar, today: LocalDate): Set<String> =
+            (0 until DAYS_AHEAD).mapTo(linkedSetOf()) { termOn(calendar, today.plusDays(it.toLong())) }
 
         private fun parseTime(text: String): LocalTime? = runCatching {
             val (h, m) = text.split(":").map { it.toInt() }
