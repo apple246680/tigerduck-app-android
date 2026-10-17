@@ -570,6 +570,20 @@ class SchoolMailListViewModelTest {
         assertEquals(0L, state.fetchedAt("寄件備份匣"))
     }
 
+    /** The folder list a load starts with is its first request, and waits for the session like any other. */
+    @Test
+    fun `a load whose folder list waits across the account change sends it for nobody`() {
+        repo.add("INBOX", mailSummary(1))
+        repo.foldersGate = CompletableDeferred()
+        vm.load()
+        signOutAndSignInAnother()
+        repo.foldersGate!!.complete(Unit)
+
+        assertEquals(0, repo.foldersSent)
+        assertEquals(emptyList<String>(), repo.loadsSent)
+        assertEquals(SchoolMailListViewModel.UiState(), vm.state.value)
+    }
+
     /** A search is a batch too, one SEARCH per folder of the view. */
     @Test
     fun `a search whose account left between two of its folders sends no more`() {

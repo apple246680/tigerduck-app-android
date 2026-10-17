@@ -1,5 +1,6 @@
 package org.ntust.app.tigerduck.mail
 
+import androidx.annotation.VisibleForTesting
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -42,7 +43,8 @@ sealed interface SearchOutcome {
 }
 
 interface SchoolMailRepository {
-    suspend fun folders(): ResolvedFolders
+    /** The server's folders, resolved once per sign-in; [stillWanted] as on [loadPage], for the LIST a first call sends. */
+    suspend fun folders(stillWanted: () -> Boolean = { true }): ResolvedFolders
 
     /** The folder's last saved page, read from disk on the IO dispatcher. */
     suspend fun cachedPage(folder: String): MailPage?
@@ -114,7 +116,8 @@ class MailRepository @Inject constructor(
     private val demo: MailDemoGate,
     @ApplicationScope scope: CoroutineScope,
 ) : SchoolMailRepository {
-    private val holder = SessionHolder(sessions, scope)
+    @VisibleForTesting
+    internal val holder = SessionHolder(sessions, scope)
     @Volatile private var resolved: ResolvedFolders? = null
     private val demoFolders = mutableMapOf<String, MutableList<DemoMail>>()
 
@@ -166,10 +169,7 @@ class MailRepository @Inject constructor(
     private suspend fun <T> withSession(stillWanted: () -> Boolean = { true }, block: (MailSession) -> T): T = withContext(Dispatchers.IO) {
         if (account.isDemo) throw MailError.DemoMode()
         refuseWhileAuthFailed()
-        holder.use(credentials()) { session ->
-            if (!stillWanted()) throw MailError.Abandoned()
-            block(session)
-        }
+        holder.use(credentials(), stillWanted, block)
     }
 
     // --- demo -------------------------------------------------------------------
@@ -228,10 +228,10 @@ class MailRepository @Inject constructor(
 
     // --- folders & lists -----------------------------------------------------------
 
-    override suspend fun folders(): ResolvedFolders {
+    override suspend fun folders(stillWanted: () -> Boolean): ResolvedFolders {
         if (account.isDemo) return DEMO_FOLDERS
         resolved?.let { return it }
-        return withSession { MailFolders.resolve(it.listFolders()) }.also { resolved = it }
+        return withSession(stillWanted) { MailFolders.resolve(it.listFolders()) }.also { resolved = it }
     }
 
     override suspend fun cachedPage(folder: String): MailPage? = withContext(Dispatchers.IO) {
@@ -272,7 +272,8 @@ class MailRepository @Inject constructor(
 
     override suspend fun inboxStatus(stillWanted: () -> Boolean): FolderStatus {
         if (account.isDemo) return FolderStatus(1, 2_000, demoList("INBOX").size, 0)
-        val inbox = folders().nameOf(SpecialFolder.INBOX) ?: "INBOX"
+        // The folder list is a request of this call's too, when nothing has resolved it yet.
+        val inbox = folders(stillWanted).nameOf(SpecialFolder.INBOX) ?: "INBOX"
         return withSession(stillWanted) { it.status(inbox) }
     }
 

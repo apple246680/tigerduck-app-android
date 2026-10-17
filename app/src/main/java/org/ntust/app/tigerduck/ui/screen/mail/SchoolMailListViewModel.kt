@@ -163,9 +163,13 @@ class SchoolMailListViewModel @Inject constructor(
     fun load() {
         if (!account.signedIn.value) return
         showFetchedAt()
+        val generation = account.accountGeneration
         viewModelScope.launch {
             try {
-                val folders = repository.folders()
+                // The first request of the load, and asked the same question as the rest (see
+                // fetchFirstPage): a folder list that waited for the session across a sign-out
+                // must not be fetched as the next account.
+                val folders = repository.folders { account.accountGeneration == generation }
                 val merged = FolderSelection.AllMail.MERGED.mapNotNull { folders.nameOf(it) }
                 val real = SpecialFolder.entries.mapNotNull { kind ->
                     folders.nameOf(kind)?.let { FolderChip(FolderSelection.Real(it), kind) }
@@ -187,7 +191,7 @@ class SchoolMailListViewModel @Inject constructor(
                 // The folders on screen are known now, and so is their date.
                 showFetchedAt()
             } catch (e: MailError) {
-                fail(e)
+                if (!dropped(e, generation)) fail(e)
                 return@launch
             }
             showCached()

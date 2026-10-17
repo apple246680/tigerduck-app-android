@@ -33,6 +33,12 @@ class FakeSchoolMailRepository : SchoolMailRepository {
     /** Set, every foreground [loadPage] waits on it first: a load held out while the test acts. */
     var loadGate: CompletableDeferred<Unit>? = null
 
+    /** Set, every [folders] waits on it first: the folder list's LIST held out while the test acts. */
+    var foldersGate: CompletableDeferred<Unit>? = null
+
+    /** How many times the folder list went out; one refused by its `stillWanted` is not counted. */
+    var foldersSent = 0
+
     /**
      * The gates above stand for the wait behind the session; a request whose `stillWanted` says
      * no once its gate opens is not sent, as the real repository's is not, and ends the same way.
@@ -155,7 +161,12 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         if (i >= 0) list[i] = transform(list[i])
     }
 
-    override suspend fun folders() = resolved
+    override suspend fun folders(stillWanted: () -> Boolean): ResolvedFolders {
+        foldersGate?.await()
+        unlessAbandoned(stillWanted)
+        foldersSent++
+        return resolved
+    }
     override suspend fun cachedPage(folder: String): MailPage? = touching(folder) { cachedPages[folder] }
 
     /** Simulates the repository dropping a folder's cache once [MailError.FolderChanged] fires for it. */

@@ -139,23 +139,77 @@ class MailRepositoryTest {
                 }
             }
         }
-        val repo = TestSetup(backgroundScope, sessions).signedIn()
+        val setup = TestSetup(backgroundScope, sessions)
+        val repo = setup.signedIn()
         val uid = repo.loadPage("INBOX", null).messages.single().uid
 
-        // One request holds the session (after a STATUS of its own); the poll's STATUS queues
-        // behind it, still wanted as it is asked.
+        // One request holds the session (after a STATUS of its own).
         val body = launch(Dispatchers.IO) { repo.body("INBOX", uid) }
         assertTrue(holding.await(5, TimeUnit.SECONDS))
         val sentBefore = statuses.get()
+        // The STATUS reaches the wait for the session while still wanted...
+        val reached = CountDownLatch(1)
+        setup.repository.holder.onWait = { reached.countDown() }
         val wanted = AtomicBoolean(true)
         val status = async(Dispatchers.IO) { runCatching { repo.status("INBOX") { wanted.get() } } }
-        // No longer wanted by the time the session comes free.
+        assertTrue(reached.await(5, TimeUnit.SECONDS))
+        // ...and is no longer wanted by the time the session comes free.
         wanted.set(false)
         release.countDown()
 
         assertTrue(status.await().exceptionOrNull() is MailError.Abandoned)
         assertEquals(sentBefore, statuses.get())
         body.join()
+    }
+
+    /**
+     * Asked before the connection is touched, not only before the command: probing or opening
+     * it logs in with the credentials the caller read, so a request of an account that has left
+     * -- with the next one signed in -- must not log in as the next one. A refusal then would be
+     * the next account's, dropped as the old one's.
+     */
+    @Test
+    fun `a request of a departed account opens no session for the next one`() = runTest {
+        val opens = AtomicInteger()
+        val sessions = MailSessionFactory { credentials ->
+            opens.incrementAndGet()
+            server.factory().open(credentials)
+        }
+        val setup = TestSetup(backgroundScope, sessions)
+        val repo = setup.signedIn()
+        repo.loadPage("INBOX", null)
+        val before = setup.account.accountGeneration
+        setup.signOutAndSettle()
+        server.passwords["B10000002"] = "pw"
+        setup.account.signIn("b10000002", "pw")
+        val opened = opens.get()
+
+        val outcome = runCatching { repo.status("INBOX") { setup.account.accountGeneration == before } }
+
+        assertTrue(outcome.exceptionOrNull() is MailError.Abandoned)
+        assertEquals(opened, opens.get())
+    }
+
+    /** The folder list a first request resolves is a request too, and asked the same question. */
+    @Test
+    fun `a departed account's inbox status resolves no folders for the next one`() = runTest {
+        val opens = AtomicInteger()
+        val sessions = MailSessionFactory { credentials ->
+            opens.incrementAndGet()
+            server.factory().open(credentials)
+        }
+        val setup = TestSetup(backgroundScope, sessions)
+        setup.signedIn()
+        val before = setup.account.accountGeneration
+        setup.signOutAndSettle()
+        server.passwords["B10000002"] = "pw"
+        setup.account.signIn("b10000002", "pw")
+        val opened = opens.get()
+
+        val outcome = runCatching { setup.repository.inboxStatus { setup.account.accountGeneration == before } }
+
+        assertTrue(outcome.exceptionOrNull() is MailError.Abandoned)
+        assertEquals(opened, opens.get())
     }
 
     @Test
