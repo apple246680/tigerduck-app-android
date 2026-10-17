@@ -88,16 +88,37 @@ class ClassTableWiringTest {
     /**
      * tigerduck-app-android#264: mergeFetched keeps hand-added rows as stored, so a fetch looks
      * them up first — through ClassTableTermFetch, which folds the answers onto the term's list
-     * as it is after the lookups: for the term on screen the list every edit writes.
+     * as it is after the lookups: for the term on screen the list every edit writes, told by
+     * the term it is tagged with, not the picker, which moves before the list is swapped.
      */
     @Test
     fun `a fetch looks the term's hand-added courses up again, onto the list as the user left it`() {
         assertCalls("fetchData", "fetchTermCourses(semester, orderedCourseNos, moodleByNo)")
-        assertCalls(
-            "fetchTermCourses",
-            "termFetch.run(",
-            "latest = { if (_currentSemester.value == semester) _courses.value else dataCache.loadCourses(semester) }",
-        )
+        assertCalls("fetchTermCourses", "termFetch.lookUp(", "termFetch.fold(", "latestCourses(semester)")
+        assertCalls("latestCourses", "if (coursesSemester == semester) _courses.value else dataCache.loadCourses(semester)")
+    }
+
+    /** The list on screen moves with its tag, so a reader can tell the list from the picker. */
+    @Test
+    fun `the list on screen is swapped together with the term it belongs to`() {
+        for (name in listOf("setSemester", "followNewestSemesterIfUnpicked", "loadNow")) {
+            assertCalls(name, "showCourses(")
+            assertTrue("$name still swaps the list without its tag", "_courses.value = " !in body(name))
+        }
+        assertCalls("showCourses", "coursesSemester = semester", "_courses.value = courses")
+        assertCalls("lookUpMissingRooms", "coursesSemester != semester")
+    }
+
+    /** deleteCourse takes the row off the list at once and writes its tombstone after. */
+    @Test
+    fun `a delete's tombstone reaches a fetch before its write lands`() {
+        for (name in listOf("deleteCourse", "addCourse")) {
+            val body = body(name)
+            val edit = body.indexOf("tombstoneEdits.edit {")
+            assertTrue("$name no longer notes its tombstone edit before launching the write", edit in 0 until body.indexOf("viewModelScope.launch"))
+            assertTrue("$name no longer retires the edit once written", "tombstoneEdits.saved(" in body)
+        }
+        assertCalls("fetchTermCourses", "tombstoneEdits.over(")
     }
 
     /** A warm's older rows must not land over a reset of the term, or a fetch the user asked for. */
@@ -112,11 +133,19 @@ class ClassTableWiringTest {
             reset.indexOf("termWarm.supersede(") < reset.indexOf("viewModelScope.launch"),
         )
         assertCalls("warmTerm", "fetchTermCourses(semester, rosterNos, moodleByNo) {", "isCurrent()")
+        // The commit — the generation check, the snapshot, the fold, the save and the upload —
+        // in the order the backend's DELETEs run in, and held through the upload: a reset's
+        // DELETE waits for an upload under way, and an upload after it finds the term superseded.
         val body = body("fetchTermCourses")
+        val commit = body.indexOf("pendingCourseAdds.uploading {")
+        val tombstones = body.indexOf("dataCache.loadDeletedCourseNos()")
+        val fold = body.indexOf("termFetch.fold(")
         val save = body.indexOf("dataCache.saveCourses(")
         val upload = body.indexOf("pushApiClient.uploadCourses(")
         val checks = Regex("""if \(!mayCommit\(\)\) return""").findAll(body).map { it.range.first }.toList()
-        assertTrue("fetchTermCourses no longer checks mayCommit before the save", checks.any { it in 0 until save })
+        assertTrue("fetchTermCourses no longer commits under PendingCourseAdds.uploading", commit in 0 until tombstones)
+        assertTrue("fetchTermCourses no longer checks mayCommit under the lock before the snapshot", checks.any { it in commit until tombstones })
+        assertTrue("fetchTermCourses no longer folds onto a snapshot taken under the lock", tombstones < fold && fold < save)
         assertTrue("fetchTermCourses no longer checks mayCommit before the upload", checks.any { it in save until upload })
     }
 

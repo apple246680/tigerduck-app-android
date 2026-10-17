@@ -7,14 +7,14 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.ntust.app.tigerduck.shared.Course
 
 /**
  * One term's fetch as far as its list goes. The lookups take seconds, and the user keeps
- * editing meanwhile: what they did while the requests ran has to be in what the fetch saves.
+ * editing meanwhile: what they did while the requests ran has to be in what the fetch saves,
+ * so the answers are folded onto the list, and the tombstones, as they stand once they land.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ClassTableTermFetchTest {
@@ -39,42 +39,25 @@ class ClassTableTermFetchTest {
     private fun manual(no: String, room: String = "") =
         Course.fromSchedule(no, no, classroom = room, schedule = mapOf(1 to listOf("1")), isManual = true)
 
-    private fun run(
-        rosterNos: List<String>,
-        latest: () -> List<Course>,
-        deletedNos: () -> Set<String> = { emptySet() },
-    ): ClassTableTermFetch.Outcome {
-        lateinit var outcome: ClassTableTermFetch.Outcome
-        runTest {
-            launch {
-                outcome = fetch.run(
-                    "1151", rosterNos, emptyMap(),
-                    latest = { latest() }, names = { emptyMap() }, locale = "zh", deletedNos = { deletedNos() },
-                )
-            }
-            advanceUntilIdle()
-            during()
-            gate.complete(Unit)
-            advanceUntilIdle()
-        }
-        return outcome
-    }
+    private suspend fun lookUp(rosterNos: List<String>, before: List<Course>) =
+        fetch.lookUp("1151", rosterNos, emptyMap(), before)
 
-    /** What happens while the lookups run. */
-    private var during: () -> Unit = {}
+    private fun fold(answers: ClassTableTermFetch.Answers, latest: List<Course>, deleted: Set<String> = emptySet()) =
+        fetch.fold(answers, latest, names = emptyMap(), locale = "zh", deletedNos = deleted)
 
     @Test
-    fun `an edit and a delete made while the lookups run survive the fetch`() {
-        var state = listOf(course("A"), manual("MINE", room = "T4-101"), manual("GONE"))
-        var deleted = emptySet<String>()
-        during = {
-            // A recoloured, GONE deleted, NEW added by hand: each writes the term's list.
-            state = listOf(course("A", color = "#FF0000"), manual("MINE", room = "T4-101"), manual("NEW"))
-            deleted = setOf("GONE")
-        }
-        val outcome = run(rosterNos = listOf("A"), latest = { state }, deletedNos = { deleted })
+    fun `an edit and a delete made while the lookups run survive the fetch`() = runTest {
+        val before = listOf(course("A"), manual("MINE", room = "T4-101"), manual("GONE"))
+        var answers: ClassTableTermFetch.Answers? = null
+        launch { answers = lookUp(listOf("A"), before) }
+        advanceUntilIdle()
+        // While the lookups run: A recoloured, GONE deleted, NEW added by hand. Each writes the
+        // term's list, which the fetch reads again once the answers are in.
+        val latest = listOf(course("A", color = "#FF0000"), manual("MINE", room = "T4-101"), manual("NEW"))
+        gate.complete(Unit)
+        advanceUntilIdle()
 
-        val out = outcome.courses!!
+        val out = fold(answers!!, latest, deleted = setOf("GONE"))
         assertEquals(listOf("A", "MINE", "NEW"), out.map { it.courseNo })
         assertEquals("#FF0000", out[0].customColorHex)
         // MINE was looked up again and refreshed; NEW came too late for this round and is kept as typed.
@@ -82,40 +65,53 @@ class ClassTableTermFetchTest {
         assertTrue(out[1].isManual)
         assertEquals(manual("NEW"), out[2])
         assertEquals(setOf("A", "MINE", "GONE"), asked.toSet())
-        assertTrue(outcome.answered)
+        assertTrue(answers!!.answered)
     }
 
     @Test
-    fun `with no roster, the hand-added rows are refreshed and the tombstones still applied`() {
+    fun `a roster course deleted while the lookups run stays deleted`() = runTest {
+        // deleteCourse takes the row off the list at once and writes its tombstone after. The
+        // answer for it is in, so only the tombstone keeps it out: the fold has to see the
+        // delete's tombstone ahead of that write, together with the list the delete left.
+        gate.complete(Unit)
+        val answers = lookUp(listOf("A", "GONE"), before = listOf(course("A"), course("GONE")))
+        val latest = listOf(course("A"))
+        assertEquals(listOf("A"), fold(answers, latest, deleted = setOf("GONE")).map { it.courseNo })
+        assertEquals(listOf("A", "GONE"), fold(answers, latest).map { it.courseNo })
+    }
+
+    @Test
+    fun `with no roster, the hand-added rows are refreshed and the tombstones still applied`() = runTest {
+        gate.complete(Unit)
+        val latest = listOf(manual("MINE"), manual("GONE"))
+        val answers = lookUp(emptyList(), before = latest)
         // GONE's delete is in the tombstones before its write of the list lands.
-        val outcome = run(
-            rosterNos = emptyList(),
-            latest = { listOf(manual("MINE"), manual("GONE")) },
-            deletedNos = { setOf("GONE") },
-        )
-        val out = outcome.courses!!
+        val out = fold(answers, latest, deleted = setOf("GONE"))
         assertEquals(listOf("MINE"), out.map { it.courseNo })
         assertEquals("IB-202", out.single().classroom)
         assertTrue(out.single().isManual)
     }
 
     @Test
-    fun `a failed query is reported, and a hand-added course the query does not answer keeps its snapshot`() {
+    fun `a failed query is reported, and a hand-added course the query does not answer keeps its snapshot`() = runTest {
+        gate.complete(Unit)
         failing += "B"
         unanswered += "MINE"
-        val outcome = run(rosterNos = listOf("A", "B"), latest = { listOf(course("A"), manual("MINE", room = "T4-101")) })
-        assertFalse(outcome.answered)
-        val out = outcome.courses!!
+        val latest = listOf(course("A"), manual("MINE", room = "T4-101"))
+        val answers = lookUp(listOf("A", "B"), before = latest)
+        assertFalse(answers.answered)
+        val out = fold(answers, latest)
         assertEquals(listOf("A", "MINE"), out.map { it.courseNo })
         assertEquals("T4-101", out[1].classroom)
     }
 
     @Test
-    fun `a term with nothing to look up, or nothing answered, is left as it is`() {
-        assertNull(run(rosterNos = emptyList(), latest = { listOf(course("A")) }).courses)
+    fun `a term with nothing to look up, or nothing answered, is left as it is`() = runTest {
+        gate.complete(Unit)
+        assertTrue(lookUp(emptyList(), before = listOf(course("A"))).isEmpty)
         unanswered += listOf("A", "MINE")
-        val outcome = run(rosterNos = listOf("A"), latest = { listOf(course("A"), manual("MINE")) })
-        assertNull(outcome.courses)
-        assertTrue(outcome.answered)
+        val answers = lookUp(listOf("A"), before = listOf(course("A"), manual("MINE")))
+        assertTrue(answers.isEmpty)
+        assertTrue(answers.answered)
     }
 }

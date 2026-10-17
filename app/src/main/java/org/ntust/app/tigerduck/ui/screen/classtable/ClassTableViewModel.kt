@@ -160,6 +160,9 @@ class ClassTableViewModel @Inject constructor(
         courseService.lookupOrFallback(semester, courseNo, moodle, onFailed)
     }
 
+    // This screen's tombstone edits whose write has not landed; see ClassTableTombstoneEdits.
+    private val tombstoneEdits = ClassTableTombstoneEdits()
+
     // When each term's courses without a room were last looked up again, on
     // the monotonic clock; see lookUpMissingRooms.
     private val roomLookupsAtMs = HashMap<String, Long>()
@@ -270,6 +273,21 @@ class ClassTableViewModel @Inject constructor(
         semesterCatalog.selectedSemester(appPreferences.classTableSelectedSemester)
     )
     val currentSemester: StateFlow<String> = _currentSemester
+
+    /**
+     * The term [_courses] holds, set with the list by [showCourses] whenever
+     * another term's replaces it. A reader cannot take it from the picker:
+     * [setSemester] moves the picker first and swaps the list once the term's
+     * cache is read, and a fetch of the newly picked term landing in between
+     * would fold onto the term just left, and save it as the new one.
+     */
+    private var coursesSemester: String = _currentSemester.value
+
+    /** Puts [courses], [semester]'s list, on screen: the tag and the list together. */
+    private fun showCourses(courses: List<Course>, semester: String) {
+        coursesSemester = semester
+        _courses.value = courses
+    }
 
     /**
      * Terms the picker offers, newest first, as published by NTUST — see
@@ -424,9 +442,10 @@ class ClassTableViewModel @Inject constructor(
             // so picking a past term doesn't get snapped back to the
             // current semester on a color reset.
             courseColorStore.changeEvent.collect {
-                val fresh = resolveCustomNames(dataCache.loadCourses(_currentSemester.value))
+                val semester = _currentSemester.value
+                val fresh = resolveCustomNames(dataCache.loadCourses(semester))
                 if (fresh.isNotEmpty()) {
-                    _courses.value = fresh
+                    showCourses(fresh, semester)
                     TigerDuckTheme.buildCourseColorMap(fresh)
                     // Widget refresh is driven by CourseColorStore itself, so
                     // subscribers don't need to re-trigger it.
@@ -447,7 +466,7 @@ class ClassTableViewModel @Inject constructor(
                 // whole term (a reset made elsewhere), and holding on to
                 // the old list would keep showing courses that are gone.
                 val fresh = resolveCustomNames(courses)
-                _courses.value = fresh
+                showCourses(fresh, semester)
                 TigerDuckTheme.buildCourseColorMap(fresh)
                 _assignments.value = assignments
             }
@@ -481,6 +500,7 @@ class ClassTableViewModel @Inject constructor(
                     _ignoredAssignmentIds.value = emptySet()
                     _markedCompletedIds.value = emptySet()
                     ignoredCourses.clear()
+                    tombstoneEdits.clear()
                     clearSelection()
                     _moodleCourseIdByIdnumber.value = emptyMap()
                     courseCustomNames = emptyMap()
@@ -670,7 +690,7 @@ class ClassTableViewModel @Inject constructor(
         // new term's cache immediately rather than leaving the wrong timetable
         // up for the length of the network round-trip.
         val cached = dataCache.loadCourses(newest)
-        _courses.value = cached
+        showCourses(cached, newest)
         TigerDuckTheme.buildCourseColorMap(cached)
         refreshLiveSemesterCourses()
     }
@@ -695,7 +715,7 @@ class ClassTableViewModel @Inject constructor(
         termWarm.supersede(code)
         viewModelScope.launch {
             val cached = resolveCustomNames(dataCache.loadCourses(code))
-            _courses.value = cached
+            showCourses(cached, code)
             TigerDuckTheme.buildCourseColorMap(cached)
             refreshLiveSemesterCourses()
             // A rerun: a fetch in flight is for the term just left.
@@ -949,15 +969,23 @@ class ClassTableViewModel @Inject constructor(
         val flagged = course.copy(isManual = true)
         val updated = _courses.value + flagged
         _courses.value = updated
+        val semester = _currentSemester.value
+        // Ahead of the write below: a fetch folding meanwhile reads the
+        // tombstones with this on top, or its filter would drop the course
+        // just added back; see ClassTableTombstoneEdits.
+        val tombstone = tombstoneEdits.edit { CourseTombstoneKeys.unhide(course.courseNo, semester, it) }
         viewModelScope.launch {
-            val semester = _currentSemester.value
-            val deleted = dataCache.loadDeletedCourseNos()
-            if (CourseTombstoneKeys.isHidden(course.courseNo, semester, deleted)) {
-                dataCache.saveDeletedCourseNos(
-                    CourseTombstoneKeys.unhide(course.courseNo, semester, deleted)
-                )
+            try {
+                val deleted = dataCache.loadDeletedCourseNos()
+                if (CourseTombstoneKeys.isHidden(course.courseNo, semester, deleted)) {
+                    dataCache.saveDeletedCourseNos(
+                        CourseTombstoneKeys.unhide(course.courseNo, semester, deleted)
+                    )
+                }
+            } finally {
+                tombstoneEdits.saved(tombstone)
             }
-            dataCache.saveCourses(updated, _currentSemester.value)
+            dataCache.saveCourses(updated, semester)
             // Kept until it lands: in a term the server already has, no
             // sync would send it again otherwise.
             pendingCourseAdds.send(updated, semester, course.courseNo)
@@ -1084,11 +1112,19 @@ class ClassTableViewModel @Inject constructor(
                 ignoredCoursesSaved(edit)
             }
         }
+        // Ahead of the write below: a fetch folding meanwhile reads the
+        // tombstones with this on top, or the course's own answer would bring
+        // it back; see ClassTableTombstoneEdits.
+        val tombstone = tombstoneEdits.edit { CourseTombstoneKeys.hide(courseNo, semester, it) }
         viewModelScope.launch {
-            val deleted = CourseTombstoneKeys.hide(
-                courseNo, semester, dataCache.loadDeletedCourseNos()
-            )
-            dataCache.saveDeletedCourseNos(deleted)
+            try {
+                val deleted = CourseTombstoneKeys.hide(
+                    courseNo, semester, dataCache.loadDeletedCourseNos()
+                )
+                dataCache.saveDeletedCourseNos(deleted)
+            } finally {
+                tombstoneEdits.saved(tombstone)
+            }
             dataCache.saveCourses(updated, semester)
             // A colour or name of it still waiting to go up goes with it; see
             // PendingCourseOverrides.forget.
@@ -1181,14 +1217,15 @@ class ClassTableViewModel @Inject constructor(
         hasLoaded = true
         loadJob = viewModelScope.launch {
             loadAssignmentMarks()
-            val cached = dataCache.loadCourses(_currentSemester.value)
+            val semester = _currentSemester.value
+            val cached = dataCache.loadCourses(semester)
             val cachedA = dataCache.loadAssignments()
             val cachedMoodleIds = dataCache.loadMoodleCourseIds()
             courseCustomNames = dataCache.loadCourseCustomNames()
                 .mapValues { it.value.toMutableMap() }
                 .toMutableMap()
             if (cached.isNotEmpty()) {
-                _courses.value = resolveCustomNames(cached)
+                showCourses(resolveCustomNames(cached), semester)
                 _assignments.value = cachedA
                 TigerDuckTheme.buildCourseColorMap(_courses.value)
             }
@@ -1526,15 +1563,18 @@ class ClassTableViewModel @Inject constructor(
 
     /**
      * [semester]'s courses as the school has them now — see
-     * [ClassTableTermFetch] — folded onto the term's list as it is once the
-     * lookups land and, when it is the term on screen, shown; then saved,
+     * [ClassTableTermFetch] — folded onto the term's list as it stands once
+     * the lookups land and, when it is the term on screen, shown; then saved,
      * uploaded and sent to the widget. QueryCourse only indexes the latest
      * term or two, so lookupOrFallback drops to Moodle metadata for
      * historical courses, which still render with the name and credits but
      * no schedule.
      *
-     * The term is left as it is when nothing came back, and when [mayCommit]
-     * says no right before the save, or again right before the upload: a warm
+     * The commit runs under [PendingCourseAdds.uploading], in the order the
+     * backend's DELETEs run in and held through the upload: a reset's DELETE
+     * waits for an upload under way rather than being undone by it. The term
+     * is left as it is when nothing came back, and when [mayCommit] says no
+     * under that lock, before the snapshot or again before the upload: a warm
      * whose term was picked, fetched or reset meanwhile has rows older than
      * what that left — see [ClassTableTermWarm.supersede].
      *
@@ -1548,36 +1588,49 @@ class ClassTableViewModel @Inject constructor(
         moodleByNo: Map<String, MoodleEnrolledCourse>,
         mayCommit: () -> Boolean = { true },
     ): Boolean {
-        val outcome = termFetch.run(
-            semester, rosterNos, moodleByNo,
-            // For the term on screen, the list every edit writes first; its
-            // cache may still be catching up on one.
-            latest = { if (_currentSemester.value == semester) _courses.value else dataCache.loadCourses(semester) },
-            names = { courseCustomNames },
-            locale = currentCourseLocale,
-            deletedNos = { CourseTombstoneKeys.hiddenIn(semester, dataCache.loadDeletedCourseNos()) },
-        )
-        val merged = outcome.courses ?: return outcome.answered
-        if (!mayCommit()) return outcome.answered
-        // Only apply if the user hasn't flipped to a different semester
-        // mid-flight.
-        if (_currentSemester.value == semester) {
-            _courses.value = merged
-            TigerDuckTheme.buildCourseColorMap(merged)
+        val answers = termFetch.lookUp(semester, rosterNos, moodleByNo, before = latestCourses(semester))
+        if (answers.isEmpty) return answers.answered
+        pendingCourseAdds.uploading {
+            if (!mayCommit()) return@uploading
+            // The file first; then the list, the tombstones with this screen's
+            // edits still on their way on top, and the fold in one go, with
+            // nothing suspending in between for an edit to slip into.
+            val stored = dataCache.loadDeletedCourseNos()
+            val merged = termFetch.fold(
+                answers,
+                latest = latestCourses(semester),
+                names = courseCustomNames,
+                locale = currentCourseLocale,
+                deletedNos = CourseTombstoneKeys.hiddenIn(semester, tombstoneEdits.over(stored)),
+            )
+            // Only apply if the user hasn't flipped to a different semester
+            // mid-flight.
+            if (_currentSemester.value == semester) {
+                showCourses(merged, semester)
+                TigerDuckTheme.buildCourseColorMap(merged)
+            }
+            dataCache.saveCourses(merged, semester)
+            // The class table loaded: a day of use towards the Play rating ask
+            // (issue #332).
+            reviewPrompt.classTableLoaded()
+            // Superseded during the save: the reset's wipe, or the newer
+            // fetch's save, takes the file, and these rows need not go up to
+            // be taken down again.
+            if (!mayCommit()) return@uploading
+            runCatching { pushApiClient.uploadCourses(merged, semester) }
+                .onFailure { Log.w("ClassTableVM", "uploadCourses failed (non-fatal): ${it.logSummary()}") }
+            widgetUpdater.requestUpdate()
         }
-        dataCache.saveCourses(merged, semester)
-        // The class table loaded: a day of use towards the Play rating ask
-        // (issue #332).
-        reviewPrompt.classTableLoaded()
-        // Superseded during the save: the reset's wipe, or the newer fetch's
-        // save, takes the file, and the backend must not get these rows after
-        // the reset's DELETE.
-        if (!mayCommit()) return outcome.answered
-        runCatching { pushApiClient.uploadCourses(merged, semester) }
-            .onFailure { Log.w("ClassTableVM", "uploadCourses failed (non-fatal): ${it.logSummary()}") }
-        widgetUpdater.requestUpdate()
-        return outcome.answered
+        return answers.answered
     }
+
+    /**
+     * [semester]'s list as it stands: the one on screen when it is that
+     * term's — the list every edit writes first, ahead of its cache — else
+     * its cache; see [coursesSemester].
+     */
+    private suspend fun latestCourses(semester: String): List<Course> =
+        if (coursesSemester == semester) _courses.value else dataCache.loadCourses(semester)
 
     /**
      * After the first fetch of a session: every term the picker offers that
@@ -1664,7 +1717,8 @@ class ClassTableViewModel @Inject constructor(
      */
     private fun lookUpMissingRooms() {
         if (!_hasSettled.value || _isLoading.value) return
-        val semester = _currentSemester.value
+        // The list's own term, not the picker's: see coursesSemester.
+        val semester = coursesSemester
         val now = SystemClock.elapsedRealtime()
         if (!RefreshPolicy.hasPassed(roomLookupsAtMs[semester] ?: 0L, now, MissingRoomLookupInterval)) return
         val courseNos = ClassTableCourseMerge.nosWithoutRoom(_courses.value)
@@ -1677,7 +1731,7 @@ class ClassTableViewModel @Inject constructor(
                 // or a course it does not know, which the row then waits out.
                 async { courseNo to courseService.lookupOrFallback(semester, courseNo, moodle = null) }
             }.awaitAll().mapNotNull { (courseNo, course) -> course?.let { courseNo to it } }.toMap()
-            if (!authService.isStillSignedInAs(account) || _currentSemester.value != semester) return@launch
+            if (!authService.isStillSignedInAs(account) || coursesSemester != semester) return@launch
             val updated = ClassTableCourseMerge.withRoomsFound(_courses.value, found) ?: return@launch
             _courses.value = updated
             TigerDuckTheme.buildCourseColorMap(updated)
