@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">Obnovit</string>
     <string name="app_reset_required_message">Vaše přihlášení a předvolby již nelze načíst, pravděpodobně kvůli aktualizaci OS, obnovení ze zálohy nebo problému s úložištěm.\n\nKlepnutím na „Obnovit“ vymažete stará data a poté se znovu přihlásíte a nakonfigurujete své předvolby.</string>
     <string name="app_reset_required_title">Vyžadováno obnovení</string>
+    <string name="assignment_detail_comments">Komentáře k odevzdání</string>
+    <string name="assignment_detail_description">Popis</string>
+    <string name="assignment_detail_due">Termín</string>
+    <string name="assignment_detail_group">Skupina</string>
+    <string name="assignment_detail_not_submitted">Zatím neodevzdáno</string>
+    <string name="assignment_detail_submission">Odevzdaná práce</string>
+    <string name="assignment_detail_submit_on_moodle">Odevzdat v Moodle</string>
+    <string name="assignment_detail_submitted_at">Odevzdáno</string>
     <string name="assignment_filter_all">Vše</string>
     <string name="assignment_filter_ignored">Ignorované</string>
     <string name="assignment_filter_incomplete">Nedokončené</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">Vlastní barva</string>
     <string name="course_color_picker_title">Upravit barvu</string>
     <string name="course_credits_value">Kredity: %1$s</string>
+    <string name="course_detail_assignments_label">Úkoly</string>
     <string name="course_detail_classroom_label">Třída</string>
     <string name="course_detail_code_copied">Kód zkopírován</string>
     <string name="course_detail_code_label">Kód</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">Začít používat TigerDuck</string>
     <string name="onboarding_sync_description">TigerSync udržuje vaše kurzy, úkoly a nastavení synchronizované na všech vašich zařízeních. V nastavení TigerSync si můžete přesně vybrat, co chcete synchronizovat.</string>
     <string name="onboarding_sync_not_shared_password">Heslo se nikdy nenahrává</string>
-    <string name="onboarding_sync_note">Když je synchronizace vypnutá, všechna data zůstávají pouze na tomto zařízení. Push notifikace pro připomenutí úkolů fungují lokálně bez TigerSync.</string>
+    <string name="onboarding_sync_note">Když je synchronizace vypnutá, server TigerDuck stále dostává vaše studentské ID, token Moodle a push přihlašovací údaje tohoto zařízení, aby mohl posílat připomínky úkolů</string>
     <string name="onboarding_sync_shared_assignments">Data úkolů</string>
     <string name="onboarding_sync_shared_courses">Data kurzů</string>
     <string name="onboarding_sync_shared_device_id">ID zařízení</string>
@@ -768,6 +777,7 @@
     <string name="school_mail_send">Odeslat</string>
     <string name="school_mail_send_confirm_title">Odeslat tuto zprávu?</string>
     <string name="school_mail_send_failed">Zprávu se nepodařilo odeslat</string>
+    <string name="school_mail_send_unconfirmed">Nepodařilo se ověřit, zda byla zpráva odeslána; opakování ji může doručit dvakrát</string>
     <string name="school_mail_sent_copy_failed">Zpráva byla odeslána, ale kopii se nepodařilo uložit do složky Odeslaná pošta.</string>
     <string name="school_mail_sent_copy_no_folder">Zpráva byla odeslána, ale neexistuje složka Odeslaná pošta, do které by se dala uložit kopie.</string>
     <string name="school_mail_sent_copy_not_saved">Zpráva odeslána, ale kopie se neuložila do složky Odeslaná pošta</string>
@@ -953,7 +963,7 @@
     <string name="settings_show_classroom_on_class_table">Zobrazovat učebny v rozvrhu</string>
     <string name="settings_sign_out_imported_tables">Importované rozvrhy budou také smazány.</string>
     <string name="settings_sync_brief_description">TigerSync umožňuje synchronizovat vybrané informace mezi všemi zařízeními se zapnutým TigerSync. Informace bez synchronizace zůstávají pouze na tomto zařízení.</string>
-    <string name="settings_sync_disabled_note">Když je synchronizace vypnutá, všechna data zůstávají pouze na tomto zařízení.</string>
+    <string name="settings_sync_disabled_note">Když je synchronizace vypnutá, server TigerDuck stále dostává vaše studentské ID, token Moodle a push přihlašovací údaje tohoto zařízení, aby mohl posílat připomínky úkolů</string>
     <string name="settings_sync_status_off">Vypnuto</string>
     <string name="settings_sync_status_on">Zapnuto</string>
     <string name="settings_system_language">Jazyk systému</string>
@@ -1008,10 +1018,12 @@
     <string name="sync_status_hours_ago_short">před %1$d h</string>
     <string name="sync_status_just_now">právě teď</string>
     <string name="sync_status_last_synced">Naposledy synchronizováno</string>
+    <string name="sync_status_last_updated">Naposledy aktualizováno</string>
     <string name="sync_status_minimal">Omezeno</string>
     <string name="sync_status_minutes_ago_short">před %1$d min</string>
     <string name="sync_status_nav_label">Stav TigerSync</string>
     <string name="sync_status_never_synced">Nikdy nesynchronizováno</string>
+    <string name="sync_status_never_updated">Nikdy neaktualizováno</string>
     <string name="sync_status_ok">OK</string>
     <string name="sync_status_syncing">Synchronizace…</string>
     <string name="sync_status_title">Stav synchronizace</string>
