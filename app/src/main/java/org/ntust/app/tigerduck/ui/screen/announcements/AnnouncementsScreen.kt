@@ -52,7 +52,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -67,6 +66,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -102,6 +102,7 @@ import org.ntust.app.tigerduck.ui.component.rememberAppBarState
 import org.ntust.app.tigerduck.ui.component.rememberChromeContentPadding
 import org.ntust.app.tigerduck.ui.component.rememberSearchRevealState
 import org.ntust.app.tigerduck.ui.component.scrollbar
+import org.ntust.app.tigerduck.ui.component.searchClearIcon
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -162,6 +163,14 @@ fun AnnouncementsScreen(
     // a bulletin -- and for a field that takes focus without a gesture having opened anything.
     searchReveal.pinned = searchFocused || state.searchText.isNotEmpty()
 
+    // A search the view model cleared on the app's return (see AnnouncementsViewModel.searchResets)
+    // takes the field's focus with it, so the keyboard does not come back up over the full list.
+    val focusManager = LocalFocusManager.current
+    val searchResets by viewModel.searchResets.collectAsStateWithLifecycle()
+    LaunchedEffect(searchResets) {
+        if (searchResets > 0) focusManager.clearFocus()
+    }
+
     // Plain Box (not BoxWithConstraints) avoids SubcomposeLayout: the latter
     // re-subcomposes its content lambda whenever incoming constraints change
     // (IME open/close, rotation, system-bar inset animations), which would
@@ -212,29 +221,34 @@ fun AnnouncementsScreen(
                     listTopAnchor()
                     val displayed = state.displayed
                     val loadState = state.loadState
+                    val placeholder = bulletinPlaceholder(state.items.isNotEmpty(), displayed.isNotEmpty(), loadState)
                     when {
-                        displayed.isEmpty() && loadState is AnnouncementsViewModel.LoadState.Loaded -> {
+                        placeholder == BulletinPlaceholder.EMPTY -> {
                             if (canShowEmptyState) {
                                 item(key = "empty-state") {
+                                    val (title, message) = bulletinEmptyText(
+                                        hasItems = state.items.isNotEmpty(),
+                                        unreadOnly = state.unreadOnly,
+                                        hasActiveFilter = state.hasActiveFilter,
+                                    )
                                     CenteredEmptyState(
                                         modifier = Modifier.fillHeightBelowChrome(appBar, viewportHeightPx),
-                                        title = stringResource(
-                                            if (state.unreadOnly) R.string.bulletin_no_unread_title
-                                            else R.string.bulletin_no_bulletins_title
-                                        ),
-                                        message = stringResource(R.string.bulletin_no_bulletins_message),
+                                        title = stringResource(title),
+                                        message = stringResource(message),
                                     )
                                 }
                             }
                         }
 
-                        displayed.isEmpty() && loadState is AnnouncementsViewModel.LoadState.Failed -> {
+                        placeholder == BulletinPlaceholder.FAILED && loadState is AnnouncementsViewModel.LoadState.Failed -> {
                             if (canShowEmptyState) {
                                 item(key = "failed-state") {
                                     CenteredEmptyState(
                                         modifier = Modifier.fillHeightBelowChrome(appBar, viewportHeightPx),
                                         title = stringResource(R.string.bulletin_load_failed_title),
                                         message = loadState.message,
+                                        actionLabel = stringResource(R.string.action_retry),
+                                        onAction = viewModel::refresh,
                                     )
                                 }
                             }
@@ -357,6 +371,8 @@ private fun CenteredEmptyState(
     modifier: Modifier,
     title: String,
     message: String,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
 ) {
     Box(
         modifier = modifier.fillMaxWidth(),
@@ -366,6 +382,8 @@ private fun CenteredEmptyState(
             icon = Icons.Filled.Campaign,
             title = title,
             message = message,
+            actionLabel = actionLabel,
+            onAction = onAction,
         )
     }
 }
@@ -388,6 +406,7 @@ private fun SearchBar(
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .onFocusChanged { onFocusChanged(it.isFocused) },
         leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+        trailingIcon = searchClearIcon(value) { onValueChange("") },
         placeholder = { Text(stringResource(R.string.bulletin_search_prompt)) },
         singleLine = true,
         shape = RoundedCornerShape(12.dp),
@@ -455,20 +474,7 @@ private fun ChipRow(
             color = MaterialTheme.colorScheme.outline,
             modifier = Modifier.padding(horizontal = 16.dp),
         )
-        // A row that always opened at its left edge left a chip selected
-        // further along it (a remembered department) off screen: the list
-        // filtered, with no selected chip in view. Once per visit, so a
-        // return from a bulletin keeps the row where it was scrolled to.
-        val rowState = rememberLazyListState()
-        var revealedSelection by rememberSaveable { mutableStateOf(false) }
-        LaunchedEffect(Unit) {
-            if (revealedSelection) return@LaunchedEffect
-            revealedSelection = true
-            val first = items.indexOfFirst { (id, _) -> id in selected }
-            if (first > 0) rowState.scrollToItem(first)
-        }
         LazyRow(
-            state = rowState,
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(horizontal = 16.dp),

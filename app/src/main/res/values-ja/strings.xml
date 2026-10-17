@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">時間割の上部に今日の授業を固定</string>
     <string name="settings_privacy_policy">プライバシーポリシー</string>
     <string name="settings_push_server_nav_label">サーバープッシュ</string>
-    <string name="settings_remember_bulletin_filter">掲示板フィルターを記憶する</string>
     <string name="settings_reset_course_colors">コース色を再割り当て</string>
     <string name="settings_reset_course_colors_confirm_message">すべてのコースに重複しない新しい色を割り当てます。まずプリセットパレットから、足りなくなったらランダムに生成します。</string>
     <string name="settings_reset_course_colors_confirm_title">コース色を再割り当てしますか？</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">失敗</string>
     <string name="sync_status_hours_ago_short">%1$d 時間前</string>
     <string name="sync_status_just_now">たった今</string>
-    <string name="sync_status_last_synced">最終同期</string>
     <string name="sync_status_last_updated">最終更新</string>
     <string name="sync_status_minimal">制限付き</string>
     <string name="sync_status_minutes_ago_short">%1$d 分前</string>
     <string name="sync_status_nav_label">TigerSync の状態</string>
-    <string name="sync_status_never_synced">未同期</string>
     <string name="sync_status_never_updated">未更新</string>
     <string name="sync_status_ok">正常</string>
     <string name="sync_status_syncing">同期中…</string>

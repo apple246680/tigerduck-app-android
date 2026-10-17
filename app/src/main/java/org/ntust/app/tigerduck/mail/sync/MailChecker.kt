@@ -72,31 +72,40 @@ class MailChecker @Inject constructor(
         // The inbox answered, whatever it held -- unless the account it answered has signed out
         // since, and the date would land in the state its sign-out just cleared.
         val reached = outcome is CheckOutcome.Baseline || outcome is CheckOutcome.NoChange || outcome is CheckOutcome.NewMail
-        if (reached && account.accountGeneration == generation) {
-            state.inboxFetchedAt = clock.now()
-        }
+        if (reached) state.setFetchedAtIf(INBOX, clock.now()) { account.accountGeneration == generation }
         record(source, outcome)
         return outcome
     }
 
     /**
-     * When the inbox last answered this account, epoch ms, or 0: a check that reached it, or the
-     * list page reading it ([noteFetchedByPage]). What the School Mail page's "Last synced" row
-     * dates; cleared with the rest of the mail state at sign-out.
+     * When [folder] (a server name) last answered this account, epoch ms, or 0: a check that
+     * reached the inbox, or the list page reading the folder ([noteFetchedByPage]). What the
+     * School Mail page's "Last synced" row dates, for the folder on screen; cleared with the rest
+     * of the mail state at sign-out.
      */
-    val inboxFetchedAt: Long get() = state.inboxFetchedAt
+    fun fetchedAt(folder: String): Long = state.fetchedAt(folder)
 
     /**
-     * The list page read the inbox from the server. Not the demo mailbox, which has no server:
-     * like every other page on the demo account, it was never synced. Nor once the account has
-     * signed out, as a fetch that was under way would date the cleared state.
+     * The list page read [folder] from the server, for the account whose
+     * [MailAccount.accountGeneration] was [generation] when it asked; says whether that dated it.
+     * Not the demo mailbox, which has no server: like every other page on the demo account, it
+     * was never synced. Nor for an account that has left since -- a sign-out, or another sign-in,
+     * even the same student's: the fetch was the sign-in before's, and would date folders nothing
+     * was fetched for. Asked under the store's lock, which the sign-out's clear takes too
+     * ([MailStateStore.setFetchedAtIf]), so a date it allows goes with that clear.
      */
-    fun noteFetchedByPage() {
-        if (!account.isDemo && account.signedIn.value) state.inboxFetchedAt = clock.now()
+    fun noteFetchedByPage(folder: String, generation: Int): Boolean {
+        if (account.isDemo) return false
+        return state.setFetchedAtIf(folder, clock.now()) { account.accountGeneration == generation }
     }
 
-    /** The list page showed the inbox up to [status]; those mails must never notify later. */
-    fun noteSeenByPage(status: FolderStatus) = synchronized(markerLock) {
+    /**
+     * The list page showed the inbox up to [status]; those mails must never notify later. For the
+     * account at [generation] when the page asked: a status that lands after its sign-out says
+     * nothing about the next account's inbox, and must not move its marker.
+     */
+    fun noteSeenByPage(status: FolderStatus, generation: Int) = synchronized(markerLock) {
+        if (account.accountGeneration != generation) return@synchronized
         if (status.uidValidity != state.inboxUidValidity) {
             state.inboxUidValidity = status.uidValidity
             state.inboxSeenUidNext = status.uidNext

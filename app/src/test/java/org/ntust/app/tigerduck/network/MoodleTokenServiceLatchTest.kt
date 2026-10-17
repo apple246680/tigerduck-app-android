@@ -67,14 +67,16 @@ class MoodleTokenServiceLatchTest {
         answer(chain.request())
     }.build()
 
-    private class Tokens : MoodleTokenCoordinator.Tokens {
+    private class Tokens : MoodleTokenPairStore {
         override var token: String? = null
+        override var privateToken: String? = null
         override var studentId: String? = STUDENT
         override var password: String? = PASSWORD
 
-        override fun storeIfSignedIn(studentId: String, token: String): Boolean {
+        override fun storeIfSignedIn(studentId: String, token: String, privateToken: String?): Boolean {
             if (this.studentId != studentId) return false
             this.token = token
+            this.privateToken = privateToken
             return true
         }
     }
@@ -94,7 +96,7 @@ class MoodleTokenServiceLatchTest {
         }
         val service = MoodleTokenService(
             clientFor = { school },
-            tokens = tokens,
+            tokenStore = tokens,
             passwordLatch = latch,
             scope = backgroundScope,
             now = { 1_800_000_000_000L },
@@ -110,6 +112,19 @@ class MoodleTokenServiceLatchTest {
 
         assertEquals(WSTOKEN, tokens.token)
         assertEquals(1, posts.size)
+    }
+
+    @Test
+    fun `the private token Moodle hands over with the token is stored beside it`() = runTest(UnconfinedTestDispatcher()) {
+        val (service, _) = service()
+
+        service.renewToken(null)
+        assertEquals("private", tokens.privateToken)
+        assertEquals("private", service.currentPrivateToken())
+
+        tokens.privateToken = null
+        service.obtainToken(STUDENT, PASSWORD)
+        assertEquals("a sign-in by hand stores it too", "private", tokens.privateToken)
     }
 
     @Test

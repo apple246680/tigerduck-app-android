@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">Kinnita tänased kursused tunniplaani ülaossa</string>
     <string name="settings_privacy_policy">Privaatsuspoliitika</string>
     <string name="settings_push_server_nav_label">Serveri tõuge</string>
-    <string name="settings_remember_bulletin_filter">Pidage meeles bülletäänide filtreid</string>
     <string name="settings_reset_course_colors">Määra kursuste värvid uuesti</string>
     <string name="settings_reset_course_colors_confirm_message">Iga kursus saab uue ainulaadse värvi — kõigepealt eelmääratud paletist, seejärel juhuslikult, kui palett on otsas.</string>
     <string name="settings_reset_course_colors_confirm_title">Kas määrata kursuste värvid uuesti?</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">Ebaõnnestus</string>
     <string name="sync_status_hours_ago_short">%1$d t tagasi</string>
     <string name="sync_status_just_now">Äsja</string>
-    <string name="sync_status_last_synced">Viimati sünkroonitud</string>
     <string name="sync_status_last_updated">Viimati uuendatud</string>
     <string name="sync_status_minimal">Piiratud</string>
     <string name="sync_status_minutes_ago_short">%1$d min tagasi</string>
     <string name="sync_status_nav_label">TigerSync olek</string>
-    <string name="sync_status_never_synced">Pole kunagi sünkroonitud</string>
     <string name="sync_status_never_updated">Pole kunagi uuendatud</string>
     <string name="sync_status_ok">Korras</string>
     <string name="sync_status_syncing">Sünkroonimine…</string>

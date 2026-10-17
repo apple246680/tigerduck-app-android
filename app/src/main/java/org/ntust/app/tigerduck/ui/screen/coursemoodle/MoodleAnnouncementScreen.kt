@@ -1,10 +1,6 @@
 package org.ntust.app.tigerduck.ui.screen.coursemoodle
 
-import android.text.format.Formatter
-import android.widget.Toast
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,20 +17,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.FolderZip
-import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
-import androidx.compose.material.icons.outlined.PictureAsPdf
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -45,12 +31,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -61,15 +45,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.R
-import org.ntust.app.tigerduck.data.moodle.MoodleAttachment
 import org.ntust.app.tigerduck.data.moodle.MoodleCourseStore
+import org.ntust.app.tigerduck.data.moodle.MoodleDownloadState
+import org.ntust.app.tigerduck.data.moodle.MoodleFileOwner
+import org.ntust.app.tigerduck.data.moodle.MoodleFileRef
 import org.ntust.app.tigerduck.data.moodle.MoodleLookup
 import org.ntust.app.tigerduck.data.moodle.MoodlePersonName
 import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussion
-import org.ntust.app.tigerduck.network.model.moodle.MoodleFile
-import org.ntust.app.tigerduck.network.moodle.MoodleFileUrls
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
 
 /**
@@ -215,8 +198,16 @@ private fun AuthorRow(store: MoodleCourseStore, discussion: MoodleDiscussion, on
     }
 }
 
+/**
+ * The files a post carries, under a heading: a tap downloads one into the app with a progress
+ * ring, tapping again stops it, and the copy opens in another app; a file off the Moodle site
+ * opens as its own link. A long press offers Share and "Open in Moodle".
+ */
 @Composable
 private fun Attachments(store: MoodleCourseStore, discussion: MoodleDiscussion, browserPreference: String) {
+    val context = LocalContext.current
+    val files = rememberMoodleFileOpener(store, browserPreference)
+    val snapshot = store.downloads?.snapshot?.collectAsStateWithLifecycle()?.value
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Spacer(Modifier.height(4.dp))
         Text(
@@ -225,109 +216,30 @@ private fun Attachments(store: MoodleCourseStore, discussion: MoodleDiscussion, 
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.semantics { heading() },
         )
-        MoodleAttachmentCard(store, discussion.attachments, browserPreference, MoodlePage.discussion(discussion.id))
-    }
-}
-
-/** [files] as a card of [MoodleAttachmentRow]s. */
-@Composable
-internal fun MoodleAttachmentCard(store: MoodleCourseStore?, files: List<MoodleFile>, browserPreference: String, moodlePath: String?) {
-    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
-        Column {
-            files.forEachIndexed { index, file ->
-                if (index > 0) {
-                    HorizontalDivider(
-                        modifier = Modifier.padding(start = 56.dp),
-                        color = cardDividerColor(),
+        Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
+            Column {
+                discussion.attachments.forEachIndexed { index, file ->
+                    if (index > 0) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = MoodleRowTextInset),
+                            color = cardDividerColor(),
+                        )
+                    }
+                    val ref = MoodleFileRef(file, MoodleFileOwner.Post(discussion.postId))
+                    val state = snapshot?.let { store.downloadState(ref, it) } ?: MoodleDownloadState.NotDownloaded
+                    MoodleFileRow(
+                        title = file.name,
+                        file = file,
+                        state = state,
+                        onTap = { files.tap(ref, state) },
+                        onShare = { files.share(ref) },
+                        onOpenInMoodle = {
+                            files.forgetPendingOpen()
+                            openMoodlePage(context, MoodlePage.discussion(discussion.id))
+                        },
                     )
                 }
-                MoodleAttachmentRow(store, file, browserPreference, moodlePath)
             }
         }
-    }
-}
-
-/**
- * A file a post or an assignment carries. A tap downloads it through [store] into the app, with a
- * spinner while it does, and opens the copy in another app; a file off the Moodle site, or any
- * file while the page has no store to download through, opens as its own link, with no key in it.
- * A long press offers "Open in Moodle" for [moodlePath].
- */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-internal fun MoodleAttachmentRow(store: MoodleCourseStore?, file: MoodleFile, browserPreference: String, moodlePath: String?) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val downloading = store?.downloading?.collectAsStateWithLifecycle()?.value.orEmpty()
-    val busy = file.url in downloading
-    var menu by remember { mutableStateOf(false) }
-    val openInMoodle = stringResource(R.string.action_open_in_moodle)
-    Box {
-        ListItem(
-            modifier = Modifier.combinedClickable(
-                enabled = !busy,
-                role = Role.Button,
-                onLongClickLabel = moodlePath?.let { openInMoodle },
-                onLongClick = moodlePath?.let { { menu = true } },
-                onClick = {
-                    scope.launch {
-                        val opened = store?.openAttachment(file)
-                            ?: MoodleAttachment.Link(MoodleFileUrls.webUrl(file.url) ?: file.url)
-                        when (opened) {
-                            // The system's chooser tells the reader itself when no app takes the file.
-                            is MoodleAttachment.Local ->
-                                launchMoodleFile(context, opened.file, moodleFileType(file.mimeType, file.name))
-                            is MoodleAttachment.Link -> openMoodleContentLink(context, opened.url, browserPreference)
-                            is MoodleAttachment.Failed -> Toast.makeText(
-                                context,
-                                moodleErrorText(context.resources, opened.error),
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                            MoodleAttachment.Dropped -> Unit
-                        }
-                    }
-                },
-            ),
-            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-            leadingContent = {
-                Icon(fileIcon(file), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            },
-            headlineContent = { Text(file.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-            supportingContent = if (file.size > 0) {
-                { Text(Formatter.formatShortFileSize(context, file.size)) }
-            } else {
-                null
-            },
-            trailingContent = if (busy) {
-                { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) }
-            } else {
-                null
-            },
-        )
-        if (moodlePath != null) {
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                DropdownMenuItem(
-                    text = { Text(openInMoodle) },
-                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
-                    onClick = {
-                        menu = false
-                        openMoodlePage(context, moodlePath)
-                    },
-                )
-            }
-        }
-    }
-}
-
-private fun fileIcon(file: MoodleFile): ImageVector {
-    val type = file.mimeType.orEmpty()
-    val name = file.name.lowercase()
-    return when {
-        type == "application/pdf" || name.endsWith(".pdf") -> Icons.Outlined.PictureAsPdf
-        type.startsWith("image/") -> Icons.Outlined.Image
-        type.contains("zip") || type.contains("compressed") || name.endsWith(".zip") || name.endsWith(".rar") ->
-            Icons.Outlined.FolderZip
-        type.startsWith("text/") || type.contains("word") || type.contains("document") -> Icons.Outlined.Description
-        else -> Icons.AutoMirrored.Outlined.InsertDriveFile
     }
 }

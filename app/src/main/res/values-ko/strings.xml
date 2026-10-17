@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">시간표 상단에 오늘의 수업 고정</string>
     <string name="settings_privacy_policy">개인정보 처리방침</string>
     <string name="settings_push_server_nav_label">서버 푸시</string>
-    <string name="settings_remember_bulletin_filter">게시판 필터 기억</string>
     <string name="settings_reset_course_colors">수업 색상 재할당</string>
     <string name="settings_reset_course_colors_confirm_message">모든 수업에 고유한 새 색상을 할당합니다. 먼저 프리셋 팔레트에서, 팔레트가 부족하면 무작위로 생성됩니다.</string>
     <string name="settings_reset_course_colors_confirm_title">수업 색상을 재할당할까요?</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">실패</string>
     <string name="sync_status_hours_ago_short">%1$d시간 전</string>
     <string name="sync_status_just_now">방금 전</string>
-    <string name="sync_status_last_synced">마지막 동기화</string>
     <string name="sync_status_last_updated">마지막 업데이트</string>
     <string name="sync_status_minimal">제한됨</string>
     <string name="sync_status_minutes_ago_short">%1$d분 전</string>
     <string name="sync_status_nav_label">TigerSync 상태</string>
-    <string name="sync_status_never_synced">동기화 안 됨</string>
     <string name="sync_status_never_updated">업데이트 안 됨</string>
     <string name="sync_status_ok">정상</string>
     <string name="sync_status_syncing">동기화 중…</string>

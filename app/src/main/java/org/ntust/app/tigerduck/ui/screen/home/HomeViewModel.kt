@@ -58,6 +58,7 @@ import org.ntust.app.tigerduck.network.MoodleService
 import org.ntust.app.tigerduck.network.NetworkChecker
 import org.ntust.app.tigerduck.network.SemesterCatalog
 import org.ntust.app.tigerduck.notification.AssignmentNotificationScheduler
+import org.ntust.app.tigerduck.review.ReviewPrompt
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.SingleFlight
@@ -101,6 +102,7 @@ class HomeViewModel @Inject constructor(
     private val unsentMarks: UnsentMarks,
     private val localEdits: LocalEdits,
     private val reenableCheck: org.ntust.app.tigerduck.ui.screen.settings.ReenableCheck,
+    private val reviewPrompt: ReviewPrompt,
 ) : ViewModel() {
 
 
@@ -284,8 +286,6 @@ class HomeViewModel @Inject constructor(
     )
     val noNetworkEvent: SharedFlow<Unit> = _noNetworkEvent.asSharedFlow()
 
-    private val _selectedCourse = MutableStateFlow<SelectedCourseInfo?>(null)
-    val selectedCourse: StateFlow<SelectedCourseInfo?> = _selectedCourse
 
     private val _syncCompleteEvent = MutableSharedFlow<Unit>(
         extraBufferCapacity = 1,
@@ -522,8 +522,33 @@ class HomeViewModel @Inject constructor(
         if (refreshTriggers.onShown()) fetchOnReturn()
     }
 
-    /** The page left the screen for another page; see PageLeftEffect. */
-    fun onPageLeft() = refreshTriggers.onLeft()
+    /** The page left the screen for another page; see PageLeftEffect. An ask it offered goes with it. */
+    fun onPageLeft() {
+        refreshTriggers.onLeft()
+        reviewPrompt.withdraw()
+    }
+
+    /**
+     * The page paused with the activity — a background trip, a system prompt
+     * over it: the Play rating's moment it offered is withdrawn, so the ask
+     * cannot outlive what was on screen. Its next resume may offer one again.
+     */
+    fun onPagePaused() = reviewPrompt.withdraw()
+
+    /**
+     * Home is on screen and the activity resumed: on coming to the page, and
+     * on each return from the background with it showing — the page's own
+     * ON_RESUME, so a return with another page up is not one. The Play
+     * rating's moment (issue #332), if ReviewPrompt agrees. A course opened
+     * from Home is the navigation's course detail sheet, a window of its own,
+     * so the launch's window-focus check keeps the ask off it. On the
+     * launch's first resume, before any load, ReviewPrompt declines.
+     * [pageResumed] is the page's own answer, asked again right before the
+     * launch, to whether it is still on screen and resumed.
+     */
+    fun onPageResumed(pageResumed: () -> Boolean) {
+        reviewPrompt.calmMoment(pageResumed)
+    }
 
     private fun fetchOnReturn() {
         // Quietly: nobody asked, so no snackbar, and a fetch bound to fail
@@ -546,6 +571,8 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             if (!networkChecker.isAvailable()) {
                 _noNetworkEvent.tryEmit(Unit)
+                // The user just saw an error, not a moment to ask for a rating.
+                reviewPrompt.loadFailed()
                 return@launch
             }
             if (rerun) {
@@ -696,6 +723,10 @@ class HomeViewModel @Inject constructor(
                             deletedNos = hiddenNow(),
                         )
                         dataCache.saveCourses(courses)
+                        // The class table loaded: a day of use towards the
+                        // Play rating ask (issue #332). A source that failed
+                        // is a status dot, which ReviewPrompt reads.
+                        reviewPrompt.classTableLoaded()
                         widgetUpdater.requestUpdate()
                     }
 
@@ -877,14 +908,6 @@ class HomeViewModel @Inject constructor(
             markedCompletedIds = _markedCompletedIds.value,
         )
 
-    fun assignmentsFor(courseNo: String): List<Assignment> =
-        HomeAssignmentFilters.unfinishedFor(
-            all = _allAssignments.value,
-            courseNo = courseNo,
-            ignoredIds = ignoredIncludingCourses(_allAssignments.value),
-            markedCompletedIds = _markedCompletedIds.value,
-        )
-
     fun setAssignmentFilter(filter: AssignmentFilter) {
         _assignmentFilter.value = filter
         prefs.homeAssignmentFilter = filter
@@ -974,10 +997,6 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun selectCourse(info: SelectedCourseInfo?) {
-        _selectedCourse.value = info
-    }
-
     // 翹課 — see the block above _skippedDates.
     // fun toggleSkip(course: Course, date: Date) {
     //     val key = date.toInstant().atZone(AppConstants.TAIPEI_ZONE).toLocalDate().format(SKIP_DATE_FMT)
@@ -1042,9 +1061,3 @@ internal suspend fun reloadAdoptedMarks(
     apply(ignored, completed)
 }
 
-/**
- * Selection context for the Home detail dialog. Carries the slot-resolved
- * classroom so the popup renders the room for the tapped period only, not
- * the union across the whole day's split rooms.
- */
-data class SelectedCourseInfo(val course: Course, val classroom: String)

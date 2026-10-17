@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.res.stringResource
@@ -52,9 +53,10 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -139,6 +141,7 @@ internal fun MoodleTopBar(
     onBack: () -> Unit,
     moodlePath: String?,
     actions: @Composable () -> Unit = {},
+    willOpenPage: () -> Unit = {},
 ) {
     val context = LocalContext.current
     TopAppBar(
@@ -152,7 +155,10 @@ internal fun MoodleTopBar(
         actions = {
             actions()
             if (moodlePath != null) {
-                IconButton(onClick = { openMoodlePage(context, moodlePath) }) {
+                IconButton(onClick = {
+                    willOpenPage()
+                    openMoodlePage(context, moodlePath)
+                }) {
                     Icon(
                         Icons.AutoMirrored.Filled.OpenInNew,
                         contentDescription = stringResource(R.string.action_open_in_moodle),
@@ -333,7 +339,7 @@ internal fun MoodleAvatar(name: String, picture: ImageBitmap?, size: Dp, modifie
         ) {
             Text(
                 text = name.firstOrNull()?.toString().orEmpty(),
-                fontSize = (size.value * 0.45f).sp,
+                fontSize = avatarLetterSize(size, LocalDensity.current),
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -341,6 +347,12 @@ internal fun MoodleAvatar(name: String, picture: ImageBitmap?, size: Dp, modifie
         }
     }
 }
+
+/**
+ * The initial's size in an avatar of [size]: held to the circle, which does not grow with the
+ * font size, so a large font does not push the letter out of it.
+ */
+internal fun avatarLetterSize(size: Dp, density: Density): TextUnit = with(density) { (size * 0.45f).toSp() }
 
 /**
  * Markdown from Moodle, whose links open as [openMoodleContentLink] opens them. Headings are
@@ -435,4 +447,14 @@ internal object MoodleDates {
 
     private fun localized(pattern: String, locale: Locale) =
         SimpleDateFormat(pattern, locale).apply { timeZone = AppConstants.TAIPEI_TZ }
+    /** A file's date: `MM/dd` this year, `yyyy/MM/dd` before. */
+    fun date(epochSeconds: Long, nowMs: Long): String =
+        format(if (sameYear(epochSeconds, nowMs)) "MM/dd" else "yyyy/MM/dd").format(Date(epochSeconds * 1000))
+
+    /** A reply's date: `MM/dd HH:mm` this year, `yyyy/MM/dd HH:mm` before. */
+    fun postDate(epochSeconds: Long, nowMs: Long): String =
+        format(if (sameYear(epochSeconds, nowMs)) "MM/dd HH:mm" else "yyyy/MM/dd HH:mm").format(Date(epochSeconds * 1000))
+
+    private fun sameYear(epochSeconds: Long, nowMs: Long): Boolean =
+        calendar(epochSeconds * 1000).get(Calendar.YEAR) == calendar(nowMs).get(Calendar.YEAR)
 }

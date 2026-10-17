@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">Festa námskeið dagsins efst í stundatöflunni</string>
     <string name="settings_privacy_policy">Persónuverndarstefna</string>
     <string name="settings_push_server_nav_label">Þjónsendari</string>
-    <string name="settings_remember_bulletin_filter">Muna síur tilkynninga</string>
     <string name="settings_reset_course_colors">Endurúthluta litum námskeiða</string>
     <string name="settings_reset_course_colors_confirm_message">Hverju námskeiði verður úthlutað nýjum, einstökum lit — fyrst úr fyrirfram skilgreindum litapall, og síðan af handahófi þegar pallinn klárast.</string>
     <string name="settings_reset_course_colors_confirm_title">Endurúthluta litum námskeiða?</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">Mistókst</string>
     <string name="sync_status_hours_ago_short">%1$d klst síðan</string>
     <string name="sync_status_just_now">Rétt í þessu</string>
-    <string name="sync_status_last_synced">Síðast samstillt</string>
     <string name="sync_status_last_updated">Síðast uppfært</string>
     <string name="sync_status_minimal">Takmarkað</string>
     <string name="sync_status_minutes_ago_short">%1$d mín síðan</string>
     <string name="sync_status_nav_label">TigerSync staða</string>
-    <string name="sync_status_never_synced">Aldrei samstillt</string>
     <string name="sync_status_never_updated">Aldrei uppfært</string>
     <string name="sync_status_ok">Í lagi</string>
     <string name="sync_status_syncing">Samstillir…</string>

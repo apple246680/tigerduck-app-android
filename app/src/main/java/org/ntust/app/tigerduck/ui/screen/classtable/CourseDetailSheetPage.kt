@@ -91,7 +91,8 @@ import java.util.Locale
  *      section, whose rows push the Moodle screens inside the sheet
  *
  * A course on someone else's class table shows read-only: no rename, and none of the Moodle
- * course or assignments, which are the signed-in student's. The sheet closes when there is no
+ * course or assignments, which are the signed-in student's. One opened from Home is the user's own
+ * whatever the class table shows. The sheet closes when there is no
  * selected course to show, as after the account signed out or the class table switched.
  */
 @Composable
@@ -107,8 +108,11 @@ internal fun CourseDetailSheetPage(
     val outstanding by viewModel.outstandingAssignments.collectAsStateWithLifecycle()
     val moodleIds by viewModel.moodleCourseIdMap.collectAsStateWithLifecycle()
     val shown by viewModel.shownTable.collectAsStateWithLifecycle()
-    val readOnly = shown.person != null
+    val readOnly = viewModel.selectedCourseIsSomeoneElses
     val showsMoodle = !readOnly
+    // Every edit of the user's own class table waits while someone else's shows, a rename of a
+    // course opened from Home included.
+    val canRename = !readOnly && shown.person == null
 
     // The course as it is now, so a rename made here shows at once. Someone else's from their
     // class table, not the user's copy of a course both take.
@@ -154,7 +158,7 @@ internal fun CourseDetailSheetPage(
                 classroom = classroom,
                 timeRange = timeRange,
                 assignments = assignments,
-                onRename = if (readOnly) null else ({ renaming = true }),
+                onRename = if (canRename) ({ renaming = true }) else null,
                 onOpenInMoodle = moodleCourseId?.takeIf { showsMoodle }?.let { id -> { openCourseInMoodle(context, id) } },
                 onOpenAssignment = { onOpenRoute(MoodleRoutes.assignment(moodleCourseId ?: 0, it.assignmentId)) },
             )
@@ -165,7 +169,7 @@ internal fun CourseDetailSheetPage(
         }
     }
 
-    if (renaming && !readOnly) {
+    if (renaming && canRename) {
         CourseRenameDialog(viewModel = viewModel, course = course, onDismiss = { renaming = false })
     }
 }
@@ -344,7 +348,7 @@ private fun AssignmentRow(assignment: Assignment, onClick: () -> Unit) {
             .format(assignment.dueDate)
     }
     ListItem(
-        modifier = if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier,
+        modifier = Modifier.clickable(role = Role.Button, onClick = onClick),
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
         leadingContent = {
             Icon(Icons.Outlined.Description, contentDescription = null, tint = MaterialTheme.colorScheme.primary)

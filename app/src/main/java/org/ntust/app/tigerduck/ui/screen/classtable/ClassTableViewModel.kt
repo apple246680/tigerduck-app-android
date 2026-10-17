@@ -57,6 +57,7 @@ import org.ntust.app.tigerduck.network.MoodleService
 import org.ntust.app.tigerduck.network.NetworkChecker
 import org.ntust.app.tigerduck.network.SemesterCatalog
 import org.ntust.app.tigerduck.network.model.MoodleEnrolledCourse
+import org.ntust.app.tigerduck.review.ReviewPrompt
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.SingleFlight
@@ -91,6 +92,8 @@ class ClassTableViewModel @Inject constructor(
     private val importedClassTableStore: ImportedClassTableStore,
     private val importedCourseLookup: ImportedCourseLookup,
     private val pendingCourseAdds: org.ntust.app.tigerduck.data.PendingCourseAdds,
+    private val pendingCourseOverrides: org.ntust.app.tigerduck.data.PendingCourseOverrides,
+    private val reviewPrompt: ReviewPrompt,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
 
@@ -237,6 +240,13 @@ class ClassTableViewModel @Inject constructor(
     // is on, and a course added by hand is looked up in Moodle by
     // `<term><courseNo>` — see moodleCourseIdFor.
     private var selectedCourseSemester: String? = null
+
+    // Whether the selected course is someone else's; see ClassTableSelection.isSomeoneElses. Set
+    // with the selection, which a switch of class tables clears.
+    private var selectedIsSomeoneElses = false
+
+    /** Whether the selected course is of someone else's class table, which its detail shows read-only. */
+    val selectedCourseIsSomeoneElses: Boolean get() = selectedIsSomeoneElses
 
     // Stored pick, else the newest published term, else the pinned term.
     // The catalogue can land after construction on a cold launch, so
@@ -758,7 +768,7 @@ class ClassTableViewModel @Inject constructor(
             val course = _selectedCourse.value ?: return null
             course.customCourseName?.let { return it }
             // Someone else's course shows the name it was looked up with.
-            if (isShowingSomeoneElse) return null
+            if (selectedIsSomeoneElses) return null
             return courseService.cachedFullCourseName(_currentSemester.value, course.courseNo)
         }
 
@@ -851,6 +861,7 @@ class ClassTableViewModel @Inject constructor(
             ).map { it.id },
         )
         selectedCourseSemester = if (fromLiveTerm) liveCoursesTerm else _currentSemester.value
+        selectedIsSomeoneElses = ClassTableSelection.isSomeoneElses(isShowingSomeoneElse, fromLiveTerm)
         _selectedCourse.value = course
     }
 
@@ -862,7 +873,7 @@ class ClassTableViewModel @Inject constructor(
         ClassTableSelection.detailTitle(
             course,
             // Someone else's course shows the name it was looked up with.
-            if (isShowingSomeoneElse) {
+            if (selectedIsSomeoneElses) {
                 null
             } else {
                 courseService.cachedFullCourseName(selectedCourseSemester ?: _currentSemester.value, course.courseNo)
@@ -885,7 +896,7 @@ class ClassTableViewModel @Inject constructor(
      */
     fun moodleCourseIdFor(course: Course): Int? {
         // Someone else's class table opens nothing of theirs in the user's Moodle.
-        if (isShowingSomeoneElse) return null
+        if (selectedIsSomeoneElses) return null
         val semester = selectedCourseSemester ?: _currentSemester.value
         val idnumber = course.moodleIdNumber?.takeIf { it.isNotEmpty() }
             ?: "$semester${course.courseNo}"
@@ -900,6 +911,7 @@ class ClassTableViewModel @Inject constructor(
     fun clearSelection() {
         _selectedCourse.value = null
         selectedCourseSemester = null
+        selectedIsSomeoneElses = false
     }
 
     val existingCourseNos: Set<String>
@@ -949,6 +961,7 @@ class ClassTableViewModel @Inject constructor(
         val course = ClassTableSelection.renameTarget(
             courseNo, _courses.value, _liveSemesterCourses.value, selectedFromAnotherTerm,
         ) ?: return
+        val semester = termOf(course)
         val defaultName = defaultNameFor(course)
         val override = trimmed.takeIf {
             it.isNotEmpty() && it != course.courseName && it != defaultName
@@ -963,9 +976,19 @@ class ClassTableViewModel @Inject constructor(
             dataCache.saveCourses(updated, _currentSemester.value)
             widgetUpdater.requestUpdate()
         }
-        syncCourseOverride(course, customName = trimmed.ifEmpty { "" }, locale = locale)
+        syncCourseOverride(course, semester, customName = trimmed.ifEmpty { "" }, locale = locale)
         localEdits.noteEdit()
     }
+
+    /**
+     * The term a rename's target [course] was read from: the live term's when
+     * it is an element of that list, else the grid's
+     * ([ClassTableSelection.renameTarget]). By identity, and read before the
+     * lists are rebuilt with the rename, which replaces every element. The
+     * outbox lets a name go on a 404 once the course has left this term.
+     */
+    private fun termOf(course: Course): String =
+        if (_liveSemesterCourses.value.any { it === course }) liveCoursesTerm else _currentSemester.value
 
     /** Clears any user override for [courseNo], restoring the default name. */
     fun revertCourseName(courseNo: String) {
@@ -974,6 +997,7 @@ class ClassTableViewModel @Inject constructor(
         val course = ClassTableSelection.renameTarget(
             courseNo, _courses.value, _liveSemesterCourses.value, selectedFromAnotherTerm,
         )
+        val semester = if (course != null) termOf(course) else null
         courseCustomNames =
             CourseNameOverrides.withOverride(courseCustomNames, courseNo, locale, null)
         val updated = ClassTableSelection.renamed(_courses.value, courseNo, null)
@@ -984,7 +1008,7 @@ class ClassTableViewModel @Inject constructor(
             dataCache.saveCourses(updated, _currentSemester.value)
             widgetUpdater.requestUpdate()
         }
-        course?.let { syncCourseOverride(it, customName = "", locale = locale) }
+        if (course != null && semester != null) syncCourseOverride(course, semester, customName = "", locale = locale)
         localEdits.noteEdit()
     }
 
@@ -1024,6 +1048,7 @@ class ClassTableViewModel @Inject constructor(
 
     fun deleteCourse(courseNo: String) {
         if (isShowingSomeoneElse) return
+        val moodleId = _courses.value.firstOrNull { it.courseNo == courseNo }?.moodleIdNumber
         val updated = _courses.value.filter { it.courseNo != courseNo }
         _courses.value = updated
         val semester = _currentSemester.value
@@ -1042,6 +1067,9 @@ class ClassTableViewModel @Inject constructor(
             )
             dataCache.saveDeletedCourseNos(deleted)
             dataCache.saveCourses(updated, semester)
+            // A colour or name of it still waiting to go up goes with it; see
+            // PendingCourseOverrides.forget.
+            pendingCourseOverrides.forget(listOfNotNull(moodleId))
             widgetUpdater.requestUpdate()
             val courseKey = "client:$semester:$courseNo"
             // After an add of it already being sent, which landing later
@@ -1081,30 +1109,38 @@ class ClassTableViewModel @Inject constructor(
         // A concrete hex each, a default included: the backend reads a
         // missing one as "unchanged".
         for ((no, hex) in pick.toSync) {
-            updated.firstOrNull { it.courseNo == no }?.let { syncCourseOverride(it, colorHex = hex) }
+            updated.firstOrNull { it.courseNo == no }?.let { syncCourseOverride(it, _currentSemester.value, colorHex = hex) }
         }
         localEdits.noteEdit()
     }
 
-    /** Sends [course]'s colour or name to the backend, keyed by that course's own term. */
+    /**
+     * Sends [course]'s colour or name to the backend, keyed by that course's
+     * own term. Kept in [PendingCourseOverrides] until the backend confirms
+     * it: sent once, a change made offline stayed on this phone alone
+     * (tigerduck-app-android#380). [semester] is the term the course was read
+     * from, for the outbox to tell a course that has since left this phone.
+     * On the application scope, and started at once: leaving the table must
+     * not cut the write short, and two changes in a row must reach the
+     * outbox in the order they were made.
+     */
     private fun syncCourseOverride(
         course: Course,
+        semester: String,
         colorHex: String? = null,
         customName: String? = null,
         locale: String? = null,
     ) {
         val moodleId = course.moodleIdNumber ?: return
-        viewModelScope.launch {
-            try {
-                pushApiClient.patchCourseOverride(
-                    moodleId,
-                    colorHex = colorHex,
-                    customName = customName,
-                    locale = locale,
-                )
-            } catch (e: Exception) {
-                Log.w("ClassTableVM", "course override FAILED: ${e.logSummary()}")
-            }
+        appScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            pendingCourseOverrides.send(
+                moodleId,
+                colorHex = colorHex,
+                customName = customName,
+                locale = locale,
+                semester = semester,
+                courseNo = course.courseNo,
+            )
         }
     }
 
@@ -1159,8 +1195,33 @@ class ClassTableViewModel @Inject constructor(
         if (refreshTriggers.onShown()) viewModelScope.launch { fetchFlight.join(::fetchData) }
     }
 
-    /** The page left the screen for another page; see PageLeftEffect. */
-    fun onPageLeft() = refreshTriggers.onLeft()
+    /** The page left the screen for another page; see PageLeftEffect. An ask it offered goes with it. */
+    fun onPageLeft() {
+        refreshTriggers.onLeft()
+        reviewPrompt.withdraw()
+    }
+
+    /**
+     * The page paused with the activity — a background trip, a system prompt
+     * over it: the Play rating's moment it offered is withdrawn, so the ask
+     * cannot outlive what was on screen. Its next resume may offer one again.
+     */
+    fun onPagePaused() = reviewPrompt.withdraw()
+
+    /**
+     * The class table is on screen and the activity resumed: on coming to
+     * the page, and on each return from the background with it showing —
+     * the page's own ON_RESUME, so a return with another page up is not
+     * one. The Play rating's moment (issue #332), if ReviewPrompt agrees;
+     * not over the course detail sheet, which such a return can find open.
+     * On the launch's first resume, before any load, ReviewPrompt declines.
+     * [pageResumed] is the page's own answer, asked again right before the
+     * launch, to whether it is still on screen and resumed.
+     */
+    fun onPageResumed(pageResumed: () -> Boolean) {
+        if (_selectedCourse.value != null) return
+        reviewPrompt.calmMoment(pageResumed)
+    }
 
     /**
      * Reset the timetable for the semester on screen.
@@ -1215,6 +1276,9 @@ class ClassTableViewModel @Inject constructor(
      * server could not be told.
      */
     private suspend fun wipeTerm(semester: String): Boolean {
+        // Read before the wipe takes the term's cache: the colours and names
+        // still waiting to go up for its courses go with it below.
+        val moodleIds = dataCache.loadCourses(semester).mapNotNull { it.moodleIdNumber }
         // With no course add sent between the DELETE and the wipe; see PendingCourseAdds.removing.
         val held = pendingCourseAdds.removing {
             termReset.run(semester) { pushApiClient.deleteAllCourses(semester) }
@@ -1222,6 +1286,7 @@ class ClassTableViewModel @Inject constructor(
         if (_currentSemester.value == semester) _courses.value = emptyList()
         // Their names went from the file with the term.
         courseCustomNames = courseCustomNames - held
+        pendingCourseOverrides.forget(moodleIds)
         val inTerm = { key: String -> CourseIgnores.semesterOf(key) == semester }
         val edit = ignoredCourses.edit { keys -> keys.filterNotTo(mutableSetOf(), inTerm) }
         try {
@@ -1249,6 +1314,8 @@ class ClassTableViewModel @Inject constructor(
             _isLoading.value = true
             if (!networkChecker.isAvailable()) {
                 _noNetworkEvent.tryEmit(Unit)
+                // The user just saw an error, not a moment to ask for a rating.
+                reviewPrompt.loadFailed()
                 kotlinx.coroutines.yield()
                 _isLoading.value = false
                 return@launch
@@ -1393,6 +1460,9 @@ class ClassTableViewModel @Inject constructor(
                                 TigerDuckTheme.buildCourseColorMap(merged)
                             }
                             dataCache.saveCourses(merged, semester)
+                            // The class table loaded: a day of use towards
+                            // the Play rating ask (issue #332).
+                            reviewPrompt.classTableLoaded()
                             runCatching { pushApiClient.uploadCourses(merged, semester) }
                                 .onFailure { Log.w("ClassTableVM", "uploadCourses failed (non-fatal): ${it.logSummary()}") }
                             widgetUpdater.requestUpdate()
@@ -1454,6 +1524,7 @@ class ClassTableViewModel @Inject constructor(
             // the default uncaught handler and killed the process instead of
             // failing one refresh. This is the only boundary in that path.
             Log.e("ClassTableVM", "fetchData failed: ${e.logSummary()}")
+            reviewPrompt.loadFailed()
         } finally {
             _isLoading.value = false
         }

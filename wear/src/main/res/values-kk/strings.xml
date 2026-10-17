@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">Бүгінгі сабақтарды кестенің жоғарғы жағына бекіту</string>
     <string name="settings_privacy_policy">Құпиялылық саясаты</string>
     <string name="settings_push_server_nav_label">Серверді итеру</string>
-    <string name="settings_remember_bulletin_filter">Хабарлама сүзгілерін есте сақтау</string>
     <string name="settings_reset_course_colors">Курс түстерін қайта тағайындау</string>
     <string name="settings_reset_course_colors_confirm_message">Әр курсқа жаңа, бірегей түс тағайындалады — әуелі алдын ала орнатылған палитрадан, палитра таусылған соң кездейсоқ.</string>
     <string name="settings_reset_course_colors_confirm_title">Курс түстерін қайта тағайындау керек пе?</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">Сәтсіз</string>
     <string name="sync_status_hours_ago_short">%1$d с бұрын</string>
     <string name="sync_status_just_now">Жаңа ғана</string>
-    <string name="sync_status_last_synced">Соңғы синхрондау</string>
     <string name="sync_status_last_updated">Соңғы жаңарту</string>
     <string name="sync_status_minimal">Шектеулі</string>
     <string name="sync_status_minutes_ago_short">%1$d м бұрын</string>
     <string name="sync_status_nav_label">TigerSync мәртебесі</string>
-    <string name="sync_status_never_synced">Ешқашан синхрондалмаған</string>
     <string name="sync_status_never_updated">Ешқашан жаңартылмаған</string>
     <string name="sync_status_ok">Дұрыс</string>
     <string name="sync_status_syncing">Синхрондалуда…</string>

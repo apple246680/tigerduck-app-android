@@ -56,11 +56,16 @@ import org.ntust.app.tigerduck.data.moodle.MoodleAccountAssignments
 import org.ntust.app.tigerduck.data.moodle.MoodleAssignmentEntry
 import org.ntust.app.tigerduck.data.moodle.MoodleAssignmentLookup
 import org.ntust.app.tigerduck.data.moodle.MoodleCourseStore
+import org.ntust.app.tigerduck.data.moodle.MoodleDownloadState
 import org.ntust.app.tigerduck.data.moodle.MoodleFeed
+import org.ntust.app.tigerduck.data.moodle.MoodleFileOwner
+import org.ntust.app.tigerduck.data.moodle.MoodleFileRef
 import org.ntust.app.tigerduck.data.moodle.MoodlePersonName
 import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentGrade
 import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentSubmission
+import org.ntust.app.tigerduck.network.model.moodle.MoodleFile
 import org.ntust.app.tigerduck.network.model.moodle.MoodleSubmissionComment
+import org.ntust.app.tigerduck.network.moodle.MoodleFileUrls
 import org.ntust.app.tigerduck.network.moodle.MoodleWebservice
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.ui.component.rememberAppClockVersion
@@ -306,7 +311,11 @@ internal fun AssignmentPageBody(
         }
         if (record.introAttachments.isNotEmpty()) {
             PageSection(stringResource(R.string.school_mail_attachments)) {
-                MoodleAttachmentCard(store, record.introAttachments, browserPreference, moodlePath)
+                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        AssignmentFileRows(store, record.introAttachments, MoodleFileOwner.Module(record.cmid), browserPreference, moodlePath)
+                    }
+                }
             }
         }
         if (!record.noSubmissions) {
@@ -469,7 +478,7 @@ private fun SubmissionSection(
             MoodleFirstLoad(failure = if (submission.isRefreshing) null else submission.failure, onRetry = onRetry)
         } else {
             if (AssignmentPageStatus.showsCard(value)) {
-                SubmissionCard(value, store, browserPreference, moodlePath)
+                SubmissionCard(entry.record.assignId, value, store, browserPreference, moodlePath)
             }
             value.comments?.takeIf { it.isNotEmpty() }?.let { CommentList(it, browserPreference) }
         }
@@ -510,6 +519,7 @@ private fun BadgeChip(badge: SubmissionBadge) {
 /** The time it was handed in, or a draft's, over the files and the text. */
 @Composable
 private fun SubmissionCard(
+    assignId: Int,
     submission: MoodleAssignmentSubmission,
     store: MoodleCourseStore?,
     browserPreference: String,
@@ -524,9 +534,9 @@ private fun SubmissionCard(
                 time = submission.modified?.let { MoodleDates.dayTime(it) },
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             )
-            submission.files.forEachIndexed { index, file ->
-                HorizontalDivider(modifier = Modifier.padding(start = if (index > 0) 56.dp else 0.dp), color = cardDividerColor())
-                MoodleAttachmentRow(store, file, browserPreference, moodlePath)
+            if (submission.files.isNotEmpty()) {
+                HorizontalDivider(color = cardDividerColor())
+                AssignmentFileRows(store, submission.files, MoodleFileOwner.Submission(assignId), browserPreference, moodlePath)
             }
             submission.onlineText?.let { html ->
                 HorizontalDivider(color = cardDividerColor())
@@ -535,6 +545,51 @@ private fun SubmissionCard(
                 }
             }
         }
+    }
+}
+
+/**
+ * [files] as the materials and announcements list theirs, one under the other with a line between:
+ * downloaded through [store] and opened from the copy, with the download's progress on the row.
+ * A page whose assignment names no course has no store to download through, so its files open
+ * as their own links on the site, with no key in them.
+ */
+@Composable
+private fun AssignmentFileRows(
+    store: MoodleCourseStore?,
+    files: List<MoodleFile>,
+    owner: MoodleFileOwner,
+    browserPreference: String,
+    moodlePath: String?,
+) {
+    val context = LocalContext.current
+    val opener = store?.let { rememberMoodleFileOpener(it, browserPreference) }
+    val snapshot = store?.downloads?.snapshot?.collectAsStateWithLifecycle()?.value
+    val openInMoodle = {
+        opener?.forgetPendingOpen()
+        moodlePath?.let { openMoodlePage(context, it) }
+        Unit
+    }
+    files.forEachIndexed { index, file ->
+        if (index > 0) HorizontalDivider(modifier = Modifier.padding(start = MoodleRowTextInset), color = cardDividerColor())
+        val ref = MoodleFileRef(file, owner)
+        val state = if (store != null && snapshot != null) store.downloadState(ref, snapshot) else MoodleDownloadState.NotDownloaded
+        MoodleFileRow(
+            title = file.name,
+            file = file,
+            state = state,
+            onTap = {
+                if (opener != null) {
+                    opener.tap(ref, state)
+                } else {
+                    openMoodleContentLink(context, MoodleFileUrls.webUrl(file.url) ?: file.url, browserPreference)
+                }
+            },
+            onShare = {
+                if (opener != null) opener.share(ref) else shareMoodleLink(context, file.name, MoodleFileUrls.webUrl(file.url) ?: file.url)
+            },
+            onOpenInMoodle = openInMoodle,
+        )
     }
 }
 

@@ -33,8 +33,9 @@ fun EmptyStateView(
     modifier: Modifier = Modifier,
     onIconClick: (() -> Unit)? = null,
     /**
-     * A labelled button under the message, such as a signed-out page's "Sign in": something that
-     * reads as tappable, as the iPhone's `LoginRequiredView` does. Shown when [onAction] is set.
+     * A labelled button under the message, such as a signed-out page's "Sign in" or Retry on a
+     * failed load: something that reads as tappable, as the iPhone's `LoginRequiredView` does.
+     * Shown when [onAction] is set.
      */
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,

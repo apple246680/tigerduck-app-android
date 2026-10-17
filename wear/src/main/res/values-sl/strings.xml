@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">Pripni današnje predmete na vrh urnika</string>
     <string name="settings_privacy_policy">Pravilnik o zasebnosti</string>
     <string name="settings_push_server_nav_label">Strežniški push</string>
-    <string name="settings_remember_bulletin_filter">Zapomni si filtre oglasne deske</string>
     <string name="settings_reset_course_colors">Znova dodeli barve predmetov</string>
     <string name="settings_reset_course_colors_confirm_message">Vsak predmet bo dobil novo, edinstveno barvo — najprej iz prednastavljene palete, nato naključno, ko se ta izčrpa.</string>
     <string name="settings_reset_course_colors_confirm_title">Znova dodeliti barve predmetov?</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">Neuspešno</string>
     <string name="sync_status_hours_ago_short">%1$d h nazaj</string>
     <string name="sync_status_just_now">Pravkar</string>
-    <string name="sync_status_last_synced">Zadnja sinhronizacija</string>
     <string name="sync_status_last_updated">Zadnja posodobitev</string>
     <string name="sync_status_minimal">Omejeno</string>
     <string name="sync_status_minutes_ago_short">%1$d min nazaj</string>
     <string name="sync_status_nav_label">Stanje TigerSync</string>
-    <string name="sync_status_never_synced">Nikoli sinhronizirano</string>
     <string name="sync_status_never_updated">Nikoli posodobljeno</string>
     <string name="sync_status_ok">V redu</string>
     <string name="sync_status_syncing">Sinhronizacija…</string>

@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">ٹائم ٹیبل کے اوپر آج کے کورسز پن کریں</string>
     <string name="settings_privacy_policy">رازداری کی پالیسی</string>
     <string name="settings_push_server_nav_label">سرور پش</string>
-    <string name="settings_remember_bulletin_filter">بلیٹن فلٹرز یاد رکھیں</string>
     <string name="settings_reset_course_colors">کورس کے رنگ دوبارہ تفویض کریں</string>
     <string name="settings_reset_course_colors_confirm_message">ہر کورس کو ایک نیا اور منفرد رنگ تفویض ہوگا — پہلے پری سیٹ پیلیٹ سے، پیلیٹ ختم ہونے پر بے ترتیب۔</string>
     <string name="settings_reset_course_colors_confirm_title">کیا کورس کے رنگ دوبارہ تفویض کریں؟</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">ناکام</string>
     <string name="sync_status_hours_ago_short">%1$d گھ. پہلے</string>
     <string name="sync_status_just_now">ابھی ابھی</string>
-    <string name="sync_status_last_synced">آخری مطابقت پذیری</string>
     <string name="sync_status_last_updated">آخری اپ ڈیٹ</string>
     <string name="sync_status_minimal">محدود</string>
     <string name="sync_status_minutes_ago_short">%1$d من. پہلے</string>
     <string name="sync_status_nav_label">TigerSync کی حالت</string>
-    <string name="sync_status_never_synced">کبھی سنک نہیں کیا</string>
     <string name="sync_status_never_updated">کبھی اپ ڈیٹ نہیں ہوا</string>
     <string name="sync_status_ok">ٹھیک</string>
     <string name="sync_status_syncing">ہم آہنگ ہو رہا ہے…</string>

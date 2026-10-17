@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">Piespraust šodienas kursus stundu saraksta augšā</string>
     <string name="settings_privacy_policy">Privātuma politika</string>
     <string name="settings_push_server_nav_label">Servera push</string>
-    <string name="settings_remember_bulletin_filter">Atcerēties biļetenu filtrus</string>
     <string name="settings_reset_course_colors">No jauna piešķirt kursu krāsas</string>
     <string name="settings_reset_course_colors_confirm_message">Katram kursam tiks piešķirta jauna, unikāla krāsa — vispirms no iepriekšiestatītās paletes, pēc tās izsmelšanas — nejauši.</string>
     <string name="settings_reset_course_colors_confirm_title">Vai no jauna piešķirt kursu krāsas?</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">Neizdevās</string>
     <string name="sync_status_hours_ago_short">pirms %1$d st.</string>
     <string name="sync_status_just_now">Tikko</string>
-    <string name="sync_status_last_synced">Pēdējoreiz sinhronizēts</string>
     <string name="sync_status_last_updated">Pēdējoreiz atjaunināts</string>
     <string name="sync_status_minimal">Ierobežots</string>
     <string name="sync_status_minutes_ago_short">pirms %1$d min.</string>
     <string name="sync_status_nav_label">TigerSync statuss</string>
-    <string name="sync_status_never_synced">Nav sinhronizēts</string>
     <string name="sync_status_never_updated">Nav atjaunināts</string>
     <string name="sync_status_ok">Labi</string>
     <string name="sync_status_syncing">Sinhronizē…</string>

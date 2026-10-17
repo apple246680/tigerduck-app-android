@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">Fixează cursurile de azi în partea de sus a orarului</string>
     <string name="settings_privacy_policy">Politică de confidențialitate</string>
     <string name="settings_push_server_nav_label">Push server</string>
-    <string name="settings_remember_bulletin_filter">Reține filtrele buletinului</string>
     <string name="settings_reset_course_colors">Reatribuie culorile cursurilor</string>
     <string name="settings_reset_course_colors_confirm_message">Fiecare curs primește o culoare nouă, unică — întâi din paleta presetată, apoi aleatoriu când paleta este epuizată.</string>
     <string name="settings_reset_course_colors_confirm_title">Reatribui culorile cursurilor?</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">Eșuat</string>
     <string name="sync_status_hours_ago_short">acum %1$d h</string>
     <string name="sync_status_just_now">Chiar acum</string>
-    <string name="sync_status_last_synced">Ultima sincronizare</string>
     <string name="sync_status_last_updated">Ultima actualizare</string>
     <string name="sync_status_minimal">Limitat</string>
     <string name="sync_status_minutes_ago_short">acum %1$d min</string>
     <string name="sync_status_nav_label">Starea TigerSync</string>
-    <string name="sync_status_never_synced">Niciodată sincronizat</string>
     <string name="sync_status_never_updated">Niciodată actualizat</string>
     <string name="sync_status_ok">OK</string>
     <string name="sync_status_syncing">Se sincronizează…</string>

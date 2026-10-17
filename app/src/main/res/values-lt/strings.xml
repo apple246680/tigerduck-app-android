@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">Prisegti šiandienos kursus tvarkaraščio viršuje</string>
     <string name="settings_privacy_policy">Privatumo politika</string>
     <string name="settings_push_server_nav_label">Serverio siuntimas</string>
-    <string name="settings_remember_bulletin_filter">Įsiminti biuletenių filtrus</string>
     <string name="settings_reset_course_colors">Iš naujo priskirti kursų spalvas</string>
     <string name="settings_reset_course_colors_confirm_message">Kiekvienam kursui bus priskirta nauja unikali spalva — pirma iš išankstinės paletės, paskui atsitiktinai, kai paletė pasibaigs.</string>
     <string name="settings_reset_course_colors_confirm_title">Priskirti kursų spalvas iš naujo?</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">Nepavyko</string>
     <string name="sync_status_hours_ago_short">prieš %1$d val.</string>
     <string name="sync_status_just_now">Ką tik</string>
-    <string name="sync_status_last_synced">Paskutinį kartą sinchronizuota</string>
     <string name="sync_status_last_updated">Paskutinį kartą atnaujinta</string>
     <string name="sync_status_minimal">Ribota</string>
     <string name="sync_status_minutes_ago_short">prieš %1$d min.</string>
     <string name="sync_status_nav_label">TigerSync statusas</string>
-    <string name="sync_status_never_synced">Nesusinchronizuota</string>
     <string name="sync_status_never_updated">Neatnaujinta</string>
     <string name="sync_status_ok">Gerai</string>
     <string name="sync_status_syncing">Sinchronizuojama…</string>

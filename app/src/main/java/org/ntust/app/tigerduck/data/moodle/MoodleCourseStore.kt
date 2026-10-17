@@ -6,9 +6,6 @@ import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.async
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,14 +22,15 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.ntust.app.tigerduck.network.moodle.MoodleCourseApi
 import org.ntust.app.tigerduck.network.moodle.MoodleFileUrls
-import org.ntust.app.tigerduck.network.moodle.checkableMimeType
 import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentRecord
-import org.ntust.app.tigerduck.network.model.moodle.MoodleFile
 import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseGrades
+import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseMaterials
 import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseSummary
 import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussion
 import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussionList
+import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussionThread
 import org.ntust.app.tigerduck.network.model.moodle.MoodleForum
+import org.ntust.app.tigerduck.network.model.moodle.MoodleMaterial
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMember
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberList
 import org.ntust.app.tigerduck.network.model.moodle.MoodleTermForums
@@ -44,8 +42,6 @@ import java.io.File
  * Each kind is a [MoodleFeed], cached on the device for the signed-in account. One store per
  * account and course, shared by every screen of that course; see [MoodleCourseRepository].
  * Ported from iOS `MoodleCourseStore`.
- *
- * Phase 2 adds the course's materials, a forum's threads and file downloads beside these.
  */
 class MoodleCourseStore(
     val courseId: Int,
@@ -56,11 +52,10 @@ class MoodleCourseStore(
     private val scope: CoroutineScope,
     /** Where member pictures are kept; null keeps them in memory only. */
     private val picturesDir: File? = null,
-    /**
-     * Where opened attachments are kept for the account, which another app reads them from. Asked
-     * for off the main thread: finding it reads the install's salt from disk.
-     */
-    private val openedFilesDir: (() -> File?)? = null,
+    /** The files downloaded on the device, every course's; null downloads nothing. */
+    val downloads: MoodleFileDownloads? = null,
+    /** Where this course's downloaded files are kept for the account; null downloads nothing. */
+    private val filesDir: File? = null,
     private val decodePicture: (ByteArray) -> ImageBitmap? = { null },
     /** Where pictures are decoded, off the main thread. */
     private val background: CoroutineDispatcher = Dispatchers.Default,
@@ -84,6 +79,7 @@ class MoodleCourseStore(
         term?.let { "terms/$it/forums" } ?: "courses/$courseId/forums",
         MoodleRefreshInterval.FORUMS_MS,
     )
+    val materials = feed<MoodleCourseMaterials>("courses/$courseId/materials", MoodleRefreshInterval.MATERIALS_MS)
     val grades = feed<MoodleCourseGrades>("courses/$courseId/grades", MoodleRefreshInterval.GRADES_MS)
     val members = feed<MoodleMemberList>("courses/$courseId/members", MoodleRefreshInterval.MEMBERS_MS)
     val summary = feed<MoodleCourseSummary>("courses/$courseId/summary", MoodleRefreshInterval.SUMMARY_MS)
@@ -94,6 +90,7 @@ class MoodleCourseStore(
     /** Returns once every cached copy is read, so a screen's first refresh knows their age. */
     suspend fun awaitCache() {
         forums.awaitCache()
+        materials.awaitCache()
         grades.awaitCache()
         members.awaitCache()
         summary.awaitCache()
@@ -108,28 +105,30 @@ class MoodleCourseStore(
 
     /** The section's rows, in order; a kind with nothing to count has none. */
     val sectionRows: StateFlow<List<MoodleSectionRow>> =
-        combine(forums.state, grades.state, members.state, assignmentCount) { f, g, m, assignments ->
-            MoodleSections.rows(f.value, courseId, g.value, m.value, assignmentCount = assignments)
+        combine(forums.state, materials.state, grades.state, members.state, assignmentCount) { f, mat, g, m, assignments ->
+            MoodleSections.rows(f.value, courseId, g.value, m.value, mat.value, assignmentCount = assignments)
         }.stateIn(scope, SharingStarted.Eagerly, emptyList())
 
     /** Why the section's last fetch failed, shown with Retry beside what it has, or in its place. */
     val sectionFailure: StateFlow<Throwable?> =
-        combine(forums.state, grades.state, members.state, summary.state) { f, g, m, s ->
-            MoodleSections.failure(listOf(f, g, m, s))
+        combine(forums.state, materials.state, grades.state, members.state, summary.state) { f, mat, g, m, s ->
+            MoodleSections.failure(listOf(f, mat, g, m, s))
         }.stateIn(scope, SharingStarted.Eagerly, null)
 
     /** Fetches every kind the section shows, side by side, as its Retry does. */
     fun retrySection() {
         scope.launch { refreshForums() }
+        scope.launch { refreshMaterials() }
         scope.launch { refreshGrades() }
         scope.launch { refreshMembers() }
         scope.launch { refreshSummary() }
     }
 
-    /** Fetches every kind again, the announcements opened included, as for another language. */
+    /** Fetches every kind again, the discussions and threads opened included, as for another language. */
     fun reloadAll() {
         retrySection()
         synchronized(this) { discussionPages.values.toList() }.forEach { pages -> scope.launch { pages.refresh() } }
+        synchronized(this) { threads.keys.toList() }.forEach { id -> scope.launch { refreshThread(id) } }
     }
 
     /** What the foot of the section shows; null while the course has no summary worth showing. */
@@ -147,12 +146,21 @@ class MoodleCourseStore(
         .map { MoodleSections.newsForum(it.value, courseId) }
         .stateIn(scope, SharingStarted.Eagerly, null)
 
+    /** The course's other forums that have something in them, as the forums screen lists them. */
+    val generalForums: StateFlow<List<MoodleForum>> = forums.state
+        .map { MoodleSections.generalForums(it.value, courseId) }
+        .stateIn(scope, SharingStarted.Eagerly, emptyList())
+
     private fun currentNewsForum(): MoodleForum? = MoodleSections.newsForum(forums.value, courseId)
+
+    /** The course's forum [forumId], news forum included, while the cached copy has it. */
+    fun forum(forumId: Int): MoodleForum? =
+        MoodleSections.courseForums(forums.value, courseId).firstOrNull { it.id == forumId }
 
     /**
      * One call for every course of the term. A site that does not allow the forum calls answers
-     * as if no course had a forum, which hides the announcements; one that does not allow the
-     * posts call keeps only the announcements, as a discussion would show no reply.
+     * as if no course had a forum, which hides the announcements and the forums; one that does not
+     * allow the posts call keeps only the announcements, as a discussion would show no reply.
      */
     suspend fun refreshForums() {
         val ids = termCourseIds
@@ -195,15 +203,20 @@ class MoodleCourseStore(
     /** The announcements, once the course's news forum is known. */
     fun announcementPages(): MoodleDiscussionPages? = currentNewsForum()?.let(::discussions)
 
+    /** An announcement opened with nothing cached; see [ensureDiscussion]. */
+    suspend fun ensureAnnouncement(discussionId: Int): MoodleLookup = ensureDiscussion(discussionId, forumId = null)
+
     /**
-     * What an announcement opened with nothing cached needs, as after the system ended the app:
-     * the course's forums, then its announcements, each fetched only when the cache lacks it, and
-     * further pages while the announcement is older than those listed.
+     * What a discussion opened with nothing cached needs, as after the system ended the app: the
+     * course's forums, then forum [forumId]'s discussions (the news forum's for null), each
+     * fetched only when the cache lacks it, and further pages while the discussion is older than
+     * those listed.
      */
-    suspend fun ensureAnnouncement(discussionId: Int): MoodleLookup {
+    suspend fun ensureDiscussion(discussionId: Int, forumId: Int?): MoodleLookup {
         awaitCache()
-        if (currentNewsForum() == null) refreshForums()
-        val pages = announcementPages()
+        fun target(): MoodleForum? = if (forumId == null) currentNewsForum() else forum(forumId)
+        if (target() == null) refreshForums()
+        val pages = target()?.let(::discussions)
             ?: return forums.state.value.failure?.let(MoodleLookup::Failed) ?: MoodleLookup.Missing
         pages.feed.awaitCache()
         fun listed(): Boolean = pages.feed.value?.takeIf { it.forumId == pages.forumId }
@@ -220,14 +233,28 @@ class MoodleCourseStore(
         return if (listed()) MoodleLookup.Found else MoodleLookup.Missing
     }
 
+    /** What a forum opened with nothing cached needs: the course's forums, when the cache lacks it. */
+    suspend fun ensureForum(forumId: Int): MoodleLookup {
+        awaitCache()
+        if (forum(forumId) != null) return MoodleLookup.Found
+        refreshForums()
+        if (forum(forumId) != null) return MoodleLookup.Found
+        return forums.state.value.failure?.let(MoodleLookup::Failed) ?: MoodleLookup.Missing
+    }
+
     /**
-     * An announcement opened on screen: its unread mark goes here and on the section row at once,
-     * and Moodle logs the view, which marks it read there. A list load never marks anything read.
-     * The view event is best effort and not retried.
+     * A discussion opened on screen: its unread mark goes here, on the section row and on its
+     * thread's posts at once, and Moodle logs the view, which marks it read there. A list load
+     * never marks anything read. The view event is best effort and not retried.
      */
     fun open(discussion: MoodleDiscussion, forum: MoodleForum? = currentNewsForum()) {
         if (!context.isCurrent()) return
         forum?.let { discussions(it).markRead(discussion.id) }
+        synchronized(this) { threads[discussion.id] }?.let { thread ->
+            if (thread.value?.posts?.any { it.isUnread } == true) {
+                thread.update { value -> value.copy(posts = value.posts.map { it.copy(isUnread = false) }) }
+            }
+        }
         scope.launch {
             try {
                 if (!context.isCurrent()) return@launch
@@ -238,6 +265,91 @@ class MoodleCourseStore(
                 return@launch
             } catch (e: Exception) {
                 Log.w(TAG, "discussion view not logged: ${e.logSummary()}")
+            }
+        }
+    }
+
+    // --- Threads ---
+
+    private val threads = mutableMapOf<Int, MoodleFeed<MoodleDiscussionThread>>()
+
+    /** Discussion [discussionId]'s posts, cached with the course's other Moodle data. */
+    @Synchronized
+    fun thread(discussionId: Int): MoodleFeed<MoodleDiscussionThread> = threads.getOrPut(discussionId) {
+        MoodleFeed(
+            "courses/$courseId/discussions/$discussionId",
+            object : TypeToken<MoodleDiscussionThread>() {}.type,
+            MoodleRefreshInterval.FORUMS_MS,
+            context,
+            scope,
+        )
+    }
+
+    /**
+     * A site that does not allow the posts call answers with none, which leaves the first post as
+     * the discussion's list brought it.
+     */
+    suspend fun refreshThread(discussionId: Int) {
+        thread(discussionId).refresh {
+            if (MoodleCourseApi.DISCUSSION_POSTS_FUNCTION !in api.functions()) {
+                return@refresh MoodleDiscussionThread(discussionId, emptyList())
+            }
+            MoodleDiscussionThread(discussionId, api.posts(discussionId))
+        }
+    }
+
+    /**
+     * Every opening fetches the posts, as the list may not know of a reply yet, and keeps which
+     * were unread for their dots. Moodle marks the whole discussion read on the view event, so it
+     * goes only once the posts load: an opening whose fetch fails sends nothing and returns null,
+     * leaving the replies unread for the next opening.
+     */
+    suspend fun openThread(discussion: MoodleDiscussion, forum: MoodleForum): Set<Int>? {
+        if (!context.isCurrent()) return null
+        val feed = thread(discussion.id)
+        refreshThread(discussion.id)
+        val state = feed.state.value
+        if (!context.isCurrent() || state.failure != null) return null
+        val posts = state.value?.posts ?: return null
+        val unread = posts.filter { it.isUnread }.map { it.id }.toSet()
+        open(discussion, forum)
+        return unread
+    }
+
+    // --- Materials ---
+
+    /**
+     * A site that does not allow the call answers as if the course had no materials, which hides
+     * their row. Copies of files Moodle has a newer version of go once the answer is in.
+     */
+    suspend fun refreshMaterials() {
+        materials.refresh {
+            if (MoodleCourseApi.CONTENTS_FUNCTION !in api.functions()) return@refresh MoodleCourseMaterials(emptyList())
+            api.materials(courseId)
+        }
+        val state = materials.state.value
+        val fresh = state.value ?: return
+        if (state.failure != null) return
+        val downloads = downloads ?: return
+        downloads.removeOutdated(MoodleMaterials.fileRefs(fresh).mapNotNull(::location))
+    }
+
+    /**
+     * A file or link opened on screen, which Moodle logs as a view of its module when the site
+     * allows the call. A failed call is not retried and shows nothing.
+     */
+    fun open(material: MoodleMaterial) {
+        val function = MoodleMaterials.VIEW_CALLS[material.module]?.first ?: return
+        scope.launch {
+            try {
+                if (!context.isCurrent() || function !in api.functions()) return@launch
+                // A screen can outlive a sign-out, and the next account's token would log the
+                // view as theirs.
+                api.markMaterialViewed(material) { context.isCurrent() }
+            } catch (e: CancellationException) {
+                return@launch
+            } catch (e: Exception) {
+                Log.w(TAG, "material view not logged: ${e.logSummary()}")
             }
         }
     }
@@ -297,128 +409,58 @@ class MoodleCourseStore(
 
     // --- Files ---
 
-    private val _downloading = MutableStateFlow<Set<String>>(emptySet())
-
-    /** The attachments being downloaded, by URL, for the rows to show progress on. */
-    val downloading: StateFlow<Set<String>> = _downloading.asStateFlow()
+    init {
+        // So the rows show the copies already downloaded, from their first frame on.
+        val dir = filesDir
+        if (dir != null && downloads != null) scope.launch { downloads.index(dir) }
+    }
 
     /**
-     * An attachment ready to open: the copy in the app, downloaded first when there is none, or
-     * for a file off the Moodle site, or one too large to download here, a link with no key in
-     * it. Each file has a folder of its own, named for its link, place and version, so two files
-     * of one name never share a copy and a replaced one gets a new copy; a file with no listed
-     * type, which a download cannot check, is fetched again each time. A download stops past the
-     * size Moodle lists, and copies opened more than a day ago go. Phase 2 adds progress,
-     * cancelling and dropping copies Moodle has a newer version of.
+     * Where [ref]'s copy is kept on the device; null for a file that is not downloaded into the
+     * app: one off the Moodle site, which no key may be sent to, or one too large.
      */
-    suspend fun openAttachment(file: MoodleFile): MoodleAttachment {
+    fun location(ref: MoodleFileRef): File? {
+        val dir = filesDir ?: return null
+        val downloads = downloads ?: return null
+        if (!MoodleFileUrls.isMoodleFile(ref.file.url) || ref.file.size > MAX_DOWNLOAD_BYTES) return null
+        return downloads.location(dir, ref.file, ref.owner)
+    }
+
+    /** [ref]'s state in [snapshot], which a screen collects from [downloads]. */
+    fun downloadState(ref: MoodleFileRef, snapshot: MoodleFileDownloads.Snapshot): MoodleDownloadState =
+        downloads?.state(location(ref), snapshot) ?: MoodleDownloadState.NotDownloaded
+
+    /**
+     * [ref] ready to open: its copy on the device, downloaded first when there is none, or, for a
+     * file off the Moodle site or one too large to download here, a link with no key in it. A
+     * download stops past the size Moodle lists, goes on after the screen that asked closes, and
+     * is joined by a second tap while it runs; one stopped, or landing after a sign-out, leaves
+     * nothing to show.
+     */
+    suspend fun download(ref: MoodleFileRef): MoodleAttachment {
+        val file = ref.file
         if (!MoodleFileUrls.isMoodleFile(file.url)) return MoodleAttachment.Link(file.url)
-        if (file.size > MAX_DOWNLOAD_BYTES) {
-            return MoodleAttachment.Link(MoodleFileUrls.webUrl(file.url) ?: file.url)
+        if (file.size > MAX_DOWNLOAD_BYTES) return MoodleAttachment.Link(MoodleFileUrls.webUrl(file.url) ?: file.url)
+        val downloads = downloads
+        val location = location(ref)
+        if (downloads == null || location == null) {
+            return MoodleAttachment.Failed(IllegalStateException("no folder for files"))
         }
-        val key = slotName(file)
-        // Taken before anything suspends, so a second tap while the first downloads joins it
-        // rather than writing the same file beside it. In the store's scope: leaving the screen
-        // does not stop a download, a sign-out does.
-        val opening = synchronized(openings) {
-            openings[key]?.takeIf { it.isActive } ?: scope.async { openNow(file, key) }.also { openings[key] = it }
-        }
-        return opening.await().also {
-            synchronized(openings) { if (openings[key] === opening) openings.remove(key) }
-        }
+        val copy = downloads.download(
+            location,
+            fetch = { target, progress ->
+                api.download(file, target, maxBytes = if (file.size > 0) file.size else MAX_DOWNLOAD_BYTES, progress)
+            },
+            isCurrent = context.isCurrent,
+        )
+        if (copy != null) return MoodleAttachment.Local(copy)
+        val state = downloads.state(location)
+        return (state as? MoodleDownloadState.Failed)?.let { MoodleAttachment.Failed(it.error) } ?: MoodleAttachment.Dropped
     }
 
-    private val openings = HashMap<String, Deferred<MoodleAttachment>>()
-
-    private suspend fun openNow(file: MoodleFile, key: String): MoodleAttachment {
-        val dir = withContext(Dispatchers.IO) { openedFilesDir?.invoke() }
-            ?: return MoodleAttachment.Failed(IllegalStateException("no folder for files"))
-        val slot = File(dir, key)
-        val target = File(slot, safeFileName(file.name))
-        val trusted = file.checkableMimeType() != null
-        val kept = withContext(Dispatchers.IO) {
-            // Dated now, before anything is fetched, so a prune from another opening keeps it;
-            // under the lock every store holds, so no prune decides on it while it is dated.
-            synchronized(OPENED_FILES_LOCK) {
-                slot.mkdirs()
-                slot.setLastModified(System.currentTimeMillis())
-                pruneOpened(dir, keep = slot)
-                trusted && target.isFile
-            }
-        }
-        if (kept) return MoodleAttachment.Local(target)
-        _downloading.update { it + file.url }
-        var partial: File? = null
-        return try {
-            val part = withContext(Dispatchers.IO) { File.createTempFile(".dl", ".part", slot) }
-            partial = part
-            api.download(file, part, maxBytes = if (file.size > 0) file.size else MAX_DOWNLOAD_BYTES)
-            withContext(Dispatchers.IO) {
-                target.delete()
-                if (!part.renameTo(target)) throw java.io.IOException("could not keep the file")
-            }
-            if (context.isCurrent()) {
-                MoodleAttachment.Local(target)
-            } else {
-                // Landed after a sign-out: the next account must not find it.
-                withContext(NonCancellable + Dispatchers.IO) {
-                    synchronized(OPENED_FILES_LOCK) { slot.deleteRecursively() }
-                }
-                MoodleAttachment.Dropped
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "attachment not downloaded: ${e.logSummary()}")
-            MoodleAttachment.Failed(e)
-        } finally {
-            withContext(NonCancellable + Dispatchers.IO) {
-                partial?.delete()
-                synchronized(OPENED_FILES_LOCK) { if (slot.list().isNullOrEmpty()) slot.delete() }
-            }
-            _downloading.update { it - file.url }
-        }
-    }
-
-    /** Copies opened more than a day ago, which another app had its chance to read. */
-    private fun pruneOpened(dir: File, keep: File) {
-        val cutoff = System.currentTimeMillis() - DAY_MS
-        dir.listFiles()?.filter { it != keep && it.lastModified() < cutoff }?.forEach { it.deleteRecursively() }
-    }
-
-    /** One folder per file: its link, place and version, so neither a namesake nor an update shares it. */
-    private fun slotName(file: MoodleFile): String =
-        java.security.MessageDigest.getInstance("SHA-256")
-            .digest("${file.url}|${file.path.orEmpty()}|${file.modified ?: 0}".toByteArray())
-            .take(8)
-            .joinToString("") { "%02x".format(it) }
-
-    /**
-     * [name] as one file name: no slash, backslash or NUL, no leading dot to hide or climb with, and
-     * at most [MAX_NAME_BYTES] bytes, its extension kept, where a file system allows 255. A cut name
-     * whose extension could not be kept has no dot left, so it cannot end in another extension
-     * that another app would open it by.
-     */
-    private fun safeFileName(name: String): String {
-        val cleaned = name.replace(Regex("""[/\\\u0000]"""), "_").trim().trimStart('.').ifEmpty { "file" }
-        if (cleaned.toByteArray(Charsets.UTF_8).size <= MAX_NAME_BYTES) return cleaned
-        val dot = cleaned.lastIndexOf('.')
-        val extension = if (dot > 0 && cleaned.length - dot <= 16) cleaned.substring(dot) else ""
-        val budget = MAX_NAME_BYTES - extension.toByteArray(Charsets.UTF_8).size
-        val stem = StringBuilder()
-        var used = 0
-        var i = 0
-        val body = cleaned.substring(0, cleaned.length - extension.length)
-        while (i < body.length) {
-            val codePoint = body.codePointAt(i)
-            val bytes = String(Character.toChars(codePoint)).toByteArray(Charsets.UTF_8).size
-            if (used + bytes > budget) break
-            stem.appendCodePoint(codePoint)
-            used += bytes
-            i += Character.charCount(codePoint)
-        }
-        val cut = stem.toString().ifEmpty { "file" }
-        return if (extension.isEmpty()) cut.replace('.', '_') else cut + extension
+    /** Stops [ref]'s download, as a tap on its progress ring does. */
+    fun cancelDownload(ref: MoodleFileRef) {
+        location(ref)?.let { downloads?.cancel(it) }
     }
 
     // --- Pictures ---
@@ -489,17 +531,6 @@ class MoodleCourseStore(
         /** The largest attachment downloaded into the app; a larger one opens on the website. */
         const val MAX_DOWNLOAD_BYTES = 100L * 1024 * 1024
 
-        private const val DAY_MS = 24 * 60 * 60 * 1000L
-
-        /**
-         * Held by every store while it makes, dates or prunes a slot in the opened files' folder,
-         * which all of an account's course stores share.
-         */
-        internal val OPENED_FILES_LOCK = Any()
-
-        /** Under the 255 bytes most file systems allow a name, with room for the partial file's. */
-        private const val MAX_NAME_BYTES = 200
-
         /** How many pages an announcement opened cold is looked for in. */
         private const val MAX_LOOKUP_PAGES = 10
 
@@ -538,13 +569,13 @@ class MoodleCourseStore(
     }
 }
 
-/** An attachment as it opens: the copy in the app, its own link off the Moodle site, or why neither. */
+/** A file as it opens: the copy in the app, its own link off the Moodle site, or why neither. */
 sealed interface MoodleAttachment {
     data class Local(val file: File) : MoodleAttachment
     data class Link(val url: String) : MoodleAttachment
     data class Failed(val error: Throwable) : MoodleAttachment
 
-    /** Landed after the account signed out, and deleted: there is nothing to show. */
+    /** Stopped, or landed after the account signed out and was not kept: there is nothing to show. */
     data object Dropped : MoodleAttachment
 }
 

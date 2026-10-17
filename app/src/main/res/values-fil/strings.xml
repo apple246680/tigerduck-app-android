@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">I-pin ang mga kurso ngayon sa itaas ng iskedyul</string>
     <string name="settings_privacy_policy">Patakaran sa privacy</string>
     <string name="settings_push_server_nav_label">Push ng server</string>
-    <string name="settings_remember_bulletin_filter">Tandaan ang mga filter ng bulletin</string>
     <string name="settings_reset_course_colors">Iulit ang pagtatalaga ng kulay ng kurso</string>
     <string name="settings_reset_course_colors_confirm_message">Bawat kurso ay bibigyan ng bago at natatanging kulay — una mula sa preset na palette, sumunod ay random kapag naubos na ang palette.</string>
     <string name="settings_reset_course_colors_confirm_title">Iulit ang pagtatalaga ng kulay ng kurso?</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">Nabigo</string>
     <string name="sync_status_hours_ago_short">%1$d o nakaraon</string>
     <string name="sync_status_just_now">Ngayon lang</string>
-    <string name="sync_status_last_synced">Huling na-sync</string>
     <string name="sync_status_last_updated">Huling na-update</string>
     <string name="sync_status_minimal">Limitado</string>
     <string name="sync_status_minutes_ago_short">%1$d min nakaraon</string>
     <string name="sync_status_nav_label">Katayuan ng TigerSync</string>
-    <string name="sync_status_never_synced">Hindi pa na-sync</string>
     <string name="sync_status_never_updated">Hindi pa na-update</string>
     <string name="sync_status_ok">OK</string>
     <string name="sync_status_syncing">Nagsi-sync…</string>

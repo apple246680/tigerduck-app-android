@@ -26,6 +26,7 @@ import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentRecord
 import org.ntust.app.tigerduck.data.model.CalendarEvent
 import org.ntust.app.tigerduck.data.model.PendingCourseIgnore
+import org.ntust.app.tigerduck.data.model.PendingCourseOverride
 import org.ntust.app.tigerduck.data.model.UnsentMark
 import org.ntust.app.tigerduck.data.model.SyncConflict
 import org.ntust.app.tigerduck.shared.Course
@@ -45,7 +46,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class DataCache @Inject constructor(
-    @ApplicationContext context: Context,
+    @ApplicationContext private val context: Context,
     private val academicCalendar: AcademicCalendarStore,
 ) {
 
@@ -540,6 +541,22 @@ class DataCache @Inject constructor(
             ?: emptySet()
     }
 
+    /**
+     * Every term's courses on this phone, fetched and added by hand, keyed by
+     * term, for the sign-out's check of what it would delete that exists
+     * nowhere else.
+     */
+    suspend fun loadEveryTermCourses(): Map<String, List<Course>> {
+        fun termOf(name: String, prefix: String): String? =
+            name.takeIf { it.startsWith(prefix) && it.endsWith(".json") }
+                ?.removePrefix(prefix)?.removeSuffix(".json")
+        val semesters = withContext(Dispatchers.IO) {
+            cacheDir.list().orEmpty().mapNotNull { termOf(it, "courses_") } +
+                userDataDir.list().orEmpty().mapNotNull { termOf(it, "manual_courses_") }
+        }
+        return semesters.toSortedSet().associateWith { loadCourses(it) }
+    }
+
     // --- Ignored Assignments (set of assignmentIds) ---
     // Stored in filesDir so the user's ignore decisions survive OS cache eviction
     // and remote re-fetches, mirroring skipped_dates.json handling.
@@ -661,6 +678,24 @@ class DataCache @Inject constructor(
                 if (semester.isNullOrBlank() || kept.isEmpty()) null else semester to kept
             }
             .toMap()
+    }
+
+    // --- Pending course overrides (a colour, or a name in one locale) ---
+    // Colours and names set on the class table whose PATCH the backend has
+    // not confirmed; see PendingCourseOverrides, the only writer. A new file,
+    // so an older install simply has none; read tolerantly all the same.
+
+    /** False, and nothing written, when the data was wiped since [generation]. */
+    suspend fun savePendingCourseOverrides(pending: List<PendingCourseOverride>, generation: Int? = null): Boolean =
+        saveToUserDataIf(pending, "pending_course_overrides.json", generation ?: writeGeneration())
+
+    /** Rows too damaged to send ([PendingCourseOverride.key] null) are left out. */
+    suspend fun loadPendingCourseOverrides(): List<PendingCourseOverride> {
+        val type = object : TypeToken<List<PendingCourseOverride?>>() {}.type
+        return loadFromUserData<List<PendingCourseOverride?>>(type, "pending_course_overrides.json")
+            ?.filterNotNull()
+            ?.filter { it.key != null }
+            ?: emptyList()
     }
 
     // --- Score Report (per studentId) ---
@@ -787,12 +822,16 @@ class DataCache @Inject constructor(
     private val moodleDir: File get() = File(cacheDir, MOODLE_DIR)
 
     /**
-     * Where [account]'s opened Moodle files are kept: copies the app hands to another app through
-     * its FileProvider (`moodle_files` in res/xml/file_provider_paths.xml). Apart from
-     * [moodleFilesDir], so that path exposes nothing but these copies.
+     * Where downloaded Moodle files are kept, a folder per account (see [moodleDownloadsDir]):
+     * copies the app hands to another app through its FileProvider (`moodle_downloads` in
+     * res/xml/file_provider_paths.xml), so that path exposes nothing else. In the files folder,
+     * which the system does not clear for space: a downloaded file opens at once next time.
+     * Settings measure and clear it on its own, and a sign-out deletes it.
      */
-    fun moodleOpenedFilesDir(account: String): File =
-        File(File(cacheDir, MOODLE_OPENED_DIR), opaqueFolder(account))
+    fun moodleDownloadsRoot(): File = File(context.filesDir, MOODLE_DOWNLOADS_DIR)
+
+    /** [account]'s downloaded Moodle files, in a folder whose name does not spell the account. */
+    fun moodleDownloadsDir(account: String): File = File(moodleDownloadsRoot(), opaqueFolder(account))
 
     /**
      * A folder name for [account] that does not spell it: its path shows in the content URI
@@ -903,7 +942,8 @@ class DataCache @Inject constructor(
                     listOf(cacheDir, userDataDir).forEach { dir ->
                         dir.listFiles()?.forEach { runCatching { it.deleteRecursively() } }
                     }
-                    // It names the opened files' folders, which are gone, and a fresh install has none.
+                    runCatching { moodleDownloadsRoot().deleteRecursively() }
+                    // It names the downloaded files' folders, which are gone, and a fresh install has none.
                     forgetInstallSalt()
                 }
             }
@@ -937,9 +977,11 @@ class DataCache @Inject constructor(
                     cacheDir.listFiles { _, name -> name.startsWith("score_") && name.endsWith(".json") }
                         ?.forEach { it.delete() }
                 }
-                // Every account's Moodle copies, member pictures and opened files.
+                // Every account's Moodle copies, member pictures and downloaded files, and the
+                // opened copies earlier builds kept apart.
                 runCatching { moodleDir.deleteRecursively() }
                 runCatching { File(cacheDir, MOODLE_OPENED_DIR).deleteRecursively() }
+                runCatching { moodleDownloadsRoot().deleteRecursively() }
             }
         }
         userDataMutex.withLock {
@@ -952,6 +994,7 @@ class DataCache @Inject constructor(
                     "marked_completed_assignments.json",
                     "unsent_marks.json",
                     "pending_course_adds.json",
+                    "pending_course_overrides.json",
                     "deleted_courses.json",
                     "course_custom_names.json",
                     "selection_dropped.json",
@@ -1070,12 +1113,14 @@ class DataCache @Inject constructor(
 
         private const val MOODLE_DIR = "moodle"
         private const val ASSIGNMENT_RECORDS_FILE = "moodle_assignments.json"
+        /** Where builds before the downloaded files kept opened copies, a day at a time. */
         private const val MOODLE_OPENED_DIR = "moodle_open"
+        private const val MOODLE_DOWNLOADS_DIR = "moodle_files"
         private const val MOODLE_SALT_PREFS = "moodle_files"
         private const val MOODLE_SALT_KEY = "folder_salt"
 
         /** See saveMoodleData: bump with any change to the classes in network/model/moodle. */
-        internal const val MOODLE_CACHE_SCHEMA = 1
+        internal const val MOODLE_CACHE_SCHEMA = 2
 
         // Sentinel literal present in any course JSON written by a build
         // with un-obfuscated field names. Used by loadCourses to reject

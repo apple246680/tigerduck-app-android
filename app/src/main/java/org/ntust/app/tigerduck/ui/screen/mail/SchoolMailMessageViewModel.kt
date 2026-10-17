@@ -21,6 +21,9 @@ import org.ntust.app.tigerduck.mail.MailError
 import org.ntust.app.tigerduck.mail.MailErrors
 import org.ntust.app.tigerduck.mail.MailSite
 import org.ntust.app.tigerduck.mail.SchoolMailRepository
+import org.ntust.app.tigerduck.mail.SentCopyNotice
+import org.ntust.app.tigerduck.mail.SentCopyNotices
+import org.ntust.app.tigerduck.mail.SentCopyOrigin
 import org.ntust.app.tigerduck.mail.imap.ResolvedFolders
 import org.ntust.app.tigerduck.mail.imap.SpecialFolder
 import org.ntust.app.tigerduck.mail.mime.TextCleaning
@@ -30,6 +33,8 @@ import org.ntust.app.tigerduck.mail.model.MailSummary
 import org.ntust.app.tigerduck.mail.notify.MailNotifier
 import org.ntust.app.tigerduck.mail.sanitize.HtmlSanitizer
 import org.ntust.app.tigerduck.mail.sanitize.MailLink
+import org.ntust.app.tigerduck.mail.sanitize.PlainTextLink
+import org.ntust.app.tigerduck.mail.sanitize.PlainTextLinks
 import org.ntust.app.tigerduck.mail.sanitize.SanitizedHtml
 import org.ntust.app.tigerduck.mail.store.MailCache
 import org.ntust.app.tigerduck.mail.warning.LinkVerdict
@@ -51,6 +56,7 @@ class SchoolMailMessageViewModel @Inject constructor(
     private val notifier: MailNotifier,
     private val cache: MailCache,
     private val site: MailSite,
+    private val sentCopyNotices: SentCopyNotices,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) : ViewModel() {
     val folder: String = savedStateHandle.get<String>("folder").orEmpty()
@@ -61,7 +67,7 @@ class SchoolMailMessageViewModel @Inject constructor(
 
     enum class ViewMode { FORMATTED, PLAIN, SOURCE }
 
-    enum class AttachmentAction { OPEN, SAVE }
+    enum class AttachmentAction { OPEN, SAVE, SHARE }
 
     data class PendingAttachment(val attachment: MailAttachment, val action: AttachmentAction)
 
@@ -87,6 +93,8 @@ class SchoolMailMessageViewModel @Inject constructor(
             val document: LinkedHtml?,
             val plain: String,
             val warnings: List<MailWarning>,
+            /** The URLs and addresses in [plain], which the plain view draws as links; see [plainLinkTarget]. */
+            val plainLinks: List<PlainTextLink> = emptyList(),
         ) : Content
     }
 
@@ -103,9 +111,13 @@ class SchoolMailMessageViewModel @Inject constructor(
         val parseFailed: Boolean = false,
         val source: String? = null,
         val sourceLoading: Boolean = false,
+        /** The source view's last load failed: shown in its place with a Retry ([retrySource]). */
+        val sourceError: MailError? = null,
         /** An attachment (open or save) that needs the risky/HTML/SVG confirmation first. */
         val confirmAttachment: PendingAttachment? = null,
         val openRequest: OpenRequest? = null,
+        /** A downloaded attachment for the screen to hand to the share sheet. */
+        val shareRequest: OpenRequest? = null,
         /** Set once a save is confirmed (or needed no confirmation): the screen launches the SAF picker for it. */
         val saveRequest: MailAttachment? = null,
         /** Attachment part IDs currently being downloaded, open or save alike -- keyed per part so two different attachments don't clear each other's spinner. */
@@ -114,7 +126,7 @@ class SchoolMailMessageViewModel @Inject constructor(
         val confirmDelete: Boolean = false,
         val confirmDeleteForever: Boolean = false,
         val actionError: MailError? = null,
-        /** Moved, deleted or marked unread: the screen pops. */
+        /** Moved or deleted: the screen pops. */
         val closed: Boolean = false,
         /**
          * The signed-in student's own address, which the header's To and Cc lines pick out. Read
@@ -127,6 +139,17 @@ class SchoolMailMessageViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(UiState(folder = folder))
     val state: StateFlow<UiState> = _state.asStateFlow()
+
+    /** Whether a confirmed `mailto:` link can open this app's own compose, which sends as the school account. */
+    val signedIn: StateFlow<Boolean> = account.signedIn
+
+    /**
+     * A reply or forward of this mail, or a mail started from a link in it, went out without its
+     * copy reaching the sent folder. Only this mail's: a notice about any other send is not shown.
+     */
+    val sentCopyNotice: StateFlow<SentCopyNotice?> = sentCopyNotices.noticeFor(SentCopyOrigin.Message(folder, uid), viewModelScope)
+
+    fun dismissSentCopyNotice() = sentCopyNotices.dismiss()
 
     init {
         // Beside the load rather than ahead of it: the header never waits for it, and only gains
@@ -261,7 +284,7 @@ class SchoolMailMessageViewModel @Inject constructor(
                 summary.from, summary.subject, plain, html?.links.orEmpty(), body.attachments, summary.returnPath,
                 domain = mailDomain,
             )
-            Content.Ready(summary, body, html, document, plain, warnings)
+            Content.Ready(summary, body, html, document, plain, warnings, PlainTextLinks.find(plain))
         }
 
     private suspend fun markSeen(summary: MailSummary) {
@@ -273,6 +296,8 @@ class SchoolMailMessageViewModel @Inject constructor(
         if (!summary.flags.seen) {
             try {
                 repository.setSeen(folder, uid, true)
+                // So the menu offers Mark unread for the mail it now is.
+                showSeen(true)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -335,14 +360,23 @@ class SchoolMailMessageViewModel @Inject constructor(
         viewModelScope.launch { loadSource() }
     }
 
+    /** The Retry on a failed source load. */
+    fun retrySource() {
+        val s = _state.value
+        if (s.source != null || s.sourceLoading) return
+        viewModelScope.launch { loadSource() }
+    }
+
     private suspend fun loadSource() {
-        update { it.copy(sourceLoading = true) }
+        update { it.copy(sourceLoading = true, sourceError = null) }
         try {
             val raw = repository.rawSource(folder, uid)
             update { it.copy(source = TextCleaning.stripBidi(raw), sourceLoading = false) }
         } catch (e: MailError) {
             if (e is MailError.AuthFailed) account.onAuthFailure()
-            update { it.copy(sourceLoading = false, actionError = e) }
+            // In place of the source, not as a toast: a toast left a blank view behind it, and
+            // the way back was to switch views and back again.
+            update { it.copy(sourceLoading = false, sourceError = e) }
         }
     }
 
@@ -353,6 +387,17 @@ class SchoolMailMessageViewModel @Inject constructor(
      */
     fun linkTarget(index: Int): LinkTarget? =
         (_state.value.content as? Content.Ready)?.document?.links?.getOrNull(index)?.let { targetOf(it) }
+
+    /**
+     * What the link dialog judges, shows and opens for the plain view's link [index]
+     * ([Content.Ready.plainLinks]): the same [targetOf] an HTML link goes through, with the text
+     * on screen as the link's own text. Null for an index with no link.
+     */
+    fun plainLinkTarget(index: Int): LinkTarget? {
+        val ready = _state.value.content as? Content.Ready ?: return null
+        val link = ready.plainLinks.getOrNull(index) ?: return null
+        return targetOf(MailLink(ready.plain.substring(link.start, link.end), link.href))
+    }
 
     // --- attachments --------------------------------------------------------------------
 
@@ -368,6 +413,8 @@ class SchoolMailMessageViewModel @Inject constructor(
     fun requestOpen(attachment: MailAttachment) = request(attachment, AttachmentAction.OPEN)
 
     fun requestSave(attachment: MailAttachment) = request(attachment, AttachmentAction.SAVE)
+
+    fun requestShare(attachment: MailAttachment) = request(attachment, AttachmentAction.SHARE)
 
     private fun request(attachment: MailAttachment, action: AttachmentAction) {
         if (attachment.partId in _state.value.downloading) return
@@ -387,7 +434,10 @@ class SchoolMailMessageViewModel @Inject constructor(
 
     private fun proceed(attachment: MailAttachment, action: AttachmentAction) {
         when (action) {
-            AttachmentAction.OPEN -> open(attachment)
+            AttachmentAction.OPEN -> open(attachment) { file -> update { it.copy(openRequest = OpenRequest(file, attachment.contentType)) } }
+            // Downloaded exactly as for opening; the screen hands the file to the share sheet
+            // instead of a viewer.
+            AttachmentAction.SHARE -> open(attachment) { file -> update { it.copy(shareRequest = OpenRequest(file, attachment.contentType)) } }
             // The SAF document picker is a Compose activity-result launcher this view model
             // can't drive directly; saveRequest tells the screen to launch it, and the actual
             // write happens in saveAttachment() once it returns a target.
@@ -397,13 +447,12 @@ class SchoolMailMessageViewModel @Inject constructor(
 
     fun consumeSaveRequest() = update { it.copy(saveRequest = null) }
 
-    private fun open(attachment: MailAttachment) {
+    private fun open(attachment: MailAttachment, deliver: (File) -> Unit) {
         if (attachment.partId in _state.value.downloading) return
         act {
             update { it.copy(downloading = it.downloading + attachment.partId) }
             try {
-                val file = download(attachment)
-                update { it.copy(openRequest = OpenRequest(file, attachment.contentType)) }
+                deliver(download(attachment))
             } finally {
                 update { it.copy(downloading = it.downloading - attachment.partId) }
             }
@@ -411,6 +460,8 @@ class SchoolMailMessageViewModel @Inject constructor(
     }
 
     fun consumeOpenRequest() = update { it.copy(openRequest = null) }
+
+    fun consumeShareRequest() = update { it.copy(shareRequest = null) }
 
     /**
      * Into `attachmentsDir/<random>/<name>`, which the FileProvider serves; files older than a
@@ -525,9 +576,23 @@ class SchoolMailMessageViewModel @Inject constructor(
 
     // --- actions ------------------------------------------------------------------------
 
-    fun markUnread() = act {
-        repository.setSeen(folder, uid, false)
-        update { it.copy(closed = true) }
+    /**
+     * Mark read / Mark unread, whichever the mail is not: the flag changes on the server and on
+     * screen, and the mail stays open, as on the iPhone. The list reads it from the cache the
+     * repository updated when it is shown again.
+     */
+    fun toggleSeen() {
+        val ready = _state.value.content as? Content.Ready ?: return
+        val seen = !ready.summary.flags.seen
+        act {
+            repository.setSeen(folder, uid, seen)
+            showSeen(seen)
+        }
+    }
+
+    private fun showSeen(seen: Boolean) = update { st ->
+        val ready = st.content as? Content.Ready ?: return@update st
+        st.copy(content = ready.copy(summary = ready.summary.copy(flags = ready.summary.flags.copy(seen = seen))))
     }
 
     fun moveTargets(): List<String> {

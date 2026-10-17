@@ -154,8 +154,8 @@ sealed class Screen(val route: String) {
         fun route(folder: String, uid: Long) = MailRoutes.message(folder, uid)
     }
     object SchoolMailCompose : Screen(MailRoutes.COMPOSE) {
-        fun route(mode: ComposeMode, folder: String? = null, uid: Long? = null, to: String? = null) =
-            MailRoutes.compose(mode, folder, uid, to)
+        fun route(mode: ComposeMode, folder: String? = null, uid: Long? = null, mailto: String? = null, to: String? = null) =
+            MailRoutes.compose(mode, folder, uid, mailto, to)
     }
     object CourseNameSizeSettings : Screen("courseNameSizeSettings")
     object CloudSync : Screen("cloudSync")
@@ -324,7 +324,6 @@ fun MainNavigation(
         if (CourseDetailSheetRules.closesForLink(target, classTableViewModel.courseSheetRoutes.value)) {
             classTableViewModel.clearSelection()
         }
-        if (Screen.Assignment.isRoute(target)) homeViewModel.selectCourse(null)
         // A tab through the bottom bar's own path: launchSingleTop alone looks only at the page on
         // top, and pushed a second class table over its course detail.
         navController.openStartRoute(target, tabRoutes, firstTab = popUpToDest, tabTap)
@@ -502,7 +501,13 @@ fun MainNavigation(
                     viewModel = homeViewModel,
                     onOpenSignInSettings = openSignInSettings,
                     onOpenAssignment = { navController.navigate(Screen.Assignment.route(it.assignmentId)) },
+                    onOpenCourseDetail = { picked ->
+                        // The slider shows the live term, as the class table's today strip does.
+                        classTableViewModel.selectCourse(picked.course, picked.weekday, picked.periodId, fromLiveTerm = true)
+                    },
                 )
+                // The class table's course detail sheet, as iOS opens the same sheet from Home.
+                CourseDetailSheetHost(classTableViewModel, appState.browserPreference)
             }
             page(
                 Screen.Assignment.route,
@@ -570,6 +575,9 @@ fun MainNavigation(
                     browserPreference = appState.browserPreference,
                     onBack = { navController.popBackStack() },
                     onCompose = { mode, folder, uid -> navController.navigate(Screen.SchoolMailCompose.route(mode, folder, uid)) },
+                    onComposeMailto = { folder, uid, href ->
+                        navController.navigate(Screen.SchoolMailCompose.route(ComposeMode.NEW, folder, uid, mailto = href))
+                    },
                 )
             }
             page(
@@ -578,6 +586,7 @@ fun MainNavigation(
                     navArgument("mode") { type = NavType.StringType; defaultValue = ComposeMode.NEW.name },
                     navArgument("folder") { type = NavType.StringType; defaultValue = "" },
                     navArgument("uid") { type = NavType.LongType; defaultValue = -1L },
+                    navArgument("mailto") { type = NavType.StringType; defaultValue = "" },
                     navArgument("to") { type = NavType.StringType; defaultValue = "" },
                 ),
             ) {

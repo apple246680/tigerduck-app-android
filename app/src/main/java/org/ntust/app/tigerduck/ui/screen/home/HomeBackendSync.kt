@@ -37,6 +37,7 @@ import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
 import org.ntust.app.tigerduck.data.PendingCourseAdds
+import org.ntust.app.tigerduck.data.PendingCourseOverrides
 import org.ntust.app.tigerduck.data.UnsentMarks
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.network.CourseService
@@ -112,6 +113,7 @@ class HomeBackendSync @Inject constructor(
     private val courseIgnoreSync: CourseIgnoreSync,
     private val unsentMarks: UnsentMarks,
     private val pendingCourseAdds: PendingCourseAdds,
+    private val pendingCourseOverrides: PendingCourseOverrides,
     private val reenableCheck: ReenableCheck,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) {
@@ -142,10 +144,12 @@ class HomeBackendSync @Inject constructor(
             if (BuildConfig.DEBUG) ServerFailureSimulator.check(ServerKind.BACKEND)
             val account = authService.storedStudentId
             val generation = courseIgnoreSync.currentGeneration()
-            // Unsent course-ignore changes, marks and course adds go first, so the snapshot has them.
+            // Unsent course-ignore changes, marks, course adds and course
+            // colours and names go first, so the snapshot has them.
             courseIgnoreSync.retryPending()
             unsentMarks.retry()
             pendingCourseAdds.retry()
+            pendingCourseOverrides.retry()
             // The first-sync mark upload is pinned to the sign-in read here:
             // a sign-out and another sign-in meanwhile must not send these
             // marks as theirs.
@@ -171,7 +175,10 @@ class HomeBackendSync @Inject constructor(
             val syncColors = CourseSyncReconciler.syncsCourseColors("course_colors" in switchedOn, pending)
             val syncNames = CourseSyncReconciler.syncsCourseNames("course_names" in switchedOn, pending)
             val coursesLoaded = if (result.courseOverrides.isNotEmpty() && (syncColors || syncNames)) {
-                applyCourseOverrides(state, result.courseOverrides, syncColors, syncNames)
+                // Not over a colour or name this phone has waiting to go up,
+                // or sent since the fetch: the snapshot's is the older.
+                val held = pendingCourseOverrides.held(result.fetchedAtMs)
+                applyCourseOverrides(state, result.courseOverrides, held, syncColors, syncNames)
             } else {
                 state.allCourses.value.isNotEmpty()
             }
@@ -311,15 +318,20 @@ class HomeBackendSync @Inject constructor(
         } else {
             markStep.keepServer(state, result)
             if (result.courseOverrides.isNotEmpty()) {
-                applyCourseOverrides(state, result.courseOverrides)
+                applyCourseOverrides(state, result.courseOverrides, pendingCourseOverrides.held(result.fetchedAtMs))
             }
         }
     }
 
-    /** Returns false when it applied nothing, the course list not having loaded. */
+    /**
+     * Returns false when it applied nothing, the course list not having
+     * loaded. [held] is what the snapshot must not overwrite; see
+     * [PendingCourseOverrides.held].
+     */
     private suspend fun applyCourseOverrides(
         state: HomeSyncState,
         overrides: List<CourseOverrideResult>,
+        held: Set<String>,
         syncColors: Boolean = CourseSyncReconciler.syncsCourseColors(
             prefs.syncCourseColors, prefs.pendingConflictCategories,
         ),
@@ -338,12 +350,14 @@ class HomeBackendSync @Inject constructor(
             existing = dataCache.loadCourseCustomNames(),
             overrides = overrides,
             syncNames = syncNames,
+            held = held,
         )?.let { dataCache.saveCourseCustomNames(it) }
 
         CourseSyncReconciler.applyColorOverrides(
             courses = courses,
             overrides = overrides,
             syncColors = syncColors,
+            held = held,
         )?.let { outcome ->
             val updated = outcome.courses
             Log.i(TAG, "[sync-color] applying ${updated.count { c -> c.customColorHex != null }} custom colors")
@@ -352,7 +366,7 @@ class HomeBackendSync @Inject constructor(
             dataCache.saveCourses(updated)
             widgetUpdater.requestUpdate()
             sendMovedColors(updated, outcome.moved) { moodleId, hex ->
-                pushApiClient.patchCourseOverride(moodleId, colorHex = hex)
+                pendingCourseOverrides.send(moodleId, colorHex = hex)
             }
         }
         return true
@@ -374,6 +388,8 @@ class HomeBackendSync @Inject constructor(
         )
         if (reset.apply) {
             val allCourses = dataCache.loadCourses().toMutableList()
+            // Their waiting colours and names go with them; see PendingCourseOverrides.forget.
+            pendingCourseOverrides.forget(allCourses.filter { it.isManual }.mapNotNull { it.moodleIdNumber })
             allCourses.removeAll { it.isManual }
             dataCache.saveCourses(allCourses)
             dataCache.saveDeletedCourseNos(emptySet())
@@ -442,6 +458,11 @@ class HomeBackendSync @Inject constructor(
             // courses to take out of the cache (a reset elsewhere, with one
             // hand-typed survivor left to upload).
             val pruned = CourseSyncReconciler.pruneHidden(semester, localCourses, tombstones)
+            // A course hidden since, here or on another device, takes its
+            // waiting colour and name with it; see PendingCourseOverrides.forget.
+            pruned?.let { kept ->
+                pendingCourseOverrides.forget(localCourses.filter { it !in kept }.mapNotNull { it.moodleIdNumber })
+            }
             if (outcome.uploadLocal) {
                 pruned?.let {
                     dataCache.saveCourses(it, semester)
@@ -514,7 +535,8 @@ class HomeBackendSync @Inject constructor(
  * Sends each course the colour pass moved ([moved], by course number) its new
  * colour through [patch], by the Moodle id the backend keys the course by, in
  * course-number order. A course without one is skipped, as a pick on the class
- * table skips it, and a failure is left for the next sync to find again.
+ * table skips it. Through [PendingCourseOverrides], which keeps a colour that
+ * fails to land, and in place of an older colour of the course still waiting.
  */
 internal suspend fun sendMovedColors(
     courses: List<Course>,

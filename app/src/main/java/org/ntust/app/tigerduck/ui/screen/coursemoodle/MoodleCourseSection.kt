@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Campaign
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material3.Badge
 import androidx.compose.material3.HorizontalDivider
@@ -101,7 +102,7 @@ internal fun MoodleCourseSection(
                                     color = cardDividerColor(),
                                 )
                             }
-                            MoodleSectionRowItem(row) { route(row.kind, store.courseId)?.let(onOpenRoute) }
+                            MoodleSectionRowItem(row) { onOpenRoute(route(row.kind, store)) }
                         }
                     }
                 }
@@ -111,19 +112,23 @@ internal fun MoodleCourseSection(
     }
 }
 
-private fun route(kind: MoodleSectionRow.Kind, courseId: Int): String? = when (kind) {
-    MoodleSectionRow.Kind.ANNOUNCEMENTS -> MoodleRoutes.announcements(courseId)
-    MoodleSectionRow.Kind.ASSIGNMENTS -> MoodleRoutes.assignments(courseId)
-    MoodleSectionRow.Kind.GRADES -> MoodleRoutes.grades(courseId)
-    MoodleSectionRow.Kind.MEMBERS -> MoodleRoutes.members(courseId)
-    // Phase 2: the forums list, or the one forum a course has.
-    MoodleSectionRow.Kind.FORUMS -> null
+/** The Forums row opens the course's one forum itself, and the list of them otherwise. */
+internal fun route(kind: MoodleSectionRow.Kind, store: MoodleCourseStore): String = when (kind) {
+    MoodleSectionRow.Kind.ANNOUNCEMENTS -> MoodleRoutes.announcements(store.courseId)
+    MoodleSectionRow.Kind.MATERIALS -> MoodleRoutes.materials(store.courseId)
+    MoodleSectionRow.Kind.ASSIGNMENTS -> MoodleRoutes.assignments(store.courseId)
+    MoodleSectionRow.Kind.GRADES -> MoodleRoutes.grades(store.courseId)
+    MoodleSectionRow.Kind.MEMBERS -> MoodleRoutes.members(store.courseId)
+    MoodleSectionRow.Kind.FORUMS -> store.generalForums.value.singleOrNull()
+        ?.let { MoodleRoutes.forum(store.courseId, it.id) }
+        ?: MoodleRoutes.forums(store.courseId)
 }
 
 /** Keeps the section's data fresh while the course detail shows, rows or none: the first fetch brings them. */
 @Composable
 private fun MoodleSectionRefresh(store: MoodleCourseStore) {
     MoodleAutoRefresh(store, store.forums.ttlMs, store::awaitCache, { store.forumsFetchedAtMs }) { store.refreshForums() }
+    MoodleAutoRefresh(store, store.materials.ttlMs, store::awaitCache, { store.materials.state.value.fetchedAtMs }) { store.refreshMaterials() }
     MoodleAutoRefresh(store, store.grades.ttlMs, store::awaitCache, { store.grades.state.value.fetchedAtMs }) { store.refreshGrades() }
     MoodleAutoRefresh(store, store.members.ttlMs, store::awaitCache, { store.members.state.value.fetchedAtMs }) { store.refreshMembers() }
     MoodleAutoRefresh(store, store.summary.ttlMs, store::awaitCache, { store.summary.state.value.fetchedAtMs }) { store.refreshSummary() }
@@ -133,6 +138,7 @@ private fun MoodleSectionRefresh(store: MoodleCourseStore) {
 private fun MoodleSectionRowItem(row: MoodleSectionRow, onClick: () -> Unit) {
     val (icon, title) = when (row.kind) {
         MoodleSectionRow.Kind.ANNOUNCEMENTS -> Icons.Outlined.Campaign to stringResource(R.string.feature_announcements)
+        MoodleSectionRow.Kind.MATERIALS -> Icons.Outlined.Folder to stringResource(R.string.course_detail_files_label)
         MoodleSectionRow.Kind.ASSIGNMENTS ->
             Icons.AutoMirrored.Outlined.Assignment to stringResource(R.string.course_detail_assignments_label)
         MoodleSectionRow.Kind.GRADES -> Icons.Outlined.BarChart to stringResource(R.string.course_detail_moodle_grades_label)

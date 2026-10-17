@@ -186,17 +186,17 @@ class MoodleLogicTest {
     )
 
     @Test
-    fun `the assignments row counts every assignment of the course, after the announcements, before the grades`() {
+    fun `the assignments row counts every assignment of the course, after the materials, before the grades`() {
         val term = MoodleTermForums(listOf(5), listOf(testForum(id = 1, courseId = 5, type = "news", count = 3)))
         val grades = MoodleCourseGrades(listOf(grade(1)))
 
-        val rows = MoodleSections.rows(term, courseId = 5, grades = grades, members = null, assignmentCount = 4)
+        val rows = MoodleSections.rows(term, courseId = 5, grades = grades, members = null, materials = testMaterials(), assignmentCount = 4)
 
         assertEquals(
-            listOf(MoodleSectionRow.Kind.ANNOUNCEMENTS, MoodleSectionRow.Kind.ASSIGNMENTS, MoodleSectionRow.Kind.GRADES),
+            listOf(MoodleSectionRow.Kind.ANNOUNCEMENTS, MoodleSectionRow.Kind.MATERIALS, MoodleSectionRow.Kind.ASSIGNMENTS, MoodleSectionRow.Kind.GRADES),
             rows.map { it.kind },
         )
-        assertEquals(MoodleSectionRow(MoodleSectionRow.Kind.ASSIGNMENTS, 4, hasUnread = false), rows[1])
+        assertEquals(MoodleSectionRow(MoodleSectionRow.Kind.ASSIGNMENTS, 4, hasUnread = false), rows[2])
         assertTrue("a course with no assignments has no row",
             MoodleSections.rows(null, 5, null, null, assignmentCount = 0).isEmpty())
     }
@@ -269,5 +269,101 @@ class MoodleLogicTest {
             AssignmentStatus.OVERDUE_ACCEPTABLE,
             MoodleAssignmentLists.shownStatus(listed(1, now - 10, cutoffMs = now - 5), now),
         )
+    }
+
+    @Test
+    fun `the section lists announcements, materials, grades, members and forums, in that order`() {
+        val term = MoodleTermForums(
+            listOf(5),
+            listOf(
+                testForum(id = 1, courseId = 5, type = "news", count = 3),
+                testForum(id = 2, courseId = 5, type = "general", count = 4, unread = 1),
+                testForum(id = 3, courseId = 5, type = "general", count = 0),
+            ),
+        )
+        val members = MoodleMemberList(ownId = 1, members = listOf(member(1, "Me"), member(2, "You")))
+
+        val rows = MoodleSections.rows(term, 5, MoodleCourseGrades(listOf(grade(1))), members, testMaterials())
+
+        assertEquals(
+            listOf(
+                MoodleSectionRow(MoodleSectionRow.Kind.ANNOUNCEMENTS, 3, false),
+                MoodleSectionRow(MoodleSectionRow.Kind.MATERIALS, 4, false),
+                MoodleSectionRow(MoodleSectionRow.Kind.GRADES, 1, false),
+                MoodleSectionRow(MoodleSectionRow.Kind.MEMBERS, 2, false),
+                MoodleSectionRow(MoodleSectionRow.Kind.FORUMS, 4, true),
+            ),
+            rows,
+        )
+    }
+
+    @Test
+    fun `a folder heads its files, and a link keeps its site without www`() {
+        val sections = testMaterials().sections
+        assertEquals(
+            listOf("f101/syllabus.pdf", "l102"),
+            MoodleMaterials.rows(sections[0]).map { it.key },
+        )
+        val week = MoodleMaterials.rows(sections[1])
+        assertEquals(listOf("d103", "f103/a/lab1.zip", "f103/b/lab2.zip"), week.map { it.key })
+        assertEquals(2, (week[0] as MoodleMaterialRow.Folder).fileCount)
+        assertTrue((week[1] as MoodleMaterialRow.File).inFolder)
+        assertEquals("example.com", MoodleMaterials.site("https://www.example.com/ds"))
+        assertEquals(3, MoodleMaterials.fileRefs(testMaterials()).size)
+    }
+
+    @Test
+    fun `replies nest under the post they answer, three levels at most`() {
+        val discussion = testDiscussion(1)
+        val posts = listOf(
+            testPost(10),
+            testPost(11, parent = 10),
+            testPost(12, parent = 11),
+            testPost(13, parent = 12),
+            testPost(14, parent = 13),
+            testPost(15, parent = 10),
+        )
+        val entries = MoodleThreads.entries(discussion, org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussionThread(1, posts))
+
+        assertEquals(listOf(10, 11, 12, 13, 14, 15), entries.map { it.post.id })
+        assertEquals(listOf(0, 1, 2, 3, 3, 1), entries.map { it.depth })
+        assertEquals("Author 13", entries[4].replyingTo)
+        assertNull(entries[3].replyingTo)
+    }
+
+    @Test
+    fun `a reply whose parent is missing or loops still shows`() {
+        val posts = listOf(
+            testPost(10),
+            testPost(11, parent = 99),
+            testPost(12, parent = 13),
+            testPost(13, parent = 12),
+        )
+        val entries = MoodleThreads.entries(testDiscussion(1), org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussionThread(1, posts))
+
+        assertEquals(setOf(10, 11, 12, 13), entries.map { it.post.id }.toSet())
+        assertEquals(4, entries.size)
+        assertEquals(0, entries.first().depth)
+    }
+
+    @Test
+    fun `before its thread arrives a discussion shows its first post from the list`() {
+        val entries = MoodleThreads.entries(testDiscussion(7), null)
+
+        assertEquals(70, entries.single().post.id)
+        assertEquals("D7", entries.single().post.subject)
+        assertFalse(entries.single().post.isUnread)
+    }
+
+    @Test
+    fun `a file's kind comes from its type, else its extension`() {
+        assertEquals(MoodleFileKind.PDF, MoodleFileKind.of("application/pdf", "x"))
+        assertEquals(
+            MoodleFileKind.PRESENTATION,
+            MoodleFileKind.of("application/vnd.openxmlformats-officedocument.presentationml.presentation", "x"),
+        )
+        assertEquals(MoodleFileKind.SPREADSHEET, MoodleFileKind.of("document/unknown", "grades.XLSX"))
+        assertEquals(MoodleFileKind.ARCHIVE, MoodleFileKind.of(null, "lab.zip"))
+        assertEquals(MoodleFileKind.OTHER, MoodleFileKind.of("", "README"))
     }
 }

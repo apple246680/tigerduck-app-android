@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">Pin today\'s courses to the top of the class table</string>
     <string name="settings_privacy_policy">Privacy policy</string>
     <string name="settings_push_server_nav_label">Server push</string>
-    <string name="settings_remember_bulletin_filter">Remember bulletin filters</string>
     <string name="settings_reset_course_colors">Reset course colours</string>
     <string name="settings_reset_course_colors_confirm_message">This will randomly reassign class table colours using default presets.</string>
     <string name="settings_reset_course_colors_confirm_title">Reset class table colours?</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">Failed</string>
     <string name="sync_status_hours_ago_short">%1$d h ago</string>
     <string name="sync_status_just_now">Just now</string>
-    <string name="sync_status_last_synced">Last synced</string>
     <string name="sync_status_last_updated">Last updated</string>
     <string name="sync_status_minimal">Minimal</string>
     <string name="sync_status_minutes_ago_short">%1$d min ago</string>
     <string name="sync_status_nav_label">TigerSync status</string>
-    <string name="sync_status_never_synced">Never synced</string>
     <string name="sync_status_never_updated">Never updated</string>
     <string name="sync_status_ok">OK</string>
     <string name="sync_status_syncing">Syncing…</string>

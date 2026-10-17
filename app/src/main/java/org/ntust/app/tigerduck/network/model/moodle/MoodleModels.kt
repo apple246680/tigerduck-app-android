@@ -249,3 +249,68 @@ data class MoodleSubmissionComment(
     /** HTML. */
     val content: String,
 )
+/** A post of a discussion, from `mod_forum_get_discussion_posts`. */
+data class MoodlePost(
+    val id: Int,
+    /** The post this one answers; null for the discussion's first post. */
+    val parentId: Int?,
+    val subject: String,
+    /** HTML, already through Moodle's text filters. A deleted post holds Moodle's note instead. */
+    val message: String,
+    /** Unix seconds; null when Moodle sends none. */
+    val created: Long?,
+    /** Null where the forum hides authors. */
+    val authorName: String?,
+    /** The author's Moodle user, which finds them among the course's members. */
+    val authorId: Int?,
+    val attachments: List<MoodleFile>,
+    /** False where the forum does not track what was read. */
+    val isUnread: Boolean,
+    val isDeleted: Boolean,
+)
+
+/** Every post of one discussion, oldest first, as Moodle answers in one call. */
+data class MoodleDiscussionThread(
+    val discussionId: Int,
+    val posts: List<MoodlePost>,
+)
+
+/**
+ * A course's materials as its Moodle page lists them, from `core_course_get_contents`: the
+ * sections in Moodle's order, each with its files, folders and links. Other activities have
+ * screens of their own or open in Moodle.
+ */
+data class MoodleCourseMaterials(
+    val sections: List<MoodleMaterialSection>,
+)
+
+data class MoodleMaterialSection(
+    val id: Int,
+    /** Plain text; empty for a section with no name, such as the course's first. */
+    val name: String,
+    val materials: List<MoodleMaterial>,
+)
+
+/** A file, a folder of files or a link on a course's page. */
+data class MoodleMaterial(
+    /** The course module, which Moodle's pages take as `id`. */
+    val id: Int,
+    /** The resource, folder or URL the module shows, which its view call takes. */
+    val instance: Int,
+    /** Moodle's name for the kind of module: `resource`, `folder` or `url`. */
+    val module: String,
+    val name: String,
+    /** A resource's file, or a folder's files; none for a link. */
+    val files: List<MoodleFile>,
+    /** A link's http or https address; null for a file or a folder. */
+    val link: String?,
+) {
+    val isFolder: Boolean get() = module == FOLDER
+    val isLink: Boolean get() = module == URL
+
+    companion object {
+        const val RESOURCE = "resource"
+        const val FOLDER = "folder"
+        const val URL = "url"
+    }
+}

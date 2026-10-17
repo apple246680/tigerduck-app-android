@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">Fest dagens fag øverst i timeplanen</string>
     <string name="settings_privacy_policy">Personvernpolicy</string>
     <string name="settings_push_server_nav_label">Server-push</string>
-    <string name="settings_remember_bulletin_filter">Husk oppslagstavlefiltre</string>
     <string name="settings_reset_course_colors">Tildel kursfarger på nytt</string>
     <string name="settings_reset_course_colors_confirm_message">Hvert kurs får en ny, unik farge – først fra forhåndsinnstilt palett, deretter tilfeldig når paletten er brukt opp.</string>
     <string name="settings_reset_course_colors_confirm_title">Tildele kursfarger på nytt?</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">Mislyktes</string>
     <string name="sync_status_hours_ago_short">%1$d t siden</string>
     <string name="sync_status_just_now">Akkurat nå</string>
-    <string name="sync_status_last_synced">Sist synkronisert</string>
     <string name="sync_status_last_updated">Sist oppdatert</string>
     <string name="sync_status_minimal">Begrenset</string>
     <string name="sync_status_minutes_ago_short">%1$d min siden</string>
     <string name="sync_status_nav_label">TigerSync-status</string>
-    <string name="sync_status_never_synced">Aldri synkronisert</string>
     <string name="sync_status_never_updated">Aldri oppdatert</string>
     <string name="sync_status_ok">OK</string>
     <string name="sync_status_syncing">Synkroniserer…</string>

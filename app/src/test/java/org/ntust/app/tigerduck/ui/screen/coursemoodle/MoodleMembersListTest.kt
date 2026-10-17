@@ -62,10 +62,7 @@ class MoodleMembersListTest {
         }
         override suspend fun gradeItems(courseId: Int) = emptyList<MoodleGradeItem>()
         override suspend fun summary(courseId: Int) = MoodleCourseSummary.EMPTY
-        override suspend fun submission(assignId: Int) = throw UnsupportedOperationException("not asked here")
-        override suspend fun comments(cmid: Int, submissionId: Int) = emptyList<org.ntust.app.tigerduck.network.model.moodle.MoodleSubmissionComment>()
-        override suspend fun groups(courseId: Int) = emptyMap<Int, String>()
-        override suspend fun download(file: MoodleFile, target: java.io.File, maxBytes: Long) = Unit
+        override suspend fun download(file: MoodleFile, target: java.io.File, maxBytes: Long, progress: (Float) -> Unit) = Unit
     }
 
     private val cache = object : MoodleCachePort {

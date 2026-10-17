@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">ടൈംടേബിളിന്റെ മുകളിൽ ഇന്നത്തെ കോഴ്‌സുകൾ പിൻ ചെയ്യുക</string>
     <string name="settings_privacy_policy">സ്വകാര്യതാ നയം</string>
     <string name="settings_push_server_nav_label">സെർവർ പുഷ്</string>
-    <string name="settings_remember_bulletin_filter">ബുള്ളറ്റിൻ ഫിൽട്ടറുകൾ ഓർക്കുക</string>
     <string name="settings_reset_course_colors">കോഴ്സ് നിറങ്ങൾ പുനഃനൽകുക</string>
     <string name="settings_reset_course_colors_confirm_message">ഓരോ കോഴ്സിനും പുതിയ, വ്യത്യസ്തമായ ഒരു നിറം നൽകും — ആദ്യം പ്രീസെറ്റ് പാലെറ്റിൽ നിന്നു, അത് തീർന്നാൽ ക്രമരഹിതമായി.</string>
     <string name="settings_reset_course_colors_confirm_title">കോഴ്സ് നിറങ്ങൾ പുനഃനൽകണോ?</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">പരാജയപ്പെട്ടു</string>
     <string name="sync_status_hours_ago_short">%1$d മ. മുൻ</string>
     <string name="sync_status_just_now">ഇപ്പോൾ തന്നെ</string>
-    <string name="sync_status_last_synced">അവസാനം സമന്വയിപ്പിച്ചത്</string>
     <string name="sync_status_last_updated">അവസാനം അപ്‌ഡേറ്റ് ചെയ്തത്</string>
     <string name="sync_status_minimal">പരിമിതം</string>
     <string name="sync_status_minutes_ago_short">%1$d മി. മുൻ</string>
     <string name="sync_status_nav_label">TigerSync നില</string>
-    <string name="sync_status_never_synced">ഒരിക്കലും സിൻക് ചെയ്തിട്ടില്ല</string>
     <string name="sync_status_never_updated">ഒരിക്കലും അപ്‌ഡേറ്റ് ചെയ്തിട്ടില്ല</string>
     <string name="sync_status_ok">ശരി</string>
     <string name="sync_status_syncing">സിങ്ക് ചെയ്യുന്നു…</string>

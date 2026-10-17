@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">Připnout dnešní kurzy nahoru v rozvrhu</string>
     <string name="settings_privacy_policy">Zásady ochrany osobních údajů</string>
     <string name="settings_push_server_nav_label">Push ze serveru</string>
-    <string name="settings_remember_bulletin_filter">Pamatujte na filtry bulletinů</string>
     <string name="settings_reset_course_colors">Znovu přiřadit barvy kurzů</string>
     <string name="settings_reset_course_colors_confirm_message">Každý kurz dostane novou jedinečnou barvu — nejprve z přednastavené palety, po vyčerpání náhodně.</string>
     <string name="settings_reset_course_colors_confirm_title">Znovu přiřadit barvy kurzů?</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">Selhalo</string>
     <string name="sync_status_hours_ago_short">před %1$d h</string>
     <string name="sync_status_just_now">právě teď</string>
-    <string name="sync_status_last_synced">Naposledy synchronizováno</string>
     <string name="sync_status_last_updated">Naposledy aktualizováno</string>
     <string name="sync_status_minimal">Omezeno</string>
     <string name="sync_status_minutes_ago_short">před %1$d min</string>
     <string name="sync_status_nav_label">Stav TigerSync</string>
-    <string name="sync_status_never_synced">Nikdy nesynchronizováno</string>
     <string name="sync_status_never_updated">Nikdy neaktualizováno</string>
     <string name="sync_status_ok">OK</string>
     <string name="sync_status_syncing">Synchronizace…</string>

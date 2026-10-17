@@ -23,7 +23,60 @@ class FakeSchoolMailRepository : SchoolMailRepository {
     /** Thrown by [inboxStatus] -- the first call the page poll makes. */
     var statusError: MailError? = null
     var statusCalls = 0
+
+    /** Set, every [inboxStatus] waits on it first: a poll's check held out while the test acts. */
+    var statusGate: CompletableDeferred<Unit>? = null
+
+    /** Set, every [status] waits on it first: a STATUS queued behind the session another request holds. */
+    var folderStatusGate: CompletableDeferred<Unit>? = null
+
+    /** Set, every foreground [loadPage] waits on it first: a load held out while the test acts. */
+    var loadGate: CompletableDeferred<Unit>? = null
+
+    /**
+     * The account a page is fetched for, when a test wires it to [MailAccount.accountGeneration]:
+     * as the real repository ([org.ntust.app.tigerduck.mail.store.MailCache.saveFolderIf]), a first
+     * page whose account moved while it was out is not cached. Unwired, every first page is.
+     */
+    var accountGeneration: (() -> Int)? = null
+
+    /** Set, every [folders] waits on it first: the folder list's LIST held out while the test acts. */
+    var foldersGate: CompletableDeferred<Unit>? = null
+
+    /** How many times the folder list went out; one refused by its `stillWanted` is not counted. */
+    var foldersSent = 0
+
+    /**
+     * The gates above stand for the wait behind the session; a request whose `stillWanted` says
+     * no once its gate opens is not sent, as the real repository's is not, and ends the same way.
+     */
+    private fun unlessAbandoned(stillWanted: () -> Boolean) {
+        if (!stillWanted()) throw MailError.Abandoned()
+    }
+
+    /** Every page request that went out, in order; one refused by its `stillWanted` is not here. */
+    val loadsSent = mutableListOf<String>()
+
+    /** Every search that went out, in order; one refused by its `stillWanted` is not here. */
+    val searchesSent = mutableListOf<String>()
+
+    /** Fires with the folder just after its page was produced and before it is returned: a test acts between two requests of one batch. */
+    var onLoaded: ((String) -> Unit)? = null
+
+    /** As [onLoaded], for a search. */
+    var onSearched: ((String) -> Unit)? = null
+
+    /** Thrown by [loadPage] for that folder alone, where [loadError] fails every folder. */
+    val folderLoadErrors = mutableMapOf<String, MailError>()
+
+    /** Thrown by [status] for that folder -- the poll's check of a folder on screen other than the inbox. */
+    val folderStatusErrors = mutableMapOf<String, MailError>()
+    val folderStatusCalls = mutableListOf<String>()
     var loadError: MailError? = null
+    /** When set, [loadError] is thrown for this folder alone: one folder's page lands and the next one's does not. */
+    var loadErrorFolder: String? = null
+    /** The UIDVALIDITY [loadPage] reports for its pages, and so caches them under; raised when the mailbox is "recreated". */
+    var pageValidity = 1L
     var searchUnsupported = false
     val bodies = mutableMapOf<Long, MailBody>()
     var bodyError: MailError? = null
@@ -102,6 +155,16 @@ class FakeSchoolMailRepository : SchoolMailRepository {
     var released = 0
     var acquired = 0
 
+    /**
+     * What an older page ([loadPage] with a `beforeSeq`) returns instead of the offset slice, when
+     * set -- for a test that needs the server to answer a window the list already holds part of,
+     * the way an IMAP sequence range does once mail below it has been expunged.
+     */
+    var olderPage: ((folder: String, beforeSeq: Int) -> MailPage?)? = null
+
+    /** While set, an older page ([loadPage] with a `beforeSeq`) suspends on it: a page still on its way. */
+    var olderPageGate: CompletableDeferred<Unit>? = null
+
     fun add(folder: String, vararg summaries: MailSummary) {
         mail.getOrPut(folder) { mutableListOf() } += summaries
     }
@@ -119,7 +182,28 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         if (i >= 0) list[i] = transform(list[i])
     }
 
-    override suspend fun folders() = resolved
+    /** Thrown by [folders] -- the first call a list load makes -- once the list went out. */
+    var foldersError: MailError? = null
+
+    /** How many times the folder list was asked for, counted before the wait on [foldersGate]; [foldersSent] is what went out. */
+    var foldersCalls = 0
+
+    /** Fires once the folder list went out and before it is returned: a test acts while the LIST is out. */
+    var onFolders: (() -> Unit)? = null
+
+    /** Set, a folder list that went out waits on it before it answers: a LIST still out, for as long as the test needs. */
+    var foldersAnswerGate: CompletableDeferred<Unit>? = null
+
+    override suspend fun folders(stillWanted: () -> Boolean): ResolvedFolders {
+        foldersCalls++
+        foldersGate?.await()
+        unlessAbandoned(stillWanted)
+        foldersSent++
+        onFolders?.invoke()
+        foldersAnswerGate?.await()
+        foldersError?.let { throw it }
+        return resolved
+    }
     override suspend fun cachedPage(folder: String): MailPage? = touching(folder) { cachedPages[folder] }
 
     /** Simulates the repository dropping a folder's cache once [MailError.FolderChanged] fires for it. */
@@ -127,12 +211,30 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         cachedPages.remove(folder)
     }
 
-    override suspend fun loadPage(folder: String, beforeSeq: Int?, limit: Int, background: Boolean): MailPage {
+    /** Every `(folder, obsolete validity)` handed to [dropCachedPage], in order. */
+    val droppedCaches = mutableListOf<Pair<String, Long>>()
+
+    /** Fires inside [dropCachedPage], before the page goes: the eviction is a disk write a test acts during. */
+    var onDropCachedPage: ((String) -> Unit)? = null
+
+    override suspend fun dropCachedPage(folder: String, obsoleteValidity: Long) {
+        onDropCachedPage?.invoke(folder)
+        foldersTouched += folder
+        droppedCaches += folder to obsoleteValidity
+        // Mirrors MailCache.deleteFolderUnder: a page of any other generation stays.
+        if (cachedPages[folder]?.uidValidity == obsoleteValidity) dropCache(folder)
+    }
+
+    override suspend fun loadPage(folder: String, beforeSeq: Int?, limit: Int, background: Boolean, stillWanted: () -> Boolean): MailPage {
         openLoads++
         maxConcurrentLoads = maxOf(maxConcurrentLoads, openLoads)
         try {
+            if (!background) loadGate?.await()
+            unlessAbandoned(stillWanted)
+            val generation = accountGeneration?.invoke()
             foldersTouched += folder
             pageLimits += folder to limit
+            loadsSent += folder
             if (background) {
                 prefetchError?.let { throw it }
                 if (blockPrefetch) {
@@ -141,16 +243,22 @@ class FakeSchoolMailRepository : SchoolMailRepository {
                     gate.await()
                 }
             }
-            loadError?.let { throw it }
+            loadError?.takeIf { loadErrorFolder == null || loadErrorFolder == folder }?.let { throw it }
+            folderLoadErrors[folder]?.let { throw it }
+            if (beforeSeq != null) olderPageGate?.await()
+            if (beforeSeq != null) olderPage?.invoke(folder, beforeSeq)?.let { return it }
             val all = sorted(folder)
             val from = beforeSeq ?: 0
             // `limit` is honoured, not just recorded: the real repository's rule about a warm
             // never shortening a cache only means anything if a warm can return a shorter page.
             val chunk = all.drop(from).take(minOf(pageSize, limit))
-            val page = MailPage(1, all.size, chunk, (from + chunk.size).takeIf { it < all.size })
+            val page = MailPage(pageValidity, all.size, chunk, (from + chunk.size).takeIf { it < all.size })
+            // The page is back; a test acts here as it would while the real fetch was still out.
+            onLoaded?.invoke(folder)
             // Mirrors MailRepository.loadPage: a first page replaces the cache, except for a
-            // background warm that would leave less of the same mailbox behind than is there.
-            if (beforeSeq == null) {
+            // background warm that would leave less of the same mailbox behind than is there --
+            // and except for an account that moved while the page was out ([accountGeneration]).
+            if (beforeSeq == null && generation == accountGeneration?.invoke()) {
                 val cached = cachedPages[folder]
                 val shortens = background && cached != null &&
                     cached.uidValidity == page.uidValidity && cached.messages.size > page.messages.size
@@ -162,10 +270,22 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         }
     }
 
-    override suspend fun inboxStatus(): FolderStatus {
+    override suspend fun inboxStatus(stillWanted: () -> Boolean): FolderStatus {
+        statusGate?.await()
+        unlessAbandoned(stillWanted)
         statusCalls++
         statusError?.let { throw it }
         return status
+    }
+
+    override suspend fun status(folder: String, stillWanted: () -> Boolean): FolderStatus {
+        folderStatusGate?.await()
+        unlessAbandoned(stillWanted)
+        foldersTouched += folder
+        folderStatusCalls += folder
+        folderStatusErrors[folder]?.let { throw it }
+        val newest = sorted(folder).firstOrNull()?.uid ?: 0L
+        return FolderStatus(status.uidValidity, newest + 1, mail[folder]?.size ?: 0, 0)
     }
     override suspend fun refreshFlags(folder: String, uids: List<Long>): Map<Long, MailFlags> =
         touching(folder) { sorted(folder).filter { it.uid in uids }.associate { it.uid to it.flags } }
@@ -204,10 +324,61 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         mail[folder]?.removeAll { it.uid == uid }
     }
 
-    override suspend fun search(folder: String, query: String): SearchOutcome {
+    /** Thrown by [search] for a folder, after it is recorded as touched and sent. */
+    var searchError: MailError? = null
+
+    /**
+     * When set, [searchError] is thrown for this folder alone: one folder answers the search and
+     * the next cannot be reached, the way a connection lost midway through All mail looks.
+     */
+    var searchErrorFolder: String? = null
+
+    /** How many times [search] went out, failed or not; [searchesSent] names them in order. */
+    var searchCalls = 0
+
+    /** While set, [search] suspends on it once the SEARCH went out, before it answers or fails: a search still out while the test acts. */
+    var searchGate: CompletableDeferred<Unit>? = null
+
+    override suspend fun search(folder: String, query: String, stillWanted: () -> Boolean): SearchOutcome {
+        unlessAbandoned(stillWanted)
         foldersTouched += folder
+        searchCalls++
+        searchesSent += folder
+        searchGate?.await()
+        searchError?.takeIf { searchErrorFolder == null || searchErrorFolder == folder }?.let { throw it }
         val hits = sorted(folder).filter { query in it.subject }
-        return if (searchUnsupported) SearchOutcome.LoadedOnly(hits) else SearchOutcome.Server(hits)
+        onSearched?.invoke(folder)
+        // The server could not search: as the real repository, only the folder's cached newest
+        // page is searched here; the list page substitutes the rows it has loaded.
+        if (searchUnsupported) {
+            return cachedPages[folder].let { cached -> SearchOutcome.LoadedOnly(cached?.messages.orEmpty().filter { query in it.subject }, cached?.uidValidity) }
+        }
+        // Paged like the real repository: the newest [pageSize] matches, the rest left to fetch.
+        return SearchOutcome.Server(hits.take(pageSize), hits.drop(pageSize).map { it.uid }, uidValidity = 1)
+    }
+
+    /** Every `(folder, uids)` handed to [searchPage], in order -- asked for, whether or not it then went out. */
+    val searchPages = mutableListOf<Pair<String, List<Long>>>()
+
+    /** Thrown by [searchPage], after the call is recorded in [searchPages]. */
+    var searchPageError: MailError? = null
+
+    /**
+     * While set, [searchPage] suspends on it after recording the call, so a test can change
+     * things -- clear the search, sign out -- while a page of results is still on its way.
+     */
+    var searchPageGate: CompletableDeferred<Unit>? = null
+
+    /** The UIDVALIDITY [searchPage] reports; the search itself always reports 1. */
+    var searchPageValidity = 1L
+
+    override suspend fun searchPage(folder: String, uids: List<Long>, stillWanted: () -> Boolean): SearchPage {
+        foldersTouched += folder
+        searchPages += folder to uids
+        searchPageGate?.await()
+        unlessAbandoned(stillWanted)
+        searchPageError?.let { throw it }
+        return SearchPage(searchPageValidity, sorted(folder).filter { it.uid in uids })
     }
 
     var rawSourceError: MailError? = null
@@ -230,7 +401,11 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         out.write("attachment $partId".toByteArray())
     }
 
+    /** Runs at the start of every [send], before [sendError] -- for a test that changes things while a mail goes out. */
+    var onSend: (() -> Unit)? = null
+
     override suspend fun send(mail: OutgoingMail, answered: Pair<String, Long>?): SentCopy {
+        onSend?.invoke()
         sendError?.let { throw it }
         sentAttachments += mail.attachments.map { it.fileName to it.open().use { s -> s.readBytes().decodeToString() } }
         sent += mail to answered

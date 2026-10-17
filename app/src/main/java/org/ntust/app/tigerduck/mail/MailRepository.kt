@@ -1,5 +1,6 @@
 package org.ntust.app.tigerduck.mail
 
+import androidx.annotation.VisibleForTesting
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -36,27 +37,83 @@ import javax.inject.Singleton
 
 sealed interface SearchOutcome {
     val messages: List<MailSummary>
-    data class Server(override val messages: List<MailSummary>) : SearchOutcome
-    /** The server couldn't search; these are matches among already-loaded mail. */
-    data class LoadedOnly(override val messages: List<MailSummary>) : SearchOutcome
+
+    /**
+     * The newest page of the server's matches, and [remaining]: the UIDs of every match not
+     * fetched yet, newest first, for [SchoolMailRepository.searchPage] to fetch as the list
+     * scrolls.
+     */
+    data class Server(
+        override val messages: List<MailSummary>,
+        val remaining: List<Long> = emptyList(),
+        /** The folder's UIDVALIDITY the matches were found under, which [remaining] only means anything in; null where unknown. */
+        val uidValidity: Long? = null,
+    ) : SearchOutcome
+    /**
+     * The server couldn't search; these are matches among the folder's cached newest page, with
+     * [uidValidity] the page was read under (null where unknown). The list page substitutes the
+     * rows it has loaded, pages back included, where they were read under the same UIDVALIDITY.
+     */
+    data class LoadedOnly(override val messages: List<MailSummary>, val uidValidity: Long? = null) : SearchOutcome
 }
 
+/**
+ * A page of the matches a search left to fetch ([SearchOutcome.Server.remaining]), with the
+ * folder's UIDVALIDITY it was read under: once that differs from the search's own, the folder was
+ * recreated and the UIDs name other mail. Null where unknown.
+ */
+data class SearchPage(val uidValidity: Long?, val messages: List<MailSummary>)
+
+/**
+ * How a search reads mail that is already loaded, where the server's own SEARCH is not available:
+ * the subject and the sender's name and address, case-insensitively.
+ */
+internal fun matchesLoadedMail(s: MailSummary, q: String) =
+    q.isNotEmpty() && (s.subject.contains(q, true) || s.from?.address?.contains(q, true) == true || s.from?.name?.contains(q, true) == true)
+
 interface SchoolMailRepository {
-    suspend fun folders(): ResolvedFolders
+    /** The server's folders, resolved once per sign-in; [stillWanted] as on [loadPage], for the LIST a first call sends. */
+    suspend fun folders(stillWanted: () -> Boolean = { true }): ResolvedFolders
 
     /** The folder's last saved page, read from disk on the IO dispatcher. */
     suspend fun cachedPage(folder: String): MailPage?
+
+    /**
+     * Forgets [folder]'s cached page while it is still the one of the mailbox generation
+     * [obsoleteValidity]: the folder was found recreated on the server -- an older page, or a page
+     * of search results, came back under another UIDVALIDITY than the list's -- so that page names
+     * mail that no longer exists and must not be painted again before a first page replaces it. A
+     * page already cached under the new generation, by a refresh that then failed on another
+     * folder, is left alone: it is the only offline copy of the new mailbox. Nothing to forget for
+     * the demo mailbox.
+     */
+    suspend fun dropCachedPage(folder: String, obsoleteValidity: Long)
     /**
      * @param background true for a warm nobody asked for. Such a call never shortens a cached
      *   page it did not improve on -- see [MailRepository.loadPage].
+     * @param stillWanted asked with the session held, right before the command goes out, and
+     *   again nowhere else: a request can wait behind another on the one connection, and the
+     *   account or the view that asked may be gone by the time it is its turn. Answering false
+     *   ends the call with [MailError.Abandoned] and nothing sent -- so a request of a batch that
+     *   outlived its account never runs under the next one's credentials, and an answer that
+     *   comes back was asked for by whoever is signed in when it was sent.
      */
     suspend fun loadPage(
         folder: String,
         beforeSeq: Int?,
         limit: Int = MailRepository.PAGE_SIZE,
         background: Boolean = false,
+        stillWanted: () -> Boolean = { true },
     ): MailPage
-    suspend fun inboxStatus(): FolderStatus
+
+    /** The inbox's STATUS; [stillWanted] as on [loadPage]. */
+    suspend fun inboxStatus(stillWanted: () -> Boolean = { true }): FolderStatus
+
+    /**
+     * [folder]'s STATUS: the cheapest way to ask the server whether a folder is as the page last
+     * saw it. [stillWanted] as on [loadPage].
+     */
+    suspend fun status(folder: String, stillWanted: () -> Boolean = { true }): FolderStatus
     suspend fun refreshFlags(folder: String, uids: List<Long>): Map<Long, MailFlags>
     suspend fun summary(folder: String, uid: Long): MailSummary?
     suspend fun body(folder: String, uid: Long): MailBody
@@ -64,7 +121,15 @@ interface SchoolMailRepository {
     suspend fun move(folder: String, uid: Long, target: String)
     suspend fun deletesPermanently(folder: String): Boolean
     suspend fun delete(folder: String, uid: Long)
-    suspend fun search(folder: String, query: String): SearchOutcome
+
+    /** [stillWanted] as on [loadPage]. */
+    suspend fun search(folder: String, query: String, stillWanted: () -> Boolean = { true }): SearchOutcome
+
+    /**
+     * The summaries of [uids], matches [search] left in [SearchOutcome.Server.remaining]; mail gone
+     * since is left out. [stillWanted] as on [loadPage].
+     */
+    suspend fun searchPage(folder: String, uids: List<Long>, stillWanted: () -> Boolean = { true }): SearchPage
 
     /** Cache-first like [body], so revisiting a mail's source never re-downloads it. */
     suspend fun rawSource(folder: String, uid: Long): String
@@ -97,8 +162,12 @@ class MailRepository @Inject constructor(
     private val demo: MailDemoGate,
     @ApplicationScope scope: CoroutineScope,
 ) : SchoolMailRepository {
-    private val holder = SessionHolder(sessions, scope)
-    @Volatile private var resolved: ResolvedFolders? = null
+    @VisibleForTesting
+    internal val holder = SessionHolder(sessions, scope)
+    /** The server's folders as resolved for one account: [generation] is the [MailAccount.accountGeneration] that asked, and the list is nobody else's. */
+    private class Resolved(val generation: Int, val folders: ResolvedFolders)
+
+    @Volatile private var resolved: Resolved? = null
     private val demoFolders = mutableMapOf<String, MutableList<DemoMail>>()
 
     /** Next UID handed to a demo message composed in this session (draft save, or a sent copy) --
@@ -140,10 +209,16 @@ class MailRepository @Inject constructor(
         if (state.authFailed) throw MailError.AuthFailed()
     }
 
-    private suspend fun <T> withSession(block: (MailSession) -> T): T = withContext(Dispatchers.IO) {
+    /**
+     * [stillWanted] is asked with the session held, right before [block] sends anything (see
+     * [SchoolMailRepository.loadPage]). The credentials were read just before the wait for the
+     * session; the answer being yes says no account came or went since the caller read what it
+     * asks about, so they are that account's too.
+     */
+    private suspend fun <T> withSession(stillWanted: () -> Boolean = { true }, block: (MailSession) -> T): T = withContext(Dispatchers.IO) {
         if (account.isDemo) throw MailError.DemoMode()
         refuseWhileAuthFailed()
-        holder.use(credentials(), block)
+        holder.use(credentials(), stillWanted, block)
     }
 
     // --- demo -------------------------------------------------------------------
@@ -202,16 +277,28 @@ class MailRepository @Inject constructor(
 
     // --- folders & lists -----------------------------------------------------------
 
-    override suspend fun folders(): ResolvedFolders {
+    override suspend fun folders(stillWanted: () -> Boolean): ResolvedFolders {
         if (account.isDemo) return DEMO_FOLDERS
-        resolved?.let { return it }
-        return withSession { MailFolders.resolve(it.listFolders()) }.also { resolved = it }
+        val generation = account.accountGeneration
+        resolved?.takeIf { it.generation == generation }?.let { return it.folders }
+        val folders = withSession(stillWanted) { MailFolders.resolve(it.listFolders()) }
+        // Kept for the account that asked alone. Another student can sign in over this one with
+        // no sign-out for the collector above to see; a LIST already out then comes back under
+        // their generation, and must not be what their own first request finds resolved.
+        if (account.accountGeneration == generation) resolved = Resolved(generation, folders)
+        return folders
     }
 
     override suspend fun cachedPage(folder: String): MailPage? = withContext(Dispatchers.IO) {
         if (account.isDemo) return@withContext demoPage(folder)
         val dto = cache.loadFolder(folder) ?: return@withContext null
         MailPage(dto.uidValidity, dto.totalMessages, dto.messages.orEmpty().map { it.toModel() }, dto.nextBeforeSeq.takeIf { it > 0 })
+    }
+
+    /** A disk delete under the cache's own lock, as [runExpunging] drops the page it found stale. */
+    override suspend fun dropCachedPage(folder: String, obsoleteValidity: Long) {
+        if (account.isDemo) return
+        withContext(Dispatchers.IO) { cache.deleteFolderUnder(folder, obsoleteValidity) }
     }
 
     /**
@@ -224,11 +311,16 @@ class MailRepository @Inject constructor(
      * with the twenty. A warm still seeds an empty cache -- the case it exists for -- and still
      * replaces one from an older mailbox generation, where the cached page is worthless anyway.
      */
-    override suspend fun loadPage(folder: String, beforeSeq: Int?, limit: Int, background: Boolean): MailPage {
+    override suspend fun loadPage(folder: String, beforeSeq: Int?, limit: Int, background: Boolean, stillWanted: () -> Boolean): MailPage {
         if (account.isDemo) return demoPage(folder)
-        val page = withSession { it.fetchPage(folder, beforeSeq, limit) }
+        // The account the page is fetched for. A fetch is blocking I/O that a sign-out cannot
+        // cancel, so a page that lands after one is kept out of the cache the sign-out emptied,
+        // or whoever signs in next would open on it; asked under the cache's lock, which that
+        // clear takes too.
+        val generation = account.accountGeneration
+        val page = withSession(stillWanted) { it.fetchPage(folder, beforeSeq, limit) }
         if (beforeSeq == null && !(background && wouldShortenCache(folder, page))) {
-            withContext(Dispatchers.IO) { cache.saveFolder(folder, page) }
+            withContext(Dispatchers.IO) { cache.saveFolderIf(folder, page) { account.accountGeneration == generation } }
         }
         return page
     }
@@ -239,10 +331,16 @@ class MailRepository @Inject constructor(
         return cached.uidValidity == page.uidValidity && cached.messages.size > page.messages.size
     }
 
-    override suspend fun inboxStatus(): FolderStatus {
+    override suspend fun inboxStatus(stillWanted: () -> Boolean): FolderStatus {
         if (account.isDemo) return FolderStatus(1, 2_000, demoList("INBOX").size, 0)
-        val inbox = folders().nameOf(SpecialFolder.INBOX) ?: "INBOX"
-        return withSession { it.status(inbox) }
+        // The folder list is a request of this call's too, when nothing has resolved it yet.
+        val inbox = folders(stillWanted).nameOf(SpecialFolder.INBOX) ?: "INBOX"
+        return withSession(stillWanted) { it.status(inbox) }
+    }
+
+    override suspend fun status(folder: String, stillWanted: () -> Boolean): FolderStatus {
+        if (account.isDemo) return FolderStatus(1, 2_000, demoList(folder).size, 0)
+        return withSession(stillWanted) { it.status(folder) }
     }
 
     override suspend fun refreshFlags(folder: String, uids: List<Long>): Map<Long, MailFlags> {
@@ -341,16 +439,28 @@ class MailRepository @Inject constructor(
         removeCached(folder, uid)
     }
 
-    override suspend fun search(folder: String, query: String): SearchOutcome {
+    override suspend fun search(folder: String, query: String, stillWanted: () -> Boolean): SearchOutcome {
         val q = query.trim()
-        if (account.isDemo) return SearchOutcome.LoadedOnly(demoPage(folder).messages.filter { matches(it, q) })
+        if (account.isDemo) return demoPage(folder).let { page -> SearchOutcome.LoadedOnly(page.messages.filter { matchesLoadedMail(it, q) }, page.uidValidity) }
         return try {
-            val uids = withSession { it.search(folder, q) }.take(PAGE_SIZE)
-            SearchOutcome.Server(withSession { it.fetchByUids(folder, uids) })
+            // Newest first, so the first page is the newest matches and the rest page back. One
+            // hold of the connection, so the page and the UIDVALIDITY are those the search saw.
+            withSession(stillWanted) { session ->
+                val matches = session.search(folder, q)
+                val validity = session.uidValidity(folder)
+                val newest = matches.take(PAGE_SIZE)
+                SearchOutcome.Server(session.fetchByUids(folder, newest), matches.drop(newest.size), validity)
+            }
         } catch (e: MailError.SearchUnsupported) {
-            val loaded = cachedPage(folder)?.messages.orEmpty()
-            SearchOutcome.LoadedOnly(loaded.filter { matches(it, q) })
+            val cached = cachedPage(folder)
+            SearchOutcome.LoadedOnly(cached?.messages.orEmpty().filter { matchesLoadedMail(it, q) }, cached?.uidValidity)
         }
+    }
+
+    override suspend fun searchPage(folder: String, uids: List<Long>, stillWanted: () -> Boolean): SearchPage {
+        // The demo search answers from the loaded mail, which leaves nothing to fetch later.
+        if (account.isDemo) return SearchPage(null, emptyList())
+        return withSession(stillWanted) { session -> SearchPage(session.uidValidity(folder), session.fetchByUids(folder, uids)) }
     }
 
     /**
@@ -413,7 +523,7 @@ class MailRepository @Inject constructor(
         // concurrent connections, so a second one is most likely to be refused exactly when the
         // mail screen is open and holding the first.
         val result = withContext(Dispatchers.IO) {
-            sender.send(credentials(), mail, sent) { block -> withSession(block) }
+            sender.send(credentials(), mail, sent) { block -> withSession(block = block) }
         }
         answered?.let { (folder, uid) ->
             val marked = try {
@@ -518,13 +628,14 @@ class MailRepository @Inject constructor(
         require(role in CREATED_ON_DEMAND) { "$role is never created on demand" }
         folders().nameOf(role)?.let { return it }
         if (account.isDemo) return null
+        val generation = account.accountGeneration
         return withSession { session ->
             // The CREATE's own answer is deliberately ignored -- a refusal because the folder
             // already exists is a success -- so it is the LIST below, and only the LIST, that
             // decides. A LIST that never completes is not an answer and is not swallowed here.
             runCatching { session.createFolder(role.decodedName) }
             MailFolders.resolve(session.listFolders())
-        }.also { resolved = it }.nameOf(role)
+        }.also { if (account.accountGeneration == generation) resolved = Resolved(generation, it) }.nameOf(role)
     }
 
     /**
@@ -633,9 +744,6 @@ class MailRepository @Inject constructor(
         val page = cachedPage(folder) ?: return@withContext
         cache.saveFolder(folder, page.copy(messages = page.messages.filterNot { it.uid == uid }, totalMessages = (page.totalMessages - 1).coerceAtLeast(0)))
     }
-
-    private fun matches(s: MailSummary, q: String) =
-        q.isNotEmpty() && (s.subject.contains(q, true) || s.from?.address?.contains(q, true) == true || s.from?.name?.contains(q, true) == true)
 
     companion object {
         const val PAGE_SIZE = 50

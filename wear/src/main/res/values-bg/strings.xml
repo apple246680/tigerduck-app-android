@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">Закачане на днешните курсове най-горе в графика</string>
     <string name="settings_privacy_policy">Политика за поверителност</string>
     <string name="settings_push_server_nav_label">Натискане на сървъра</string>
-    <string name="settings_remember_bulletin_filter">Запомнете филтрите за бюлетини</string>
     <string name="settings_reset_course_colors">Преразпределяне на цветовете на курсовете</string>
     <string name="settings_reset_course_colors_confirm_message">Всеки курс ще получи нов уникален цвят — първо от готовата палитра, после случайно, когато палитрата свърши.</string>
     <string name="settings_reset_course_colors_confirm_title">Да преразпределим ли цветовете на курсовете?</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">Неуспешно</string>
     <string name="sync_status_hours_ago_short">преди %1$d ч</string>
     <string name="sync_status_just_now">Току-що</string>
-    <string name="sync_status_last_synced">Последна синхронизация</string>
     <string name="sync_status_last_updated">Последна актуализация</string>
     <string name="sync_status_minimal">Ограничено</string>
     <string name="sync_status_minutes_ago_short">преди %1$d мин</string>
     <string name="sync_status_nav_label">Статус на TigerSync</string>
-    <string name="sync_status_never_synced">Никога не е синхронизирано</string>
     <string name="sync_status_never_updated">Никога не е актуализирано</string>
     <string name="sync_status_ok">Наред</string>
     <string name="sync_status_syncing">Синхронизиране…</string>

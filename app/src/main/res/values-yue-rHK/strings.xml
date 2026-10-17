@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">喺課表置頂今日課程</string>
     <string name="settings_privacy_policy">隱私權政策</string>
     <string name="settings_push_server_nav_label">伺服器推播</string>
-    <string name="settings_remember_bulletin_filter">記住公告篩選條件</string>
     <string name="settings_reset_course_colors">重新分配課表顏色</string>
     <string name="settings_reset_course_colors_confirm_message">每門課都會被指派一個全新且不重複的顏色——優先使用預設色盤，色盤用完後隨機產生。</string>
     <string name="settings_reset_course_colors_confirm_title">確定要重新分配課表顏色？</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">失敗</string>
     <string name="sync_status_hours_ago_short">%1$d 小時前</string>
     <string name="sync_status_just_now">啱啱</string>
-    <string name="sync_status_last_synced">上次同步</string>
     <string name="sync_status_last_updated">上次更新</string>
     <string name="sync_status_minimal">最低限度</string>
     <string name="sync_status_minutes_ago_short">%1$d 分鐘前</string>
     <string name="sync_status_nav_label">TigerSync 狀態</string>
-    <string name="sync_status_never_synced">未同步過</string>
     <string name="sync_status_never_updated">尚未更新</string>
     <string name="sync_status_ok">正常</string>
     <string name="sync_status_syncing">同步緊…</string>

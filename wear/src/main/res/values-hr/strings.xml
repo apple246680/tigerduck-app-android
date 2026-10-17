@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">Prikvači današnje kolegije na vrh rasporeda</string>
     <string name="settings_privacy_policy">Pravila privatnosti</string>
     <string name="settings_push_server_nav_label">Poslužiteljski push</string>
-    <string name="settings_remember_bulletin_filter">Zapamti filtre biltena</string>
     <string name="settings_reset_course_colors">Ponovno dodijeli boje kolegija</string>
     <string name="settings_reset_course_colors_confirm_message">Svaki kolegij dobit će novu, jedinstvenu boju — najprije iz unaprijed postavljene palete, zatim nasumično kada se paleta iscrpi.</string>
     <string name="settings_reset_course_colors_confirm_title">Ponovno dodijeliti boje kolegija?</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">Neuspjelo</string>
     <string name="sync_status_hours_ago_short">prije %1$d h</string>
     <string name="sync_status_just_now">Upravo sad</string>
-    <string name="sync_status_last_synced">Posljednja sinkronizacija</string>
     <string name="sync_status_last_updated">Posljednje ažuriranje</string>
     <string name="sync_status_minimal">Ograničeno</string>
     <string name="sync_status_minutes_ago_short">prije %1$d min</string>
     <string name="sync_status_nav_label">Stanje TigerSync</string>
-    <string name="sync_status_never_synced">Nikad sinkronizirano</string>
     <string name="sync_status_never_updated">Nikad ažurirano</string>
     <string name="sync_status_ok">U redu</string>
     <string name="sync_status_syncing">Sinkronizacija…</string>

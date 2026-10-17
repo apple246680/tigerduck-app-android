@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -101,7 +102,8 @@ class MoodleAssignmentScreenTest {
         composeRule.onNodeWithText(MoodleDates.weekdayTime(1_789_000_740L)).assertIsDisplayed()
         composeRule.onNodeWithText(string(R.string.assignment_detail_description)).performScrollTo().assertIsDisplayed()
         markdownNode("singly linked list").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("spec.pdf").performScrollTo().assertIsDisplayed()
+        // A file row reads as one element named for its file; see MoodleFileRow.
+        composeRule.onNodeWithContentDescription("spec.pdf").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText(string(R.string.assignment_detail_not_submitted)).performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText(string(R.string.assignment_detail_submit_on_moodle)).assertIsDisplayed()
     }
@@ -125,7 +127,7 @@ class MoodleAssignmentScreenTest {
         composeRule.onNodeWithText(early).performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText(string(R.string.assignment_detail_submitted_at)).performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText(MoodleDates.dayTime(1_788_900_000L)).performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("hw2.pdf").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("hw2.pdf").performScrollTo().assertIsDisplayed()
         markdownNode("See the attached report.").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText(string(R.string.assignment_detail_comments)).performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Duck Teacher", substring = true).performScrollTo().assertIsDisplayed()

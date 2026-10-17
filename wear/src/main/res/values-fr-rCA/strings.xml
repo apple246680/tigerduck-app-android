@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">Épingler les cours du jour en haut de l\'emploi du temps</string>
     <string name="settings_privacy_policy">Politique de confidentialité</string>
     <string name="settings_push_server_nav_label">Push serveur</string>
-    <string name="settings_remember_bulletin_filter">Mémoriser les filtres de bulletin</string>
     <string name="settings_reset_course_colors">Réattribuer les couleurs des cours</string>
     <string name="settings_reset_course_colors_confirm_message">Chaque cours recevra une couleur unique et nouvelle — d\'abord depuis la palette préréglée, puis aléatoirement quand elle est épuisée.</string>
     <string name="settings_reset_course_colors_confirm_title">Réattribuer les couleurs des cours ?</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">Échec</string>
     <string name="sync_status_hours_ago_short">il y a %1$d h</string>
     <string name="sync_status_just_now">À l\'instant</string>
-    <string name="sync_status_last_synced">Dernière synchro</string>
     <string name="sync_status_last_updated">Dernière mise à jour</string>
     <string name="sync_status_minimal">Limité</string>
     <string name="sync_status_minutes_ago_short">il y a %1$d min</string>
     <string name="sync_status_nav_label">Statut de TigerSync</string>
-    <string name="sync_status_never_synced">Jamais synchronisé</string>
     <string name="sync_status_never_updated">Jamais mis à jour</string>
     <string name="sync_status_ok">OK</string>
     <string name="sync_status_syncing">Synchronisation…</string>

@@ -15,6 +15,14 @@ class V3TokenStore internal constructor(private val prefs: SharedPreferences) {
     val expiresAt: Long get() = prefs.getLong(KEY_EXPIRES_AT, 0L)
 
     /**
+     * The backend that issued the pair and the student it is for, recorded at
+     * sign-in for the sign-out's unregister; null for a pair stored before they
+     * were. A refresh keeps them.
+     */
+    val issuedBy: String? get() = prefs.getString(KEY_ISSUED_BY, null)
+    val studentId: String? get() = prefs.getString(KEY_STUDENT_ID, null)
+
+    /**
      * How many sends of [refreshToken] may have reached the backend without
      * this device getting the pair it answered with: those that got no reply,
      * and those answered with a 5xx. 0 in a store written before the count
@@ -41,13 +49,21 @@ class V3TokenStore internal constructor(private val prefs: SharedPreferences) {
      * still leaves the pair in memory, and this process keeps using it.
      * The new refresh token has not been sent, so its count starts over.
      */
-    fun save(accessToken: String, refreshToken: String, expiresAt: Long) {
-        val written = prefs.edit()
+    fun save(
+        accessToken: String,
+        refreshToken: String,
+        expiresAt: Long,
+        issuedBy: String? = null,
+        studentId: String? = null,
+    ) {
+        val editor = prefs.edit()
             .putString(KEY_ACCESS_TOKEN, accessToken)
             .putString(KEY_REFRESH_TOKEN, refreshToken)
             .putLong(KEY_EXPIRES_AT, expiresAt)
             .remove(KEY_REFRESH_TOKEN_SENDS)
-            .commit()
+        if (issuedBy != null) editor.putString(KEY_ISSUED_BY, issuedBy)
+        if (studentId != null) editor.putString(KEY_STUDENT_ID, studentId)
+        val written = editor.commit()
         if (!written) Log.w(TAG, "v3 token pair not written to disk")
     }
 
@@ -61,6 +77,8 @@ class V3TokenStore internal constructor(private val prefs: SharedPreferences) {
             .remove(KEY_ACCESS_TOKEN)
             .remove(KEY_REFRESH_TOKEN)
             .remove(KEY_EXPIRES_AT)
+            .remove(KEY_ISSUED_BY)
+            .remove(KEY_STUDENT_ID)
             .remove(KEY_REFRESH_TOKEN_SENDS)
             .commit()
         if (!written) Log.w(TAG, "v3 token pair not removed from disk")
@@ -70,6 +88,8 @@ class V3TokenStore internal constructor(private val prefs: SharedPreferences) {
         const val KEY_ACCESS_TOKEN = "v3_access_token"
         const val KEY_REFRESH_TOKEN = "v3_refresh_token"
         const val KEY_EXPIRES_AT = "v3_token_expires_at"
+        const val KEY_ISSUED_BY = "v3_issued_by"
+        const val KEY_STUDENT_ID = "v3_student_id"
         const val KEY_REFRESH_TOKEN_SENDS = "v3_refresh_token_sends"
         private const val TAG = "V3TokenStore"
     }

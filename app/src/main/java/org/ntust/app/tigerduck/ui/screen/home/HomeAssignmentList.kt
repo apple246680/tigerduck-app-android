@@ -61,6 +61,8 @@ import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.ui.component.AssignmentItem
 import org.ntust.app.tigerduck.ui.component.EmptyStateView
 import org.ntust.app.tigerduck.ui.navigation.icon
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleWebPages
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.openMoodleWebPage
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import kotlin.math.abs
 import kotlin.math.roundToInt

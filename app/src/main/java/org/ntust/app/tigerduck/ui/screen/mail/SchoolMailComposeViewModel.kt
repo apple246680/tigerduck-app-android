@@ -20,7 +20,11 @@ import org.ntust.app.tigerduck.mail.MailAccount
 import org.ntust.app.tigerduck.mail.MailError
 import org.ntust.app.tigerduck.mail.MailErrors
 import org.ntust.app.tigerduck.mail.SchoolMailRepository
+import org.ntust.app.tigerduck.mail.SentCopyNotice
+import org.ntust.app.tigerduck.mail.SentCopyNotices
+import org.ntust.app.tigerduck.mail.SentCopyOrigin
 import org.ntust.app.tigerduck.mail.compose.ComposeRules
+import org.ntust.app.tigerduck.mail.compose.MailtoLink
 import org.ntust.app.tigerduck.mail.compose.OutgoingAttachment
 import org.ntust.app.tigerduck.mail.compose.OutgoingMail
 import org.ntust.app.tigerduck.mail.sanitize.HtmlSanitizer
@@ -65,12 +69,25 @@ class SchoolMailComposeViewModel @Inject constructor(
     private val account: MailAccount,
     private val cache: MailCache,
     private val pickedAttachmentReader: PickedAttachmentReader,
+    private val sentCopyNotices: SentCopyNotices,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) : ViewModel() {
     val mode: ComposeMode = runCatching { ComposeMode.valueOf(savedStateHandle.get<String>("mode").orEmpty()) }
         .getOrDefault(ComposeMode.NEW)
     private val sourceFolder: String = savedStateHandle.get<String>("folder").orEmpty()
     private val sourceUid: Long = savedStateHandle.get<Long>("uid") ?: -1L
+
+    /**
+     * The screen this compose closes back to, which is where a missing sent copy is told: the mail
+     * being answered or forwarded, the mail a `mailto:` link was tapped in (it rides along as the
+     * source), or the list for a new mail and a draft.
+     */
+    private val sentCopyOrigin: SentCopyOrigin =
+        if (sourceUid >= 0 && mode != ComposeMode.DRAFT) SentCopyOrigin.Message(sourceFolder, sourceUid) else SentCopyOrigin.List
+
+    /** A new mail started from a `mailto:` link tapped in a mail. */
+    private val mailto: MailtoLink.Draft? =
+        savedStateHandle.get<String>("mailto")?.takeIf { mode == ComposeMode.NEW }?.let(MailtoLink::parse)
 
     sealed interface ComposeError {
         data class InvalidRecipients(val tokens: List<String>) : ComposeError
@@ -122,13 +139,6 @@ class SchoolMailComposeViewModel @Inject constructor(
         val errorAcknowledged: Boolean = false,
         val done: Boolean = false,
         val savedDraft: Boolean = false,
-        /**
-         * The mail went out but no copy of it reached the sent folder. A notice, never an
-         * [error]: the send succeeded, so failing the screen over it would tell the user the
-         * opposite of what happened -- and they would have no way to tell whether to send again.
-         * The screen shows it as a toast on its way out, beside the saved-draft one.
-         */
-        val sentCopyMissing: Boolean = false,
         internal val baseline: Fields = Fields(),
     ) {
         internal val fields get() = Fields(to.entries, cc.entries, bcc.entries, subject, body, attachments.map { it.id })
@@ -192,6 +202,20 @@ class SchoolMailComposeViewModel @Inject constructor(
     }
 
     private fun runPrefill(labels: ComposePrefill.Labels) {
+        mailto?.let { link ->
+            // Filled in once, from the link alone: nothing to load, and the fields as the link
+            // left them are the baseline, so backing out untouched asks nothing.
+            _state.update {
+                val to = RecipientField.of(link.to)
+                val cc = RecipientField.of(link.cc)
+                it.copy(
+                    to = to, cc = cc, subject = link.subject, body = link.body,
+                    showCcBcc = cc.entries.isNotEmpty(),
+                    baseline = Fields(to.entries, cc.entries, emptyList(), link.subject, link.body, emptyList()),
+                )
+            }
+            return
+        }
         if (mode == ComposeMode.NEW || sourceUid < 0) return
         viewModelScope.launch {
             _state.update { it.copy(loading = true, loadError = null) }
@@ -367,6 +391,9 @@ class SchoolMailComposeViewModel @Inject constructor(
         val to = ComposeRules.parseRecipients(s.to.entries)
         val cc = ComposeRules.parseRecipients(s.cc.entries)
         val bcc = ComposeRules.parseRecipients(s.bcc.entries)
+        // Read before the mail goes out: an account that changes while it does must not leave
+        // its notice to the next one.
+        val accountGeneration = sentCopyNotices.accountGeneration
         withStaged(onError = { ComposeError.SendFailed(it) }) { attachments ->
             val mail = OutgoingMail(repository.selfAddress(), to.addresses, cc.addresses, bcc.addresses,
                 s.subject.trim(), s.body, attachments, inReplyTo, references)
@@ -377,7 +404,12 @@ class SchoolMailComposeViewModel @Inject constructor(
             // though the send itself succeeded and nothing was thrown for [withStaged] to classify.
             if (copy is SentCopy.Failed && copy.error is MailError.AuthFailed) account.onAuthFailure()
             if (sourceLoaded && mode == ComposeMode.DRAFT) discardSentDraft()
-            _state.update { it.copy(done = true, sentCopyMissing = !copy.filed) }
+            // The mail went out, but its copy did not reach the sent folder. A notice, never an
+            // [UiState.error]: the send succeeded, so failing the screen over it would tell the
+            // user the opposite of what happened. It is reported before the screen closes, to
+            // stay on the screens it goes back to until the user dismisses it.
+            SentCopyNotice.of(copy)?.let { sentCopyNotices.report(it, sentCopyOrigin, accountGeneration) }
+            _state.update { it.copy(done = true) }
         }
     }
 

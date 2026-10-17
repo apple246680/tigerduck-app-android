@@ -2,7 +2,16 @@ package org.ntust.app.tigerduck.push
 
 import android.app.Application
 import android.content.Context
+import androidx.work.Configuration
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import androidx.work.testing.SynchronousExecutor
+import androidx.work.testing.WorkManagerTestInitHelper
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType
@@ -22,10 +31,15 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.ntust.app.tigerduck.auth.AuthTokenManager
 import org.ntust.app.tigerduck.auth.AuthTokenManager.SignInAttempt
+import org.ntust.app.tigerduck.auth.DepartingSession
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
+import org.ntust.app.tigerduck.data.preferences.PendingUnregisterPrefs
+import org.ntust.app.tigerduck.data.preferences.clearAllButOwedUnregister
 import org.ntust.app.tigerduck.data.preferences.UiLanguageMonitor
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore
 import org.ntust.app.tigerduck.debug.DebugFixtureStore
+import org.ntust.app.tigerduck.network.resolveAnnouncementEndpoint
+import org.ntust.app.tigerduck.notification.BackgroundSyncWorker
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
@@ -57,6 +71,10 @@ class PushRegistrationServiceTest {
         prefs = AppPreferences(context)
         prefs.hasCompletedOnboarding = true
         tokens = V3TokenStore(context.getSharedPreferences("v3-tokens-test", Context.MODE_PRIVATE))
+        WorkManagerTestInitHelper.initializeTestWorkManager(
+            context,
+            Configuration.Builder().setExecutor(SynchronousExecutor()).build(),
+        )
     }
 
     /** A session whose access token needs no refresh. */
@@ -65,7 +83,11 @@ class PushRegistrationServiceTest {
     }
 
     /** With [signsIn], a request that finds no session signs in as AuthService's sign-in does. */
-    private fun TestScope.service(signedIn: Boolean = true, signsIn: Boolean = false): PushRegistrationService {
+    private fun TestScope.service(
+        signedIn: Boolean = true,
+        signsIn: Boolean = false,
+        owedStore: PendingUnregisterStore = owed,
+    ): PushRegistrationService {
         if (signedIn) signIn()
         val auth = AuthTokenManager(tokens, backend.client, prefs, deviceUuid = "device-1")
         if (signsIn) {
@@ -84,7 +106,28 @@ class PushRegistrationServiceTest {
             uiLanguage = UiLanguageMonitor(prefs),
             scope = backgroundScope,
             fixtures = DebugFixtureStore(context),
+            departingUnregister = DepartingDeviceUnregister(
+                owed = OwedUnregister(owedStore),
+                deleteDevice = PushApiClient(backend.client, prefs, auth)::deleteDevice,
+                refresh = auth::refreshDeparting,
+                hasSession = { auth.isLoggedIn },
+                currentBaseUrl = { resolveAnnouncementEndpoint(prefs).url.trimEnd('/') },
+                now = System::currentTimeMillis,
+            ),
         )
+    }
+
+    /** The unregister a sign-out owes, kept in memory. */
+    private val owed = object : PendingUnregisterStore {
+        var pending: PendingUnregister? = null
+        override fun load() = pending
+        override fun save(pending: PendingUnregister): Boolean {
+            this.pending = pending
+            return true
+        }
+        override fun clear() {
+            pending = null
+        }
     }
 
     /** Registers "fcm-1" while the backend refuses it the way it refuses a request with no session. */
@@ -275,6 +318,133 @@ class PushRegistrationServiceTest {
         assertEquals("Bearer access-2", patch.authorization)
         assertEquals(false, JSONObject(patch.body).getBoolean("server_push_enabled"))
         assertEquals(emptyList<FakeBackend.Received>(), backend.received(ANNOUNCE))
+    }
+
+    // The sign-out's unregister
+
+    private fun departing() = DepartingSession(
+        "access-1",
+        "refresh-1",
+        accessExpiresAt = Long.MAX_VALUE,
+        baseUrl = resolveAnnouncementEndpoint(prefs).url.trimEnd('/'),
+    )
+
+    private fun deleteEndpoint() = "DELETE /v3/devices/" + PushIdentity(prefs, context).uuid()
+
+    private fun deletes() = backend.received(deleteEndpoint())
+
+    /** The unregister's request runs on the I/O dispatcher, out of the test scheduler's reach. */
+    private suspend fun awaitUntil(condition: () -> Boolean) = withContext(Dispatchers.Default) {
+        withTimeout(5_000) { while (!condition()) delay(10) }
+    }
+
+    private fun unregisterWork(): List<WorkInfo.State> =
+        WorkManager.getInstance(context)
+            .getWorkInfosForUniqueWork(DepartingUnregisterWorker.UNIQUE_NAME).get().map { it.state }
+
+    @Test
+    fun `a sign-out's unregister the server cannot take yet is kept and queued for later`() = runTest {
+        val service = service(signedIn = false)
+        backend.answer(deleteEndpoint(), 503)
+
+        service.unregister(departing())
+        awaitUntil { deletes().isNotEmpty() }
+
+        assertEquals(listOf("Bearer access-1"), deletes().map { it.authorization })
+        assertEquals("access-1", owed.pending?.session?.accessToken)
+        assertEquals(listOf(WorkInfo.State.ENQUEUED), unregisterWork())
+    }
+
+    @Test
+    fun `a sign-out's unregister the server takes leaves nothing owed`() = runTest {
+        val service = service(signedIn = false)
+
+        service.unregister(departing())
+        awaitUntil { owed.pending == null && deletes().isNotEmpty() }
+
+        assertEquals(1, deletes().size)
+        assertNull(owed.pending)
+    }
+
+    @Test
+    fun `a full reset after an unregister that failed keeps it owed and queued`() = runTest {
+        // The credential store the reset wipes, plainly: Robolectric has no keystore.
+        val credentials = context.getSharedPreferences("credentials-test", Context.MODE_PRIVATE)
+        val store = PendingUnregisterPrefs(credentials)
+        val service = service(signedIn = false, owedStore = store)
+        backend.answer(deleteEndpoint(), 503)
+
+        service.unregister(departing())
+        awaitUntil { deletes().isNotEmpty() && unregisterWork().isNotEmpty() }
+        // What the full reset runs after the sign-out: the sign-out's effects stop the
+        // background sync, and CredentialManager.clearAll() wipes the credentials.
+        BackgroundSyncWorker.cancel(context)
+        clearAllButOwedUnregister(credentials)
+
+        assertEquals("access-1", store.load()?.session?.accessToken)
+        assertEquals(listOf(WorkInfo.State.ENQUEUED), unregisterWork())
+    }
+
+    // Signing in again after a sign-out, in the same process
+
+    private fun registrations() = backend.received(REGISTER)
+
+    @Test
+    fun `signing in again after a sign-out registers the device at once`() = runTest {
+        val service = service()
+        service.update("fcm-1")
+        service.awaitRegistrations()
+        assertEquals(1, registrations().size)
+
+        // The sign-out: the session goes, then the unregister.
+        tokens.clear()
+        service.unregister(departing())
+        awaitUntil { deletes().isNotEmpty() && owed.pending == null }
+        testScheduler.advanceUntilIdle()
+        // The next sign-in: AuthService stores the session, then asks for a registration.
+        signIn()
+        service.onSignedIn()
+        service.awaitRegistrations()
+
+        assertEquals(2, registrations().size)
+        assertEquals("fcm-1", JSONObject(registrations().last().body).getJSONObject("push_token").getString("token_value"))
+        assertTrue(service.diagnostic.value.isRegistered)
+    }
+
+    @Test
+    fun `a sign-in during the sign-out's unregister registers the device once the DELETE is done`() = runTest {
+        val service = service()
+        service.update("fcm-1")
+        service.awaitRegistrations()
+        tokens.clear()
+        val held = backend.hold(deleteEndpoint())
+
+        service.unregister(departing())
+        held.arrived.await()
+        signIn()
+        service.onSignedIn()
+        testScheduler.advanceUntilIdle()
+        // Not while the DELETE is out: it would delete the row the registration adds.
+        assertEquals(1, registrations().size)
+
+        held.release(204)
+        awaitUntil { owed.pending == null }
+        testScheduler.advanceUntilIdle()
+        service.awaitRegistrations()
+
+        assertEquals(2, registrations().size)
+        assertTrue(service.diagnostic.value.isRegistered)
+    }
+
+    @Test
+    fun `a sign-out with no session owes nothing`() = runTest {
+        val service = service(signedIn = false)
+
+        service.unregister(null)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(0, deletes().size)
+        assertEquals(emptyList<WorkInfo.State>(), unregisterWork())
     }
 
     private companion object {

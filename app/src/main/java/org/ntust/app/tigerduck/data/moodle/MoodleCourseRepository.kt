@@ -11,6 +11,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.ntust.app.tigerduck.auth.AuthService
@@ -22,6 +23,8 @@ import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.network.moodle.LiveMoodleCourseApi
 import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentRecord
 import org.ntust.app.tigerduck.network.moodle.MoodleCourseApi
+import org.ntust.app.tigerduck.network.model.moodle.MoodleFile
+import org.ntust.app.tigerduck.network.model.moodle.MoodleMaterial
 import java.io.File
 import java.lang.reflect.Type
 import javax.inject.Inject
@@ -45,7 +48,10 @@ class MoodleCourseRepository internal constructor(
     private val idMap: suspend () -> Map<String, Int>,
     private val cachePort: (account: String) -> MoodleCachePort,
     private val picturesDir: (account: String) -> File?,
-    private val openedFilesDir: (account: String) -> File?,
+    /** The files downloaded on the device; null downloads nothing. */
+    private val downloads: MoodleFileDownloads?,
+    /** The account's folder of downloaded files, found off the main thread: it reads a salt from disk. */
+    private val downloadsDir: (account: String) -> File?,
     private val decode: (ByteArray) -> ImageBitmap?,
     authState: Flow<Boolean>,
     appScope: CoroutineScope,
@@ -67,6 +73,7 @@ class MoodleCourseRepository internal constructor(
         live: LiveMoodleCourseApi,
         demoAccount: DemoAccount,
         dataCache: DataCache,
+        downloads: MoodleFileDownloads,
         authService: AuthService,
         uiLanguage: UiLanguageMonitor,
         statusWriter: AssignmentStatusWriter,
@@ -85,7 +92,8 @@ class MoodleCourseRepository internal constructor(
         idMap = dataCache::loadMoodleCourseIds,
         cachePort = { account -> DataCachePort(dataCache, account) },
         picturesDir = { account -> File(dataCache.moodleFilesDir(account), "pictures") },
-        openedFilesDir = dataCache::moodleOpenedFilesDir,
+        downloads = downloads,
+        downloadsDir = dataCache::moodleDownloadsDir,
         decode = ::decodeBitmap,
         authState = authService.authState,
         appScope = appScope,
@@ -132,6 +140,8 @@ class MoodleCourseRepository internal constructor(
         stores[account to courseId]?.let { return@withLock it }
         val api = apiLocked() ?: return@withLock null
         val ids = idMap()
+        val filesDir = downloads?.let { withContext(Dispatchers.IO) { downloadsDir(account) } }
+            ?.let { File(it, courseId.toString()) }
         MoodleCourseStore(
             courseId = courseId,
             termCourseIds = MoodleCourseStore.termCourseIds(courseId, ids),
@@ -141,7 +151,8 @@ class MoodleCourseRepository internal constructor(
             context = contextLocked(account),
             scope = scope,
             picturesDir = picturesDir(account),
-            openedFilesDir = { openedFilesDir(account) },
+            downloads = downloads,
+            filesDir = filesDir,
             decodePicture = decode,
             assignmentRecords = assignmentsLocked(account, api).records.map { it.orEmpty() },
         ).also { stores[account to courseId] = it }
@@ -188,9 +199,14 @@ class MoodleCourseRepository internal constructor(
         )
     }
 
-    /** Drops every store and stops what they were fetching. Their files go with the cache wipe. */
+    /**
+     * Drops every store and stops what they were fetching and downloading, and deletes the
+     * downloaded files once the downloads have wound down, so none of the account's is left to
+     * the next; the cache wipe deletes the rest.
+     */
     private suspend fun clear() = lock.withLock {
         generation++
+        downloads?.clear()
         scope.cancel()
         scope = newScope()
         stores = mutableMapOf()
@@ -216,6 +232,10 @@ class MoodleCourseRepository internal constructor(
         override suspend fun functions() = api.functions()
         override suspend fun forums(courseIds: List<Int>) = api.forums(courseIds)
         override suspend fun discussions(forumId: Int, page: Int) = api.discussions(forumId, page)
+        override suspend fun posts(discussionId: Int) = api.posts(discussionId)
+        override suspend fun materials(courseId: Int) = api.materials(courseId)
+        override suspend fun markMaterialViewed(material: MoodleMaterial, isCurrent: () -> Boolean) =
+            api.markMaterialViewed(material, isCurrent)
         override suspend fun markViewed(discussionId: Int, isCurrent: () -> Boolean) = api.markViewed(discussionId, isCurrent)
         override suspend fun members(courseId: Int) = api.members(courseId)
         override suspend fun picture(url: String) = api.picture(url)
@@ -224,8 +244,8 @@ class MoodleCourseRepository internal constructor(
         override suspend fun submission(assignId: Int) = api.submission(assignId)
         override suspend fun comments(cmid: Int, submissionId: Int) = api.comments(cmid, submissionId)
         override suspend fun groups(courseId: Int) = api.groups(courseId)
-        override suspend fun download(file: org.ntust.app.tigerduck.network.model.moodle.MoodleFile, target: File, maxBytes: Long) =
-            api.download(file, target, maxBytes)
+        override suspend fun download(file: MoodleFile, target: File, maxBytes: Long, progress: (Float) -> Unit) =
+            api.download(file, target, maxBytes, progress)
     }
 
     private class MemoryCachePort : MoodleCachePort {

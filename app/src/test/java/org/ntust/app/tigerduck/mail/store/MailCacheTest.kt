@@ -48,6 +48,20 @@ class MailCacheTest {
     }
 
     @Test
+    fun `a folder page is dropped only under the validity it was saved under`() {
+        val cache = MailCache(tmp.root)
+        cache.saveFolder("INBOX", MailPage(2, 1, listOf(summary(1)), null))
+        // Validity 1 is what the caller found obsolete; this page is already the new generation's.
+        cache.deleteFolderUnder("INBOX", 1)
+        assertEquals(2L, cache.loadFolder("INBOX")!!.uidValidity)
+        cache.deleteFolderUnder("INBOX", 2)
+        assertNull(cache.loadFolder("INBOX"))
+        // Nothing cached is nothing to drop.
+        cache.deleteFolderUnder("INBOX", 2)
+        assertNull(cache.loadFolder("INBOX"))
+    }
+
+    @Test
     fun `bodies round trip and are keyed by uid validity`() {
         val cache = MailCache(tmp.root)
         cache.saveBody("INBOX", 5, 7, body())

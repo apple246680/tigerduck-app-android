@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">Semat kursus hari ini di atas jadual</string>
     <string name="settings_privacy_policy">Dasar privasi</string>
     <string name="settings_push_server_nav_label">Tolak pelayan</string>
-    <string name="settings_remember_bulletin_filter">Ingat penapis buletin</string>
     <string name="settings_reset_course_colors">Tetapkan semula warna kursus</string>
     <string name="settings_reset_course_colors_confirm_message">Setiap kursus akan diberikan warna baharu yang unik — mula-mula daripada palet praset, kemudian rawak apabila palet habis.</string>
     <string name="settings_reset_course_colors_confirm_title">Tetapkan semula warna kursus?</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">Gagal</string>
     <string name="sync_status_hours_ago_short">%1$d j lalu</string>
     <string name="sync_status_just_now">Baru sahaja</string>
-    <string name="sync_status_last_synced">Disegerakkan kali terakhir</string>
     <string name="sync_status_last_updated">Dikemas kini kali terakhir</string>
     <string name="sync_status_minimal">Terhad</string>
     <string name="sync_status_minutes_ago_short">%1$d min lalu</string>
     <string name="sync_status_nav_label">Status TigerSync</string>
-    <string name="sync_status_never_synced">Belum pernah disegerak</string>
     <string name="sync_status_never_updated">Belum pernah dikemas kini</string>
     <string name="sync_status_ok">OK</string>
     <string name="sync_status_syncing">Menyegerakkan…</string>

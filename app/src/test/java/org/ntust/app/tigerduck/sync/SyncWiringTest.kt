@@ -1,5 +1,6 @@
 package org.ntust.app.tigerduck.sync
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -107,6 +108,84 @@ class SyncWiringTest {
             assertTrue("$rel $name no longer sends the waiting course adds before the snapshot", retry in 0 until fetch)
             assertTrue("$rel $name no longer lets go of the course adds the snapshot lists", listed > fetch)
         }
+    }
+
+    /** tigerduck-app-android#380. */
+    @Test
+    fun `a colour or name whose PATCH failed is kept, and every full sync sends what waits first and holds it against the snapshot`() {
+        assertCalls("ui/screen/classtable/ClassTableViewModel.kt", "syncCourseOverride", "pendingCourseOverrides.send(")
+        for ((rel, name) in listOf(
+            "ui/screen/home/HomeBackendSync.kt" to "pull",
+            "notification/BackgroundSyncWorker.kt" to "syncOverridesFromBackend",
+        )) {
+            val body = body(rel, name)
+            val retry = body.indexOf("pendingCourseOverrides.retry()")
+            val fetch = body.indexOf("syncApiClient.fetchFullSync()")
+            val held = body.indexOf("pendingCourseOverrides.held(result.fetchedAtMs)")
+            assertTrue("$rel $name no longer sends the waiting colours and names before the snapshot", retry in 0 until fetch)
+            assertTrue("$rel $name no longer holds the waiting colours and names against the snapshot", held > fetch)
+        }
+    }
+
+    /** tigerduck-app-android#380: sent directly, a reset's or a sync's colour races the outbox, and an older queued one lands over it. */
+    @Test
+    fun `every course colour or name PATCH goes through the outbox`() {
+        var root: File? = File("").absoluteFile
+        while (root != null && !File(root, "app/src/main/java").isDirectory && !File(root, "src/main/java").isDirectory) {
+            root = root.parentFile
+        }
+        val main = root?.let { listOf(File(it, "app/src/main/java"), File(it, "src/main/java")).first(File::isDirectory) }
+            ?: throw AssertionError("Could not locate app/src/main/java from ${File("").absolutePath}")
+        val callers = main.walkTopDown()
+            .filter { it.isFile && it.extension == "kt" && ".patchCourseOverride(" in it.readText() }
+            .map { it.name }
+            .toSortedSet()
+        assertEquals(setOf("PendingCourseOverrides.kt"), callers)
+    }
+
+    /** tigerduck-app-android#380: queued one by one as each is sent, a reset's older colour replaced a pick made meanwhile. */
+    @Test
+    fun `a reset of every colour is queued whole before the colours are saved, and sent after`() {
+        val body = body("data/CourseColorStore.kt", "resetAllColors")
+        val reserved = body.indexOf("val version = pendingCourseOverrides.reserveVersion()")
+        val read = body.indexOf("dataCache.loadCourses()")
+        val queued = body.indexOf("pendingCourseOverrides.queue(")
+        val saved = body.indexOf("dataCache.saveCourses(updated)")
+        val sent = body.indexOf("pendingCourseOverrides.retry()")
+        assertTrue("resetAllColors no longer reserves the batch's version before reading the colours", reserved in 0 until read)
+        assertTrue("resetAllColors no longer queues every colour before saving them", queued in read until saved)
+        assertTrue("resetAllColors no longer sends the queued colours after saving them", sent > saved)
+    }
+
+    /** tigerduck-app-android#380: versioned when queued, a batch outbid an edit made while its snapshot was read. */
+    @Test
+    fun `Use Local reserves its batch's version before reading the colours and names it sends`() {
+        val body = body("ui/screen/settings/SettingsViewModel.kt", "resolve")
+        val reserved = body.indexOf("val version = pendingCourseOverrides.reserveVersion()")
+        val read = body.indexOf("dataCache.loadCourses()")
+        val queued = body.indexOf("pendingCourseOverrides.queue(")
+        assertTrue("resolve no longer reserves the batch's version before reading what Use Local sends", reserved in 0 until read)
+        // The read is the queue call's first argument, so it sits inside the call: what is pinned
+        // is that the batch goes in at the version reserved above.
+        assertTrue("resolve no longer queues what Use Local sends at the reserved version", queued > reserved && "version,\n" in body)
+    }
+
+    /** tigerduck-app-android#380: a course gone from this phone would be PATCHed, and refused, at every sync. */
+    @Test
+    fun `the syncs forget the waiting colours and names of the courses they prune or a reset elsewhere wipes`() {
+        assertCalls("ui/screen/home/HomeBackendSync.kt", "syncCourseList", "pendingCourseOverrides.forget(")
+        assertCalls("ui/screen/home/HomeBackendSync.kt", "applyCourseReset", "pendingCourseOverrides.forget(")
+        assertCalls("notification/BackgroundSyncWorker.kt", "reconcileCurrentSemester", "pendingCourseOverrides.forget(")
+    }
+
+    /** tigerduck-app-android#380: the answer decides the waiting colours and names too. */
+    @Test
+    fun `Use Server drops the waiting colours and names of its categories, and Use Local sends its own once the hold is lifted`() {
+        assertCalls("ui/screen/settings/SettingsViewModel.kt", "resolve", "pendingCourseOverrides.adoptServer(conflict.categories)")
+        val body = body("ui/screen/settings/SettingsViewModel.kt", "resolveReenableConflict")
+        val lifted = body.indexOf("prefs.pendingConflictCategories - held")
+        val retry = body.indexOf("pendingCourseOverrides.retry()")
+        assertTrue("resolveReenableConflict no longer sends the queued colours and names once the hold is lifted", retry > lifted && lifted >= 0)
     }
 
     @Test

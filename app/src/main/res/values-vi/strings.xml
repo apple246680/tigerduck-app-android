@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">Ghim môn học hôm nay lên đầu thời khoá biểu</string>
     <string name="settings_privacy_policy">Chính sách quyền riêng tư</string>
     <string name="settings_push_server_nav_label">Đẩy máy chủ</string>
-    <string name="settings_remember_bulletin_filter">Ghi nhớ bộ lọc bản tin</string>
     <string name="settings_reset_course_colors">Gán lại màu khóa học</string>
     <string name="settings_reset_course_colors_confirm_message">Mỗi khóa học sẽ nhận màu mới, không trùng — trước hết từ bảng màu định sẵn, sau đó ngẫu nhiên khi đã dùng hết.</string>
     <string name="settings_reset_course_colors_confirm_title">Gán lại màu khóa học?</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">Thất bại</string>
     <string name="sync_status_hours_ago_short">%1$d g trước</string>
     <string name="sync_status_just_now">Vừa xong</string>
-    <string name="sync_status_last_synced">Đồng bộ lần cuối</string>
     <string name="sync_status_last_updated">Cập nhật lần cuối</string>
     <string name="sync_status_minimal">Giới hạn</string>
     <string name="sync_status_minutes_ago_short">%1$d ph trước</string>
     <string name="sync_status_nav_label">Trạng thái TigerSync</string>
-    <string name="sync_status_never_synced">Chưa bao giờ đồng bộ</string>
     <string name="sync_status_never_updated">Chưa bao giờ cập nhật</string>
     <string name="sync_status_ok">Bình thường</string>
     <string name="sync_status_syncing">Đang đồng bộ…</string>

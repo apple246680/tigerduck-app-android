@@ -984,7 +984,6 @@
     <string name="settings_pin_today_courses_on_class_table">تثبيت مقررات اليوم أعلى الجدول الدراسي</string>
     <string name="settings_privacy_policy">سياسة الخصوصية</string>
     <string name="settings_push_server_nav_label">دفع الخادم</string>
-    <string name="settings_remember_bulletin_filter">تذكر مرشحات النشرة</string>
     <string name="settings_reset_course_colors">إعادة تعيين ألوان المقررات</string>
     <string name="settings_reset_course_colors_confirm_message">سيُسنَد لكل مقرر لون فريد جديد — من اللوحة المحددة أولاً، ثم عشوائياً عند نفاد اللوحة.</string>
     <string name="settings_reset_course_colors_confirm_title">هل تريد إعادة تعيين ألوان المقررات؟</string>
@@ -1058,12 +1057,10 @@
     <string name="sync_status_failed">فشل</string>
     <string name="sync_status_hours_ago_short">منذ %1$d س</string>
     <string name="sync_status_just_now">للتو</string>
-    <string name="sync_status_last_synced">آخر مزامنة</string>
     <string name="sync_status_last_updated">آخر تحديث</string>
     <string name="sync_status_minimal">محدود</string>
     <string name="sync_status_minutes_ago_short">منذ %1$d د</string>
     <string name="sync_status_nav_label">حالة TigerSync</string>
-    <string name="sync_status_never_synced">لم تتم المزامنة قط</string>
     <string name="sync_status_never_updated">لم يتم التحديث قط</string>
     <string name="sync_status_ok">سليم</string>
     <string name="sync_status_syncing">جارٍ المزامنة…</string>

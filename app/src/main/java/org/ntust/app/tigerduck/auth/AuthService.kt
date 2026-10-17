@@ -47,6 +47,7 @@ class AuthService @Inject constructor(
     private val bulletinCache: BulletinCache,
     private val bulletinReadStateStore: BulletinReadStateStore,
     private val importedClassTables: ImportedClassTableStore,
+    private val widgetUpdater: org.ntust.app.tigerduck.widget.WidgetUpdater,
     @param:ApplicationScope private val appScope: CoroutineScope,
     private val demoAccount: org.ntust.app.tigerduck.demo.DemoAccount,
     private val prefs: org.ntust.app.tigerduck.data.preferences.AppPreferences,
@@ -341,19 +342,17 @@ class AuthService @Inject constructor(
     }
 
     fun logout() {
-        // Snapshot the bearer BEFORE wiping tokens: clearNtustCredentials() and
-        // authTokenManager.logout() both null the v3 access token, and
-        // pushRegistration.unregister() runs its DELETE fire-and-forget on its
-        // own scope — so without a captured header the device-unregister call
-        // would find no session to go out with, and leak the device row.
-        val authHeader = authTokenManager.currentAuthHeader()
         // A school mail account signed in as the same student goes with it, and its background
         // checks and notifications stop; another student's stays. Before the sign-out below,
         // which takes the student ID it is matched by.
         credentials.ntustStudentId?.let { mailAccount.signOutIfSchoolAccount(it) }
         // One step for a sign-in under way, which checks the generation under the same lock
         // before it stores anything: it either stores before this clears, or stores nothing.
-        synchronized(accountLock) {
+        // The session it wipes, taken as it moves the generation: the
+        // pushRegistration.unregister() below sends its DELETE afterwards, until
+        // the server has it, and without the departing session it would find
+        // none to go out with, and leak the device row.
+        val departing = synchronized(accountLock) {
             credentials.signOutSchoolAccount()
             authTokenManager.logout()
         }
@@ -375,6 +374,9 @@ class AuthService @Inject constructor(
         // The cache they dated is wiped below; left behind, they would date
         // the next account's data, and hold its first background sync off.
         prefs.clearSyncStamps()
+        // The term picked in the class table was the departing student's. Cleared, the next
+        // student's picker follows the newest term.
+        prefs.classTableSelectedSemester = null
         // A re-enable check compares this device's data, which is wiped below.
         // Left pending, it would hold the next session's assignment marks and
         // then offer Use Local, sending that emptied data over the server's.
@@ -385,7 +387,7 @@ class AuthService @Inject constructor(
         storedPasswordLatch.clear()
         _loginError.value = null
         _authState.value = false
-        pushRegistration.unregister(authHeader)
+        pushRegistration.unregister(departing)
         // Last, so everything above still sees the demo account and keeps
         // its requests on the device.
         demoAccount.exit()
@@ -406,6 +408,10 @@ class AuthService @Inject constructor(
             // so the next session starts coherent instead of half-stale.
             runCatching { bulletinCache.clear() }
                 .onFailure { android.util.Log.w("AuthService", "bulletinCache.clear failed on logout: ${it.logSummary()}") }
+            // Now that the timetable is gone: a widget left alone shows the departing student's
+            // until its next scheduled update, up to half an hour away.
+            runCatching { widgetUpdater.updateAll() }
+                .onFailure { android.util.Log.w("AuthService", "widget update failed on logout: ${it.logSummary()}") }
         }
     }
 

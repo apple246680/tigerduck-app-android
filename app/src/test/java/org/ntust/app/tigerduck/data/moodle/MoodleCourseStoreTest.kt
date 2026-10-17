@@ -4,6 +4,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
@@ -99,12 +100,35 @@ class MoodleCourseStoreTest {
             file: org.ntust.app.tigerduck.network.model.moodle.MoodleFile,
             target: java.io.File,
             maxBytes: Long,
+            progress: (Float) -> Unit,
         ) {
             downloads++
             lastLimit = maxBytes
             downloadAnswer(target)
+            progressShares.forEach(progress)
             downloadStarted.trySend(Unit)
             downloadGate?.await()
+        }
+        var progressShares = listOf<Float>()
+
+        var postsAnswer: (Int) -> List<org.ntust.app.tigerduck.network.model.moodle.MoodlePost> = { emptyList() }
+        var postsGate: CompletableDeferred<Unit>? = null
+        var postCalls = 0
+        override suspend fun posts(discussionId: Int): List<org.ntust.app.tigerduck.network.model.moodle.MoodlePost> {
+            postCalls++
+            postsGate?.await()
+            return postsAnswer(discussionId)
+        }
+
+        var materialsAnswer: () -> org.ntust.app.tigerduck.network.model.moodle.MoodleCourseMaterials = { testMaterials() }
+        override suspend fun materials(courseId: Int) = materialsAnswer()
+
+        val materialViews = mutableListOf<Int>()
+        override suspend fun markMaterialViewed(
+            material: org.ntust.app.tigerduck.network.model.moodle.MoodleMaterial,
+            isCurrent: () -> Boolean,
+        ) {
+            if (isCurrent()) materialViews += material.instance
         }
     }
 
@@ -118,16 +142,30 @@ class MoodleCourseStoreTest {
 
     private val records = kotlinx.coroutines.flow.MutableStateFlow(emptyList<org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentRecord>())
 
-    private fun TestScope.store() = MoodleCourseStore(
+    private fun TestScope.store(): MoodleCourseStore {
+        if (!::downloadScope.isInitialized) downloadScope = backgroundScope
+        return buildStore()
+    }
+
+    private fun TestScope.buildStore() = MoodleCourseStore(
         courseId = 5,
         termCourseIds = listOf(6),
         courseCodes = listOf("CS3005301"),
         api = api,
         context = MoodleCacheContext("B1", cache, isCurrent = { signedIn }, now = { now }),
         scope = backgroundScope,
-        openedFilesDir = { tmp.root },
+        downloads = downloads,
+        filesDir = java.io.File(tmp.root, "account/5"),
         assignmentRecords = records,
     )
+
+    private val downloads by lazy { MoodleFileDownloads(root = { tmp.root }, scope = downloadScope) }
+
+    /** Where downloads run, as the app's scope: apart from the store's, which a sign-out cancels. */
+    private lateinit var downloadScope: kotlinx.coroutines.CoroutineScope
+
+    private fun ref(file: org.ntust.app.tigerduck.network.model.moodle.MoodleFile = attachment) =
+        MoodleFileRef(file, MoodleFileOwner.Post(90))
 
     @Test
     fun `a round that ends while the course detail shows brings the assignments row`() = runTest(UnconfinedTestDispatcher()) {
@@ -324,8 +362,8 @@ class MoodleCourseStoreTest {
     fun `an attachment is downloaded into the app once, and opened from there after`() = runTest(UnconfinedTestDispatcher()) {
         val store = store()
 
-        val first = store.openAttachment(attachment)
-        val second = store.openAttachment(attachment)
+        val first = store.download(ref(attachment))
+        val second = store.download(ref(attachment))
 
         val file = (first as MoodleAttachment.Local).file
         assertEquals("pdf bytes", file.readText())
@@ -342,7 +380,7 @@ class MoodleCourseStoreTest {
         }
         val store = store()
 
-        val result = store.openAttachment(attachment)
+        val result = store.download(ref(attachment))
 
         assertTrue((result as MoodleAttachment.Failed).error is IOException)
         assertTrue(tmp.root.walkTopDown().none { it.isFile })
@@ -353,7 +391,7 @@ class MoodleCourseStoreTest {
         val store = store()
         val elsewhere = attachment.copy(url = "https://example.com/hw3.pdf")
 
-        assertEquals(MoodleAttachment.Link("https://example.com/hw3.pdf"), store.openAttachment(elsewhere))
+        assertEquals(MoodleAttachment.Link("https://example.com/hw3.pdf"), store.download(ref(elsewhere)))
         assertEquals(0, api.downloads)
     }
 
@@ -421,9 +459,9 @@ class MoodleCourseStoreTest {
     @Test
     fun `same-named files in different places, or a replaced file, get copies of their own`() = runTest(UnconfinedTestDispatcher()) {
         val store = store()
-        val first = (store.openAttachment(attachment) as MoodleAttachment.Local).file
-        val elsewhere = (store.openAttachment(attachment.copy(url = attachment.url.replace("/90/", "/91/"))) as MoodleAttachment.Local).file
-        val replaced = (store.openAttachment(attachment.copy(modified = 2L)) as MoodleAttachment.Local).file
+        val first = (store.download(ref(attachment)) as MoodleAttachment.Local).file
+        val elsewhere = (store.download(ref(attachment.copy(url = attachment.url.replace("/90/", "/91/")))) as MoodleAttachment.Local).file
+        val replaced = (store.download(ref(attachment.copy(modified = 2L))) as MoodleAttachment.Local).file
 
         assertEquals(setOf("hw3.pdf"), setOf(first.name, elsewhere.name, replaced.name))
         assertEquals(3, setOf(first, elsewhere, replaced).size)
@@ -431,30 +469,25 @@ class MoodleCourseStoreTest {
     }
 
     @Test
-    fun `a file with no listed type is fetched again each time rather than trusted from before`() = runTest(UnconfinedTestDispatcher()) {
+    fun `a file Moodle lists no type for is kept once downloaded, as any other`() = runTest(UnconfinedTestDispatcher()) {
         val store = store()
         val untyped = attachment.copy(mimeType = null)
 
-        store.openAttachment(untyped)
-        store.openAttachment(untyped)
-        assertEquals(2, api.downloads)
-
-        val unknown = attachment.copy(mimeType = "document/unknown")
-        store.openAttachment(unknown)
-        store.openAttachment(unknown)
-        assertEquals("Moodle's unknown type checks nothing either", 4, api.downloads)
+        store.download(ref(untyped))
+        store.download(ref(untyped))
+        assertEquals(1, api.downloads)
     }
 
     @Test
     fun `a download is held to the size Moodle lists, and an oversized file opens on the website`() = runTest(UnconfinedTestDispatcher()) {
         val store = store()
-        store.openAttachment(attachment)
+        store.download(ref(attachment))
         assertEquals(9L, api.lastLimit)
 
         val huge = attachment.copy(size = 2L * 1024 * 1024 * 1024)
         assertEquals(
             MoodleAttachment.Link("https://moodle2.ntust.edu.tw/pluginfile.php/1/mod_forum/attachment/90/hw3.pdf"),
-            store.openAttachment(huge),
+            store.download(ref(huge)),
         )
         assertEquals(1, api.downloads)
     }
@@ -467,27 +500,14 @@ class MoodleCourseStoreTest {
         }
         val store = store()
 
-        assertEquals(MoodleAttachment.Dropped, store.openAttachment(attachment))
+        assertEquals(MoodleAttachment.Dropped, store.download(ref(attachment)))
         assertTrue(tmp.root.walkTopDown().none { it.isFile })
-    }
-
-    @Test
-    fun `copies opened more than a day ago are pruned`() = runTest(UnconfinedTestDispatcher()) {
-        val old = java.io.File(tmp.root, "stale-slot/old.pdf").apply {
-            parentFile!!.mkdirs()
-            writeText("old")
-        }
-        old.parentFile!!.setLastModified(System.currentTimeMillis() - 2 * 24 * 3_600_000L)
-
-        store().openAttachment(attachment)
-
-        assertTrue(!old.exists())
     }
 
     @Test
     fun `a file name cannot climb out of its folder`() = runTest(UnconfinedTestDispatcher()) {
         val sneaky = attachment.copy(name = "..\\..\\x/y.pdf")
-        val file = (store().openAttachment(sneaky) as MoodleAttachment.Local).file
+        val file = (store().download(ref(sneaky)) as MoodleAttachment.Local).file
 
         assertTrue(file.canonicalPath.startsWith(tmp.root.canonicalPath))
         assertTrue(!file.name.contains('/') && !file.name.contains('\\') && !file.name.startsWith("."))
@@ -498,9 +518,9 @@ class MoodleCourseStoreTest {
         api.downloadGate = CompletableDeferred()
         val store = store()
 
-        val first = async { store.openAttachment(attachment) }
+        val first = async { store.download(ref(attachment)) }
         api.downloadStarted.receive()
-        val second = async { store.openAttachment(attachment) }
+        val second = async { store.download(ref(attachment)) }
         runCurrent()
         api.downloadGate!!.complete(Unit)
 
@@ -510,50 +530,78 @@ class MoodleCourseStoreTest {
     }
 
     @Test
-    fun `a download stopped by a sign-out leaves no partial file`() = runTest(UnconfinedTestDispatcher()) {
+    fun `a download stopped by a sign-out leaves no partial file and nothing to open`() = runTest(UnconfinedTestDispatcher()) {
         api.downloadAnswer = { it.writeText("half") }
         api.downloadGate = CompletableDeferred()
-        val storeScope = kotlinx.coroutines.CoroutineScope(coroutineContext + kotlinx.coroutines.SupervisorJob(coroutineContext[kotlinx.coroutines.Job]))
-        val store = MoodleCourseStore(
-            courseId = 5, termCourseIds = emptyList(), courseCodes = emptyList(), api = api,
-            context = MoodleCacheContext("B1", cache, isCurrent = { signedIn }, now = { now }),
-            scope = storeScope, openedFilesDir = { tmp.root },
-        )
-        val opening = async { runCatching { store.openAttachment(attachment) } }
+        val store = store()
+        val opening = async { store.download(ref()) }
         api.downloadStarted.receive()
         assertTrue("the partial file is there while it downloads", tmp.root.walkTopDown().any { it.isFile })
 
-        storeScope.cancel()
-        opening.await()
+        downloads.clear()
 
+        assertEquals(MoodleAttachment.Dropped, opening.await())
         assertTrue(tmp.root.walkTopDown().none { it.isFile })
     }
 
     @Test
-    fun `a file being fetched again is not pruned by another opened meanwhile`() = runTest(UnconfinedTestDispatcher()) {
-        val store = store()
-        val untyped = attachment.copy(mimeType = null)
-        val first = (store.openAttachment(untyped) as MoodleAttachment.Local).file
-        first.parentFile!!.setLastModified(System.currentTimeMillis() - 2 * 24 * 3_600_000L)
-
-        api.downloadStarted.receive()
+    fun `a tap on the progress ring stops the download and leaves nothing`() = runTest(UnconfinedTestDispatcher()) {
+        api.downloadAnswer = { it.writeText("half") }
         api.downloadGate = CompletableDeferred()
-        val again = async { store.openAttachment(untyped) }
+        val store = store()
+        val opening = async { store.download(ref()) }
         api.downloadStarted.receive()
-        // Another file opened while the first is fetched again: its prune runs before its download.
-        val other = async { store.openAttachment(attachment.copy(url = attachment.url.replace("/90/", "/92/"))) }
-        api.downloadStarted.receive()
-        api.downloadGate!!.complete(Unit)
+        assertTrue(store.downloadState(ref(), downloads.snapshot.value) is MoodleDownloadState.Downloading)
 
-        assertEquals(MoodleAttachment.Local(first), again.await())
-        assertTrue(first.isFile)
-        assertTrue(other.await() is MoodleAttachment.Local)
+        store.cancelDownload(ref())
+
+        assertEquals(MoodleAttachment.Dropped, opening.await())
+        assertEquals(MoodleDownloadState.NotDownloaded, store.downloadState(ref(), downloads.snapshot.value))
+        assertTrue(tmp.root.walkTopDown().none { it.isFile })
+    }
+
+    @Test
+    fun `progress moves in whole percents, and a failure shows on the row`() = runTest(UnconfinedTestDispatcher()) {
+        api.downloadGate = CompletableDeferred()
+        api.progressShares = listOf(0.123f, 0.5f)
+        val store = store()
+        val opening = async { store.download(ref()) }
+        api.downloadStarted.receive()
+
+        assertEquals(MoodleDownloadState.Downloading(0.5f), store.downloadState(ref(), downloads.snapshot.value))
+        api.downloadGate!!.complete(Unit)
+        opening.await()
+        assertTrue(store.downloadState(ref(), downloads.snapshot.value) is MoodleDownloadState.Downloaded)
+
+        api.downloadGate = null
+        api.downloadAnswer = { throw IOException("offline") }
+        val other = ref(attachment.copy(url = attachment.url.replace("/90/", "/93/")))
+        assertTrue(store.download(other) is MoodleAttachment.Failed)
+        assertTrue(store.downloadState(other, downloads.snapshot.value) is MoodleDownloadState.Failed)
+    }
+
+    @Test
+    fun `a copy downloaded before shows as downloaded when the course opens again`() = runTest(UnconfinedTestDispatcher()) {
+        val file = (store().download(ref()) as MoodleAttachment.Local).file
+        // A new run of the app: nothing known but what is on disk.
+        val fresh = MoodleFileDownloads(root = { tmp.root }, scope = backgroundScope, io = kotlinx.coroutines.Dispatchers.Unconfined)
+        val again = MoodleCourseStore(
+            courseId = 5, termCourseIds = emptyList(), courseCodes = emptyList(), api = api,
+            context = MoodleCacheContext("B1", cache, isCurrent = { signedIn }, now = { now }),
+            scope = backgroundScope, downloads = fresh, filesDir = java.io.File(tmp.root, "account/5"),
+        )
+        // The store learns the folder in a coroutine of its own.
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            kotlinx.coroutines.withTimeout(5_000) { fresh.snapshot.first { it.copies.isNotEmpty() } }
+        }
+
+        assertEquals(MoodleDownloadState.Downloaded(file), again.downloadState(ref(), fresh.snapshot.value))
     }
 
     @Test
     fun `a long name is cut to fit the file system, keeping its extension`() = runTest(UnconfinedTestDispatcher()) {
         val long = attachment.copy(name = "資料結構期中考試題與詳解".repeat(12) + ".pdf")
-        val file = (store().openAttachment(long) as MoodleAttachment.Local).file
+        val file = (store().download(ref(long)) as MoodleAttachment.Local).file
 
         assertTrue(file.name.toByteArray().size <= 200)
         assertTrue(file.name.endsWith(".pdf"))
@@ -564,24 +612,10 @@ class MoodleCourseStoreTest {
     fun `a long name whose extension cannot be kept does not end in another`() = runTest(UnconfinedTestDispatcher()) {
         // Cut at 200 bytes, it would end in ".html", which another app reads as a web page.
         val long = attachment.copy(name = "a".repeat(195) + ".html." + "x".repeat(20), mimeType = "application/octet-stream")
-        val file = (store().openAttachment(long) as MoodleAttachment.Local).file
+        val file = (store().download(ref(long)) as MoodleAttachment.Local).file
 
         assertTrue(file.name.toByteArray().size <= 200)
         assertTrue("got ${file.name}", !file.name.contains('.'))
-    }
-
-    @Test
-    fun `every store dates and prunes the opened files under one lock`() = runTest(UnconfinedTestDispatcher()) {
-        val opening: kotlinx.coroutines.Deferred<MoodleAttachment>
-        synchronized(MoodleCourseStore.OPENED_FILES_LOCK) {
-            // Another store, sharing the folder, pruning: this one waits rather than date a slot
-            // that prune is deciding on.
-            opening = async(kotlinx.coroutines.Dispatchers.IO) { store().openAttachment(attachment) }
-            Thread.sleep(300)
-            assertTrue("no slot made while the lock is held", tmp.root.listFiles().isNullOrEmpty())
-        }
-
-        assertTrue(opening.await() is MoodleAttachment.Local)
     }
 
     @Test
@@ -678,5 +712,134 @@ class MoodleCourseStoreTest {
 
         assertEquals(1, store.forums.value!!.forums.single().unreadPostCount)
         assertEquals(true, store.sectionRows.value.single().hasUnread)
+    }
+
+    // --- threads ---
+
+    private val postsAllowed get() = api.allowed + MoodleCourseApi.DISCUSSION_POSTS_FUNCTION
+
+    @Test
+    fun `opening a thread fetches its posts, keeps which were unread and only then marks it read`() = runTest(UnconfinedTestDispatcher()) {
+        api.allowed = postsAllowed
+        val general = testForum(id = 2, courseId = 5, type = "general", count = 1, unread = 2)
+        api.forumList = listOf(general)
+        api.pages = mapOf(0 to listOf(testDiscussion(40, unread = 2)))
+        api.postsAnswer = { listOf(testPost(400), testPost(401, parent = 400, unread = true), testPost(402, parent = 400, unread = true)) }
+        api.postsGate = CompletableDeferred()
+        val store = store()
+        store.refreshForums()
+        val pages = store.discussions(general)
+        pages.refresh()
+
+        val opening = async { store.openThread(pages.list.value!!.discussions.single(), general) }
+        runCurrent()
+        assertTrue("nothing is marked read before the posts show", api.viewed.isEmpty())
+        api.postsGate!!.complete(Unit)
+
+        assertEquals(setOf(401, 402), opening.await())
+        assertEquals(listOf(40), api.viewed)
+        assertEquals(0, pages.list.value!!.discussions.single().unreadCount)
+        assertTrue("the thread's own dots clear", store.thread(40).value!!.posts.none { it.isUnread })
+        assertEquals(false, store.sectionRows.value.single { it.kind == MoodleSectionRow.Kind.FORUMS }.hasUnread)
+    }
+
+    @Test
+    fun `a thread that fails to load is not marked read, and keeps the list's first post`() = runTest(UnconfinedTestDispatcher()) {
+        api.allowed = postsAllowed
+        val general = testForum(id = 2, courseId = 5, type = "general", count = 1)
+        api.postsAnswer = { throw IOException("offline") }
+        val store = store()
+
+        assertNull(store.openThread(testDiscussion(40, unread = 1), general))
+        assertTrue(api.viewed.isEmpty())
+        assertEquals(listOf(400), MoodleThreads.entries(testDiscussion(40), store.thread(40).value).map { it.post.id })
+    }
+
+    @Test
+    fun `a site without the posts call keeps the first post and fetches no replies`() = runTest(UnconfinedTestDispatcher()) {
+        val store = store()
+        store.refreshThread(40)
+
+        assertEquals(0, api.postCalls)
+        assertTrue(store.thread(40).value!!.posts.isEmpty())
+    }
+
+    @Test
+    fun `the forums row needs a general forum with discussions, and a site without posts shows none`() = runTest(UnconfinedTestDispatcher()) {
+        api.forumList = listOf(
+            testForum(id = 1, courseId = 5, type = "news", count = 2),
+            testForum(id = 2, courseId = 5, type = "general", count = 3, unread = 1),
+        )
+        val store = store()
+        store.refreshForums()
+        assertTrue(store.sectionRows.value.none { it.kind == MoodleSectionRow.Kind.FORUMS })
+
+        api.allowed = postsAllowed
+        store.refreshForums()
+        assertEquals(MoodleSectionRow(MoodleSectionRow.Kind.FORUMS, 3, true), store.sectionRows.value.last())
+        assertEquals(listOf(2), store.generalForums.value.map { it.id })
+    }
+
+    // --- materials ---
+
+    private val contentsAllowed get() = api.allowed + MoodleCourseApi.CONTENTS_FUNCTION + "mod_resource_view_resource"
+
+    @Test
+    fun `materials count files and links, and a site without the call hides their row`() = runTest(UnconfinedTestDispatcher()) {
+        val store = store()
+        store.refreshMaterials()
+        assertTrue(store.materials.value!!.sections.isEmpty())
+        assertTrue(store.sectionRows.value.isEmpty())
+
+        api.allowed = contentsAllowed
+        store.refreshMaterials()
+        assertEquals(MoodleSectionRow(MoodleSectionRow.Kind.MATERIALS, 4, false), store.sectionRows.value.single())
+    }
+
+    @Test
+    fun `opening a file logs a view only where the site allows it, and not after a sign-out`() = runTest(UnconfinedTestDispatcher()) {
+        val store = store()
+        val syllabus = testMaterials().sections[0].materials[0]
+        val labs = testMaterials().sections[1].materials[0]
+        api.allowed = contentsAllowed
+
+        store.open(syllabus)
+        store.open(labs)
+        assertEquals("the folder view is not allowed here", listOf(7), api.materialViews)
+
+        signedIn = false
+        store.open(syllabus)
+        assertEquals(listOf(7), api.materialViews)
+    }
+
+    @Test
+    fun `a copy of a version Moodle no longer lists is deleted once the materials come in`() = runTest(UnconfinedTestDispatcher()) {
+        api.allowed = contentsAllowed
+        val store = store()
+        store.refreshMaterials()
+        val old = MoodleMaterials.fileRefs(store.materials.value!!).first()
+        val oldCopy = (store.download(old) as MoodleAttachment.Local).file
+        val untouched = MoodleMaterials.fileRefs(store.materials.value!!)[1]
+        val untouchedCopy = (store.download(untouched) as MoodleAttachment.Local).file
+
+        api.materialsAnswer = {
+            val listed = testMaterials()
+            listed.copy(
+                sections = listed.sections.map { section ->
+                    section.copy(
+                        materials = section.materials.map { m ->
+                            if (m.id == 101) m.copy(files = m.files.map { it.copy(modified = 2L) }) else m
+                        },
+                    )
+                },
+            )
+        }
+        store.refreshMaterials()
+
+        assertTrue(!oldCopy.exists())
+        assertTrue("a file Moodle lists unchanged stays", untouchedCopy.exists())
+        val newer = MoodleMaterials.fileRefs(store.materials.value!!).first()
+        assertEquals(MoodleDownloadState.NotDownloaded, store.downloadState(newer, downloads.snapshot.value))
+        assertEquals(MoodleDownloadState.NotDownloaded, store.downloadState(old, downloads.snapshot.value))
     }
 }
