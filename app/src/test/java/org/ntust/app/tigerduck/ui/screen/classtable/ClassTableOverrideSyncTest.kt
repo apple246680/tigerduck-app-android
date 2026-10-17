@@ -55,6 +55,24 @@ class ClassTableOverrideSyncTest {
         assertTrue(clearSelection.any { "selectedCourseSemester = null" in it })
     }
 
+    /**
+     * tigerduck-app-android#380: the outbox lets a change go on a 404 once its course has left the
+     * term it was made in, so the term is the one the course was read from — found by identity,
+     * before the lists are rebuilt with the rename and every element replaced.
+     */
+    @Test
+    fun `a rename records the term its course came from, read before the lists are rebuilt`() {
+        for (name in listOf("setCustomCourseName", "revertCourseName")) {
+            val text = body(name).joinToString("\n")
+            val term = text.indexOf("termOf(course)")
+            val rebuilt = text.indexOf("ClassTableSelection.renamed(")
+            assertTrue("$name: termOf(course) must come before the lists are rebuilt", term in 0 until rebuilt)
+            assertTrue("$name: the term goes with the sync", "syncCourseOverride(course, semester" in text)
+        }
+        val termOf = body("termOf").joinToString("\n")
+        assertTrue(termOf, "it === course" in termOf)
+    }
+
     @Test
     fun `a rename and its revert pick the course by where it was opened from`() {
         val call = Regex("""ClassTableSelection\.renameTarget\(([^)]*)\)""")

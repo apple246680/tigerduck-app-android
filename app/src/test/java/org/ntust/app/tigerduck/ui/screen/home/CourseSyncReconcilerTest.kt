@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.ntust.app.tigerduck.data.model.PendingCourseOverride
 import org.ntust.app.tigerduck.push.CourseOverrideResult
 import org.ntust.app.tigerduck.push.CourseTombstone
 import org.ntust.app.tigerduck.push.ServerCourse
@@ -469,6 +470,49 @@ class CourseSyncReconcilerTest {
         )
     }
 
+    /** tigerduck-app-android#380: a snapshot fetched before a PATCH landed still has the old colour. */
+    @Test
+    fun `a colour this phone has waiting to send is kept over the server's`() {
+        val a = Course(courseNo = "A", courseName = "A", moodleIdNumber = "mA", customColorHex = "#FF0000")
+        val b = Course(courseNo = "B", courseName = "B", moodleIdNumber = "mB", customColorHex = "#00FF00")
+        val rows = listOf(CourseOverrideResult("mA", "A", "#0000FF"), CourseOverrideResult("mB", "B", "#00FF00"))
+        assertNull(
+            CourseSyncReconciler.applyColorOverrides(
+                listOf(a, b), rows, syncColors = true, held = setOf(PendingCourseOverride.colorKey("mA")),
+            )
+        )
+    }
+
+    @Test
+    fun `a colour waiting to send is the latest pick, and a course the server has on it moves off`() {
+        val a = Course(courseNo = "A", courseName = "A", moodleIdNumber = "1141A", customColorHex = "#FF0000")
+        val b = Course(courseNo = "B", courseName = "B", moodleIdNumber = "1141B", customColorHex = "#00FF00")
+        // Picked red for B on another device, while this phone's red for A waits to go up.
+        val rows = listOf(colour("A", "#0000FF", "2026-03-01T00:00:00+00:00"), colour("B", "#FF0000", "2026-03-02T00:00:00+00:00"))
+        val outcome = CourseSyncReconciler.applyColorOverrides(
+            listOf(a, b), rows, syncColors = true, held = setOf(PendingCourseOverride.colorKey("1141A")),
+        )!!
+        assertEquals("#FF0000", outcome.courses.single { it.courseNo == "A" }.customColorHex)
+        val movedTo = outcome.courses.single { it.courseNo == "B" }.customColorHex
+        assertTrue("B left red: $movedTo", movedTo != null && movedTo.uppercase() != "#FF0000")
+        assertEquals(mapOf("B" to movedTo), outcome.moved)
+    }
+
+    @Test
+    fun `a colour waiting to send keeps its course even with no row of its own in the snapshot`() {
+        val a = Course(courseNo = "A", courseName = "A", moodleIdNumber = "1141A", customColorHex = "#FF0000")
+        val b = Course(courseNo = "B", courseName = "B", moodleIdNumber = "1141B", customColorHex = "#00FF00")
+        // The server never had a colour for A; B's red there would move A off the red it has waiting.
+        val outcome = CourseSyncReconciler.applyColorOverrides(
+            listOf(a, b), listOf(colour("B", "#FF0000", null)), syncColors = true,
+            held = setOf(PendingCourseOverride.colorKey("1141A")),
+        )!!
+        assertEquals("#FF0000", outcome.courses.single { it.courseNo == "A" }.customColorHex)
+        val movedTo = outcome.courses.single { it.courseNo == "B" }.customColorHex
+        assertTrue("B left red: $movedTo", movedTo != null && movedTo.uppercase() != "#FF0000")
+        assertEquals(mapOf("B" to movedTo), outcome.moved)
+    }
+
     private fun colour(no: String, hex: String, at: String?) =
         CourseOverrideResult("1141$no", no, hex, colorHexUpdatedAt = at)
 
@@ -587,6 +631,29 @@ class CourseSyncReconcilerTest {
             syncNames = true,
         )
         assertTrue("no empty leftover entry for A", "A" !in merged!!)
+    }
+
+    /** tigerduck-app-android#380. */
+    @Test
+    fun `a name this phone has waiting to send is kept over the server's, the other locales merging still`() {
+        val merged = CourseSyncReconciler.mergeCustomNames(
+            existing = mapOf("A" to mapOf("en" to "Calc I")),
+            overrides = listOf(CourseOverrideResult("mA", "A", null, mapOf("en" to "Calculus", "zh-TW" to "微積分"))),
+            syncNames = true,
+            held = setOf(PendingCourseOverride.nameKey("mA", "en")),
+        )
+        assertEquals(mapOf("en" to "Calc I", "zh-TW" to "微積分"), merged!!.getValue("A"))
+    }
+
+    @Test
+    fun `null when every name the server sends is waiting to go up from here`() {
+        val merged = CourseSyncReconciler.mergeCustomNames(
+            existing = emptyMap(),
+            overrides = listOf(CourseOverrideResult("mA", "A", null, mapOf("en" to "Calculus"))),
+            syncNames = true,
+            held = setOf(PendingCourseOverride.nameKey("mA", "en")),
+        )
+        assertNull(merged)
     }
 
     @Test
