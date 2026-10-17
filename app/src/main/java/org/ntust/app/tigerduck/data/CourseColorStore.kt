@@ -2,18 +2,13 @@ package org.ntust.app.tigerduck.data
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import android.util.Log
 import org.ntust.app.tigerduck.data.cache.DataCache
-import org.ntust.app.tigerduck.data.preferences.AppPreferences
-import org.ntust.app.tigerduck.push.PushApiClient
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.ui.theme.courseColorPalette
-import org.ntust.app.tigerduck.util.logSummary
 import org.ntust.app.tigerduck.widget.WidgetUpdater
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -28,8 +23,7 @@ import kotlin.random.Random
 class CourseColorStore @Inject constructor(
     private val dataCache: DataCache,
     private val widgetUpdater: WidgetUpdater,
-    private val pushApiClient: PushApiClient,
-    private val prefs: AppPreferences,
+    private val pendingCourseOverrides: PendingCourseOverrides,
 ) {
     private val _changeEvent = MutableSharedFlow<Unit>(
         extraBufferCapacity = 1,
@@ -65,21 +59,14 @@ class CourseColorStore @Inject constructor(
         widgetUpdater.requestUpdate()
         _changeEvent.tryEmit(Unit)
 
-        // cloudSyncEnabled already reads false on fdroid at its source
-        // (AppPreferences.cloudSyncEnabled), so no separate flavor check
-        // is needed here.
-        if (prefs.cloudSyncEnabled) {
-            for (course in updated) {
-                val hex = course.customColorHex ?: continue
-                val moodleId = course.moodleIdNumber ?: continue
-                try {
-                    pushApiClient.patchCourseOverride(moodleId, colorHex = hex)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Log.w("CourseColorStore", "color sync failed: ${e.logSummary()}")
-                }
-            }
+        // Through the outbox, which honours the sync switches: a colour that
+        // fails to land is kept, and it replaces an older pick of the course
+        // still waiting to go up, which sent directly after this would land
+        // over the reset at the next sync.
+        for (course in updated) {
+            val hex = course.customColorHex ?: continue
+            val moodleId = course.moodleIdNumber ?: continue
+            pendingCourseOverrides.send(moodleId, colorHex = hex)
         }
     }
 

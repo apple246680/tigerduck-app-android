@@ -366,7 +366,7 @@ class HomeBackendSync @Inject constructor(
             dataCache.saveCourses(updated)
             widgetUpdater.requestUpdate()
             sendMovedColors(updated, outcome.moved) { moodleId, hex ->
-                pushApiClient.patchCourseOverride(moodleId, colorHex = hex)
+                pendingCourseOverrides.send(moodleId, colorHex = hex)
             }
         }
         return true
@@ -388,6 +388,8 @@ class HomeBackendSync @Inject constructor(
         )
         if (reset.apply) {
             val allCourses = dataCache.loadCourses().toMutableList()
+            // Their waiting colours and names go with them; see PendingCourseOverrides.forget.
+            pendingCourseOverrides.forget(allCourses.filter { it.isManual }.mapNotNull { it.moodleIdNumber })
             allCourses.removeAll { it.isManual }
             dataCache.saveCourses(allCourses)
             dataCache.saveDeletedCourseNos(emptySet())
@@ -456,6 +458,11 @@ class HomeBackendSync @Inject constructor(
             // courses to take out of the cache (a reset elsewhere, with one
             // hand-typed survivor left to upload).
             val pruned = CourseSyncReconciler.pruneHidden(semester, localCourses, tombstones)
+            // A course hidden since, here or on another device, takes its
+            // waiting colour and name with it; see PendingCourseOverrides.forget.
+            pruned?.let { kept ->
+                pendingCourseOverrides.forget(localCourses.filter { it !in kept }.mapNotNull { it.moodleIdNumber })
+            }
             if (outcome.uploadLocal) {
                 pruned?.let {
                     dataCache.saveCourses(it, semester)
@@ -528,7 +535,8 @@ class HomeBackendSync @Inject constructor(
  * Sends each course the colour pass moved ([moved], by course number) its new
  * colour through [patch], by the Moodle id the backend keys the course by, in
  * course-number order. A course without one is skipped, as a pick on the class
- * table skips it, and a failure is left for the next sync to find again.
+ * table skips it. Through [PendingCourseOverrides], which keeps a colour that
+ * fails to land, and in place of an older colour of the course still waiting.
  */
 internal suspend fun sendMovedColors(
     courses: List<Course>,

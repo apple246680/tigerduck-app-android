@@ -432,14 +432,15 @@ object CourseSyncReconciler {
         val picks = courses.mapNotNull { course ->
             val override = overrides.find { it.courseNo == course.courseNo }
                 ?: overrides.find { it.moodleCourseId == course.moodleIdNumber }
-                ?: return@mapNotNull null
             // By the row's id and by the course's own: a row made before the
             // course had an idnumber is keyed by its term and number instead.
-            val pending = PendingCourseOverride.colorKey(override.moodleCourseId) in held ||
+            // A held course counts with no row of its own too: a row's colour
+            // on another course would move it off the one it has waiting.
+            val pending = override?.let { PendingCourseOverride.colorKey(it.moodleCourseId) in held } == true ||
                 course.moodleIdNumber?.let { PendingCourseOverride.colorKey(it) in held } == true
-            val hex = (if (pending) course.customColorHex else override.colorHex) ?: return@mapNotNull null
+            val hex = (if (pending) course.customColorHex else override?.colorHex) ?: return@mapNotNull null
             serverHex[course.courseNo] = hex.uppercase()
-            val pickedAt = if (pending) Instant.MAX else backendInstant(override.colorHexUpdatedAt) ?: Instant.MIN
+            val pickedAt = if (pending) Instant.MAX else backendInstant(override?.colorHexUpdatedAt) ?: Instant.MIN
             Triple(course.courseNo, hex, pickedAt)
         }.sortedWith(compareBy({ it.third }, { it.first }))
 

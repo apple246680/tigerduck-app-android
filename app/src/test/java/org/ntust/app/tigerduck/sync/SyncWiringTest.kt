@@ -1,5 +1,6 @@
 package org.ntust.app.tigerduck.sync
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -124,6 +125,40 @@ class SyncWiringTest {
             assertTrue("$rel $name no longer sends the waiting colours and names before the snapshot", retry in 0 until fetch)
             assertTrue("$rel $name no longer holds the waiting colours and names against the snapshot", held > fetch)
         }
+    }
+
+    /** tigerduck-app-android#380: sent directly, a reset's or a sync's colour races the outbox, and an older queued one lands over it. */
+    @Test
+    fun `every course colour or name PATCH goes through the outbox`() {
+        var root: File? = File("").absoluteFile
+        while (root != null && !File(root, "app/src/main/java").isDirectory && !File(root, "src/main/java").isDirectory) {
+            root = root.parentFile
+        }
+        val main = root?.let { listOf(File(it, "app/src/main/java"), File(it, "src/main/java")).first(File::isDirectory) }
+            ?: throw AssertionError("Could not locate app/src/main/java from ${File("").absolutePath}")
+        val callers = main.walkTopDown()
+            .filter { it.isFile && it.extension == "kt" && ".patchCourseOverride(" in it.readText() }
+            .map { it.name }
+            .toSortedSet()
+        assertEquals(setOf("PendingCourseOverrides.kt"), callers)
+    }
+
+    /** tigerduck-app-android#380: a course gone from this phone would be PATCHed, and refused, at every sync. */
+    @Test
+    fun `the syncs forget the waiting colours and names of the courses they prune or a reset elsewhere wipes`() {
+        assertCalls("ui/screen/home/HomeBackendSync.kt", "syncCourseList", "pendingCourseOverrides.forget(")
+        assertCalls("ui/screen/home/HomeBackendSync.kt", "applyCourseReset", "pendingCourseOverrides.forget(")
+        assertCalls("notification/BackgroundSyncWorker.kt", "reconcileCurrentSemester", "pendingCourseOverrides.forget(")
+    }
+
+    /** tigerduck-app-android#380: the answer decides the waiting colours and names too. */
+    @Test
+    fun `Use Server drops the waiting colours and names of its categories, and Use Local sends its own once the hold is lifted`() {
+        assertCalls("ui/screen/settings/SettingsViewModel.kt", "resolve", "pendingCourseOverrides.adoptServer(conflict.categories)")
+        val body = body("ui/screen/settings/SettingsViewModel.kt", "resolveReenableConflict")
+        val lifted = body.indexOf("prefs.pendingConflictCategories - held")
+        val retry = body.indexOf("pendingCourseOverrides.retry()")
+        assertTrue("resolveReenableConflict no longer sends the queued colours and names once the hold is lifted", retry > lifted && lifted >= 0)
     }
 
     @Test

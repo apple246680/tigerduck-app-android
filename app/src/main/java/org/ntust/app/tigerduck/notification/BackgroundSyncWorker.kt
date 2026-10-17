@@ -299,7 +299,12 @@ class BackgroundSyncWorker @AssistedInject constructor(
         // Unconditional: a course hidden by an earlier build and left in
         // the cache is pruned on the first run, not the next change.
         CourseSyncReconciler.pruneHidden(semester, localCourses, outcome.tombstones, legacyBare = false)
-            ?.let { dataCache.saveCourses(it, semester) }
+            ?.let { kept ->
+                dataCache.saveCourses(kept, semester)
+                // A course hidden since takes its waiting colour and name
+                // with it; see PendingCourseOverrides.forget.
+                pendingCourseOverrides.forget(localCourses.filter { it !in kept }.mapNotNull { it.moodleIdNumber })
+            }
         var known = outcome.serverKnownNos
         if (outcome.uploadLocal) {
             runCatching { pushApiClient.uploadCourses(outcome.toUpload, semester) }
@@ -329,7 +334,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
         dataCache.saveCourses(outcome.courses)
         widgetUpdater.requestUpdate()
         sendMovedColors(outcome.courses, outcome.moved) { moodleId, hex ->
-            pushApiClient.patchCourseOverride(moodleId, colorHex = hex)
+            pendingCourseOverrides.send(moodleId, colorHex = hex)
         }
     }
 

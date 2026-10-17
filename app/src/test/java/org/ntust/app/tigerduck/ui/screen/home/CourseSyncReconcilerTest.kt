@@ -498,6 +498,21 @@ class CourseSyncReconcilerTest {
         assertEquals(mapOf("B" to movedTo), outcome.moved)
     }
 
+    @Test
+    fun `a colour waiting to send keeps its course even with no row of its own in the snapshot`() {
+        val a = Course(courseNo = "A", courseName = "A", moodleIdNumber = "1141A", customColorHex = "#FF0000")
+        val b = Course(courseNo = "B", courseName = "B", moodleIdNumber = "1141B", customColorHex = "#00FF00")
+        // The server never had a colour for A; B's red there would move A off the red it has waiting.
+        val outcome = CourseSyncReconciler.applyColorOverrides(
+            listOf(a, b), listOf(colour("B", "#FF0000", null)), syncColors = true,
+            held = setOf(PendingCourseOverride.colorKey("1141A")),
+        )!!
+        assertEquals("#FF0000", outcome.courses.single { it.courseNo == "A" }.customColorHex)
+        val movedTo = outcome.courses.single { it.courseNo == "B" }.customColorHex
+        assertTrue("B left red: $movedTo", movedTo != null && movedTo.uppercase() != "#FF0000")
+        assertEquals(mapOf("B" to movedTo), outcome.moved)
+    }
+
     private fun colour(no: String, hex: String, at: String?) =
         CourseOverrideResult("1141$no", no, hex, colorHexUpdatedAt = at)
 

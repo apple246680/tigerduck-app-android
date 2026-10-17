@@ -24,6 +24,7 @@ import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.data.CourseColorStore
 import org.ntust.app.tigerduck.data.CourseIgnoreSync
+import org.ntust.app.tigerduck.data.PendingCourseOverrides
 import org.ntust.app.tigerduck.data.UnsentMarks
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.CredentialManager
@@ -75,6 +76,7 @@ class SettingsViewModel @Inject constructor(
     private val demoAccount: DemoAccount,
     private val courseIgnoreSync: CourseIgnoreSync,
     private val unsentMarks: UnsentMarks,
+    private val pendingCourseOverrides: PendingCourseOverrides,
     private val reenableCheck: ReenableCheck,
     private val importedClassTableStore: ImportedClassTableStore,
     @param:ApplicationScope private val appScope: CoroutineScope,
@@ -259,6 +261,8 @@ class SettingsViewModel @Inject constructor(
                 }
             }
             if (holdsCourseIgnores) courseIgnoreSync.retryPending()
+            // Use Local queued its colours and names behind their holds, lifted just above.
+            if (keepLocal && ("course_colors" in held || "course_names" in held)) pendingCourseOverrides.retry()
         }
     }
 
@@ -270,12 +274,14 @@ class SettingsViewModel @Inject constructor(
     ) {
         if (keepLocal) {
             val resetTerms = if (latch != null) sendLocalCourses(generation, latch) else emptySet()
+            // Through the outbox, which holds them while their category is
+            // pending and sends them once resolveReenableConflict has lifted
+            // the hold; one that fails to land is sent again at the next sync.
             if ("course_colors" in conflict.categories) {
-                val courses = dataCache.loadCourses()
-                for (course in courses) {
+                for (course in dataCache.loadCourses()) {
                     val hex = course.customColorHex ?: continue
                     val moodleId = course.moodleIdNumber ?: continue
-                    runCatching { pushApiClient.patchCourseOverride(moodleId, colorHex = hex) }
+                    pendingCourseOverrides.send(moodleId, colorHex = hex)
                 }
             }
             if ("course_names" in conflict.categories) {
@@ -288,7 +294,7 @@ class SettingsViewModel @Inject constructor(
                     val moodleId = noToMoodle[courseNo] ?: continue
                     for ((locale, name) in locales) {
                         if (name.isNotEmpty()) {
-                            runCatching { pushApiClient.patchCourseOverride(moodleId, customName = name, locale = locale) }
+                            pendingCourseOverrides.send(moodleId, customName = name, locale = locale)
                         }
                     }
                 }
@@ -319,6 +325,9 @@ class SettingsViewModel @Inject constructor(
             if ("course_names" in conflict.categories) {
                 dataCache.saveCourseCustomNames(emptyMap())
             }
+            // The server's colours and names win, so changes still waiting
+            // to go up are dropped; a category not here is left alone.
+            pendingCourseOverrides.adoptServer(conflict.categories)
             if ("assignments" in conflict.categories) {
                 // The server's marks win, so taps still waiting to go up are dropped.
                 unsentMarks.forget()
@@ -405,7 +414,7 @@ class SettingsViewModel @Inject constructor(
         return useLocalCourses(
             terms = semesters.map { it to dataCache.loadCourses(it) },
             hiding = dataCache.loadDeletedCourseNos(),
-            backend = PushCourseSyncBackend(pushApiClient, prefs),
+            backend = PushCourseSyncBackend(pushApiClient, prefs, pendingCourseOverrides),
             // A term's reset takes its courses' names off the server with
             // them. With name sync off here nothing can be sent back (the
             // PATCH honours the switch), so names other devices set on that

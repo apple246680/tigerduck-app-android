@@ -17,6 +17,8 @@ import org.ntust.app.tigerduck.auth.NotSignedInException
 import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.model.PendingCourseOverride
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
+import org.ntust.app.tigerduck.push.PushApiException
+import org.ntust.app.tigerduck.shared.Course
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
@@ -45,12 +47,18 @@ class PendingCourseOverridesTest {
     private val patches = mutableListOf<Patch>()
     private var answer: suspend () -> Boolean = { true }
 
+    // The switches, by kind (true for colours): whether changes are this phone's own or sync at
+    // all, and whether they go out now or wait for a re-enable check's answer.
+    private var records: (Boolean) -> Boolean = { true }
+    private var sends: (Boolean) -> Boolean = { true }
+
     // AuthTokenManager.signInGeneration, and what happens before the request's header is made.
     private var signIn = 1
     private var beforeHeader: suspend () -> Unit = {}
 
     private var now = 1_000L
 
+    private val term = "1151"
     private val calculus = "1151MA1010002"
 
     @Before
@@ -66,10 +74,14 @@ class PendingCourseOverridesTest {
                 patches += Patch(moodleId, colorHex, customName, locale, account = signIn)
                 answer()
             },
+            records = { records(it) },
+            sends = { sends(it) },
             signInGeneration = { signIn },
             clock = { now++ },
         )
     }
+
+    private fun refused(code: Int): suspend () -> Boolean = { throw PushApiException("patchCourseOverride failed: HTTP $code", code) }
 
     @Test
     fun `a colour whose PATCH fails is kept, and the next sync sends it again and lets it go once it lands`() = runTest {
@@ -87,12 +99,12 @@ class PendingCourseOverridesTest {
     }
 
     @Test
-    fun `a name whose PATCH the server refuses waits for the next sync`() = runTest {
-        answer = { throw org.ntust.app.tigerduck.push.PushApiException("patchCourseOverride failed: HTTP 500", 500) }
+    fun `a name whose PATCH fails on the server waits for the next sync, however often`() = runTest {
+        answer = refused(500)
         overrides.send(calculus, customName = "Calc", locale = "en")
-        overrides.retry()
+        repeat(6) { overrides.retry() }
 
-        assertEquals(2, patches.size)
+        assertEquals(7, patches.size)
         assertEquals(listOf("Calc"), cache.loadPendingCourseOverrides().map { it.customName })
     }
 
@@ -152,11 +164,75 @@ class PendingCourseOverridesTest {
     }
 
     @Test
-    fun `an edit nothing was sent for, the switch being off, is not kept`() = runTest {
-        answer = { false }
+    fun `an edit made while its switch is off is this phone's own, and replaces one waiting`() = runTest {
+        answer = { throw IOException("offline") }
         overrides.send(calculus, colorHex = "#FF0000")
+        overrides.send(calculus, customName = "Calc", locale = "en")
 
-        assertEquals(1, patches.size)
+        // Colours stop syncing; a new pick goes nowhere, and the red waiting would go up over it later.
+        records = { color -> !color }
+        overrides.send(calculus, colorHex = "#0000FF")
+
+        assertEquals(2, patches.size)
+        assertEquals(listOf("Calc"), cache.loadPendingCourseOverrides().map { it.customName })
+    }
+
+    @Test
+    fun `a change waiting when its switch goes off, or while its re-enable check is pending, is kept and not sent`() = runTest {
+        answer = { throw IOException("offline") }
+        overrides.send(calculus, colorHex = "#FF0000")
+        overrides.send(calculus, customName = "Calc", locale = "en")
+
+        // The colours re-enable check waits for the user: the name goes, the colour waits.
+        sends = { color -> !color }
+        answer = { true }
+        patches.clear()
+        overrides.retry()
+        assertEquals(listOf(Patch(calculus, null, "Calc", "en")), patches)
+        assertEquals(listOf("#FF0000"), cache.loadPendingCourseOverrides().map { it.colorHex })
+
+        sends = { true }
+        overrides.retry()
+        assertEquals(Patch(calculus, "#FF0000", null, null), patches.last())
+        assertFalse(overrides.hasPending())
+    }
+
+    @Test
+    fun `Use Server drops the category's waiting changes, and Use Local keeps them`() = runTest {
+        answer = { throw IOException("offline") }
+        overrides.send(calculus, colorHex = "#FF0000")
+        overrides.send(calculus, customName = "Calc", locale = "en")
+
+        overrides.adoptServer(listOf("course_colors", "assignments"))
+
+        assertEquals(listOf("Calc"), cache.loadPendingCourseOverrides().map { it.customName })
+        assertFalse(PendingCourseOverride.colorKey(calculus) in overrides.held(0L))
+    }
+
+    @Test
+    fun `a change the backend refuses five times is let go`() = runTest {
+        answer = refused(404)
+        overrides.send(calculus, colorHex = "#FF0000")
+        repeat(3) { overrides.retry() }
+        assertEquals(4, patches.size)
+        assertTrue("kept through four refusals", overrides.hasPending())
+
+        overrides.retry()
+        assertEquals(5, patches.size)
+        assertFalse("let go on the fifth", overrides.hasPending())
+    }
+
+    @Test
+    fun `a 404 for a course no longer on this phone lets its change go at once`() = runTest {
+        val course = Course(courseNo = "MA1010002", courseName = "Calculus", moodleIdNumber = calculus)
+        cache.saveCourses(listOf(course), term)
+        answer = refused(404)
+        overrides.send(calculus, colorHex = "#FF0000", semester = term, courseNo = course.courseNo)
+        assertTrue("still on this phone: the row may yet be uploaded", overrides.hasPending())
+
+        // Deleted on another device, and gone from here with the sync's prune.
+        cache.saveCourses(emptyList(), term)
+        overrides.retry()
         assertFalse(overrides.hasPending())
     }
 

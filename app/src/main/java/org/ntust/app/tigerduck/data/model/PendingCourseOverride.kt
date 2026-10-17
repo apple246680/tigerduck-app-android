@@ -21,6 +21,15 @@ data class PendingCourseOverride(
     val locale: String?,
     /** When the user made the change; a later change of the same [key] replaces it. */
     val changedAtMs: Long,
+    /**
+     * The term and number of the course as this phone holds it, when the
+     * change was made where they are known: a 404 for a course no longer
+     * cached there lets the change go at once. Null otherwise.
+     */
+    val semester: String? = null,
+    val courseNo: String? = null,
+    /** How many times the backend refused it; `PendingCourseOverrides` lets it go after five. */
+    val attempts: Int = 0,
 ) {
     /**
      * What the row changes — the course's colour, or its name in one locale —
@@ -35,6 +44,9 @@ data class PendingCourseOverride(
                 else -> null
             }
         }
+
+    /** Whether [other] is this change, however many times either was refused. */
+    fun isSameChange(other: PendingCourseOverride): Boolean = copy(attempts = 0) == other.copy(attempts = 0)
 
     companion object {
         /** The key of the colour of the course the backend knows as [moodleId]. */
