@@ -28,6 +28,10 @@ class ReviewPromptTest {
     private var today: LocalDate = LocalDate.of(2026, 10, 12)
     private var mayAsk = true
 
+    // What the page and the activity answer right before a launch.
+    private var pageResumed = true
+    private var windowFocused = true
+
     /** A process: the prompt keeps its in-memory state, the store outlives it. */
     private fun process() = ReviewPrompt(store, { today }, { mayAsk })
 
@@ -41,10 +45,15 @@ class ReviewPromptTest {
         }
     }
 
+    private fun ReviewPrompt.moment() = calmMoment { pageResumed }
+
+    private fun ReviewPrompt.launchNow(launch: () -> Boolean) =
+        launchIfStillCalm(windowFocused = { windowFocused }, launch = launch)
+
     /** Five days of use and a calm moment: the ask is pending. */
     private fun readyProcess(): ReviewPrompt = process().also {
         it.loadedOn(days(5))
-        it.calmMoment()
+        it.moment()
         assertTrue(it.pending.value)
     }
 
@@ -52,7 +61,7 @@ class ReviewPromptTest {
     fun `does not ask before the class table has loaded on five days`() {
         val prompt = process()
         prompt.loadedOn(days(4))
-        prompt.calmMoment()
+        prompt.moment()
         assertFalse(prompt.pending.value)
         assertEquals(4, store.reviewPromptDaysUsed)
     }
@@ -61,7 +70,7 @@ class ReviewPromptTest {
     fun `a day counts once however often the class table loads`() {
         val prompt = process()
         repeat(6) { prompt.classTableLoaded() }
-        prompt.calmMoment()
+        prompt.moment()
         assertFalse(prompt.pending.value)
         assertEquals(1, store.reviewPromptDaysUsed)
         assertEquals("2026-10-12", store.reviewPromptLastDay)
@@ -72,7 +81,7 @@ class ReviewPromptTest {
         val prompt = process()
         prompt.loadedOn(days(5))
         assertFalse("a load is not a calm moment", prompt.pending.value)
-        prompt.calmMoment()
+        prompt.moment()
         assertTrue(prompt.pending.value)
     }
 
@@ -82,7 +91,7 @@ class ReviewPromptTest {
         store.reviewPromptLastDay = "2026-10-11"
         val prompt = process()
         prompt.classTableLoaded()
-        prompt.calmMoment()
+        prompt.moment()
         assertTrue(prompt.pending.value)
         assertEquals(5, store.reviewPromptDaysUsed)
     }
@@ -91,7 +100,7 @@ class ReviewPromptTest {
     fun `launches the flow Play handed out while the gates still hold`() {
         val prompt = readyProcess()
         var launches = 0
-        prompt.launchIfStillCalm { launches++; true }
+        prompt.launchNow { launches++; true }
         assertEquals(1, launches)
         assertTrue(store.reviewPromptAsked)
         assertFalse(prompt.pending.value)
@@ -100,15 +109,15 @@ class ReviewPromptTest {
     @Test
     fun `never asks again once the flow was launched`() {
         val prompt = readyProcess()
-        prompt.launchIfStillCalm { true }
+        prompt.launchNow { true }
 
         prompt.loadedOn(days(9))
-        prompt.calmMoment()
+        prompt.moment()
         assertFalse("asked again in the same process", prompt.pending.value)
 
         val later = process()
         later.loadedOn(listOf(LocalDate.of(2027, 3, 1)))
-        later.calmMoment()
+        later.moment()
         assertFalse("asked again in a later process", later.pending.value)
     }
 
@@ -117,11 +126,11 @@ class ReviewPromptTest {
         mayAsk = false
         val prompt = process()
         prompt.loadedOn(days(5))
-        prompt.calmMoment()
+        prompt.moment()
         assertFalse(prompt.pending.value)
 
         mayAsk = true
-        prompt.calmMoment()
+        prompt.moment()
         assertTrue(prompt.pending.value)
     }
 
@@ -132,13 +141,61 @@ class ReviewPromptTest {
         // sheet or a source failing.
         mayAsk = false
         var launched = false
-        prompt.launchIfStillCalm { launched = true; true }
+        prompt.launchNow { launched = true; true }
         assertFalse(launched)
         assertFalse(store.reviewPromptAsked)
         assertFalse(prompt.pending.value)
 
         mayAsk = true
-        prompt.calmMoment()
+        prompt.moment()
+        assertTrue("a withdrawn ask is not an attempt", prompt.pending.value)
+    }
+
+    @Test
+    fun `does not launch once the page is no longer resumed, and asks again on its next resume`() {
+        val prompt = readyProcess()
+        // The round trip to Play took long enough for the page to be left,
+        // or the activity to be paused.
+        pageResumed = false
+        var launched = false
+        prompt.launchNow { launched = true; true }
+        assertFalse(launched)
+        assertFalse(store.reviewPromptAsked)
+        assertFalse(prompt.pending.value)
+
+        pageResumed = true
+        prompt.moment()
+        assertTrue("a withdrawn ask is not an attempt", prompt.pending.value)
+    }
+
+    @Test
+    fun `does not launch while a dialog or sheet holds the window focus`() {
+        val prompt = readyProcess()
+        // A dialog, a sheet or a system prompt opened during the round trip:
+        // each is a window of its own and takes the focus from the page's.
+        windowFocused = false
+        var launched = false
+        prompt.launchNow { launched = true; true }
+        assertFalse(launched)
+        assertFalse(store.reviewPromptAsked)
+        assertFalse(prompt.pending.value)
+
+        windowFocused = true
+        prompt.moment()
+        assertTrue("a withdrawn ask is not an attempt", prompt.pending.value)
+    }
+
+    @Test
+    fun `the page pausing or being left withdraws the pending ask`() {
+        val prompt = readyProcess()
+        prompt.withdraw()
+        assertFalse(prompt.pending.value)
+
+        var launched = false
+        prompt.launchNow { launched = true; true }
+        assertFalse("launched after the page was left", launched)
+
+        prompt.moment()
         assertTrue("a withdrawn ask is not an attempt", prompt.pending.value)
     }
 
@@ -152,7 +209,7 @@ class ReviewPromptTest {
         mayAsk = true
         prompt.recheck()
         assertFalse("a recheck never arms the ask", prompt.pending.value)
-        prompt.calmMoment()
+        prompt.moment()
         assertTrue(prompt.pending.value)
     }
 
@@ -161,11 +218,11 @@ class ReviewPromptTest {
         val prompt = process()
         prompt.loadedOn(days(5))
         prompt.loadFailed()
-        prompt.calmMoment()
+        prompt.moment()
         assertFalse(prompt.pending.value)
 
         prompt.classTableLoaded()
-        prompt.calmMoment()
+        prompt.moment()
         assertTrue(prompt.pending.value)
     }
 
@@ -176,12 +233,12 @@ class ReviewPromptTest {
         assertFalse(prompt.pending.value)
 
         var launched = false
-        prompt.launchIfStillCalm { launched = true; true }
+        prompt.launchNow { launched = true; true }
         assertFalse(launched)
         assertFalse(store.reviewPromptAsked)
 
         prompt.classTableLoaded()
-        prompt.calmMoment()
+        prompt.moment()
         assertTrue("a withdrawn ask is not an attempt", prompt.pending.value)
     }
 
@@ -190,11 +247,11 @@ class ReviewPromptTest {
         store.reviewPromptDaysUsed = 5
         store.reviewPromptLastDay = "2026-10-05"
         val prompt = process()
-        prompt.calmMoment()
+        prompt.moment()
         assertFalse("asked on a cold start, before content showed", prompt.pending.value)
 
         prompt.classTableLoaded()
-        prompt.calmMoment()
+        prompt.moment()
         assertTrue(prompt.pending.value)
     }
 
@@ -204,21 +261,21 @@ class ReviewPromptTest {
         prompt.refused()
         assertFalse(store.reviewPromptAsked)
         assertFalse(prompt.pending.value)
-        prompt.calmMoment()
+        prompt.moment()
         assertFalse("tried again in the same process", prompt.pending.value)
 
         val later = process()
         later.classTableLoaded()
-        later.calmMoment()
+        later.moment()
         assertTrue("not tried again in a later process", later.pending.value)
     }
 
     @Test
     fun `a flow that would not start is this process's one attempt too`() {
         val prompt = readyProcess()
-        prompt.launchIfStillCalm { false }
+        prompt.launchNow { false }
         assertFalse(store.reviewPromptAsked)
-        prompt.calmMoment()
+        prompt.moment()
         assertFalse(prompt.pending.value)
     }
 }

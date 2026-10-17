@@ -524,8 +524,18 @@ class HomeViewModel @Inject constructor(
         if (refreshTriggers.onShown()) fetchOnReturn()
     }
 
-    /** The page left the screen for another page; see PageLeftEffect. */
-    fun onPageLeft() = refreshTriggers.onLeft()
+    /** The page left the screen for another page; see PageLeftEffect. An ask it offered goes with it. */
+    fun onPageLeft() {
+        refreshTriggers.onLeft()
+        reviewPrompt.withdraw()
+    }
+
+    /**
+     * The page paused with the activity — a background trip, a system prompt
+     * over it: the Play rating's moment it offered is withdrawn, so the ask
+     * cannot outlive what was on screen. Its next resume may offer one again.
+     */
+    fun onPagePaused() = reviewPrompt.withdraw()
 
     /**
      * Home is on screen and the activity resumed: on coming to the page, and
@@ -534,10 +544,12 @@ class HomeViewModel @Inject constructor(
      * rating's moment (issue #332), if ReviewPrompt agrees; not over the
      * course sheet, which such a return can find open. On the launch's
      * first resume, before any load, ReviewPrompt declines.
+     * [pageResumed] is the page's own answer, asked again right before the
+     * launch, to whether it is still on screen and resumed.
      */
-    fun onPageResumed() {
+    fun onPageResumed(pageResumed: () -> Boolean) {
         if (_selectedCourse.value != null) return
-        reviewPrompt.calmMoment()
+        reviewPrompt.calmMoment(pageResumed)
     }
 
     private fun fetchOnReturn() {

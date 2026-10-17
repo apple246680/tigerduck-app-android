@@ -747,7 +747,15 @@ private fun ReviewPromptHost(
     // the flow it brought back is started.
     LaunchedEffect(Unit) {
         val flow = inAppReview.request()
-        if (flow == null) reviewPrompt.refused()
-        else reviewPrompt.launchIfStillCalm { inAppReview.launch(activity, flow) }
+        if (flow == null) {
+            reviewPrompt.refused()
+        } else {
+            // A dialog, a sheet or a system prompt opened meanwhile is a
+            // window of its own and holds the focus, whatever page owns it;
+            // the page's own state says whether it is still on screen.
+            reviewPrompt.launchIfStillCalm(windowFocused = { activity.hasWindowFocus() }) {
+                inAppReview.launch(activity, flow)
+            }
+        }
     }
 }

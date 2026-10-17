@@ -65,9 +65,22 @@ class ReviewPromptWiringTest {
     @Test
     fun `a resume of Home or the class table, on screen, is the moment to ask at`() {
         for (rel in listOf(classTable, home)) {
-            assertTrue("$rel: onPageResumed no longer offers a calm moment", "reviewPrompt.calmMoment()" in body(rel, "onPageResumed"))
+            assertTrue(
+                "$rel: onPageResumed no longer offers a calm moment with the page's own resumed state",
+                "reviewPrompt.calmMoment(pageResumed)" in body(rel, "onPageResumed"),
+            )
             for (name in listOf("onPageShown", "onAppForeground")) {
-                assertFalse("$rel: $name offers a calm moment whatever page is on screen", "reviewPrompt.calmMoment()" in body(rel, name))
+                assertFalse("$rel: $name offers a calm moment whatever page is on screen", "reviewPrompt.calmMoment(" in body(rel, name))
+            }
+        }
+    }
+
+    /** An ask must not outlive the page that offered the moment. */
+    @Test
+    fun `the page pausing or being left withdraws the ask`() {
+        for (rel in listOf(classTable, home)) {
+            for (name in listOf("onPagePaused", "onPageLeft")) {
+                assertTrue("$rel: $name no longer withdraws the ask", "reviewPrompt.withdraw()" in body(rel, name))
             }
         }
     }
@@ -78,16 +91,28 @@ class ReviewPromptWiringTest {
         for (rel in listOf(classTable, home)) {
             val body = body(rel, "onPageResumed")
             val sheet = body.indexOf("_selectedCourse.value != null")
-            assertTrue("$rel: onPageResumed no longer holds the moment back over the course sheet", sheet in 0 until body.indexOf("reviewPrompt.calmMoment()"))
+            assertTrue("$rel: onPageResumed no longer holds the moment back over the course sheet", sheet in 0 until body.indexOf("reviewPrompt.calmMoment("))
         }
     }
 
     @Test
-    fun `each page reports its own resume`() {
+    fun `each page reports its own resume and pause, and answers whether it is still resumed`() {
         for (rel in listOf(classTableScreen, homeScreen)) {
             val text = source(rel).joinToString("\n")
-            assertTrue("$rel no longer reports ON_RESUME to its view model", "Lifecycle.Event.ON_RESUME" in text && "viewModel.onPageResumed()" in text)
+            assertTrue("$rel no longer reports ON_RESUME to its view model", "Lifecycle.Event.ON_RESUME" in text && "viewModel.onPageResumed" in text)
+            assertTrue("$rel no longer reports ON_PAUSE to its view model", "Lifecycle.Event.ON_PAUSE" in text && "viewModel.onPagePaused()" in text)
+            assertTrue("$rel no longer answers with its own lifecycle", "isAtLeast(Lifecycle.State.RESUMED)" in text)
         }
+    }
+
+    /** A dialog, sheet or system prompt is a window of its own and takes the focus from the page's. */
+    @Test
+    fun `the host launches only while the activity's window has the focus`() {
+        val text = source(mainActivity).joinToString("\n")
+        val start = text.indexOf("reviewPrompt.launchIfStillCalm(")
+        assertTrue("MainActivity no longer launches through launchIfStillCalm", start >= 0)
+        val call = text.substring(start, text.indexOf("inAppReview.launch(", start))
+        assertTrue("launchIfStillCalm no longer requires the window focus", "hasWindowFocus()" in call)
     }
 
     @Test

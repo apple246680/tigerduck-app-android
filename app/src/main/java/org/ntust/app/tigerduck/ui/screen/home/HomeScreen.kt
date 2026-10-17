@@ -165,10 +165,14 @@ fun HomeScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.syncOnForeground()
-                // The page's own resume, for the Play rating's moment.
-                viewModel.onPageResumed()
+                // The page's own resume, for the Play rating's moment; its
+                // lifecycle answers, right before the launch, whether it
+                // still is resumed.
+                viewModel.onPageResumed { lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
             } else if (event == Lifecycle.Event.ON_PAUSE) {
                 viewModel.onHomePaused()
+                // The moment the page offered is withdrawn with its pause.
+                viewModel.onPagePaused()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
