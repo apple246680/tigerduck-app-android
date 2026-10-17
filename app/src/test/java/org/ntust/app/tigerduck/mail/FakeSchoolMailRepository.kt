@@ -27,8 +27,31 @@ class FakeSchoolMailRepository : SchoolMailRepository {
     /** Set, every [inboxStatus] waits on it first: a poll's check held out while the test acts. */
     var statusGate: CompletableDeferred<Unit>? = null
 
+    /** Set, every [status] waits on it first: a STATUS queued behind the session another request holds. */
+    var folderStatusGate: CompletableDeferred<Unit>? = null
+
     /** Set, every foreground [loadPage] waits on it first: a load held out while the test acts. */
     var loadGate: CompletableDeferred<Unit>? = null
+
+    /**
+     * The gates above stand for the wait behind the session; a request whose `stillWanted` says
+     * no once its gate opens is not sent, as the real repository's is not, and ends the same way.
+     */
+    private fun unlessAbandoned(stillWanted: () -> Boolean) {
+        if (!stillWanted()) throw MailError.Abandoned()
+    }
+
+    /** Every page request that went out, in order; one refused by its `stillWanted` is not here. */
+    val loadsSent = mutableListOf<String>()
+
+    /** Every search that went out, in order; one refused by its `stillWanted` is not here. */
+    val searchesSent = mutableListOf<String>()
+
+    /** Fires with the folder just after its page was produced and before it is returned: a test acts between two requests of one batch. */
+    var onLoaded: ((String) -> Unit)? = null
+
+    /** As [onLoaded], for a search. */
+    var onSearched: ((String) -> Unit)? = null
 
     /** Thrown by [loadPage] for that folder alone, where [loadError] fails every folder. */
     val folderLoadErrors = mutableMapOf<String, MailError>()
@@ -140,12 +163,15 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         cachedPages.remove(folder)
     }
 
-    override suspend fun loadPage(folder: String, beforeSeq: Int?, limit: Int, background: Boolean): MailPage {
+    override suspend fun loadPage(folder: String, beforeSeq: Int?, limit: Int, background: Boolean, stillWanted: () -> Boolean): MailPage {
         openLoads++
         maxConcurrentLoads = maxOf(maxConcurrentLoads, openLoads)
         try {
+            if (!background) loadGate?.await()
+            unlessAbandoned(stillWanted)
             foldersTouched += folder
             pageLimits += folder to limit
+            loadsSent += folder
             if (background) {
                 prefetchError?.let { throw it }
                 if (blockPrefetch) {
@@ -154,7 +180,6 @@ class FakeSchoolMailRepository : SchoolMailRepository {
                     gate.await()
                 }
             }
-            if (!background) loadGate?.await()
             loadError?.let { throw it }
             folderLoadErrors[folder]?.let { throw it }
             val all = sorted(folder)
@@ -171,24 +196,29 @@ class FakeSchoolMailRepository : SchoolMailRepository {
                     cached.uidValidity == page.uidValidity && cached.messages.size > page.messages.size
                 if (!shortens) cachedPages[folder] = page
             }
+            onLoaded?.invoke(folder)
             return page
         } finally {
             openLoads--
         }
     }
 
-    override suspend fun inboxStatus(): FolderStatus {
+    override suspend fun inboxStatus(stillWanted: () -> Boolean): FolderStatus {
         statusGate?.await()
+        unlessAbandoned(stillWanted)
         statusCalls++
         statusError?.let { throw it }
         return status
     }
 
-    override suspend fun status(folder: String): FolderStatus = touching(folder) {
+    override suspend fun status(folder: String, stillWanted: () -> Boolean): FolderStatus {
+        folderStatusGate?.await()
+        unlessAbandoned(stillWanted)
+        foldersTouched += folder
         folderStatusCalls += folder
         folderStatusErrors[folder]?.let { throw it }
         val newest = sorted(folder).firstOrNull()?.uid ?: 0L
-        FolderStatus(status.uidValidity, newest + 1, mail[folder]?.size ?: 0, 0)
+        return FolderStatus(status.uidValidity, newest + 1, mail[folder]?.size ?: 0, 0)
     }
     override suspend fun refreshFlags(folder: String, uids: List<Long>): Map<Long, MailFlags> =
         touching(folder) { sorted(folder).filter { it.uid in uids }.associate { it.uid to it.flags } }
@@ -227,9 +257,12 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         mail[folder]?.removeAll { it.uid == uid }
     }
 
-    override suspend fun search(folder: String, query: String): SearchOutcome {
+    override suspend fun search(folder: String, query: String, stillWanted: () -> Boolean): SearchOutcome {
+        unlessAbandoned(stillWanted)
         foldersTouched += folder
+        searchesSent += folder
         val hits = sorted(folder).filter { query in it.subject }
+        onSearched?.invoke(folder)
         return if (searchUnsupported) SearchOutcome.LoadedOnly(hits) else SearchOutcome.Server(hits)
     }
 

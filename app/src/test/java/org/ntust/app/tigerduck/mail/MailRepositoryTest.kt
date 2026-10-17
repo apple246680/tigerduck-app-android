@@ -4,6 +4,7 @@ package org.ntust.app.tigerduck.mail
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -25,7 +26,9 @@ import org.ntust.app.tigerduck.mail.compose.OutgoingMail
 import org.ntust.app.tigerduck.mail.imap.MailSession
 import org.ntust.app.tigerduck.mail.imap.MailSessionFactory
 import org.ntust.app.tigerduck.mail.imap.SpecialFolder
+import org.ntust.app.tigerduck.mail.model.FolderStatus
 import org.ntust.app.tigerduck.mail.model.MailAddress
+import org.ntust.app.tigerduck.mail.model.MailBody
 import org.ntust.app.tigerduck.mail.model.MailPage
 import org.ntust.app.tigerduck.mail.smtp.MailSender
 import org.ntust.app.tigerduck.mail.smtp.MailTransport
@@ -33,6 +36,8 @@ import org.ntust.app.tigerduck.mail.smtp.SentCopy
 import org.ntust.app.tigerduck.mail.store.MailCache
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 class MailRepositoryTest {
     @get:Rule val tmp = TemporaryFolder()
@@ -106,6 +111,51 @@ class MailRepositoryTest {
         assertEquals(listOf("a"), repo.loadPage("INBOX", null).messages.map { it.subject })
 
         assertNull(setup.cache.loadFolder("INBOX"))
+    }
+
+    /**
+     * `stillWanted` is asked with the session held, right before the command: a request that
+     * queued behind another and is no longer wanted when its turn comes is never sent, and ends
+     * as [MailError.Abandoned].
+     */
+    @Test
+    fun `a request no longer wanted once the session comes free is not sent`() = runTest {
+        server.deliver("a")
+        val holding = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val statuses = AtomicInteger()
+        val sessions = MailSessionFactory { credentials ->
+            val session = server.factory().open(credentials)
+            object : MailSession by session {
+                override fun status(folder: String): FolderStatus {
+                    statuses.incrementAndGet()
+                    return session.status(folder)
+                }
+
+                override fun fetchBody(folder: String, uid: Long): MailBody {
+                    holding.countDown()
+                    release.await(5, TimeUnit.SECONDS)
+                    return session.fetchBody(folder, uid)
+                }
+            }
+        }
+        val repo = TestSetup(backgroundScope, sessions).signedIn()
+        val uid = repo.loadPage("INBOX", null).messages.single().uid
+
+        // One request holds the session (after a STATUS of its own); the poll's STATUS queues
+        // behind it, still wanted as it is asked.
+        val body = launch(Dispatchers.IO) { repo.body("INBOX", uid) }
+        assertTrue(holding.await(5, TimeUnit.SECONDS))
+        val sentBefore = statuses.get()
+        val wanted = AtomicBoolean(true)
+        val status = async(Dispatchers.IO) { runCatching { repo.status("INBOX") { wanted.get() } } }
+        // No longer wanted by the time the session comes free.
+        wanted.set(false)
+        release.countDown()
+
+        assertTrue(status.await().exceptionOrNull() is MailError.Abandoned)
+        assertEquals(sentBefore, statuses.get())
+        body.join()
     }
 
     @Test

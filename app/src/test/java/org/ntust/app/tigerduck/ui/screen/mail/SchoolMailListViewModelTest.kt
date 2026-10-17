@@ -478,23 +478,31 @@ class SchoolMailListViewModelTest {
         assertEquals(0L, vm.state.value.fetchedAt)
     }
 
-    /** A chip tapped while a load is out does not lose the date of a page that then lands. */
+    /**
+     * A chip tapped while a load is out does not lose the date of a page already on its way
+     * back -- and the batch sends nothing more for the view that left.
+     */
     @Test
     fun `a page that lands after the chip moved on still dates its folder`() {
         now = 5_000
         repo.add("INBOX", mailSummary(1))
         repo.add("寄件備份匣", mailSummary(1))
-        repo.loadGate = CompletableDeferred()
+        repo.onLoaded = { folder ->
+            if (folder == "INBOX") {
+                repo.onLoaded = null
+                now = 9_000
+                vm.selectFolder(FolderSelection.Real("寄件備份匣"))
+            }
+        }
         vm.load()
-        vm.selectFolder(FolderSelection.Real("寄件備份匣"))
-        now = 9_000
-        repo.loadGate!!.complete(Unit)
 
         assertEquals(FolderSelection.Real("寄件備份匣"), vm.state.value.selected)
         assertEquals(9_000L, state.fetchedAt("INBOX"))
         assertEquals(9_000L, state.fetchedAt("寄件備份匣"))
         assertEquals(9_000L, vm.state.value.fetchedAt)
         assertEquals(listOf(1L), vm.state.value.messages.map { it.uid })
+        // The inbox page, then Sent's own load; All mail's Sent request was never sent.
+        assertEquals(listOf("INBOX", "寄件備份匣"), repo.loadsSent)
     }
 
     /** The inbox answered the poll's STATUS; that it had grown and the refetch then failed takes nothing from that. */
@@ -535,6 +543,83 @@ class SchoolMailListViewModelTest {
         assertEquals(emptyList<String>(), repo.folderStatusCalls)
         assertEquals(9_000L, state.fetchedAt("INBOX"))
         vm.stopPolling()
+    }
+
+    /**
+     * A's All mail load has its inbox page when A signs out and B signs in. The batch's next
+     * request would go out with B's credentials under A's generation, and B's answer -- a failure
+     * too, even a rejected password -- would be dropped as A's. So a batch stops before each
+     * further request once its account has left, and sends nothing more.
+     */
+    @Test
+    fun `a batch whose account left between two of its requests sends no more`() {
+        now = 5_000
+        repo.add("INBOX", mailSummary(1))
+        repo.add("寄件備份匣", mailSummary(1))
+        repo.onLoaded = { folder ->
+            if (folder == "INBOX") {
+                repo.onLoaded = null
+                signOutAndSignInAnother()
+            }
+        }
+        vm.load()
+
+        assertEquals(listOf("INBOX"), repo.loadsSent)
+        assertEquals(SchoolMailListViewModel.UiState(), vm.state.value)
+        assertEquals(0L, state.fetchedAt("INBOX"))
+        assertEquals(0L, state.fetchedAt("寄件備份匣"))
+    }
+
+    /** A search is a batch too, one SEARCH per folder of the view. */
+    @Test
+    fun `a search whose account left between two of its folders sends no more`() {
+        repo.add("INBOX", mailSummary(1, subject = "期中考"))
+        repo.add("寄件備份匣", mailSummary(2, subject = "期中考"))
+        vm.load()
+        repo.onSearched = { folder ->
+            if (folder == "INBOX") {
+                repo.onSearched = null
+                signOutAndSignInAnother()
+            }
+        }
+        vm.setSearchText("期中考")
+        vm.submitSearch()
+
+        assertEquals(listOf("INBOX"), repo.searchesSent)
+        assertEquals(SchoolMailListViewModel.UiState(), vm.state.value)
+    }
+
+    /**
+     * The poll's check of Sent passed, but its STATUS then queued behind another request holding
+     * the session, and the user moved to Inbox meanwhile. Asked again with the session held, right
+     * before the command, the STATUS is not sent for a folder that has left the screen.
+     */
+    @Test
+    fun `a poll's STATUS queued behind the session is not sent once its folder left the screen`() {
+        now = 5_000
+        repo.add("INBOX", mailSummary(1))
+        repo.add("寄件備份匣", mailSummary(1))
+        repo.status = FolderStatus(server.uidValidity, 2, 1, 1)
+        vm.load()
+        vm.startPolling()
+        repo.folderStatusGate = CompletableDeferred()
+        now = 9_000
+        pollOnce()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        repo.folderStatusGate!!.complete(Unit)
+
+        assertEquals(emptyList<String>(), repo.folderStatusCalls)
+        assertEquals(9_000L, state.fetchedAt("INBOX"))
+        assertEquals(5_000L, state.fetchedAt("寄件備份匣"))
+        vm.stopPolling()
+    }
+
+    /** The account leaves and another arrives, as Settings does it, in the middle of whatever is running. */
+    private fun signOutAndSignInAnother() {
+        account.signOut()
+        main.dispatcher.scheduler.runCurrent()
+        server.passwords["B10000002"] = "pw"
+        runBlocking { account.signIn("b10000002", "pw") }
     }
 
     @Test
