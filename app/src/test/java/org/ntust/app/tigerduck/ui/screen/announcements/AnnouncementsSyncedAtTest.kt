@@ -61,7 +61,7 @@ class AnnouncementsSyncedAtTest {
         val tokens = V3TokenStore(context.getSharedPreferences("v3-tokens-test", Context.MODE_PRIVATE))
         val api = BulletinApiClient(client, prefs, AuthTokenManager(tokens, client, prefs, "device-1"))
         return AnnouncementsViewModel(
-            api, cache, BulletinRepository(), BulletinReadStateStore(context), prefs, testDemoAccount(context, prefs, cache),
+            api, cache, BulletinRepository(), BulletinReadStateStore(context), testDemoAccount(context, prefs, cache),
         )
     }
 

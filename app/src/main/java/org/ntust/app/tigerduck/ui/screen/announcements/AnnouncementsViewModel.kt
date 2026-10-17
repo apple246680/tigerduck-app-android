@@ -22,7 +22,6 @@ import org.ntust.app.tigerduck.data.BulletinReadStateStore
 import org.ntust.app.tigerduck.data.BulletinRepository
 import org.ntust.app.tigerduck.data.RefreshPolicy
 import org.ntust.app.tigerduck.data.cache.BulletinCache
-import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.demo.DemoAccount
 import org.ntust.app.tigerduck.notification.SyncSource
 import org.ntust.app.tigerduck.network.BulletinApiClient
@@ -51,7 +50,6 @@ class AnnouncementsViewModel @Inject constructor(
     private val cache: BulletinCache,
     private val repository: BulletinRepository,
     private val readState: BulletinReadStateStore,
-    private val prefs: AppPreferences,
     private val demoAccount: DemoAccount,
 ) : ViewModel() {
 
@@ -90,11 +88,10 @@ class AnnouncementsViewModel @Inject constructor(
     }
 
     private val _state = MutableStateFlow(
-        // A return visit finds the department list in memory, so the remembered
-        // departments go on before the cache seed's first applyFilters() pass,
-        // with no flash of unfiltered items. A first visit waits for
-        // fetchTaxonomyOnce().
-        repository.taxonomy().let { State(taxonomy = it, selectedOrgs = rememberedOrgs(it)) }
+        // A return visit finds the department list in memory, so the chips are
+        // there from the first frame. A first visit waits for fetchTaxonomyOnce().
+        // Either way nothing is selected: the filters start empty on every visit.
+        State(taxonomy = repository.taxonomy())
     )
     val state: StateFlow<State> = _state.asStateFlow()
 
@@ -114,10 +111,6 @@ class AnnouncementsViewModel @Inject constructor(
 
     // Main-thread-only — see nextCursor.
     private var hasLoaded = false
-
-    // Main-thread-only — see nextCursor. A department picked on this visit,
-    // which the remembered ones arriving later must not replace.
-    private var orgsPicked = false
 
     fun load() {
         if (hasLoaded) return
@@ -177,24 +170,7 @@ class AnnouncementsViewModel @Inject constructor(
         val tax = repository.getOrFetchTaxonomy {
             runCatching { api.fetchTaxonomy() }.getOrNull()
         } ?: return
-        _state.update {
-            val orgs = if (orgsPicked) it.selectedOrgs else rememberedOrgs(tax)
-            applyFilters(it.copy(taxonomy = tax, selectedOrgs = orgs))
-        }
-    }
-
-    /**
-     * The remembered departments the department chips can show: none until
-     * [taxonomy] has loaded, and only those it still lists. A filter with no
-     * chip on screen to show it or turn it off is what this keeps out — after
-     * a cold start offline the department list never loads, and the list
-     * stays unfiltered rather than filtered unseen. Matches the iPhone's
-     * `restoreRememberedOrgs(known:)`.
-     */
-    private fun rememberedOrgs(taxonomy: TaxonomyResponse?): Set<String> {
-        if (taxonomy == null || !prefs.rememberAnnouncementFilter) return emptySet()
-        val known = taxonomy.orgs.mapTo(HashSet()) { it.id }
-        return prefs.savedAnnouncementOrgs intersect known
+        _state.update { it.copy(taxonomy = tax) }
     }
 
     fun refresh() {
@@ -364,15 +340,8 @@ class AnnouncementsViewModel @Inject constructor(
         }
     }
 
-    fun setOrgFilter(orgs: Set<String>) {
-        // Always persist — the AppState setter for rememberAnnouncementFilter
-        // clears this key when the toggle goes false, so writing here can't
-        // accidentally revive a stale selection. Restore is gated by the
-        // toggle (see rememberedOrgs).
-        prefs.savedAnnouncementOrgs = orgs
-        orgsPicked = true
+    fun setOrgFilter(orgs: Set<String>) =
         _state.update { applyFilters(it.copy(selectedOrgs = orgs)) }
-    }
 
     fun setTagFilter(tags: Set<String>) =
         _state.update { applyFilters(it.copy(selectedTags = tags)) }
