@@ -223,7 +223,14 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         foldersError?.let { throw it }
         return resolved
     }
-    override suspend fun cachedPage(folder: String): MailPage? = touching(folder) { cachedPages[folder] }
+    /** Set, [cachedPage] waits on it with the page already read: the disk read held while the test acts, as a write that lands meanwhile is not in what it read. */
+    var cachedGate: CompletableDeferred<Unit>? = null
+
+    override suspend fun cachedPage(folder: String): MailPage? {
+        val page = touching(folder) { cachedPages[folder] }
+        cachedGate?.await()
+        return page
+    }
 
     /** Simulates the repository dropping a folder's cache once [MailError.FolderChanged] fires for it, and saying so. */
     fun dropCache(folder: String) {

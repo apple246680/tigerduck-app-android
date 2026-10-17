@@ -1054,19 +1054,50 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
-    fun `an older page in flight does not leave a read flag set meanwhile undone`() {
+    fun `a change during an older page's fetch lands on that page, and nothing of the list or the place in it is lost`() {
         repo.add("INBOX", *(1L..60L).map { mailSummary(it) }.toTypedArray())
         vm.loadIfNeeded()
         vm.selectFolder(FolderSelection.Real("INBOX"))
         val gate = holdAnswerOf("INBOX")
         vm.loadMoreIfNeeded(vm.state.value.displayed.last())
-        // The older page is read and on its way, and the mail's own screen marks one of its rows read.
-        runBlocking { repo.setSeen("INBOX", 5, true) }
+        val loads = repo.loadsSent.size
+        // The older page is read and on its way; the mail's own screen marks one of its rows read
+        // and moves another away.
+        runBlocking {
+            repo.setSeen("INBOX", 5, true)
+            repo.move("INBOX", 3, repo.resolved.nameOf(SpecialFolder.TRASH)!!)
+        }
         releaseAnswer(gate)
-        // Paging back down to it finds the flag as the server has it.
-        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
-        assertEquals(60, vm.state.value.displayed.size)
-        assertTrue(vm.state.value.displayed.first { it.uid == 5L }.summary.flags.seen)
+        // Sixty rows paged in stay sixty less the moved one, in place: no fetch of the first page.
+        val displayed = vm.state.value.displayed
+        assertEquals((60L downTo 1L).filter { it != 3L }, displayed.map { it.uid })
+        assertTrue(displayed.first { it.uid == 5L }.summary.flags.seen)
+        assertEquals(loads, repo.loadsSent.size)
+        assertTrue(vm.state.value.cursors.isEmpty())
+    }
+
+    @Test
+    fun `a cached page read across a mark-read is fetched again as the page appears, even after its own fetch failed`() {
+        repo.add("INBOX", mailSummary(1))
+        vm.loadIfNeeded()
+        // Back to the inbox: its cached page is read from disk, and while it is, the mail's own
+        // screen marks the mail read -- the read had the row from before that. The server's page
+        // that follows fails.
+        val gate = CompletableDeferred<Unit>()
+        repo.cachedGate = gate
+        repo.loadError = MailError.Network()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        runBlocking { repo.setSeen("INBOX", 1, true) }
+        repo.cachedGate = null
+        gate.complete(Unit)
+        main.dispatcher.scheduler.runCurrent()
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        assertEquals(listOf(1L), vm.state.value.displayed.map { it.uid })
+        // The rows on screen are in doubt, so coming back fetches the folder again; the server answers now.
+        repo.loadError = null
+        vm.loadIfNeeded()
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Loaded)
+        assertTrue(vm.state.value.displayed.single().summary.flags.seen)
     }
 
     @Test

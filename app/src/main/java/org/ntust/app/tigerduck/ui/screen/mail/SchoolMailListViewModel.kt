@@ -200,6 +200,15 @@ class SchoolMailListViewModel @Inject constructor(
     private val changedAt = mutableMapOf<String, Int>()
 
     /**
+     * Where [paginate] collects the changes that arrive while its older page is out; null when
+     * none is. A first page is fetched again after such a change ([refetchIfChangedSince]); an
+     * older page is not, since that fetch replaces the whole list and the user's place in it,
+     * so the change is applied to the page's rows instead ([pageWith]) -- only the changes of
+     * that one request, so there is nothing to cap.
+     */
+    private var olderPageChanges: MutableList<MailChange>? = null
+
+    /**
      * True while a load asked for by another account than [loadJob]'s waits for that one to end:
      * a student who signed in over the one whose folder list was still out -- through the sign-in
      * sheet a rejected password shows -- and whose screen asked for its load at once. The single
@@ -334,6 +343,7 @@ class SchoolMailListViewModel @Inject constructor(
         if (change.generation != account.accountGeneration || change.generation != loadGeneration) return
         changeSeq++
         changedAt[change.folder] = changeSeq
+        if (change !is MailChange.Changed) olderPageChanges?.add(change)
         when (change) {
             is MailChange.Seen -> updateMessage(MailRow.key(change.folder, change.uid)) { it.copy(flags = it.flags.copy(seen = change.seen)) }
             is MailChange.Removed -> removeMessage(MailRow.key(change.folder, change.uid))
@@ -359,6 +369,11 @@ class SchoolMailListViewModel @Inject constructor(
      * asked once per change, not again and again.
      */
     private fun refetchIfChangedSince(folders: Collection<String>, since: Int) {
+        if (markChangedSince(folders, since)) refetch()
+    }
+
+    /** Marks stale each of [folders] a change arrived for after [since]; true when one of them is on screen. */
+    private fun markChangedSince(folders: Collection<String>, since: Int): Boolean {
         val targets = _state.value.targets
         var onScreen = false
         for (folder in folders) {
@@ -367,7 +382,7 @@ class SchoolMailListViewModel @Inject constructor(
             staleFolders[folder] = changed
             if (folder in targets) onScreen = true
         }
-        if (onScreen) refetch()
+        return onScreen
     }
 
     fun load() {
@@ -605,6 +620,12 @@ class SchoolMailListViewModel @Inject constructor(
     private suspend fun showCached() {
         val selection = _state.value.selected
         val generation = account.accountGeneration
+        // The disk read can hand back a row from before a write that lands meanwhile -- the
+        // repository writes the cache once the server has answered the write -- so such a folder
+        // is marked stale: the server page the caller fetches next, asked for after the change,
+        // takes the mark off when it lands, and should it fail the mark keeps the next appearance
+        // fetching the folder again. No fetch from here; the caller's is already on its way.
+        val since = changeSeq
         val pages = _state.value.targets.mapNotNull { folder -> repository.cachedPage(folder)?.let { folder to it } }
         if (pages.isEmpty() || !stillCurrent(selection, generation)) return
         listGeneration++
@@ -613,6 +634,7 @@ class SchoolMailListViewModel @Inject constructor(
         // page from a folder recreated since would be merged in unchecked.
         folderValidity = folderValidity + pages.associate { (folder, page) -> folder to page.uidValidity }
         _state.update { it.copy(messages = rowsOf(selection, pages), cursors = cursorsOf(pages)) }
+        markChangedSince(pages.map { it.first }, since)
     }
 
     /**
@@ -790,13 +812,16 @@ class SchoolMailListViewModel @Inject constructor(
         val list = listGeneration
         val generation = account.accountGeneration
         _state.update { it.copy(isPaginating = true) }
+        // What arrives while each older page is out goes onto that page's rows (see [olderPageChanges]).
+        val arrived = mutableListOf<MailChange>()
+        olderPageChanges = arrived
         try {
             var walkedBack = 0
             while (true) {
                 val cursors = _state.value.cursors
                 if (cursors.isEmpty()) return
                 val end = _state.value.displayed.lastOrNull()?.key
-                val since = changeSeq
+                arrived.clear()
                 // No request of the batch goes out once the account, the view or the list that
                 // asked has gone (see [fetchFirstPage]): an older page of a list a refresh has
                 // replaced since would only be dropped on return, and under the next account's
@@ -815,15 +840,12 @@ class SchoolMailListViewModel @Inject constructor(
                     return
                 }
                 _state.update { st ->
-                    val merged = pages.fold(st.messages) { rows, (folder, page) -> mergeOlderPage(rows, folder, page) }
+                    val merged = pages.fold(st.messages) { rows, (folder, page) -> mergeOlderPage(rows, folder, pageWith(folder, page, arrived)) }
                     st.copy(
                         messages = if (selection is FolderSelection.AllMail) merged.sortedWith(NEWEST_FIRST) else merged.sortedByDescending { it.uid },
                         cursors = st.cursors - cursors.keys + cursorsOf(pages),
                     )
                 }
-                // The page's rows won over the list's (see [mergeOlderPage]), a change that landed
-                // while it was out included.
-                refetchIfChangedSince(pages.map { it.first }, since)
                 // A page that adds nothing on screen leaves no new last row to ask for the next one,
                 // so a few more are fetched straight away ([EMPTY_PAGE_WALKBACK]).
                 if (_state.value.displayed.lastOrNull()?.key != end || walkedBack == EMPTY_PAGE_WALKBACK) return
@@ -833,8 +855,28 @@ class SchoolMailListViewModel @Inject constructor(
             if (dropped(e, generation)) return
             fail(e)
         } finally {
+            olderPageChanges = null
             _state.update { it.copy(isPaginating = false) }
         }
+    }
+
+    /**
+     * [page], an older page of [folder], with those of [arrived] that are the folder's applied to
+     * its rows: a read flag as a write set it, or a row a move or delete took away. They arrived
+     * while the page was out, so the server read it before them; the rest of the list had them
+     * in place as they came ([apply]).
+     */
+    private fun pageWith(folder: String, page: MailPage, arrived: List<MailChange>): MailPage {
+        var messages = page.messages
+        for (change in arrived) {
+            if (change.folder != folder) continue
+            messages = when (change) {
+                is MailChange.Seen -> messages.map { if (it.uid == change.uid) it.copy(flags = it.flags.copy(seen = change.seen)) else it }
+                is MailChange.Removed -> messages.filterNot { it.uid == change.uid }
+                is MailChange.Changed -> messages
+            }
+        }
+        return if (messages === page.messages) page else page.copy(messages = messages)
     }
 
     private suspend fun runSearch() {
