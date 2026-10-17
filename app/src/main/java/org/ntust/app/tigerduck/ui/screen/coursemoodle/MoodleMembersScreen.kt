@@ -3,14 +3,16 @@ package org.ntust.app.tigerduck.ui.screen.coursemoodle
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -38,6 +40,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -146,56 +150,115 @@ internal fun MembersList(
         onRefresh = { pulling = true; refresher { pulling = false } },
         modifier = Modifier.fillMaxSize(),
     ) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = MembersListVerticalPadding),
-        ) {
-            if (list == null) {
-                item {
-                    MoodleFirstLoad(
-                        failure = if (state.isRefreshing) null else state.failure,
-                        onRetry = { scope.launch { store.refreshMembers() } },
-                    )
+        // The viewport's height, known before the list's first measure, for RowsBelowSearch.
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val paddingPx = with(LocalDensity.current) { MembersListVerticalPadding.roundToPx() }
+            val minRowsPx = if (constraints.hasBoundedHeight) (constraints.maxHeight - 2 * paddingPx).coerceAtLeast(0) else 0
+            val rows = remember { RowsBelowSearch() }
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = MembersListVerticalPadding),
+            ) {
+                if (list == null) {
+                    item {
+                        MoodleFirstLoad(
+                            failure = if (state.isRefreshing) null else state.failure,
+                            onRetry = { scope.launch { store.refreshMembers() } },
+                        )
+                    }
+                    return@LazyColumn
                 }
-                return@LazyColumn
-            }
-            // Before everything the query decides, so a query that empties the list keeps the
-            // field, and the keyboard with it.
-            item(key = "search") { SearchRow(query, onQueryChange) }
-            state.failureBesideCopy?.let { failure ->
-                item(key = "failure") {
-                    MoodleRefreshFailure(
-                        failure,
-                        onRetry = { scope.launch { store.refreshMembers() } },
-                        modifier = Modifier.padding(bottom = 12.dp),
-                    )
+                // Before everything the query decides, so a query that empties the list keeps the
+                // field, and the keyboard with it.
+                item(key = "search") { SearchRow(query, onQueryChange) }
+                rows.begin()
+                state.failureBesideCopy?.let { failure ->
+                    rows.row(this, "failure") {
+                        MoodleRefreshFailure(
+                            failure,
+                            onRetry = { scope.launch { store.refreshMembers() } },
+                            modifier = Modifier.padding(bottom = 12.dp),
+                        )
+                    }
                 }
-            }
-            if (sections.isEmpty() && query.isNotBlank()) {
-                item(key = "none") {
-                    EmptyStateView(
-                        icon = Icons.Filled.SearchOff,
-                        title = stringResource(R.string.desktop_bulletins_no_matches),
-                        message = null,
-                    )
+                if (sections.isEmpty() && query.isNotBlank()) {
+                    rows.row(this, "none") {
+                        EmptyStateView(
+                            icon = Icons.Filled.SearchOff,
+                            title = stringResource(R.string.desktop_bulletins_no_matches),
+                            message = null,
+                        )
+                    }
                 }
-            }
-            // One item per row, so a large class draws only the rows on screen, and only they
-            // fetch their pictures.
-            sections.forEach { section ->
-                item(key = "section-${section.placement}") { MemberSectionHeader(section) }
-                itemsIndexed(section.members, key = { _, member -> "member-${member.id}" }) { index, member ->
-                    MemberCardRow(
-                        store = store,
-                        member = member,
-                        picture = member.pictureUrl?.let { pictures[it] },
-                        first = index == 0,
-                        last = index == section.members.lastIndex,
-                        onOpen = onOpen,
-                    )
+                // One item per row, so a large class draws only the rows on screen, and only they
+                // fetch their pictures.
+                sections.forEach { section ->
+                    rows.row(this, "section-${section.placement}") { MemberSectionHeader(section) }
+                    section.members.forEachIndexed { index, member ->
+                        rows.row(this, "member-${member.id}") {
+                            MemberCardRow(
+                                store = store,
+                                member = member,
+                                picture = member.pictureUrl?.let { pictures[it] },
+                                first = index == 0,
+                                last = index == section.members.lastIndex,
+                                onOpen = onOpen,
+                            )
+                        }
+                    }
                 }
+                rows.filler(this, minRowsPx)
             }
+        }
+    }
+}
+
+/**
+ * The rows below the search row, and a filler after them that keeps them at least a viewport
+ * tall together. Without it a class too short to fill the screen cannot open past the search
+ * row: the list scrolls back to fill the space, and the row shows at rest. The filler is sized in
+ * the measure pass, from the heights of the rows measured just before it in that same pass, so
+ * the very first layout is already tall enough and the opening position holds; the list's own
+ * layout info would say so a frame late, after the position had been clamped and kept.
+ */
+private class RowsBelowSearch {
+    /** Each row's height at its last measure, by key. */
+    private val heights = HashMap<Any, Int>()
+
+    /** The rows of the current build of the list, in order. */
+    private val keys = ArrayList<Any>()
+
+    /** Starts a build of the list's items: the rows [row] adds until the next build are its rows. */
+    fun begin() = keys.clear()
+
+    fun row(list: LazyListScope, key: Any, content: @Composable () -> Unit) {
+        keys += key
+        list.item(key = key) {
+            Box(
+                Modifier.layout { measurable, constraints ->
+                    val placeable = measurable.measure(constraints)
+                    heights[key] = placeable.height
+                    layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+                },
+            ) { content() }
+        }
+    }
+
+    /** Ends the build with the filler: [minPx] less the rows' heights, and nothing once they fill it. */
+    fun filler(list: LazyListScope, minPx: Int) {
+        // A row the list no longer has must not count towards it.
+        heights.keys.retainAll(keys.toSet())
+        list.item(key = "filler") {
+            Spacer(
+                Modifier
+                    .fillMaxWidth()
+                    .layout { measurable, constraints ->
+                        val height = (minPx - keys.sumOf { heights[it] ?: 0 }).coerceAtLeast(0)
+                        val placeable = measurable.measure(constraints.copy(minHeight = height, maxHeight = height))
+                        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+                    },
+            )
         }
     }
 }

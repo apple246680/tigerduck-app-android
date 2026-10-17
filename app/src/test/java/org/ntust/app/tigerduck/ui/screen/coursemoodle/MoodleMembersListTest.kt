@@ -67,12 +67,15 @@ class MoodleMembersListTest {
         )
     }
 
+    /** What Moodle answers the members fetch with; the large class unless a test sets another. */
+    private var members: List<MoodleMember> = students
+
     private val api = object : MoodleCourseApi {
         override suspend fun functions() = setOf(MoodleCourseApi.MEMBERS_FUNCTION)
         override suspend fun forums(courseIds: List<Int>) = emptyList<org.ntust.app.tigerduck.network.model.moodle.MoodleForum>()
         override suspend fun discussions(forumId: Int, page: Int) = emptyList<org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussion>()
         override suspend fun markViewed(discussionId: Int, isCurrent: () -> Boolean) = Unit
-        override suspend fun members(courseId: Int) = MoodleMemberList(0, students)
+        override suspend fun members(courseId: Int) = MoodleMemberList(0, members)
         override suspend fun picture(url: String): ByteArray {
             pictures++
             return ByteArray(0)
@@ -89,14 +92,14 @@ class MoodleMembersListTest {
 
     private val search get() = RuntimeEnvironment.getApplication().getString(R.string.action_search)
 
-    /** The list, with its 120 students fetched and on screen. */
+    /** The list, with [members] fetched and on screen. */
     private fun showLoadedList() {
         val store = MoodleCourseStore(5, emptyList(), emptyList(), api, MoodleCacheContext("B1", cache, { true }), scope)
         composeRule.setContent {
             var query by remember { mutableStateOf("") }
             MembersList(store = store, query = query, onQueryChange = { query = it }, onOpen = {})
         }
-        composeRule.waitUntil(5_000) { store.members.value?.members?.size == 120 }
+        composeRule.waitUntil(5_000) { store.members.value?.members?.size == members.size }
         composeRule.waitForIdle()
     }
 
@@ -115,6 +118,28 @@ class MoodleMembersListTest {
 
     @Test
     fun `the search field waits above the list's top until the list is pulled down`() {
+        showLoadedList()
+        assertSearchFieldOffScreen()
+
+        composeRule.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
+
+        composeRule.onNodeWithText(search).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a class too short to fill the screen opens with the search field above the top too`() {
+        members = students.take(2)
+        showLoadedList()
+        assertSearchFieldOffScreen()
+
+        composeRule.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
+
+        composeRule.onNodeWithText(search).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a class with nobody in it opens with the search field above the top too`() {
+        members = emptyList()
         showLoadedList()
         assertSearchFieldOffScreen()
 
