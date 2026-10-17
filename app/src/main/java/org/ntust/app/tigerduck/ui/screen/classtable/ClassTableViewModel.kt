@@ -923,10 +923,12 @@ class ClassTableViewModel @Inject constructor(
         val flagged = course.copy(isManual = true)
         val updated = _courses.value + flagged
         _courses.value = updated
-        // Now, not once the writes below are done: a removal asked after this
-        // add must read as the newer action however long they take.
-        val reAddedAt = pendingCourseDeletes.stamp()
         viewModelScope.launch {
+            // First, before the writes below: a removal asked after this add
+            // must read as the newer action however long they take. The
+            // launch runs here, on this thread, up to its first suspension
+            // (Main.immediate), so the stamp is the tap's.
+            val reAddedAt = pendingCourseDeletes.stamp()
             val semester = _currentSemester.value
             val deleted = dataCache.loadDeletedCourseNos()
             if (CourseTombstoneKeys.isHidden(course.courseNo, semester, deleted)) {
@@ -1100,10 +1102,10 @@ class ClassTableViewModel @Inject constructor(
                 ignoredCoursesSaved(edit)
             }
         }
-        // Now, as for an add: a re-add asked before this removal must not
-        // let its delete go, however long the writes below take.
-        val queuedAt = pendingCourseDeletes.stamp()
         viewModelScope.launch {
+            // First, as for an add: a re-add asked before this removal must
+            // not let its delete go, however long the writes below take.
+            val queuedAt = pendingCourseDeletes.stamp()
             if (tombstone) {
                 val deleted = CourseTombstoneKeys.hide(
                     courseNo, semester, dataCache.loadDeletedCourseNos()

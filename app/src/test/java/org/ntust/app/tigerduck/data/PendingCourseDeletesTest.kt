@@ -3,8 +3,10 @@ package org.ntust.app.tigerduck.data
 import android.app.Application
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -85,6 +87,20 @@ class PendingCourseDeletesTest {
 
     /** The queued course numbers by term, without the moments they were asked at. */
     private suspend fun queued() = cache.loadPendingCourseDeletes().mapValues { (_, entries) -> entries.keys.sorted() }
+
+    /**
+     * Runs the test dispatcher until [done]. A launched coroutine's file reads and writes run on
+     * the IO dispatcher and resume into the test dispatcher on their own time, which
+     * `runCurrent()` alone does not wait for; each [done] is itself a real read.
+     */
+    private suspend fun TestScope.settle(done: suspend () -> Boolean) {
+        repeat(500) {
+            if (done()) return
+            runCurrent()
+            yield()
+        }
+        throw AssertionError("the outbox did not settle")
+    }
 
     @Test
     fun `a delete that fails is kept, and the next sync sends it again with the same key`() = runTest {
@@ -251,6 +267,65 @@ class PendingCourseDeletesTest {
 
         deletes.forget(term, typed, askedAt = deletes.stamp())
         assertEquals("one asked after it lets it go", emptySet<String>(), deletes.waitingIn(term))
+    }
+
+    /**
+     * A failed delete waited across a restart, and the clock moved back meanwhile. The next
+     * process's stamps must still outrank it, or a re-add keeps the old delete and a retry
+     * takes the restored course off.
+     */
+    @Test
+    fun `after a restart a new action outranks every queued delete, whatever the clock says`() = runTest {
+        answer = { throw IOException("offline") }
+        deletes.send(term, typed, queuedAt = 1_000)
+        assertEquals(mapOf(term to listOf(typed)), queued())
+
+        val restarted = PendingCourseDeletes(cache, adds, { courseKey, pinned ->
+            if (pinned != signIn) throw NotSignedInException()
+            sent += Sent(courseKey, account = signIn)
+            answer(courseKey)
+        }, signInGeneration = { signIn }, clock = { 5 })
+
+        assertTrue("a stamp after the restart outranks the queued delete", restarted.stamp() > 1_000)
+        restarted.forget(term, typed)
+        assertEquals("the re-add lets the old delete go", emptySet<String>(), restarted.waitingIn(term))
+        answer = {}
+        restarted.retry()
+        assertEquals(1, sent.size)
+    }
+
+    /**
+     * A slow request holds the lock; a removal asked meanwhile must already be on disk while it
+     * waits, or a process killed then loses it, and the next sync restores the server row.
+     */
+    @Test
+    fun `a delete waiting for the lock is already kept on disk`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val holder = launch { adds.removing { gate.await() } }
+        runCurrent()
+
+        answer = { throw IOException("offline") }
+        val removal = launch { deletes.send(term, typed) }
+        // The write goes through real file reads and writes, which resume into
+        // the test dispatcher on their own time: drive it until the file has it.
+        settle { queued().isNotEmpty() }
+        assertEquals("kept before the wait", mapOf(term to listOf(typed)), queued())
+        assertEquals("not sent while the lock is held", emptyList<String>(), keys())
+        assertTrue("still waiting for the lock", removal.isActive)
+
+        // The process dies here: a new one finds the delete and sends it at its next sync.
+        removal.cancel()
+        gate.complete(Unit)
+        holder.join()
+        answer = {}
+        val restarted = PendingCourseDeletes(cache, adds, { courseKey, pinned ->
+            if (pinned != signIn) throw NotSignedInException()
+            sent += Sent(courseKey, account = signIn)
+            answer(courseKey)
+        }, signInGeneration = { signIn })
+        restarted.retry()
+        assertEquals(listOf("client:1151:MA1010002"), keys())
+        assertEquals(emptyMap<String, List<String>>(), queued())
     }
 
     /** A delete under way holds the adds back, as a delete by hand did before it was queued. */
