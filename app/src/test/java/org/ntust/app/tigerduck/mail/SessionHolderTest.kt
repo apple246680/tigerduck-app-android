@@ -26,6 +26,17 @@ class SessionHolderTest {
         assertEquals(0, server.openSessions)
     }
 
+    /** A call no longer wanted opens nothing: the open would log in with the caller's credentials. */
+    @Test
+    fun `a call no longer wanted neither opens a connection nor runs`() = runTest {
+        val holder = SessionHolder(server.factory(), backgroundScope)
+        var blockRuns = 0
+        val result = runCatching { holder.use(creds, stillWanted = { false }) { blockRuns++ } }
+        assertEquals(true, result.exceptionOrNull() is MailError.Abandoned)
+        assertEquals(0, blockRuns)
+        assertEquals(0, server.opens)
+    }
+
     @Test
     fun `a dead held connection is replaced by a fresh one before the block runs`() = runTest {
         val holder = SessionHolder(server.factory(), backgroundScope)

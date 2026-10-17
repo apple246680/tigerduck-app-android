@@ -88,8 +88,12 @@ class SchoolMailListViewModel @Inject constructor(
         val searchResults: List<MailRow>? = null,
         val searchLocalOnly: Boolean = false,
         val isSearching: Boolean = false,
-        /** For the sync dot's "Last synced" row; see [MailChecker.inboxFetchedAt]. */
-        val inboxFetchedAt: Long = 0L,
+        /**
+         * When the folders on screen last had their newest page fetched -- for All mail the older
+         * of its two -- or 0 while one of them never has. For the sync dot's "Last synced" row;
+         * see [MailChecker.fetchedAt].
+         */
+        val fetchedAt: Long = 0L,
     ) {
         val displayed: List<MailRow>
             get() = (searchResults ?: messages).let { list -> if (unreadOnly) list.filter { !it.summary.flags.seen } else list }
@@ -159,9 +163,13 @@ class SchoolMailListViewModel @Inject constructor(
     fun load() {
         if (!account.signedIn.value) return
         showFetchedAt()
+        val generation = account.accountGeneration
         viewModelScope.launch {
             try {
-                val folders = repository.folders()
+                // The first request of the load, and asked the same question as the rest (see
+                // fetchFirstPage): a folder list that waited for the session across a sign-out
+                // must not be fetched as the next account.
+                val folders = repository.folders { account.accountGeneration == generation }
                 val merged = FolderSelection.AllMail.MERGED.mapNotNull { folders.nameOf(it) }
                 val real = SpecialFolder.entries.mapNotNull { kind ->
                     folders.nameOf(kind)?.let { FolderChip(FolderSelection.Real(it), kind) }
@@ -180,8 +188,10 @@ class SchoolMailListViewModel @Inject constructor(
                     else -> inbox
                 }
                 _state.update { it.copy(chips = chips, others = folders.others, selected = keep, mergedFolders = merged) }
+                // The folders on screen are known now, and so is their date.
+                showFetchedAt()
             } catch (e: MailError) {
-                fail(e)
+                if (!dropped(e, generation)) fail(e)
                 return@launch
             }
             showCached()
@@ -218,6 +228,8 @@ class SchoolMailListViewModel @Inject constructor(
         _state.update {
             it.copy(selected = selection, messages = emptyList(), cursors = emptyMap(), searchResults = null, searchText = "", searchLocalOnly = false)
         }
+        // The new selection's own date, kept from its last fetch, until this one's lands.
+        showFetchedAt()
         viewModelScope.launch {
             showCached()
             fetchFirstPage()
@@ -265,7 +277,8 @@ class SchoolMailListViewModel @Inject constructor(
 
     /**
      * Spec §8.5: while the page is visible, look at the inbox every minute over
-     * the held connection. Spec §7.4: a rejected password stops the poll -- it
+     * the held connection, and at the other folders on screen with it (see [poll]).
+     * Spec §7.4: a rejected password stops the poll -- it
      * would otherwise re-send the same rejected LOGIN once a minute for as long
      * as the page is open. Signing in again clears the flag, and the screen
      * restarts polling from that.
@@ -303,8 +316,9 @@ class SchoolMailListViewModel @Inject constructor(
     /** The cached page is a disk read, so it runs off the main thread (the repository hops to IO). */
     private suspend fun showCached() {
         val selection = _state.value.selected
+        val generation = account.accountGeneration
         val pages = _state.value.targets.mapNotNull { folder -> repository.cachedPage(folder)?.let { folder to it } }
-        if (pages.isEmpty() || _state.value.selected != selection) return
+        if (pages.isEmpty() || !stillCurrent(selection, generation)) return
         _state.update { it.copy(messages = rowsOf(selection, pages), cursors = cursorsOf(pages)) }
     }
 
@@ -318,18 +332,28 @@ class SchoolMailListViewModel @Inject constructor(
         val selection = _state.value.selected
         val targets = _state.value.targets
         if (targets.isEmpty()) return
+        val generation = account.accountGeneration
         _state.update { it.copy(loadState = LoadState.Loading) }
         try {
-            val pages = targets.map { folder -> folder to repository.loadPage(folder, null) }
-            if (_state.value.selected != selection) return
+            // Each folder is dated the moment its own page lands, not once the whole load has: a
+            // later folder's failure, a chip tapped meanwhile or a sign-out must not lose a fetch
+            // that did reach the server. And no request of the batch goes out once the account
+            // or the view that asked has gone -- asked with the session held, so a request that
+            // waited behind another is not sent under the next account's credentials either.
+            val pages = targets.map { folder ->
+                val page = repository.loadPage(folder, null) { stillCurrent(selection, generation) }
+                dated(folder, generation)
+                folder to page
+            }
+            if (!stillCurrent(selection, generation)) return
             _state.update { it.copy(messages = rowsOf(selection, pages), cursors = cursorsOf(pages), loadState = LoadState.Loaded) }
             // Was "only for Inbox itself"; All mail shows the inbox's own mail too, so it must
             // move the notification seen marker exactly as viewing Inbox always did.
             if (_state.value.inboxInView) {
-                inboxFetched()
-                runCatching { checker.noteSeenByPage(repository.inboxStatus()) }
+                runCatching { checker.noteSeenByPage(repository.inboxStatus { account.accountGeneration == generation }, generation) }
             }
         } catch (e: MailError) {
+            if (dropped(e, generation)) return
             fail(e)
         }
     }
@@ -416,10 +440,13 @@ class SchoolMailListViewModel @Inject constructor(
         val selection = _state.value.selected
         val cursors = _state.value.cursors
         if (cursors.isEmpty()) return
+        val generation = account.accountGeneration
         _state.update { it.copy(isPaginating = true) }
         try {
-            val pages = cursors.entries.sortedBy { it.key }.map { (folder, before) -> folder to repository.loadPage(folder, before) }
-            if (_state.value.selected != selection) return
+            val pages = cursors.entries.sortedBy { it.key }.map { (folder, before) ->
+                folder to repository.loadPage(folder, before) { stillCurrent(selection, generation) }
+            }
+            if (!stillCurrent(selection, generation)) return
             _state.update { st ->
                 val known = st.messages.mapTo(mutableSetOf()) { it.key }
                 val added = pages.flatMap { (folder, page) -> page.messages.map { MailRow(folder, it) } }
@@ -430,6 +457,7 @@ class SchoolMailListViewModel @Inject constructor(
                 )
             }
         } catch (e: MailError) {
+            if (dropped(e, generation)) return
             fail(e)
         } finally {
             _state.update { it.copy(isPaginating = false) }
@@ -443,13 +471,16 @@ class SchoolMailListViewModel @Inject constructor(
             _state.update { it.copy(searchResults = null, searchLocalOnly = false) }
             return
         }
+        val generation = account.accountGeneration
         _state.update { it.copy(isSearching = true) }
         try {
             // One SEARCH per real folder, merged the same way the list itself is. A folder whose
             // server refused the search still contributes its locally-matched mail, and the
             // "loaded only" note appears as soon as any one of them fell back.
-            val outcomes = _state.value.targets.map { folder -> folder to repository.search(folder, query) }
-            if (_state.value.selected != selection) return
+            val outcomes = _state.value.targets.map { folder ->
+                folder to repository.search(folder, query) { stillCurrent(selection, generation) }
+            }
+            if (!stillCurrent(selection, generation)) return
             val rows = outcomes.flatMap { (folder, outcome) -> outcome.messages.map { MailRow(folder, it) } }
             _state.update {
                 it.copy(
@@ -458,6 +489,7 @@ class SchoolMailListViewModel @Inject constructor(
                 )
             }
         } catch (e: MailError) {
+            if (dropped(e, generation)) return
             fail(e)
         } finally {
             _state.update { it.copy(isSearching = false) }
@@ -465,26 +497,52 @@ class SchoolMailListViewModel @Inject constructor(
     }
 
     /**
-     * Runs whenever the inbox's own mail is in view -- Inbox itself, or All mail merging it in
-     * (see [UiState.inboxInView]) -- every other real selection refreshes on pull-to-refresh
-     * instead. [newest] is read from the inbox's own rows specifically, not [UiState.messages] as
-     * a whole: in All mail, messages also holds Sent rows, whose UIDs live in a completely
-     * unrelated namespace and would otherwise skew the "did the inbox actually grow" check.
+     * Runs every minute while the page shows a list and no search. Whenever the inbox's own mail
+     * is in view -- Inbox itself, or All mail merging it in (see [UiState.inboxInView]) -- the
+     * inbox gets the new-mail check, and a grown inbox refetches the list. [newest] is read from
+     * the inbox's own rows specifically, not [UiState.messages] as a whole: in All mail, messages
+     * also holds Sent rows, whose UIDs live in a completely unrelated namespace and would
+     * otherwise skew the "did the inbox actually grow" check.
+     *
+     * Every other folder on screen -- Sent in All mail, or a folder viewed on its own -- is asked
+     * for its STATUS as well, the cheapest round trip there is, and dated when it answers. A
+     * check that finds nothing new must still move the "Last synced" row, or a time that stands
+     * still reads as a page that stopped syncing; All mail is dated by the older of its two
+     * folders, so both have to be verified for its row to move. A folder whose check failed keeps
+     * its date. The background [MailChecker] stays the inbox's alone: it is for notifications.
      */
     private suspend fun poll() {
         val s = _state.value
-        if (!s.inboxInView || s.searchResults != null) return
+        if (s.targets.isEmpty() || s.searchResults != null) return
+        val selection = s.selected
+        val generation = account.accountGeneration
         try {
-            val status = repository.inboxStatus()
-            val newest = s.messages.filter { it.folder == s.inboxFolder }.maxOfOrNull { it.uid } ?: 0L
-            if (status.uidNext > newest + 1) {
-                fetchFirstPage()
-                prefetchArrivedBodies(newest)
-            } else {
-                inboxFetched()
-                checker.noteSeenByPage(status)
+            if (s.inboxInView) {
+                val status = repository.inboxStatus { stillCurrent(selection, generation) }
+                // The STATUS reached the inbox, whatever the refetch a grown one starts makes of it.
+                s.inboxFolder?.let { dated(it, generation) }
+                val newest = s.messages.filter { it.folder == s.inboxFolder }.maxOfOrNull { it.uid } ?: 0L
+                if (status.uidNext > newest + 1) {
+                    // A chip tapped while the STATUS was out has its own load running; the view
+                    // that left is not refetched for it.
+                    if (!stillCurrent(selection, generation)) return
+                    fetchFirstPage()
+                    prefetchArrivedBodies(newest)
+                    return
+                }
+                checker.noteSeenByPage(status, generation)
+            }
+            for (folder in s.targets) {
+                if (folder == s.inboxFolder) continue
+                // Asked only while still on screen -- with the session held, right before the
+                // STATUS goes out, since it can wait there behind another request while the chip
+                // moves on. A folder that left the screen is left alone; the next tick polls
+                // whatever is on screen then.
+                repository.status(folder) { stillCurrent(selection, generation) }
+                dated(folder, generation)
             }
         } catch (e: MailError) {
+            if (dropped(e, generation)) return
             // A rejected password still has to reach the account (spec §7.4) -- both paths below
             // make that hop. Everything else is a transient action failure rather than the page
             // failing: Mail2000 caps connections and answers "server busy" under load, so one
@@ -545,13 +603,44 @@ class SchoolMailListViewModel @Inject constructor(
         }
     }
 
-    /** The inbox answered the page: the "Last synced" row moves to now. */
-    private fun inboxFetched() {
-        checker.noteFetchedByPage()
+    /**
+     * [folder] answered a request made for the account at [generation]: its date moves, and the
+     * "Last synced" row with it when the folder is on screen. Called the moment each request
+     * lands, whatever happens to the rest of the load, so a page that did reach the server is
+     * never left undated; [MailChecker.noteFetchedByPage] drops it if the account has left.
+     */
+    private fun dated(folder: String, generation: Int) {
+        checker.noteFetchedByPage(folder, generation)
         showFetchedAt()
     }
 
-    private fun showFetchedAt() = _state.update { it.copy(inboxFetchedAt = checker.inboxFetchedAt) }
+    /**
+     * Whether an answer may still go on screen: [selection] is what the page shows, and the
+     * account is the one that asked, by its [MailAccount.accountGeneration] read before the
+     * request. A sign-out resets the state while a load is out, and the load is not cancelled
+     * (it is blocking IMAP I/O), so whoever signs in next must not get the departing account's
+     * rows (spec §7.5); nor must a chip tapped meanwhile get the rows of the view that left.
+     */
+    private fun stillCurrent(selection: FolderSelection, generation: Int): Boolean =
+        _state.value.selected == selection && account.accountGeneration == generation
+
+    /**
+     * Whether a failure is nobody's to see: a request the repository let go unsent because
+     * [stillCurrent] no longer held ([MailError.Abandoned]), or one of an account that has left
+     * since [generation] -- whose failure is not the next account's, and whose rejected password
+     * must not lock the next account out (as the checker's own check already holds).
+     */
+    private fun dropped(e: MailError, generation: Int): Boolean =
+        e is MailError.Abandoned || account.accountGeneration != generation
+
+    /**
+     * The date of the folders on screen: the older of All mail's two, and 0 while one of them has
+     * none, as on the iPhone -- a merged list is only as fresh as its staler half. Nothing is on
+     * screen to date before [load] has resolved the folders.
+     */
+    private fun showFetchedAt() = _state.update { s ->
+        s.copy(fetchedAt = s.targets.minOfOrNull { checker.fetchedAt(it) } ?: 0L)
+    }
 
     /** Keyed by (folder, uid), never by UID alone -- the same UID in two folders is two mails. */
     private fun updateMessage(key: String, transform: (MailSummary) -> MailSummary) = _state.update { st ->

@@ -45,6 +45,9 @@ class LibraryPassStateTest {
     /** The codes the page dated its "Last synced" row by, one per call. */
     private var dated = 0
 
+    /** When the last code landed, as the view model keeps it across restarts. */
+    private val fetchedAt = MutableStateFlow(0L)
+
     private lateinit var state: LibraryPassState<String>
 
     private fun TestScope.pass(): LibraryPassState<String> = LibraryPassState(
@@ -64,7 +67,11 @@ class LibraryPassStateTest {
         describe = { it.message ?: "failed" },
         cache = LibraryQRCache(),
         now = { testScheduler.currentTime },
-        onFetched = { dated++ },
+        onFetched = {
+            dated++
+            fetchedAt.value = EPOCH + testScheduler.currentTime
+        },
+        fetchedAt = fetchedAt,
     ).also { state = it }
 
     /**
@@ -235,5 +242,48 @@ class LibraryPassStateTest {
         runCurrent()
         assertEquals("image of code-4", pass.image.value)
         assertEquals(2, dated)
+    }
+
+    /**
+     * The page's "Last synced" row dates the code on screen, as on the iPhone. With none -- before
+     * the first lands, after an expired one has gone, or signed out -- it says never, whatever
+     * date a code from an earlier visit left behind.
+     */
+    @Test
+    fun `the date shows only while a code is on screen`() = runTest {
+        fetchedAt.value = 5_000L
+        val pass = pass()
+        runCurrent()
+        assertNull(pass.image.value)
+        assertEquals(0L, pass.syncedAt.value)
+
+        pass.load()
+        runCurrent()
+        assertEquals("image of code-1", pass.image.value)
+        assertEquals(EPOCH, pass.syncedAt.value)
+
+        // A failed request at the code's end takes the expired code off the screen, and the
+        // date with it; the retry a minute on puts a new code up, dated afresh.
+        fetches += { throw IOException("HTTP 503") }
+        advanceTimeBy(30_000)
+        runCurrent()
+        assertNull(pass.image.value)
+        assertEquals(0L, pass.syncedAt.value)
+        advanceTimeBy(60_000)
+        runCurrent()
+        assertEquals("image of code-3", pass.image.value)
+        assertEquals(EPOCH + 90_000, pass.syncedAt.value)
+
+        // Signed out elsewhere: the code goes, and the row says never again.
+        hasAccount = false
+        signedIn.value = false
+        runCurrent()
+        assertNull(pass.image.value)
+        assertEquals(0L, pass.syncedAt.value)
+    }
+
+    private companion object {
+        /** The wall clock the dates are on, which the test scheduler's starts well before. */
+        const val EPOCH = 1_700_000_000_000L
     }
 }
