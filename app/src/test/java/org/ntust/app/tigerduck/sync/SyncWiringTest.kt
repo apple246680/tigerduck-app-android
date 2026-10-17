@@ -143,6 +143,17 @@ class SyncWiringTest {
         assertEquals(setOf("PendingCourseOverrides.kt"), callers)
     }
 
+    /** tigerduck-app-android#380: queued one by one as each is sent, a reset's older colour replaced a pick made meanwhile. */
+    @Test
+    fun `a reset of every colour is queued whole before the colours are saved, and sent after`() {
+        val body = body("data/CourseColorStore.kt", "resetAllColors")
+        val queued = body.indexOf("pendingCourseOverrides.queue(")
+        val saved = body.indexOf("dataCache.saveCourses(updated)")
+        val sent = body.indexOf("pendingCourseOverrides.retry()")
+        assertTrue("resetAllColors no longer queues every colour before saving them", queued in 0 until saved)
+        assertTrue("resetAllColors no longer sends the queued colours after saving them", sent > saved)
+    }
+
     /** tigerduck-app-android#380: a course gone from this phone would be PATCHed, and refused, at every sync. */
     @Test
     fun `the syncs forget the waiting colours and names of the courses they prune or a reset elsewhere wipes`() {

@@ -65,12 +65,14 @@ class PendingCourseOverridesTest {
     fun setUp() {
         val context = RuntimeEnvironment.getApplication()
         cache = DataCache(context, AcademicCalendarStore(context, OkHttpClient(), AppPreferences(context)))
-        // As PushApiClient.patchCourseOverride: pinned to a sign-in, the header is that account's or none.
+        // As PushApiClient.patchCourseOverride: pinned to a sign-in, the header is that account's or
+        // none, and the hold is read once more after the header is made, right before the request.
         overrides = PendingCourseOverrides(
             cache,
-            { moodleId, colorHex, customName, locale, pinned ->
+            { moodleId, colorHex, customName, locale, pinned, stillAllowed ->
                 beforeHeader()
                 if (pinned != signIn) throw NotSignedInException()
+                if (!stillAllowed()) return@PendingCourseOverrides false
                 patches += Patch(moodleId, colorHex, customName, locale, account = signIn)
                 answer()
             },
@@ -195,6 +197,58 @@ class PendingCourseOverridesTest {
         overrides.retry()
         assertEquals(Patch(calculus, "#FF0000", null, null), patches.last())
         assertFalse(overrides.hasPending())
+    }
+
+    @Test
+    fun `a hold put on the kind while its PATCH is being prepared stops the request`() = runTest {
+        answer = { throw IOException("offline") }
+        overrides.send(calculus, colorHex = "#FF0000")
+        patches.clear()
+
+        // Sync off and on again while the request's header was being made: the colours re-enable
+        // check is pending by the time the request would go, and the user's answer decides the red.
+        answer = { true }
+        beforeHeader = {
+            beforeHeader = {}
+            sends = { color -> !color }
+        }
+        overrides.retry()
+
+        assertEquals(emptyList<Patch>(), patches)
+        assertEquals(listOf("#FF0000"), cache.loadPendingCourseOverrides().map { it.colorHex })
+    }
+
+    @Test
+    fun `a reset's colours are versioned as it is queued, so a pick made while they go up outbids its own`() = runTest {
+        val physics = "1151PH1010003"
+        val sending = CompletableDeferred<Unit>()
+        val landed = CompletableDeferred<Unit>()
+        answer = {
+            sending.complete(Unit)
+            landed.await()
+            true
+        }
+        // A reset of every colour: queued whole, then sent one by one; the first request hangs.
+        val reset = launch {
+            overrides.queue(
+                listOf(
+                    PendingCourseOverrides.Change(calculus, colorHex = "#FF0000"),
+                    PendingCourseOverrides.Change(physics, colorHex = "#00FF00"),
+                ),
+            )
+            overrides.retry()
+        }
+        sending.await()
+        // Picked a colour for the second course meanwhile, offline again by the time it goes.
+        answer = { throw IOException("offline") }
+        val pick = launch { overrides.send(physics, colorHex = "#0000FF") }
+        runCurrent()
+        landed.complete(Unit)
+        reset.join()
+        pick.join()
+
+        assertEquals(listOf(physics to "#0000FF"), cache.loadPendingCourseOverrides().map { it.moodleId to it.colorHex })
+        assertEquals("the reset's older green never went up", emptyList<Patch>(), patches.filter { it.colorHex == "#00FF00" })
     }
 
     @Test

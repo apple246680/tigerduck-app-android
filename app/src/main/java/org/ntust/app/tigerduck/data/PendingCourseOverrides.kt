@@ -14,9 +14,20 @@ import org.ntust.app.tigerduck.util.logSummary
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Sends one course's colour, or its name in one locale, as sign-in [signIn]; see [PushApiClient.patchCourseOverride]. */
+/**
+ * Sends one course's colour, or its name in one locale, as sign-in [signIn]; see
+ * [PushApiClient.patchCourseOverride]. [stillAllowed] is read once more right before the request
+ * goes, after whatever suspends in between.
+ */
 internal fun interface CourseOverrideSender {
-    suspend fun send(moodleId: String, colorHex: String?, customName: String?, locale: String?, signIn: Int): Boolean
+    suspend fun send(
+        moodleId: String,
+        colorHex: String?,
+        customName: String?,
+        locale: String?,
+        signIn: Int,
+        stillAllowed: () -> Boolean,
+    ): Boolean
 }
 
 /**
@@ -31,11 +42,15 @@ internal fun interface CourseOverrideSender {
  * hand-added courses. Every colour and name PATCH goes through here — a
  * reset of every colour, a sync's moved colours, Use Local's — so a later
  * change of the same colour, or of the same name, replaces the one waiting
- * and the older never lands over it. A change goes once the backend confirms
- * it, once the backend has refused it [MAX_ATTEMPTS] times, or at once on a
- * 404 for a course no longer cached in the term it was made in: the row went
- * with the course. Account-scoped: sent only as the account that made it,
- * and wiped with the user data at sign-out.
+ * and the older never lands over it. Each change carries a version that only
+ * grows ([PendingCourseOverride.seq]); a batch ([queue]) is written whole at
+ * one version before any of it is sent, so a change made while the batch
+ * goes up one by one is the newer and is not replaced when the batch's own
+ * reaches its turn. A change goes once the backend confirms it, once the
+ * backend has refused it [MAX_ATTEMPTS] times, or at once on a 404 for a
+ * course no longer cached in the term it was made in: the row went with the
+ * course. Account-scoped: sent only as the account that made it, and wiped
+ * with the user data at sign-out.
  *
  * With TigerSync or the kind's switch off ([records] false) colours or names
  * are this phone's own: a change goes nowhere and is not kept, but replaces
@@ -43,7 +58,10 @@ internal fun interface CourseOverrideSender {
  * waiting when the switch goes off is kept and not sent, and so is every one
  * while the kind's re-enable check waits for the user ([sends] false): the
  * answer decides them. Use Server drops them ([adoptServer]); Use Local
- * queues its own and sends them once the hold is lifted.
+ * queues its own and sends them once the hold is lifted. The hold is read
+ * right before each request, and once more by the sender after the header is
+ * made: the checks before suspend, and sync switched off and on again
+ * meanwhile puts the kind on hold, which the switch alone would let through.
  *
  * A snapshot fetched before a change, or before its PATCH landed, still has
  * the old value; [held] names what a sync must not take from it.
@@ -64,12 +82,29 @@ class PendingCourseOverrides internal constructor(
         authTokenManager: AuthTokenManager,
     ) : this(
         dataCache = dataCache,
-        sender = CourseOverrideSender { moodleId, colorHex, customName, locale, signIn ->
-            pushApiClient.patchCourseOverride(moodleId, colorHex = colorHex, customName = customName, locale = locale, signIn = signIn)
+        sender = CourseOverrideSender { moodleId, colorHex, customName, locale, signIn, stillAllowed ->
+            pushApiClient.patchCourseOverride(
+                moodleId, colorHex = colorHex, customName = customName, locale = locale, signIn = signIn, allowed = stillAllowed,
+            )
         },
         records = { color -> records(prefs, color) },
         sends = { color -> sends(prefs, color) },
         signInGeneration = { authTokenManager.signInGeneration },
+    )
+
+    /**
+     * One change for [queue]: the colour [colorHex], or the name [customName]
+     * in [locale], of the course the backend knows as [moodleId]. [semester]
+     * and [courseNo] say where this phone holds the course, when known; see
+     * [PendingCourseOverride.semester].
+     */
+    data class Change(
+        val moodleId: String,
+        val colorHex: String? = null,
+        val customName: String? = null,
+        val locale: String? = null,
+        val semester: String? = null,
+        val courseNo: String? = null,
     )
 
     private val mutex = Mutex()
@@ -84,17 +119,17 @@ class PendingCourseOverrides internal constructor(
     // process can be that old.
     private val touchedAt = HashMap<String, Long>()
 
+    // The last version given out, under [mutex]; see [nextSeq].
+    private var lastSeq = 0L
+
     /** Whether a colour or name set here has yet to reach the backend: data a sign-out would lose. */
     suspend fun hasPending(): Boolean = waiting().isNotEmpty()
 
     /**
-     * Keeps the colour [colorHex], or the name [customName] in [locale], set
-     * for the course the backend knows as [moodleId], in place of any older
-     * change of the same, and sends it unless its kind's re-enable check is
-     * pending. [semester] and [courseNo] say where this phone holds the
-     * course, when the caller knows; see [PendingCourseOverride.semester].
-     * Called in the order the changes were made; nothing to do without a
-     * colour or a name.
+     * Keeps one change (see [Change] for the arguments), in place of any
+     * older change of the same, and sends it unless its kind's re-enable
+     * check is pending. Called in the order the changes were made; nothing
+     * to do without a colour or a name.
      */
     suspend fun send(
         moodleId: String,
@@ -106,24 +141,23 @@ class PendingCourseOverrides internal constructor(
     ) {
         val generation = dataCache.userDataGeneration
         val signIn = signInGeneration()
-        val change = PendingCourseOverride(moodleId, colorHex, customName, locale, clock(), semester, courseNo)
-        val key = change.key ?: return
-        val color = change.isColor
-        if (!records(color)) {
-            // This phone's own, and the last word on the key: one still
-            // waiting would go up over it later.
-            mutex.withLock {
-                val waiting = waiting()
-                if (key in waiting) save(waiting - key, generation)
-            }
-            return
+        val recorded = record(listOf(Change(moodleId, colorHex, customName, locale, semester, courseNo)), generation)
+        for ((key, change) in recorded) {
+            if (sends(change.isColor)) trySend(key, change, generation, signIn)
         }
-        val kept = mutex.withLock {
-            if (!save(waiting() + (key to change), generation)) return@withLock false
-            touchedAt[key] = change.changedAtMs
-            true
-        }
-        if (kept && sends(color)) trySend(key, change, generation, signIn)
+    }
+
+    /**
+     * Keeps [changes], each in place of an older change of the same, all at
+     * one version, and sends none: [retry] does, once the caller has saved
+     * what they stand for. A reset of every colour goes through here before
+     * it saves the colours, so a pick made while they go up one by one is
+     * the newer, and the reset's own colour for that course, reaching its
+     * turn, neither replaces it nor goes up.
+     */
+    suspend fun queue(changes: List<Change>) {
+        if (changes.isEmpty()) return
+        record(changes, dataCache.userDataGeneration)
     }
 
     /**
@@ -182,27 +216,73 @@ class PendingCourseOverrides internal constructor(
     }
 
     /**
+     * Writes [changes] at one new version, each in place of the change
+     * waiting under its key unless that one is newer, and returns the ones
+     * now waiting, by key. A change of a kind that does not sync is this
+     * phone's own: not kept, and the last word on its key, as one still
+     * waiting would go up over it later. Nothing is written once the data
+     * was wiped since [generation].
+     */
+    private suspend fun record(changes: List<Change>, generation: Int): Map<String, PendingCourseOverride> =
+        mutex.withLock {
+            val waiting = waiting()
+            val seq = nextSeq(waiting)
+            val now = clock()
+            val updated = LinkedHashMap(waiting)
+            val recorded = LinkedHashMap<String, PendingCourseOverride>()
+            for (c in changes) {
+                val entry = PendingCourseOverride(
+                    c.moodleId, c.colorHex, c.customName, c.locale, now, c.semester, c.courseNo, seq = seq,
+                )
+                val key = entry.key ?: continue
+                if (!records(entry.isColor)) {
+                    updated.remove(key)
+                    continue
+                }
+                if ((waiting[key]?.seq ?: 0L) > seq) continue
+                updated[key] = entry
+                recorded[key] = entry
+            }
+            if (updated == waiting) return@withLock emptyMap()
+            if (!save(updated, generation)) return@withLock emptyMap()
+            for (key in recorded.keys) touchedAt[key] = now
+            recorded
+        }
+
+    // Under [mutex]: later than every version given out before, in this
+    // process or an earlier one, whose entries are still waiting. The clock
+    // where it is ahead, so versions mean something across restarts, else one
+    // past the last.
+    private fun nextSeq(waiting: Map<String, PendingCourseOverride>): Long {
+        val floor = maxOf(lastSeq, waiting.values.maxOfOrNull { it.seq } ?: 0L)
+        lastSeq = maxOf(clock(), floor + 1)
+        return lastSeq
+    }
+
+    /**
      * Sends [change] if it is still the change waiting under [key], for the
      * account whose data [generation] and sign-in [signIn] were read with.
      * Checked under the send lock, right before the request: a newer change
      * of the key, a send of it that landed meanwhile, a sign-out, or a hold
      * put on its kind since each make it stale, and sent it would undo the
      * newer change, repeat the request, land on the next account, or pre-empt
-     * the user's answer. The request itself carries [signIn], so a sign-out
-     * after the check sends it without a token rather than with the next
-     * account's. Let go once confirmed, unless a newer change replaced it
-     * meanwhile; kept when nothing went out because the switch went off
-     * between the check and the request, for its re-enable check to decide.
+     * the user's answer. The hold and the account are read after the check
+     * that suspends for the file, and once more by the sender right before
+     * the request. The request itself carries [signIn], so a sign-out after
+     * the check sends it without a token rather than with the next account's.
+     * Let go once confirmed, unless a newer change replaced it meanwhile;
+     * kept when nothing went out, for the switch's re-enable check to decide.
      */
     private suspend fun trySend(key: String, change: PendingCourseOverride, generation: Int, signIn: Int) {
         val moodleId = change.moodleId ?: return
+        val allowed = {
+            sends(change.isColor) && generation == dataCache.userDataGeneration && signIn == signInGeneration()
+        }
         val sent = sendMutex.withLock {
-            val current = sends(change.isColor) && mutex.withLock {
-                generation == dataCache.userDataGeneration && signIn == signInGeneration() && isWaiting(key, change)
-            }
+            val current = mutex.withLock { isWaiting(key, change) } && allowed()
             if (!current) return
             try {
-                sender.send(moodleId, change.colorHex, change.customName, change.locale, signIn)
+                sender.send(moodleId, change.colorHex, change.customName, change.locale, signIn, allowed)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

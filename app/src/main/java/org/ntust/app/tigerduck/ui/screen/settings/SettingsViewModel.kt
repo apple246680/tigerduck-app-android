@@ -274,30 +274,31 @@ class SettingsViewModel @Inject constructor(
     ) {
         if (keepLocal) {
             val resetTerms = if (latch != null) sendLocalCourses(generation, latch) else emptySet()
-            // Through the outbox, which holds them while their category is
-            // pending and sends them once resolveReenableConflict has lifted
-            // the hold; one that fails to land is sent again at the next sync.
+            // Through the outbox, queued whole: it holds them while their
+            // category is pending and sends them once resolveReenableConflict
+            // has lifted the hold, and one that fails to land is sent again
+            // at the next sync. An edit made meanwhile is the newer.
             if ("course_colors" in conflict.categories) {
-                for (course in dataCache.loadCourses()) {
-                    val hex = course.customColorHex ?: continue
-                    val moodleId = course.moodleIdNumber ?: continue
-                    pendingCourseOverrides.send(moodleId, colorHex = hex)
-                }
+                pendingCourseOverrides.queue(
+                    dataCache.loadCourses().mapNotNull { course ->
+                        val hex = course.customColorHex ?: return@mapNotNull null
+                        val moodleId = course.moodleIdNumber ?: return@mapNotNull null
+                        PendingCourseOverrides.Change(moodleId, colorHex = hex)
+                    },
+                )
             }
             if ("course_names" in conflict.categories) {
-                val customNames = dataCache.loadCourseCustomNames()
-                val courses = dataCache.loadCourses()
-                val noToMoodle = courses.mapNotNull { c ->
+                val noToMoodle = dataCache.loadCourses().mapNotNull { c ->
                     c.moodleIdNumber?.let { c.courseNo to it }
                 }.toMap()
-                for ((courseNo, locales) in customNames) {
-                    val moodleId = noToMoodle[courseNo] ?: continue
-                    for ((locale, name) in locales) {
-                        if (name.isNotEmpty()) {
-                            pendingCourseOverrides.send(moodleId, customName = name, locale = locale)
+                pendingCourseOverrides.queue(
+                    dataCache.loadCourseCustomNames().flatMap { (courseNo, locales) ->
+                        val moodleId = noToMoodle[courseNo] ?: return@flatMap emptyList<PendingCourseOverrides.Change>()
+                        locales.filterValues { it.isNotEmpty() }.map { (locale, name) ->
+                            PendingCourseOverrides.Change(moodleId, customName = name, locale = locale)
                         }
-                    }
-                }
+                    },
+                )
             }
             if ("assignments" in conflict.categories) {
                 // Syncs leave the marks alone while "assignments" is pending,

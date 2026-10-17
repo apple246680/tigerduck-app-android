@@ -30,6 +30,14 @@ data class PendingCourseOverride(
     val courseNo: String? = null,
     /** How many times the backend refused it; `PendingCourseOverrides` lets it go after five. */
     val attempts: Int = 0,
+    /**
+     * The row's version, from `PendingCourseOverrides`' counter, which only
+     * grows: a row replaces the one waiting under its [key] only with a
+     * version at least as new. A reset's rows all carry the version of the
+     * reset, so a change made while they go up outbids them. Zero on a row
+     * written before versions were.
+     */
+    val seq: Long = 0L,
 ) {
     /**
      * What the row changes — the course's colour, or its name in one locale —

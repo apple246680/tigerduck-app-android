@@ -54,20 +54,23 @@ class CourseColorStore @Inject constructor(
             course.copy(customColorHex = formatHex(color))
         }
 
+        // Through the outbox, which honours the sync switches and keeps a
+        // colour that fails to land. Queued whole, at the version of this
+        // reset and before the colours are saved: a pick made while they go
+        // up one by one is the newer, and is not replaced when the reset's
+        // own colour for that course reaches its turn.
+        pendingCourseOverrides.queue(
+            updated.mapNotNull { course ->
+                val hex = course.customColorHex ?: return@mapNotNull null
+                val moodleId = course.moodleIdNumber ?: return@mapNotNull null
+                PendingCourseOverrides.Change(moodleId, colorHex = hex)
+            },
+        )
         dataCache.saveCourses(updated)
         TigerDuckTheme.clearCourseColorMap()
         widgetUpdater.requestUpdate()
         _changeEvent.tryEmit(Unit)
-
-        // Through the outbox, which honours the sync switches: a colour that
-        // fails to land is kept, and it replaces an older pick of the course
-        // still waiting to go up, which sent directly after this would land
-        // over the reset at the next sync.
-        for (course in updated) {
-            val hex = course.customColorHex ?: continue
-            val moodleId = course.moodleIdNumber ?: continue
-            pendingCourseOverrides.send(moodleId, colorHex = hex)
-        }
+        pendingCourseOverrides.retry()
     }
 
     private fun formatHex(color: Color): String =
