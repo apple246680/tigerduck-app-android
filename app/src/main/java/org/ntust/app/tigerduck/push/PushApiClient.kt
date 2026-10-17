@@ -394,12 +394,17 @@ class PushApiClient @Inject constructor(
             )
         }
         val json = gson.toJson(mapOf("assignments" to items))
+        // Resolved once, for the fingerprint and the request alike, so the
+        // ledger remembers what this backend accepted; see uploadFingerprint.
+        val base = baseUrl
         assignmentUploads.sendIfDue(
-            fingerprint = uploadFingerprint(json),
-            isCurrent = { authTokenManager.signInGeneration == signIn },
+            fingerprint = uploadFingerprint(base, json),
+            // Recorded under the sign-in lock, so a sign-out's clear cannot
+            // fall between the check and the record; see UploadLedger.sendIfDue.
+            ifCurrent = { record -> authTokenManager.runIfSignedIn(signIn, record) },
         ) {
             val request = Request.Builder()
-                .url("$baseUrl/sync/assignments/upload")
+                .url("$base/sync/assignments/upload")
                 .post(json.toRequestBody(jsonType))
                 .addAuthHeader(signIn)
                 .build()
@@ -456,18 +461,23 @@ class PushApiClient @Inject constructor(
         if (!isSyncCapable || !prefs.syncCourses) return@withContext null
         val payload = CourseUploadPayload.build(courses, semester, forceKeys)
         val body = gson.toJson(payload).toRequestBody(jsonType)
+        // Resolved once, for the fingerprint and the request alike, so the
+        // ledger remembers what this backend accepted; see uploadFingerprint.
+        val base = baseUrl
         // The sign-in the ledger's record is pinned to, as the assignment
         // upload's is; the request's own header is pinned only when the
         // caller pinned it ([signIn]), as before.
         val startedIn = signIn ?: authTokenManager.signInGeneration
         var accepted: List<String> = emptyList()
         courseUploads(semester).sendIfDue(
-            fingerprint = courseUploadFingerprint(courses, semester),
-            isCurrent = { authTokenManager.signInGeneration == startedIn },
+            fingerprint = courseUploadFingerprint(base, courses, semester),
+            // Recorded under the sign-in lock, so a sign-out's clear cannot
+            // fall between the check and the record; see UploadLedger.sendIfDue.
+            ifCurrent = { record -> authTokenManager.runIfSignedIn(startedIn, record) },
             always = resend || forceKeys.isNotEmpty(),
         ) {
             val request = Request.Builder()
-                .url("$baseUrl/sync/courses/upload")
+                .url("$base/sync/courses/upload")
                 .post(body)
                 .addAuthHeader(signIn)
                 .build()

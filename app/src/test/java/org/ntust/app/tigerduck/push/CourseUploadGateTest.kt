@@ -2,6 +2,7 @@ package org.ntust.app.tigerduck.push
 
 import android.app.Application
 import android.content.Context
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -30,6 +31,8 @@ class CourseUploadGateTest {
 
     private val backend = ScriptedBackend()
     private lateinit var prefs: AppPreferences
+    private lateinit var tokens: V3TokenStore
+    private lateinit var tokenManager: AuthTokenManager
     private lateinit var api: PushApiClient
 
     @Before
@@ -38,9 +41,10 @@ class CourseUploadGateTest {
         prefs = AppPreferences(context).apply { announcementApiBaseUrlOverride = "http://127.0.0.1:9/v3" }
         // Never the real backend, even past the scripted one.
         assertTrue(resolveAnnouncementEndpoint(prefs).overrideApplied)
-        val tokens = V3TokenStore(context.getSharedPreferences("v3-tokens-course-upload-gate-test", Context.MODE_PRIVATE))
+        tokens = V3TokenStore(context.getSharedPreferences("v3-tokens-course-upload-gate-test", Context.MODE_PRIVATE))
         tokens.save("access", "refresh", Long.MAX_VALUE)
-        api = PushApiClient(backend.client, prefs, AuthTokenManager(tokens, backend.client, prefs, "device-1"))
+        tokenManager = AuthTokenManager(tokens, backend.client, prefs, "device-1")
+        api = PushApiClient(backend.client, prefs, tokenManager)
     }
 
     private fun roster(vararg courseNos: String) = courseNos.map { Course(courseNo = it, courseName = it) }
@@ -118,6 +122,34 @@ class CourseUploadGateTest {
         prefs.clearSyncStamps()
         api.uploadCourses(roster("CS1"), "1151")
 
+        assertEquals(2, uploads())
+    }
+
+    @Test
+    fun `a list one backend accepted goes to the backend the app is pointed at next`() = runTest {
+        api.uploadCourses(roster("CS1"), "1151")
+
+        prefs.announcementApiBaseUrlOverride = "http://127.0.0.1:19/v3"
+        assertTrue(resolveAnnouncementEndpoint(prefs).overrideApplied)
+        api.uploadCourses(roster("CS1"), "1151")
+
+        assertEquals(2, uploads())
+    }
+
+    @Test
+    fun `an upload answered after a sign-out records nothing, so the next account's same list goes`() = runTest {
+        val held = backend.hold(UPLOAD)
+        val departing = launch { runCatching { api.uploadCourses(roster("CS1"), "1151") } }
+        held.arrived.await()
+
+        // AuthService.logout: the generation moves under the sign-in lock, then the stamps go.
+        tokenManager.logout()
+        prefs.clearSyncStamps()
+        held.release(200)
+        departing.join()
+
+        tokens.save("access-2", "refresh-2", Long.MAX_VALUE)
+        api.uploadCourses(roster("CS1"), "1151")
         assertEquals(2, uploads())
     }
 

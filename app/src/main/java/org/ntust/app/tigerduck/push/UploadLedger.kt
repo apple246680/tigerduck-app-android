@@ -28,18 +28,23 @@ internal fun uploadIsDue(acceptedFingerprint: String?, acceptedAtMs: Long, finge
     return age >= UNCHANGED_UPLOAD_INTERVAL_MS || age < 0
 }
 
-/** A digest of [json], a list serialised in a fixed order: the same list gives the same fingerprint. */
-internal fun uploadFingerprint(json: String): String =
-    MessageDigest.getInstance("SHA-256").digest(json.toByteArray()).joinToString("") { "%02x".format(it) }
+/**
+ * A digest of [json], a list serialised in a fixed order, as sent to [backend] (the base URL):
+ * the same list to the same backend gives the same fingerprint. The ledger remembers what one
+ * backend accepted, and pointed at another (the debug endpoint override) the app owes it the
+ * list again; an upload still out across the switch records the fingerprint of where it went.
+ */
+internal fun uploadFingerprint(backend: String, json: String): String =
+    MessageDigest.getInstance("SHA-256").digest("$backend\n$json".toByteArray()).joinToString("") { "%02x".format(it) }
 
 /**
- * A term's course list as a fingerprint: the body [PushApiClient.uploadCourses] sends for it,
- * without force keys (a list with any goes whatever the ledger holds), the courses in
+ * A term's course list as a fingerprint: the body [PushApiClient.uploadCourses] sends for it to
+ * [backend], without force keys (a list with any goes whatever the ledger holds), the courses in
  * course-number order, so the roster as the class table holds it and as a sync holds it, the
  * same courses in another order, are one list. The term is the ledger's key, not part of this.
  */
-internal fun courseUploadFingerprint(courses: List<Course>, semester: String): String =
-    uploadFingerprint(fingerprintGson.toJson(CourseUploadPayload.build(courses.sortedBy { it.courseNo }, semester)))
+internal fun courseUploadFingerprint(backend: String, courses: List<Course>, semester: String): String =
+    uploadFingerprint(backend, fingerprintGson.toJson(CourseUploadPayload.build(courses.sortedBy { it.courseNo }, semester)))
 
 private val fingerprintGson = Gson()
 
@@ -68,14 +73,18 @@ internal class UploadLedger(
     /**
      * Runs [send] for a list with [fingerprint] when it is due, or whatever
      * the ledger holds when [always] (a forced re-add, a term the server has
-     * emptied), and records it as accepted once [send] returns, if
-     * [isCurrent] still holds: a sign-out meanwhile made it the departing
-     * account's. Returns whether it sent. A [send] that throws records
-     * nothing.
+     * emptied), and once [send] returns records it as accepted through
+     * [ifCurrent], which runs the record it is handed only while the sign-in
+     * the upload began under still stands, and under the lock a sign-out
+     * moves it under (`AuthTokenManager.runIfSignedIn`). Checking first and
+     * recording after left a gap a sign-out fell into: its clearing of the
+     * ledger landed between the two, and the departing account's list stayed
+     * for the next account to skip. Returns whether it sent. A [send] that
+     * throws records nothing.
      */
     suspend fun sendIfDue(
         fingerprint: String,
-        isCurrent: () -> Boolean,
+        ifCurrent: (record: () -> Unit) -> Unit,
         always: Boolean = false,
         send: suspend () -> Unit,
     ): Boolean =
@@ -83,7 +92,7 @@ internal class UploadLedger(
             val now = clock()
             if (!always && !uploadIsDue(store.fingerprint, store.acceptedAtMs, fingerprint, now)) return@withLock false
             send()
-            if (isCurrent()) store.record(fingerprint, now)
+            ifCurrent { store.record(fingerprint, now) }
             true
         }
 
