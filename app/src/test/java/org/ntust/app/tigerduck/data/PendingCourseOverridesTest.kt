@@ -275,6 +275,23 @@ class PendingCourseOverridesTest {
     }
 
     @Test
+    fun `a batch reserved before an edit that has since landed does not put the older colour back`() = runTest {
+        // The reset reserves and reads its snapshot; the pick made meanwhile goes up at once and
+        // leaves the file, so nothing waiting says the reset's red for the course is the older.
+        val version = overrides.reserveVersion()
+        answer = { true }
+        overrides.send(calculus, colorHex = "#0000FF")
+        assertFalse(overrides.hasPending())
+
+        overrides.queue(listOf(PendingCourseOverrides.Change(calculus, colorHex = "#FF0000")), version)
+        patches.clear()
+        overrides.retry()
+
+        assertFalse("the reset's older red is not queued over the pick that landed", overrides.hasPending())
+        assertEquals(emptyList<Patch>(), patches)
+    }
+
+    @Test
     fun `after a restart a change still outbids every change waiting, whatever the clock says`() = runTest {
         answer = { throw IOException("offline") }
         overrides.send(calculus, colorHex = "#FF0000")

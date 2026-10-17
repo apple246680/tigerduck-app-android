@@ -44,9 +44,10 @@ internal fun interface CourseOverrideSender {
  * change of the same colour, or of the same name, replaces the one waiting
  * and the older never lands over it. Each change carries a version that only
  * grows ([PendingCourseOverride.seq]); a batch ([queue]) is written whole at
- * one version before any of it is sent, so a change made while the batch
- * goes up one by one is the newer and is not replaced when the batch's own
- * reaches its turn. A change goes once the backend confirms it, once the
+ * a version reserved before its data was read, so a change made while the
+ * batch is read or goes up one by one is the newer, landed already or not,
+ * and is not replaced when the batch's own reaches its turn. A change goes
+ * once the backend confirms it, once the
  * backend has refused it [MAX_ATTEMPTS] times, or at once on a 404 for a
  * course no longer cached in the term it was made in: the row went with the
  * course. Account-scoped: sent only as the account that made it, and wiped
@@ -121,6 +122,12 @@ class PendingCourseOverrides internal constructor(
 
     // The last version given out, under [mutex]; see [nextSeq].
     private var lastSeq = 0L
+
+    // The version last recorded under each key, under [mutex], kept past the
+    // entry's send: a batch reserved before a change that has since landed
+    // is still the older, and the file no longer says so. In memory, as a
+    // reservation is: neither outlives the process.
+    private val latestSeq = HashMap<String, Long>()
 
     /** Whether a colour or name set here has yet to reach the backend: data a sign-out would lose. */
     suspend fun hasPending(): Boolean = waiting().isNotEmpty()
@@ -227,12 +234,13 @@ class PendingCourseOverrides internal constructor(
 
     /**
      * Writes [changes] at [version], or at a new one, each in place of the
-     * change waiting under its key unless that one is newer: recorded after
-     * the version was reserved, from data the batch predates, so it stands.
-     * A change of a kind that does not sync is this phone's own: not kept,
-     * and the last word on its key, as one still waiting would go up over it
-     * later. Returns the ones now waiting, by key; nothing is written once
-     * the data was wiped since [generation].
+     * change waiting under its key unless a newer one was recorded under it,
+     * waiting still or landed since: made after the version was reserved,
+     * from data the batch predates, so it stands. A change of a kind that
+     * does not sync is this phone's own: not kept, and the last word on its
+     * key, as one still waiting would go up over it later. Returns the ones
+     * now waiting, by key; nothing is written once the data was wiped since
+     * [generation].
      */
     private suspend fun record(
         changes: List<Change>,
@@ -250,9 +258,10 @@ class PendingCourseOverrides internal constructor(
                     c.moodleId, c.colorHex, c.customName, c.locale, now, c.semester, c.courseNo, seq = seq,
                 )
                 val key = entry.key ?: continue
-                if ((waiting[key]?.seq ?: 0L) > seq) continue
+                if (maxOf(waiting[key]?.seq ?: 0L, latestSeq[key] ?: 0L) > seq) continue
                 if (!records(entry.isColor)) {
                     updated.remove(key)
+                    latestSeq[key] = seq
                     continue
                 }
                 updated[key] = entry
@@ -260,7 +269,10 @@ class PendingCourseOverrides internal constructor(
             }
             if (updated == waiting) return@withLock emptyMap()
             if (!save(updated, generation)) return@withLock emptyMap()
-            for (key in recorded.keys) touchedAt[key] = now
+            for (key in recorded.keys) {
+                touchedAt[key] = now
+                latestSeq[key] = seq
+            }
             recorded
         }
 
