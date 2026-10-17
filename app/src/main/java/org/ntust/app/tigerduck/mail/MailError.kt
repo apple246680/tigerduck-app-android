@@ -31,6 +31,12 @@ sealed class MailError(message: String, cause: Throwable? = null) : Exception(me
     class DemoMode : MailError("demo mode never opens sockets")
     /** A folder's UIDVALIDITY no longer matches the caller's cached page; nothing on the server was touched. */
     class FolderChanged : MailError("folder changed; refresh")
+    /**
+     * The request was no longer wanted by the time the session came free -- the account or the
+     * view that asked had gone -- so it was never sent; see [SchoolMailRepository.loadPage]'s
+     * `stillWanted`. Not a failure of anything: the page that asked simply lets it go.
+     */
+    class Abandoned : MailError("request abandoned before it was sent")
 }
 
 object MailErrors {

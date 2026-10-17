@@ -69,7 +69,6 @@ class AssignmentMarkStepTest {
     )
 
     private fun server(ignored: Set<String> = emptySet(), completed: Set<String> = emptySet()) = BackendSyncResult(
-        assignments = emptyList(),
         ignoredIds = ignored,
         completedIds = completed,
         courseOverrides = emptyList(),

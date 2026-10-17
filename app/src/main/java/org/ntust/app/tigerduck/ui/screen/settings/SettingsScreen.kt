@@ -126,7 +126,6 @@ fun SettingsScreen(
     val showAbsoluteTime = viewModel.appState.showAbsoluteAssignmentTime
     val alwaysShowAllPeriods = viewModel.appState.alwaysShowAllPeriods
     val showClassroomInClassTable = viewModel.appState.showClassroomInClassTable
-    val rememberAnnouncementFilter = viewModel.appState.rememberAnnouncementFilter
     val browserPreference = viewModel.appState.browserPreference
     val useEnglishCourseAbbreviation = viewModel.appState.useEnglishCourseAbbreviation
     val useEnglishClassroomAbbreviation = viewModel.appState.useEnglishClassroomAbbreviation
@@ -346,13 +345,6 @@ fun SettingsScreen(
                             alwaysShowAllPeriods
                         ) {
                             viewModel.appState.alwaysShowAllPeriods = it
-                        }
-                        HorizontalDivider()
-                        SettingsToggleRow(
-                            stringResource(R.string.settings_remember_bulletin_filter),
-                            rememberAnnouncementFilter
-                        ) {
-                            viewModel.appState.rememberAnnouncementFilter = it
                         }
                         HorizontalDivider()
                         // Link opening method
