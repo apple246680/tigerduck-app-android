@@ -60,6 +60,16 @@ class ClassTableWiringTest {
         }
     }
 
+    /** tigerduck-app-android#380: sent again later, a waiting colour or name would bring a row the user removed back. */
+    @Test
+    fun `a deleted course, and a reset term, take their waiting colours and names with them`() {
+        assertCalls("deleteCourse", "pendingCourseOverrides.forget(")
+        val wipe = body("wipeTerm")
+        val reset = wipe.indexOf("termReset.run(semester)")
+        val forgot = wipe.indexOf("pendingCourseOverrides.forget(")
+        assertTrue("wipeTerm no longer forgets the term's waiting colours and names after the reset", forgot > reset)
+    }
+
     /** tigerduck-app-android#242. */
     @Test
     fun `the page counts as settled once the first load's fetch is done`() {

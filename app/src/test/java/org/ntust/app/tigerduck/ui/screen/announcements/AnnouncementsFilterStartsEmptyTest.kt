@@ -2,14 +2,15 @@ package org.ntust.app.tigerduck.ui.screen.announcements
 
 import android.app.Application
 import android.content.Context
+import androidx.lifecycle.SavedStateHandle
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
-import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -28,33 +29,32 @@ import org.ntust.app.tigerduck.ui.screen.announcements.AnnouncementsViewModel.Lo
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * "Remember bulletin filter": the saved departments go on only once the department chips can
- * show them, only those the department list still has, and never over a pick made on the visit.
+ * The department chips start with nothing selected each time the page opens: a new back-stack
+ * entry has nothing saved. An install from before the "Remember bulletin filters" option went
+ * still has what that option stored: it selects no chip, and it is dropped.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
-class AnnouncementsRememberedFilterTest {
+class AnnouncementsFilterStartsEmptyTest {
 
     @get:Rule val main = MainDispatcherRule()
 
     private val context = RuntimeEnvironment.getApplication()
+
+    /** What an install with the option on stored: the option itself, and the departments it kept. */
+    private val stored = context.getSharedPreferences("tigerduck_prefs", Context.MODE_PRIVATE).apply {
+        edit()
+            .putBoolean("rememberAnnouncementFilter", true)
+            .putString("savedAnnouncementOrgs", """["library"]""")
+            .commit()
+    }
     private val prefs = AppPreferences(context).apply {
         announcementApiBaseUrlOverride = "http://127.0.0.1:9/v3"
-        rememberAnnouncementFilter = true
-        savedAnnouncementOrgs = setOf("library", "gone")
     }
     private val cache = BulletinCache(context)
     private val repository = BulletinRepository()
-
-    /** Whether the backend answers the department list; it waits on [taxonomyGate] first. */
-    @Volatile private var taxonomyAnswers = true
-    private val taxonomyGate = CountDownLatch(1)
-    private val taxonomyRequests = AtomicInteger()
 
     private val client = OkHttpClient.Builder()
         .addInterceptor { chain ->
@@ -62,11 +62,7 @@ class AnnouncementsRememberedFilterTest {
             val path = request.url.encodedPath
             val body = when {
                 path.endsWith("/bulletins") -> LIST
-                path.endsWith("/bulletins/taxonomy") -> {
-                    taxonomyRequests.incrementAndGet()
-                    taxonomyGate.await(5, TimeUnit.SECONDS)
-                    TAXONOMY.takeIf { taxonomyAnswers }
-                }
+                path.endsWith("/bulletins/taxonomy") -> TAXONOMY
                 else -> null
             }
             Response.Builder()
@@ -79,13 +75,12 @@ class AnnouncementsRememberedFilterTest {
         }
         .build()
 
-    @After fun openGate() = taxonomyGate.countDown()
-
     private fun viewModel(): AnnouncementsViewModel {
         val tokens = V3TokenStore(context.getSharedPreferences("v3-tokens-test", Context.MODE_PRIVATE))
         val api = BulletinApiClient(client, prefs, AuthTokenManager(tokens, client, prefs, "device-1"))
         return AnnouncementsViewModel(
-            api, cache, repository, BulletinReadStateStore(context), prefs, testDemoAccount(context, prefs, cache),
+            SavedStateHandle(), api, cache, repository, BulletinReadStateStore(context),
+            testDemoAccount(context, prefs, cache), testCredentials(context),
         )
     }
 
@@ -101,75 +96,34 @@ class AnnouncementsRememberedFilterTest {
     private fun AnnouncementsViewModel.shownIds() = state.value.displayed.map { it.id }.toSet()
 
     @Test
-    fun `the remembered departments wait for the department list, and only those it has return`() {
+    fun `a first visit opens with no department selected`() {
         val vm = viewModel()
         assertEquals(emptySet<String>(), vm.state.value.selectedOrgs)
         vm.load()
         eventually("the list loads") { vm.state.value.loadState == LoadState.Loaded }
-        eventually("the department list is asked for") { taxonomyRequests.get() > 0 }
-        // No chips on screen yet, so nothing is filtered by them.
-        assertEquals(emptySet<String>(), vm.state.value.selectedOrgs)
-        assertEquals(setOf(1, 2), vm.shownIds())
-
-        taxonomyGate.countDown()
         eventually("the department list arrives") { vm.state.value.taxonomy != null }
 
-        assertEquals(setOf("library"), vm.state.value.selectedOrgs)
-        assertEquals(setOf(1), vm.shownIds())
-    }
-
-    @Test
-    fun `without the department list the list stays unfiltered`() {
-        taxonomyAnswers = false
-        taxonomyGate.countDown()
-        val vm = viewModel()
-        vm.load()
-        eventually("the list loads") { vm.state.value.loadState == LoadState.Loaded }
-        eventually("the department list is asked for") { taxonomyRequests.get() > 0 }
-        Thread.sleep(200)
-
-        assertEquals(null, vm.state.value.taxonomy)
         assertEquals(emptySet<String>(), vm.state.value.selectedOrgs)
         assertEquals(setOf(1, 2), vm.shownIds())
-        // Still saved for a visit that does get the list.
-        assertEquals(setOf("library", "gone"), prefs.savedAnnouncementOrgs)
     }
 
     @Test
-    fun `a department picked on this visit is not replaced by the remembered ones`() {
-        val vm = viewModel()
-        vm.load()
-        eventually("the department list is asked for") { taxonomyRequests.get() > 0 }
-        vm.setOrgFilter(setOf("registrar"))
-
-        taxonomyGate.countDown()
-        eventually("the department list arrives") { vm.state.value.taxonomy != null }
-
-        assertEquals(setOf("registrar"), vm.state.value.selectedOrgs)
-    }
-
-    @Test
-    fun `a return visit with the department list in memory opens on the remembered departments`() {
+    fun `a return visit with the department list in memory opens with no department selected`() {
         runBlocking { repository.getOrFetchTaxonomy { TAXONOMY_VALUE } }
         runBlocking { cache.save(listOf(bulletin(1, "library"), bulletin(2, "registrar"))) }
 
         val vm = viewModel()
 
-        assertEquals(setOf("library"), vm.state.value.selectedOrgs)
+        assertEquals(emptySet<String>(), vm.state.value.selectedOrgs)
         vm.load()
         eventually("the cached list shows") { vm.state.value.items.isNotEmpty() }
-        assertEquals(setOf(1), vm.shownIds())
+        assertEquals(setOf(1, 2), vm.shownIds())
     }
 
     @Test
-    fun `with the setting off nothing is restored`() {
-        prefs.rememberAnnouncementFilter = false
-        taxonomyGate.countDown()
-        val vm = viewModel()
-        vm.load()
-        eventually("the department list arrives") { vm.state.value.taxonomy != null }
-
-        assertEquals(emptySet<String>(), vm.state.value.selectedOrgs)
+    fun `what the option stored is dropped`() {
+        assertFalse(stored.contains("rememberAnnouncementFilter"))
+        assertFalse(stored.contains("savedAnnouncementOrgs"))
     }
 
     private fun bulletin(id: Int, org: String) = BulletinSummary(

@@ -1,5 +1,6 @@
 package org.ntust.app.tigerduck.mail
 
+import androidx.annotation.VisibleForTesting
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -34,8 +35,25 @@ class SessionHolder(
     /** True once [releaseLater] has run and no [hold]/[closeNow] has happened since: every later [use] (e.g. a background retry after the page closed) keeps re-arming the idle close instead of leaving the connection open forever. */
     private val released = AtomicBoolean(false)
 
-    suspend fun <T> use(credentials: MailCredentials, block: (MailSession) -> T): T = mutex.withLock {
-        cancelCloseJob()
+    /**
+     * Runs right before a [use] waits for the connection. A test's way of knowing a caller has
+     * reached that wait while another call holds the connection; null in the app.
+     */
+    @VisibleForTesting
+    internal var onWait: (() -> Unit)? = null
+
+    /**
+     * @param stillWanted see [SchoolMailRepository.loadPage]: whether the caller still wants the
+     *   command sent. Asked under the connection's lock twice -- before the connection is so
+     *   much as probed, and again right before [block] -- because a probe or an open logs in with
+     *   [credentials], and a caller whose account has left since it read them must not log in as
+     *   the next one: a refusal then would be the next account's, dropped as the old one's.
+     */
+    suspend fun <T> use(credentials: MailCredentials, stillWanted: () -> Boolean = { true }, block: (MailSession) -> T): T {
+        onWait?.invoke()
+        return mutex.withLock {
+            if (!stillWanted()) throw MailError.Abandoned()
+            cancelCloseJob()
         if (owner != credentials.loginName) closeLocked()
         session?.let { if (!isAlive(it)) closeLocked() }
         val s = session ?: factory.open(credentials).also {
@@ -43,6 +61,8 @@ class SessionHolder(
             owner = credentials.loginName
         }
         try {
+            // Opening may have taken a while; the command itself is what the caller may no longer want.
+            if (!stillWanted()) throw MailError.Abandoned()
             block(s)
         } catch (e: Exception) {
             val classified = MailErrors.classify(e)
@@ -55,6 +75,7 @@ class SessionHolder(
             // call at all) would leave it open forever once nothing calls
             // releaseLater again.
             if (released.get() && session != null) armCloseJob()
+        }
         }
     }
 

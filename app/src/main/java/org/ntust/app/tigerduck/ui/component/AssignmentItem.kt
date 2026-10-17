@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.ntust.app.tigerduck.R
@@ -70,7 +71,12 @@ fun AssignmentItem(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .let { base -> if (onClick != null) base.clickable { onClick() } else base }
+            // Without a tap the row still reads to TalkBack as one element,
+            // as the click merges it, so the actions a caller puts on
+            // [modifier] stay with its text.
+            .let { base ->
+                if (onClick != null) base.clickable { onClick() } else base.semantics(mergeDescendants = true) {}
+            }
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

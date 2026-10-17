@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.ntust.app.tigerduck.data.model.Assignment
 import org.ntust.app.tigerduck.data.model.CalendarEvent
 import org.ntust.app.tigerduck.data.model.PendingCourseIgnore
+import org.ntust.app.tigerduck.data.model.PendingCourseOverride
 import org.ntust.app.tigerduck.data.model.UnsentMark
 import org.ntust.app.tigerduck.data.model.SyncConflict
 import org.ntust.app.tigerduck.shared.Course
@@ -628,6 +629,24 @@ class DataCache @Inject constructor(
             .toMap()
     }
 
+    // --- Pending course overrides (a colour, or a name in one locale) ---
+    // Colours and names set on the class table whose PATCH the backend has
+    // not confirmed; see PendingCourseOverrides, the only writer. A new file,
+    // so an older install simply has none; read tolerantly all the same.
+
+    /** False, and nothing written, when the data was wiped since [generation]. */
+    suspend fun savePendingCourseOverrides(pending: List<PendingCourseOverride>, generation: Int? = null): Boolean =
+        saveToUserDataIf(pending, "pending_course_overrides.json", generation ?: writeGeneration())
+
+    /** Rows too damaged to send ([PendingCourseOverride.key] null) are left out. */
+    suspend fun loadPendingCourseOverrides(): List<PendingCourseOverride> {
+        val type = object : TypeToken<List<PendingCourseOverride?>>() {}.type
+        return loadFromUserData<List<PendingCourseOverride?>>(type, "pending_course_overrides.json")
+            ?.filterNotNull()
+            ?.filter { it.key != null }
+            ?: emptyList()
+    }
+
     // --- Score Report (per studentId) ---
 
     /**
@@ -909,6 +928,7 @@ class DataCache @Inject constructor(
                     "marked_completed_assignments.json",
                     "unsent_marks.json",
                     "pending_course_adds.json",
+                    "pending_course_overrides.json",
                     "deleted_courses.json",
                     "course_custom_names.json",
                     "selection_dropped.json",

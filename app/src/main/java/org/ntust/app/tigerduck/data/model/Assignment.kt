@@ -27,10 +27,18 @@ data class Assignment(
     val isOverdue: Boolean
         get() = !isCompleted && dueDate.before(Date(AppClock.nowMillis()))
 
-    val moodleDeepLink: String
-        get() = moodleUrl?.let {
+    /**
+     * The Moodle app's link to the assignment's page, or null when Moodle gave
+     * no address ([moodleUrl]): the demo account's homework, and a cache from
+     * before v2.0 until its next refresh. Nothing is guessed from
+     * [assignmentId] then, as nothing is on iOS: it is the `assign` instance
+     * id, not the course-module id `mod/assign/view.php` takes, so a page
+     * built from it was someone else's (tigerduck-app-android#313). An
+     * assignment without a link opens nothing.
+     */
+    val moodleDeepLink: String?
+        get() = moodleUrl?.takeIf { it.isNotBlank() }?.let {
             val path = it.substringAfter("moodle2.ntust.edu.tw")
             "moodlemobile://https://moodle2.ntust.edu.tw?redirect=$path"
         }
-            ?: "moodlemobile://https://moodle2.ntust.edu.tw?redirect=/mod/assign/view.php?id=$assignmentId"
 }

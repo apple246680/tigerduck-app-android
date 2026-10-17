@@ -69,7 +69,6 @@ class HomeMarkSyncTest {
     }
 
     private fun server(ignored: Set<String> = emptySet()) = BackendSyncResult(
-        assignments = emptyList(),
         ignoredIds = ignored,
         completedIds = emptySet(),
         courseOverrides = emptyList(),
