@@ -77,7 +77,13 @@ class MoodleAccountAssignments(
 
     private val submissions = HashMap<Int, MoodleFeed<MoodleAssignmentSubmission>>()
 
-    /** The submission of assignment [assignId]; no copy counts as fresh, as the page fetches it on each opening. */
+    /** When the last fetch of each submission failed, by assignment, for the backoff. */
+    private val failedAtMs = HashMap<Int, Long>()
+
+    /**
+     * The submission of assignment [assignId]. Its copy's age is judged by [refreshSubmission],
+     * not by the feed's timer, which the page does not run.
+     */
     @Synchronized
     fun submission(assignId: Int): MoodleFeed<MoodleAssignmentSubmission> = submissions.getOrPut(assignId) {
         MoodleFeed("assignments/$assignId", object : TypeToken<MoodleAssignmentSubmission>() {}.type, ttlMs = 0, context, scope)
@@ -88,11 +94,20 @@ class MoodleAccountAssignments(
      * lets the app read them. A call Moodle refuses leaves its part out; one that cannot reach
      * Moodle keeps what the page showed. An assignment that takes no online submission has none.
      * The status the page then shows goes to [takeStatus] too, stamped with when it was asked.
+     *
+     * An opening or a return to the app asks Moodle only once the copy is [SUBMISSION_FRESH_MS]
+     * old, or [SUBMISSION_RETRY_MS] after a failed try: a return a few seconds after a success
+     * would repeat the status, comment and group requests for nothing. [force] asks at once, for
+     * Retry and for the way back from Moodle, where a submission may just have been made.
      */
-    suspend fun refreshSubmission(entry: MoodleAssignmentEntry) {
+    suspend fun refreshSubmission(entry: MoodleAssignmentEntry, force: Boolean = false) {
         val record = entry.record
         if (record.noSubmissions) return
-        submission(record.assignId).refresh {
+        val feed = submission(record.assignId)
+        feed.awaitCache()
+        val failedAt = synchronized(this) { failedAtMs[record.assignId] }
+        if (!force && !submissionRefreshDue(feed.state.value.fetchedAtMs, failedAt, context.now())) return
+        feed.refresh {
             val functions = api.functions()
             val generation = generation()
             val askedAt = monotonicNowMs()
@@ -122,6 +137,9 @@ class MoodleAccountAssignments(
             )
             submission
         }
+        synchronized(this) {
+            if (feed.state.value.failure != null) failedAtMs[record.assignId] = context.now() else failedAtMs.remove(record.assignId)
+        }
     }
 
     /** Null for an answer that is a Moodle error, or one the app cannot read. */
@@ -131,5 +149,25 @@ class MoodleAccountAssignments(
         null
     } catch (_: MoodleWebserviceError.MalformedResponse) {
         null
+    }
+
+    companion object {
+        /** How long a submission copy counts as fresh for an ordinary opening or return. */
+        const val SUBMISSION_FRESH_MS = 60_000L
+
+        /** How long a failed fetch holds the next ordinary one back. */
+        const val SUBMISSION_RETRY_MS = 30_000L
+
+        /**
+         * Whether an ordinary opening or return fetches the submission again: not within
+         * [SUBMISSION_FRESH_MS] of the copy's fetch at [fetchedAtMs], nor within
+         * [SUBMISSION_RETRY_MS] of a failed try at [failedAtMs]. A time ahead of the clock, left
+         * by a clock set back, counts as old.
+         */
+        internal fun submissionRefreshDue(fetchedAtMs: Long?, failedAtMs: Long?, nowMs: Long): Boolean {
+            val fresh = fetchedAtMs?.let { it <= nowMs && nowMs - it < SUBMISSION_FRESH_MS } ?: false
+            val backingOff = failedAtMs?.let { it <= nowMs && nowMs - it < SUBMISSION_RETRY_MS } ?: false
+            return !fresh && !backingOff
+        }
     }
 }

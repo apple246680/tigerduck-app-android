@@ -10,6 +10,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -160,6 +161,16 @@ class MoodleAssignmentScreenTest {
         assertNull(AssignmentPageRules.submittedSeconds(MoodleAssignmentEntry(record(), listed()), null))
         assertNull("a draft's time is not a submission's", AssignmentPageRules.submittedSeconds(found, notSubmitted.copy(status = "draft", modified = 5L)))
         assertEquals(1_788_900_000L, AssignmentPageRules.submittedSeconds(found, submitted))
+    }
+
+    @Test
+    fun `the Submit button tells the page it handed off to Moodle`() {
+        var handedOff = 0
+        composeRule.setContent { AssignmentSubmitButton(MoodleAssignmentEntry(record(), listed()), onOpen = { handedOff++ }) }
+
+        composeRule.onNodeWithText(string(R.string.assignment_detail_submit_on_moodle)).performClick()
+
+        assertEquals(1, handedOff)
     }
 
     @Test

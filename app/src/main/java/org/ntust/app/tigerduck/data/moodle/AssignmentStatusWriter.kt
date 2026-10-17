@@ -56,9 +56,11 @@ class AssignmentStatusWriter internal constructor(
         // Checked before the ledger takes the answer: an answer for the account that left must
         // not stand in the way of the next account's round for the same id.
         if (generation != dataCache.userDataGeneration) return false
-        if (!ledger.offer(answer)) return false
         var written: List<Assignment>? = null
         val wrote = dataCache.updateAssignments(generation) { assignments ->
+            // Offered under the cache's lock, which a round's write holds too, so a round that
+            // writes between the offer and this write cannot be overwritten by an older answer.
+            if (!ledger.offer(answer)) return@updateAssignments assignments
             val index = assignments.indexOfFirst { it.assignmentId == answer.assignmentId }
             if (index < 0) return@updateAssignments assignments
             val current = assignments[index]

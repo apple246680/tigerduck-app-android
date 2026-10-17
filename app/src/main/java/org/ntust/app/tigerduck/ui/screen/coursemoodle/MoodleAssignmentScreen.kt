@@ -118,15 +118,16 @@ fun MoodleAssignmentScreen(
     if (lookup == MoodleAssignmentLookup.Missing) LaunchedEffect(Unit) { onBack() }
     val feed = remember(assignments, entry?.record?.assignId) { entry?.let { assignments?.submission(it.record.assignId) } }
     val submission = feed?.state?.collectAsStateWithLifecycle()?.value ?: MoodleFeed.State()
-    // On each return to the app too: a submission made on Moodle shows once the app is back.
+    // On each return to the app too, as a submission made on Moodle shows once the app is back;
+    // the view model asks Moodle only once the copy is old, or at once after its own hand-off.
     LifecycleResumeEffect(entry?.record?.assignId, assignments) {
-        entry?.let { viewModel.refresh(it) }
+        entry?.let { viewModel.refreshOnResume(it) }
         onPauseOrDispose { }
     }
 
     Scaffold(
         topBar = { MoodleTopBar(title = "", onBack = onBack, moodlePath = entry?.let(AssignmentPageRules::moodlePath)) },
-        bottomBar = { entry?.let { AssignmentSubmitButton(it) } },
+        bottomBar = { entry?.let { AssignmentSubmitButton(it, onOpen = viewModel::noteMoodleHandOff) } },
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         Box(
@@ -143,7 +144,7 @@ fun MoodleAssignmentScreen(
                     submission = submission,
                     store = store,
                     browserPreference = browserPreference,
-                    onRetry = { viewModel.refresh(entry) },
+                    onRetry = { viewModel.refresh(entry, force = true) },
                 )
             }
         }
@@ -292,14 +293,20 @@ private fun CommentItem(comment: MoodleSubmissionComment, browserPreference: Str
     }
 }
 
-/** The button at the foot, which opens the assignment on Moodle to submit; nothing without a page to open. */
+/**
+ * The button at the foot, which opens the assignment on Moodle to submit; nothing without a page
+ * to open. [onOpen] is told first, so the page fetches the submission again on the way back.
+ */
 @Composable
-internal fun AssignmentSubmitButton(entry: MoodleAssignmentEntry) {
+internal fun AssignmentSubmitButton(entry: MoodleAssignmentEntry, onOpen: () -> Unit = {}) {
     val path = AssignmentPageRules.submitPath(entry) ?: return
     val context = LocalContext.current
     Surface(color = MaterialTheme.colorScheme.background) {
         Button(
-            onClick = { openMoodlePage(context, path) },
+            onClick = {
+                onOpen()
+                openMoodlePage(context, path)
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 12.dp),

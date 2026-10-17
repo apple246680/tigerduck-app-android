@@ -470,11 +470,12 @@ class BackgroundSyncWorker @AssistedInject constructor(
             // Null, which keeps the cache, when no course was left to ask
             // about; an empty answer empties it, and the
             // reminders below go with it — see assignmentsToStore.
+            val answer = moodleService.fetchAssignments(enrolled) ?: return true
             val merged = CourseRosterMerge.assignmentsToStore(
-                remote = moodleService.fetchAssignments(enrolled),
+                remote = answer.assignments,
                 cached = dataCache.loadAssignments(),
             ) ?: return true
-            moodleService.storeAssignments(merged)
+            moodleService.storeAssignments(merged, answer)
             runCatching { pushApiClient.uploadAssignments(merged) }
                 .onFailure {
                     prefs.setLastSyncSource(SyncSource.LOCAL)

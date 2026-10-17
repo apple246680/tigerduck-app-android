@@ -14,54 +14,59 @@ data class SubmissionStatusAnswer(
 )
 
 /**
- * When Moodle was asked for the status each cached assignment last took, so an older answer
- * never overwrites a newer one: a round's answers against a page's, and one page's against
- * another's. Times come from a monotonic clock, as a wall clock set back would make a later
- * answer look older. Ported from iOS `AppServiceBridge.statusAskedAt`.
+ * The newest answer accepted for each cached assignment's status, with when Moodle was asked for
+ * it, so an older answer never overwrites a newer one: a round's answers against a page's, and
+ * one page's against another's. Times come from a monotonic clock, as a wall clock set back would
+ * make a later answer look older. Ported from iOS `AppServiceBridge.statusAskedAt`.
  *
- * A round's answers are written by the screen that ran it, some time after the round, so the
- * page's answers are kept here and laid over the round's list as it is written ([apply]) rather
- * than the page waiting the round out.
+ * A round's answers are written by the screen that ran it, some time after the round, so each
+ * round's list is reconciled against the accepted answers as it is written ([reconcile]), by the
+ * round's own request times, rather than the page waiting the round out. Both the round's write
+ * and a page's run under the cache's lock, so the two cannot pass each other.
  */
 class AssignmentStatusLedger {
-    private val roundAskedAt = HashMap<String, Long>()
-    private val pageAnswers = HashMap<String, SubmissionStatusAnswer>()
+    private data class Accepted(val askedAtMs: Long, val submitted: Boolean, val submittedAtMs: Long?)
 
-    /** Keeps, for each assignment a round answered for, when the round's own request went out. */
-    @Synchronized
-    fun recordRound(askedAtMs: Map<String, Long>) {
-        for ((id, askedAt) in askedAtMs) {
-            val known = roundAskedAt[id]
-            if (known == null || known < askedAt) roundAskedAt[id] = askedAt
-        }
-    }
+    private val accepted = HashMap<String, Accepted>()
 
     /**
-     * Keeps a page's [answer] for [apply], unless one asked for before the answer the assignment
-     * holds, a round's or another page's; whether it was kept.
+     * Keeps a page's [answer] as the assignment's accepted one, unless one asked for as late or
+     * later is accepted, a round's or another page's; whether it was kept.
      */
     @Synchronized
     fun offer(answer: SubmissionStatusAnswer): Boolean {
-        val id = answer.assignmentId
-        val newest = maxOf(roundAskedAt[id] ?: Long.MIN_VALUE, pageAnswers[id]?.askedAtMs ?: Long.MIN_VALUE)
-        if (newest >= answer.askedAtMs) return false
-        pageAnswers[id] = answer
+        val current = accepted[answer.assignmentId]
+        if (current != null && current.askedAtMs >= answer.askedAtMs) return false
+        accepted[answer.assignmentId] = Accepted(answer.askedAtMs, answer.submitted, answer.submittedAtMs)
         return true
     }
 
-    /** [assignments] with each page answer newer than the round's request for that assignment applied. */
+    /**
+     * [assignments] as a round writes them, [askedAtMs] being when its own request for each went
+     * out, by id: an assignment whose accepted answer is newer than that request takes the
+     * accepted answer, and the rest take the round's, which is accepted from here on. One the
+     * round did not ask about, kept from the cache, takes any accepted answer and records none.
+     */
     @Synchronized
-    fun apply(assignments: List<Assignment>): List<Assignment> = assignments.map { assignment ->
-        val page = pageAnswers[assignment.assignmentId] ?: return@map assignment
-        val round = roundAskedAt[assignment.assignmentId]
-        if (round != null && round >= page.askedAtMs) return@map assignment
-        assignment.copy(isCompleted = page.submitted, submittedAt = page.submittedAtMs?.let(::Date))
-    }
+    fun reconcile(assignments: List<Assignment>, askedAtMs: Map<String, Long>): List<Assignment> =
+        assignments.map { assignment ->
+            val id = assignment.assignmentId
+            val asked = askedAtMs[id]
+            val current = accepted[id]
+            when {
+                current != null && (asked == null || current.askedAtMs > asked) ->
+                    assignment.copy(isCompleted = current.submitted, submittedAt = current.submittedAtMs?.let(::Date))
+                asked != null -> {
+                    accepted[id] = Accepted(asked, assignment.isCompleted, assignment.submittedAt?.time)
+                    assignment
+                }
+                else -> assignment
+            }
+        }
 
     /** Forgets everything, at a sign-out: the next account's answers are not ordered against this one's. */
     @Synchronized
     fun clear() {
-        roundAskedAt.clear()
-        pageAnswers.clear()
+        accepted.clear()
     }
 }

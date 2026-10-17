@@ -77,9 +77,11 @@ class MoodleAccountAssignmentsTest {
     private val listed = MutableSharedFlow<List<Assignment>>(replay = 1)
     private val taken = mutableListOf<Pair<SubmissionStatusAnswer, Int>>()
 
+    private var wall = 1_790_000_000_000L
+
     private fun TestScope.assignments() = MoodleAccountAssignments(
         api = api,
-        context = MoodleCacheContext("B1", cache, isCurrent = { signedIn }),
+        context = MoodleCacheContext("B1", cache, isCurrent = { signedIn }, now = { wall }),
         scope = backgroundScope,
         records = records,
         listed = listed,
@@ -240,4 +242,52 @@ class MoodleAccountAssignmentsTest {
             assertTrue(taken.isEmpty())
             assertTrue(cache.files.isEmpty())
         }
+
+    @Test
+    fun `an opening within a minute of a success shows the copy without asking Moodle again`() = runTest(UnconfinedTestDispatcher()) {
+        val assignments = assignments()
+        val entry = MoodleAssignmentEntry(team, null)
+        assignments.refreshSubmission(entry)
+        assertEquals(1, api.submissionCalls)
+
+        wall += 30_000
+        assignments.refreshSubmission(entry)
+        assertEquals("a return to the app half a minute later asks nothing", 1, api.submissionCalls)
+
+        wall += 31_000
+        assignments.refreshSubmission(entry)
+        assertEquals("once the copy is a minute old it is fetched again", 2, api.submissionCalls)
+    }
+
+    @Test
+    fun `a return from Moodle or a retry fetches again at once`() = runTest(UnconfinedTestDispatcher()) {
+        val assignments = assignments()
+        val entry = MoodleAssignmentEntry(team, null)
+        assignments.refreshSubmission(entry)
+        wall += 5_000
+
+        assignments.refreshSubmission(entry, force = true)
+
+        assertEquals(2, api.submissionCalls)
+    }
+
+    @Test
+    fun `a failed fetch is not tried again for half a minute, unless asked for`() = runTest(UnconfinedTestDispatcher()) {
+        api.submissionAnswer = { throw IOException("offline") }
+        val assignments = assignments()
+        val entry = MoodleAssignmentEntry(team, null)
+        assignments.refreshSubmission(entry)
+        assertEquals(1, api.submissionCalls)
+
+        wall += 10_000
+        assignments.refreshSubmission(entry)
+        assertEquals("a return ten seconds after the failure waits", 1, api.submissionCalls)
+
+        assignments.refreshSubmission(entry, force = true)
+        assertEquals("Retry does not", 2, api.submissionCalls)
+
+        wall += 31_000
+        assignments.refreshSubmission(entry)
+        assertEquals("and the next return after the backoff tries again", 3, api.submissionCalls)
+    }
 }

@@ -62,7 +62,7 @@ class AssignmentStatusWriterTest {
     @Test
     fun `an answer asked for before the round's request is dropped`() = runTest {
         cache.saveAssignments(listOf(row("701")))
-        ledger.recordRound(mapOf("701" to 100L))
+        ledger.reconcile(listOf(row("701")), mapOf("701" to 100L))
 
         assertFalse(writer.take(answer("701", askedAtMs = 50), cache.userDataGeneration))
 

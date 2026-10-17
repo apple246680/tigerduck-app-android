@@ -1407,7 +1407,7 @@ class ClassTableViewModel @Inject constructor(
                 val assignmentsJob = if (isCurrentSemester) {
                     launch {
                         try {
-                            val remoteAssignments = moodleService.fetchAssignments(
+                            val answer = moodleService.fetchAssignments(
                                 enrolledCourses = moodleAll,
                                 rosterCourseNos = orderedCourseNos.toSet()
                             )
@@ -1416,12 +1416,12 @@ class ClassTableViewModel @Inject constructor(
                             // empty answer replaces it like any other, see
                             // CourseRosterMerge.assignmentsToStore.
                             val merged = CourseRosterMerge.assignmentsToStore(
-                                remote = remoteAssignments,
+                                remote = answer?.assignments,
                                 cached = _assignments.value,
                             )
-                            if (merged != null) {
+                            if (merged != null && answer != null) {
                                 _assignments.value = merged
-                                moodleService.storeAssignments(merged)
+                                moodleService.storeAssignments(merged, answer)
                                 // The reminders and the Live Update follow the
                                 // cache, as Home and the worker make them do.
                                 notificationScheduler.rescheduleFromCache(dataCache, appPreferences)

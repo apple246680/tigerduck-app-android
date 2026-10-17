@@ -56,6 +56,17 @@ class MoodleService @Inject constructor(
 
     private data class AssignmentsKey(val token: String, val courseIds: List<Int>)
 
+    /**
+     * A round's assignments for the caller to write with [storeAssignments], which orders the
+     * write by when the round's own request for each status went out, so a page's answer asked
+     * for after it is not taken back.
+     */
+    class AssignmentsAnswer internal constructor(
+        val assignments: List<Assignment>,
+        /** By assignment id, on the monotonic clock the [AssignmentStatusLedger] reads. */
+        internal val askedAtMs: Map<String, Long>,
+    )
+
     /** The network half of [fetchAssignments]: what every caller asking for the same courses can share. */
     private class AssignmentsRound(
         val courses: List<MoodleAssignmentsCourse>,
@@ -171,7 +182,7 @@ class MoodleService @Inject constructor(
     suspend fun fetchAssignments(
         enrolledCourses: List<MoodleEnrolledCourse>,
         rosterCourseNos: Set<String>? = null,
-    ): List<Assignment>? = withContext(Dispatchers.IO) {
+    ): AssignmentsAnswer? = withContext(Dispatchers.IO) {
         val token = tokenService.currentToken()
         val currentSemester = courseService.currentSemesterCode()
         // What the class table holds right now, hand-added rows included. It
@@ -212,13 +223,9 @@ class MoodleService @Inject constructor(
             key = { AssignmentsKey(it, courseIds) },
         ) { fetchAssignmentsRound(courseIds) }
         val coursesById = relevant.associateBy { it.id }
-        // Before the caller writes the list, so a page's answer asked for before these requests
-        // is dropped, and one asked for after them is laid over the list as it is written; see
-        // [storeAssignments].
-        statusLedger.recordRound(round.askedAtMs.mapKeys { it.key.toString() })
 
         // Flatten the nested course→assignments response.
-        round.courses
+        val assignments = round.courses
             .flatMap { c -> c.assignments.map { a -> c.id to a } }
             .mapNotNull { (courseId, a) ->
                 if (a.duedate <= 0) return@mapNotNull null
@@ -242,6 +249,7 @@ class MoodleService @Inject constructor(
                     semester = currentSemester,
                 )
             }
+        AssignmentsAnswer(assignments, round.askedAtMs.mapKeys { it.key.toString() })
     }
 
     /**
@@ -361,12 +369,14 @@ class MoodleService @Inject constructor(
     val statusLedger = AssignmentStatusLedger()
 
     /**
-     * Writes a round's [assignments] to the cache, with every status an assignment's page fetched
-     * after the round asked laid over them, so the round's older answer does not take the page's
-     * back. False, and nothing written, once the data was wiped under the round.
+     * Writes [assignments], a round's [answer] as the caller merged it, to the cache, with each
+     * status reconciled against the newest answer accepted for the assignment by the round's own
+     * request time, so an older round cannot take back a page's or a later round's status. Under
+     * the cache's lock, so a page's write cannot pass it. False, and nothing written, once the
+     * data was wiped under the round.
      */
-    suspend fun storeAssignments(assignments: List<Assignment>): Boolean =
-        dataCache.updateAssignments { statusLedger.apply(assignments) }
+    suspend fun storeAssignments(assignments: List<Assignment>, answer: AssignmentsAnswer): Boolean =
+        dataCache.updateAssignments { statusLedger.reconcile(assignments, answer.askedAtMs) }
 
     companion object {
         private val decodeGson = Gson()

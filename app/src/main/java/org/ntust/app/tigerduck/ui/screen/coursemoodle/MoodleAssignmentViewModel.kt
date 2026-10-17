@@ -61,8 +61,29 @@ class MoodleAssignmentViewModel @Inject constructor(
         viewModelScope.launch { _assignments.value = repository.assignments() }
     }
 
-    /** Fetches the submission again, as the page does when it opens and on each return to the app. */
-    fun refresh(entry: MoodleAssignmentEntry) {
-        viewModelScope.launch { _assignments.value?.refreshSubmission(entry) }
+    /** Whether the page handed off to Moodle to submit since it last came back; see [noteMoodleHandOff]. */
+    private var handedOffToMoodle = false
+
+    /**
+     * Fetches the submission again: at once with [force], as Retry asks, else only once the copy
+     * is old enough; see [MoodleAccountAssignments.refreshSubmission].
+     */
+    fun refresh(entry: MoodleAssignmentEntry, force: Boolean = false) {
+        viewModelScope.launch { _assignments.value?.refreshSubmission(entry, force) }
+    }
+
+    /**
+     * The page is opening the assignment on Moodle to submit, so the next return to the app
+     * fetches the submission whatever the copy's age: it may just have been made.
+     */
+    fun noteMoodleHandOff() {
+        handedOffToMoodle = true
+    }
+
+    /** What the page does as it opens and on each return to the app. */
+    fun refreshOnResume(entry: MoodleAssignmentEntry) {
+        val force = handedOffToMoodle
+        handedOffToMoodle = false
+        refresh(entry, force)
     }
 }
