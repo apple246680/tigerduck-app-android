@@ -109,6 +109,23 @@ class SyncWiringTest {
         }
     }
 
+    /** tigerduck-app-android#380. */
+    @Test
+    fun `a colour or name whose PATCH failed is kept, and every full sync sends what waits first and holds it against the snapshot`() {
+        assertCalls("ui/screen/classtable/ClassTableViewModel.kt", "syncCourseOverride", "pendingCourseOverrides.send(")
+        for ((rel, name) in listOf(
+            "ui/screen/home/HomeBackendSync.kt" to "pull",
+            "notification/BackgroundSyncWorker.kt" to "syncOverridesFromBackend",
+        )) {
+            val body = body(rel, name)
+            val retry = body.indexOf("pendingCourseOverrides.retry()")
+            val fetch = body.indexOf("syncApiClient.fetchFullSync()")
+            val held = body.indexOf("pendingCourseOverrides.held(result.fetchedAtMs)")
+            assertTrue("$rel $name no longer sends the waiting colours and names before the snapshot", retry in 0 until fetch)
+            assertTrue("$rel $name no longer holds the waiting colours and names against the snapshot", held > fetch)
+        }
+    }
+
     @Test
     fun `the closed assignments are written only for the account that asked`() {
         val body = body("network/MoodleService.kt", "fetchAssignmentsRound")

@@ -14,6 +14,7 @@
 package org.ntust.app.tigerduck.ui.screen.home
 
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
+import org.ntust.app.tigerduck.data.model.PendingCourseOverride
 import org.ntust.app.tigerduck.push.CourseOverrideResult
 import org.ntust.app.tigerduck.push.CourseTombstone
 import org.ntust.app.tigerduck.push.ServerCourse
@@ -412,20 +413,34 @@ object CourseSyncReconciler {
      * by row, both kept the colour for good (tigerduck-app-android#295). The
      * iPhone app applies them in the same order
      * (`AppState.serverCourseColors`, tigerduck-app/tigerduck-app#252).
+     *
+     * [held] are the keys ([PendingCourseOverride.key]) of the colours this
+     * phone has waiting to go up, or sent after the snapshot was fetched
+     * (`PendingCourseOverrides.held`): the snapshot's value for them is the
+     * older one. Such a course's own colour counts as the latest pick in
+     * place of the server's, so a course the snapshot has on that colour
+     * moves off it here, as it will everywhere once the PATCH lands.
      */
     fun applyColorOverrides(
         courses: List<Course>,
         overrides: List<CourseOverrideResult>,
         syncColors: Boolean,
+        held: Set<String> = emptySet(),
     ): ColorOutcome? {
         if (!syncColors || courses.isEmpty()) return null
         val serverHex = mutableMapOf<String, String>()
         val picks = courses.mapNotNull { course ->
             val override = overrides.find { it.courseNo == course.courseNo }
                 ?: overrides.find { it.moodleCourseId == course.moodleIdNumber }
-            val hex = override?.colorHex ?: return@mapNotNull null
+                ?: return@mapNotNull null
+            // By the row's id and by the course's own: a row made before the
+            // course had an idnumber is keyed by its term and number instead.
+            val pending = PendingCourseOverride.colorKey(override.moodleCourseId) in held ||
+                course.moodleIdNumber?.let { PendingCourseOverride.colorKey(it) in held } == true
+            val hex = (if (pending) course.customColorHex else override.colorHex) ?: return@mapNotNull null
             serverHex[course.courseNo] = hex.uppercase()
-            Triple(course.courseNo, hex, backendInstant(override.colorHexUpdatedAt) ?: Instant.MIN)
+            val pickedAt = if (pending) Instant.MAX else backendInstant(override.colorHexUpdatedAt) ?: Instant.MIN
+            Triple(course.courseNo, hex, pickedAt)
         }.sortedWith(compareBy({ it.third }, { it.first }))
 
         var updated = courses
@@ -447,20 +462,27 @@ object CourseSyncReconciler {
      * changed. An empty name from the server means "cleared", so it removes
      * that locale rather than storing a blank; a course left with no locales
      * drops out of the map entirely instead of leaving an empty entry behind.
+     *
+     * [held] are the keys ([PendingCourseOverride.key]) of the names this
+     * phone has waiting to go up, or sent after the snapshot was fetched
+     * (`PendingCourseOverrides.held`): the snapshot's value for them is the
+     * older one, and is left out.
      */
     fun mergeCustomNames(
         existing: Map<String, Map<String, String>>,
         overrides: List<CourseOverrideResult>,
         syncNames: Boolean,
+        held: Set<String> = emptySet(),
     ): Map<String, Map<String, String>>? {
         if (!syncNames) return null
         val merged = existing.mapValues { it.value.toMutableMap() }.toMutableMap()
         var changed = false
         for (o in overrides) {
             val no = o.courseNo ?: continue
-            if (o.customNames.isEmpty()) continue
+            val names = o.customNames.filterKeys { PendingCourseOverride.nameKey(o.moodleCourseId, it) !in held }
+            if (names.isEmpty()) continue
             val entry = merged[no]?.toMutableMap() ?: mutableMapOf()
-            for ((locale, name) in o.customNames) {
+            for ((locale, name) in names) {
                 if (name.isEmpty()) entry.remove(locale) else entry[locale] = name
             }
             if (entry.isEmpty()) merged.remove(no) else merged[no] = entry

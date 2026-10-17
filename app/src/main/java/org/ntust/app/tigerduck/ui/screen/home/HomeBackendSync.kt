@@ -37,6 +37,7 @@ import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
 import org.ntust.app.tigerduck.data.PendingCourseAdds
+import org.ntust.app.tigerduck.data.PendingCourseOverrides
 import org.ntust.app.tigerduck.data.UnsentMarks
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.network.CourseService
@@ -112,6 +113,7 @@ class HomeBackendSync @Inject constructor(
     private val courseIgnoreSync: CourseIgnoreSync,
     private val unsentMarks: UnsentMarks,
     private val pendingCourseAdds: PendingCourseAdds,
+    private val pendingCourseOverrides: PendingCourseOverrides,
     private val reenableCheck: ReenableCheck,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) {
@@ -142,10 +144,12 @@ class HomeBackendSync @Inject constructor(
             if (BuildConfig.DEBUG) ServerFailureSimulator.check(ServerKind.BACKEND)
             val account = authService.storedStudentId
             val generation = courseIgnoreSync.currentGeneration()
-            // Unsent course-ignore changes, marks and course adds go first, so the snapshot has them.
+            // Unsent course-ignore changes, marks, course adds and course
+            // colours and names go first, so the snapshot has them.
             courseIgnoreSync.retryPending()
             unsentMarks.retry()
             pendingCourseAdds.retry()
+            pendingCourseOverrides.retry()
             // The first-sync mark upload is pinned to the sign-in read here:
             // a sign-out and another sign-in meanwhile must not send these
             // marks as theirs.
@@ -171,7 +175,10 @@ class HomeBackendSync @Inject constructor(
             val syncColors = CourseSyncReconciler.syncsCourseColors("course_colors" in switchedOn, pending)
             val syncNames = CourseSyncReconciler.syncsCourseNames("course_names" in switchedOn, pending)
             val coursesLoaded = if (result.courseOverrides.isNotEmpty() && (syncColors || syncNames)) {
-                applyCourseOverrides(state, result.courseOverrides, syncColors, syncNames)
+                // Not over a colour or name this phone has waiting to go up,
+                // or sent since the fetch: the snapshot's is the older.
+                val held = pendingCourseOverrides.held(result.fetchedAtMs)
+                applyCourseOverrides(state, result.courseOverrides, held, syncColors, syncNames)
             } else {
                 state.allCourses.value.isNotEmpty()
             }
@@ -311,15 +318,20 @@ class HomeBackendSync @Inject constructor(
         } else {
             markStep.keepServer(state, result)
             if (result.courseOverrides.isNotEmpty()) {
-                applyCourseOverrides(state, result.courseOverrides)
+                applyCourseOverrides(state, result.courseOverrides, pendingCourseOverrides.held(result.fetchedAtMs))
             }
         }
     }
 
-    /** Returns false when it applied nothing, the course list not having loaded. */
+    /**
+     * Returns false when it applied nothing, the course list not having
+     * loaded. [held] is what the snapshot must not overwrite; see
+     * [PendingCourseOverrides.held].
+     */
     private suspend fun applyCourseOverrides(
         state: HomeSyncState,
         overrides: List<CourseOverrideResult>,
+        held: Set<String>,
         syncColors: Boolean = CourseSyncReconciler.syncsCourseColors(
             prefs.syncCourseColors, prefs.pendingConflictCategories,
         ),
@@ -338,12 +350,14 @@ class HomeBackendSync @Inject constructor(
             existing = dataCache.loadCourseCustomNames(),
             overrides = overrides,
             syncNames = syncNames,
+            held = held,
         )?.let { dataCache.saveCourseCustomNames(it) }
 
         CourseSyncReconciler.applyColorOverrides(
             courses = courses,
             overrides = overrides,
             syncColors = syncColors,
+            held = held,
         )?.let { outcome ->
             val updated = outcome.courses
             Log.i(TAG, "[sync-color] applying ${updated.count { c -> c.customColorHex != null }} custom colors")

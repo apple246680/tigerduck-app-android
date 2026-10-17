@@ -91,6 +91,7 @@ class ClassTableViewModel @Inject constructor(
     private val importedClassTableStore: ImportedClassTableStore,
     private val importedCourseLookup: ImportedCourseLookup,
     private val pendingCourseAdds: org.ntust.app.tigerduck.data.PendingCourseAdds,
+    private val pendingCourseOverrides: org.ntust.app.tigerduck.data.PendingCourseOverrides,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
 
@@ -1012,6 +1013,7 @@ class ClassTableViewModel @Inject constructor(
 
     fun deleteCourse(courseNo: String) {
         if (isShowingSomeoneElse) return
+        val moodleId = _courses.value.firstOrNull { it.courseNo == courseNo }?.moodleIdNumber
         val updated = _courses.value.filter { it.courseNo != courseNo }
         _courses.value = updated
         val semester = _currentSemester.value
@@ -1030,6 +1032,9 @@ class ClassTableViewModel @Inject constructor(
             )
             dataCache.saveDeletedCourseNos(deleted)
             dataCache.saveCourses(updated, semester)
+            // A colour or name of it still waiting to go up goes with it; see
+            // PendingCourseOverrides.forget.
+            pendingCourseOverrides.forget(listOfNotNull(moodleId))
             widgetUpdater.requestUpdate()
             val courseKey = "client:$semester:$courseNo"
             // After an add of it already being sent, which landing later
@@ -1074,7 +1079,14 @@ class ClassTableViewModel @Inject constructor(
         localEdits.noteEdit()
     }
 
-    /** Sends [course]'s colour or name to the backend, keyed by that course's own term. */
+    /**
+     * Sends [course]'s colour or name to the backend, keyed by that course's
+     * own term. Kept in [PendingCourseOverrides] until the backend confirms
+     * it: sent once, a change made offline stayed on this phone alone
+     * (tigerduck-app-android#380). On the application scope, and started at
+     * once: leaving the table must not cut the write short, and two changes
+     * in a row must reach the outbox in the order they were made.
+     */
     private fun syncCourseOverride(
         course: Course,
         colorHex: String? = null,
@@ -1082,17 +1094,8 @@ class ClassTableViewModel @Inject constructor(
         locale: String? = null,
     ) {
         val moodleId = course.moodleIdNumber ?: return
-        viewModelScope.launch {
-            try {
-                pushApiClient.patchCourseOverride(
-                    moodleId,
-                    colorHex = colorHex,
-                    customName = customName,
-                    locale = locale,
-                )
-            } catch (e: Exception) {
-                Log.w("ClassTableVM", "course override FAILED: ${e.logSummary()}")
-            }
+        appScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            pendingCourseOverrides.send(moodleId, colorHex = colorHex, customName = customName, locale = locale)
         }
     }
 
@@ -1203,6 +1206,9 @@ class ClassTableViewModel @Inject constructor(
      * server could not be told.
      */
     private suspend fun wipeTerm(semester: String): Boolean {
+        // Read before the wipe takes the term's cache: the colours and names
+        // still waiting to go up for its courses go with it below.
+        val moodleIds = dataCache.loadCourses(semester).mapNotNull { it.moodleIdNumber }
         // With no course add sent between the DELETE and the wipe; see PendingCourseAdds.removing.
         val held = pendingCourseAdds.removing {
             termReset.run(semester) { pushApiClient.deleteAllCourses(semester) }
@@ -1210,6 +1216,7 @@ class ClassTableViewModel @Inject constructor(
         if (_currentSemester.value == semester) _courses.value = emptyList()
         // Their names went from the file with the term.
         courseCustomNames = courseCustomNames - held
+        pendingCourseOverrides.forget(moodleIds)
         val inTerm = { key: String -> CourseIgnores.semesterOf(key) == semester }
         val edit = ignoredCourses.edit { keys -> keys.filterNotTo(mutableSetOf(), inTerm) }
         try {
