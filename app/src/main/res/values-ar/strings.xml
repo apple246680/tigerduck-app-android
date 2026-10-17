@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">إعادة الضبط</string>
     <string name="app_reset_required_message">تعذّرت قراءة حالة تسجيل الدخول وإعداداتك المفضّلة، ربما بسبب تحديث النظام أو استعادة نسخة احتياطية أو مشكلة في التخزين.\n\nاضغط على \"إعادة الضبط\" لمسح البيانات القديمة، ثم سجّل الدخول وأعد تكوين تفضيلاتك.</string>
     <string name="app_reset_required_title">إعادة الضبط مطلوبة</string>
+    <string name="assignment_detail_comments">تعليقات التسليم</string>
+    <string name="assignment_detail_description">الوصف</string>
+    <string name="assignment_detail_due">الموعد النهائي</string>
+    <string name="assignment_detail_group">المجموعة</string>
+    <string name="assignment_detail_not_submitted">لم يُسلَّم بعد</string>
+    <string name="assignment_detail_submission">تسليمك</string>
+    <string name="assignment_detail_submit_on_moodle">التسليم في Moodle</string>
+    <string name="assignment_detail_submitted_at">وقت التسليم</string>
     <string name="assignment_filter_all">الكل</string>
     <string name="assignment_filter_ignored">متجاهَل</string>
     <string name="assignment_filter_incomplete">غير مكتمل</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">لون مخصص</string>
     <string name="course_color_picker_title">تعديل اللون</string>
     <string name="course_credits_value">الساعات المعتمدة: %1$s</string>
+    <string name="course_detail_assignments_label">الواجبات</string>
     <string name="course_detail_classroom_label">الفصل الدراسي</string>
     <string name="course_detail_code_copied">تم نسخ الرمز</string>
     <string name="course_detail_code_label">شفرة</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">ابدأ استخدام TigerDuck</string>
     <string name="onboarding_sync_description">يحافظ TigerSync على مزامنة مقرراتك وواجباتك وإعداداتك عبر جميع أجهزتك. يمكنك اختيار ما تريد مزامنته بالضبط في إعدادات TigerSync.</string>
     <string name="onboarding_sync_not_shared_password">لا يتم رفع كلمة المرور أبدًا</string>
-    <string name="onboarding_sync_note">عند إيقاف المزامنة، تبقى جميع البيانات على هذا الجهاز فقط. تعمل الإشعارات الفورية لتذكيرات الواجبات محليًا بدون TigerSync.</string>
+    <string name="onboarding_sync_note">عند إيقاف المزامنة، يظل خادم TigerDuck يتلقى رقم الطالب ورمز Moodle وبيانات الإشعارات لهذا الجهاز لإرسال تذكيرات الواجبات</string>
     <string name="onboarding_sync_shared_assignments">بيانات الواجبات</string>
     <string name="onboarding_sync_shared_courses">بيانات المقررات</string>
     <string name="onboarding_sync_shared_device_id">معرّف الجهاز</string>
@@ -768,6 +777,7 @@
     <string name="school_mail_send">إرسال</string>
     <string name="school_mail_send_confirm_title">هل تريد إرسال هذه الرسالة؟</string>
     <string name="school_mail_send_failed">تعذّر إرسال الرسالة</string>
+    <string name="school_mail_send_unconfirmed">تعذّر التأكد من إرسال الرسالة؛ قد تؤدي إعادة المحاولة إلى وصولها مرتين</string>
     <string name="school_mail_sent_copy_failed">تم إرسال الرسالة، لكن تعذّر حفظ النسخة في البريد المرسل.</string>
     <string name="school_mail_sent_copy_no_folder">تم إرسال الرسالة، لكن لا يوجد مجلد البريد المرسل لحفظ نسخة فيه.</string>
     <string name="school_mail_sent_copy_not_saved">تم إرسال الرسالة، لكن لم يتم حفظ نسخة في البريد المرسل</string>
@@ -953,7 +963,7 @@
     <string name="settings_show_classroom_on_class_table">إظهار القاعات في الجدول الدراسي</string>
     <string name="settings_sign_out_imported_tables">سيتم حذف الجداول الدراسية المستوردة أيضًا.</string>
     <string name="settings_sync_brief_description">يتيح لك TigerSync مزامنة معلوماتك المختارة عبر جميع أجهزتك التي تم تفعيل TigerSync عليها. المعلومات غير المفعّلة للمزامنة تبقى على هذا الجهاز فقط.</string>
-    <string name="settings_sync_disabled_note">عند إيقاف المزامنة، تبقى جميع البيانات على هذا الجهاز فقط.</string>
+    <string name="settings_sync_disabled_note">عند إيقاف المزامنة، يظل خادم TigerDuck يتلقى رقم الطالب ورمز Moodle وبيانات الإشعارات لهذا الجهاز لإرسال تذكيرات الواجبات</string>
     <string name="settings_sync_status_off">معطّل</string>
     <string name="settings_sync_status_on">مفعّل</string>
     <string name="settings_system_language">لغة النظام</string>
@@ -1008,10 +1018,12 @@
     <string name="sync_status_hours_ago_short">منذ %1$d س</string>
     <string name="sync_status_just_now">للتو</string>
     <string name="sync_status_last_synced">آخر مزامنة</string>
+    <string name="sync_status_last_updated">آخر تحديث</string>
     <string name="sync_status_minimal">محدود</string>
     <string name="sync_status_minutes_ago_short">منذ %1$d د</string>
     <string name="sync_status_nav_label">حالة TigerSync</string>
     <string name="sync_status_never_synced">لم تتم المزامنة قط</string>
+    <string name="sync_status_never_updated">لم يتم التحديث قط</string>
     <string name="sync_status_ok">سليم</string>
     <string name="sync_status_syncing">جارٍ المزامنة…</string>
     <string name="sync_status_title">حالة المزامنة</string>
