@@ -539,14 +539,14 @@ class HomeViewModel @Inject constructor(
      * Home is on screen and the activity resumed: on coming to the page, and
      * on each return from the background with it showing — the page's own
      * ON_RESUME, so a return with another page up is not one. The Play
-     * rating's moment (issue #332), if ReviewPrompt agrees; not over the
-     * course sheet, which such a return can find open. On the launch's
-     * first resume, before any load, ReviewPrompt declines.
+     * rating's moment (issue #332), if ReviewPrompt agrees. A course opened
+     * from Home is the navigation's course detail sheet, a window of its own,
+     * so the launch's window-focus check keeps the ask off it. On the
+     * launch's first resume, before any load, ReviewPrompt declines.
      * [pageResumed] is the page's own answer, asked again right before the
      * launch, to whether it is still on screen and resumed.
      */
     fun onPageResumed(pageResumed: () -> Boolean) {
-        if (_selectedCourse.value != null) return
         reviewPrompt.calmMoment(pageResumed)
     }
 
