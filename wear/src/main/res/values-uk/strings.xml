@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">Скинути</string>
     <string name="app_reset_required_message">Стан вашого входу та налаштування неможливо прочитати, можливо, через оновлення ОС, відновлення з резервної копії або проблему зі сховищем.\n\nТоркніться «Скинути», щоб очистити старі дані, потім увійдіть і налаштуйте параметри заново.</string>
     <string name="app_reset_required_title">Потрібне скидання</string>
+    <string name="assignment_detail_comments">Коментарі до відповіді</string>
+    <string name="assignment_detail_description">Опис</string>
+    <string name="assignment_detail_due">Термін здачі</string>
+    <string name="assignment_detail_group">Група</string>
+    <string name="assignment_detail_not_submitted">Ще не здано</string>
+    <string name="assignment_detail_submission">Ваша відповідь</string>
+    <string name="assignment_detail_submit_on_moodle">Здати в Moodle</string>
+    <string name="assignment_detail_submitted_at">Здано</string>
     <string name="assignment_filter_all">Усі</string>
     <string name="assignment_filter_ignored">Проігноровані</string>
     <string name="assignment_filter_incomplete">Незавершені</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">Власний колір</string>
     <string name="course_color_picker_title">Змінити колір</string>
     <string name="course_credits_value">Кредити: %1$s</string>
+    <string name="course_detail_assignments_label">Завдання</string>
     <string name="course_detail_classroom_label">Аудиторія</string>
     <string name="course_detail_code_copied">Код скопійовано</string>
     <string name="course_detail_code_label">Код</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">Почати користуватися TigerDuck</string>
     <string name="onboarding_sync_description">TigerSync підтримує синхронізацію ваших курсів, завдань та налаштувань на всіх ваших пристроях. Ви можете точно обрати, що саме синхронізувати, у налаштуваннях TigerSync.</string>
     <string name="onboarding_sync_not_shared_password">Пароль ніколи не завантажується</string>
-    <string name="onboarding_sync_note">Коли синхронізацію вимкнено, усі дані залишаються лише на цьому пристрої. Push-сповіщення для нагадувань про домашні завдання працюють локально без TigerSync.</string>
+    <string name="onboarding_sync_note">Навіть коли синхронізацію вимкнено, сервер TigerDuck отримує ваш студентський ID, токен Moodle і push-дані цього пристрою, щоб надсилати нагадування про завдання</string>
     <string name="onboarding_sync_shared_assignments">Дані завдань</string>
     <string name="onboarding_sync_shared_courses">Дані курсів</string>
     <string name="onboarding_sync_shared_device_id">ID пристрою</string>
@@ -769,6 +778,7 @@
     <string name="school_mail_send">Надіслати</string>
     <string name="school_mail_send_confirm_title">Надіслати цей лист?</string>
     <string name="school_mail_send_failed">Не вдалося надіслати лист</string>
+    <string name="school_mail_send_unconfirmed">Не вдалося підтвердити, що лист надіслано; повторна спроба може доставити його двічі</string>
     <string name="school_mail_sent_copy_failed">Лист надіслано, але копію не вдалося зберегти в Надісланих.</string>
     <string name="school_mail_sent_copy_no_folder">Лист надіслано, але теки «Надіслані» немає, щоб зберегти в ній копію.</string>
     <string name="school_mail_sent_copy_not_saved">Лист надіслано, але копію не збережено в Надісланих</string>
@@ -956,7 +966,7 @@
     <string name="settings_sign_out_imported_tables">Імпортовані розклади також буде видалено.</string>
     <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync дозволяє синхронізувати обрану інформацію на всіх пристроях. Інформація без синхронізації залишається лише на цьому пристрої.</string>
-    <string name="settings_sync_disabled_note">Коли синхронізацію вимкнено, усі дані залишаються лише на цьому пристрої.</string>
+    <string name="settings_sync_disabled_note">Навіть коли синхронізацію вимкнено, сервер TigerDuck отримує ваш студентський ID, токен Moodle і push-дані цього пристрою, щоб надсилати нагадування про завдання</string>
     <string name="settings_sync_status_off">Вимк.</string>
     <string name="settings_sync_status_on">Увімк.</string>
     <string name="settings_system_language">Мова системи</string>
@@ -1011,10 +1021,12 @@
     <string name="sync_status_hours_ago_short">%1$d год. тому</string>
     <string name="sync_status_just_now">Щойно</string>
     <string name="sync_status_last_synced">Остання синхронізація</string>
+    <string name="sync_status_last_updated">Останнє оновлення</string>
     <string name="sync_status_minimal">Обмежено</string>
     <string name="sync_status_minutes_ago_short">%1$d хв. тому</string>
     <string name="sync_status_nav_label">Статус TigerSync</string>
     <string name="sync_status_never_synced">Ніколи не синхронізувалося</string>
+    <string name="sync_status_never_updated">Ніколи не оновлювалося</string>
     <string name="sync_status_ok">ОК</string>
     <string name="sync_status_syncing">Синхронізація…</string>
     <string name="sync_status_title">Стан синхронізації</string>

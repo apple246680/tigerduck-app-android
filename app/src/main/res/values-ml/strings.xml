@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">റീസെറ്റ്</string>
     <string name="app_reset_required_message">OS അപ്‌ഗ്രേഡ്, ബാക്കപ്പ് പുനഃസ്ഥാപനം, അല്ലെങ്കിൽ സംഭരണ പ്രശ്‌നം കാരണം നിങ്ങളുടെ സൈൻ-ഇൻ നില, ക്രമീകരണങ്ങൾ എന്നിവ ഇനി വായിക്കാൻ കഴിയില്ല.\n\nപഴയ ഡേറ്റ മായ്ക്കാൻ \"റീസെറ്റ്\" ടാപ്പ് ചെയ്യുക, തുടർന്ന് സൈൻ ഇൻ ചെയ്ത് ക്രമീകരണങ്ങൾ വീണ്ടും ക്രമീകരിക്കുക.</string>
     <string name="app_reset_required_title">റീസെറ്റ് ആവശ്യമാണ്</string>
+    <string name="assignment_detail_comments">സമർപ്പണ കമന്റുകൾ</string>
+    <string name="assignment_detail_description">വിവരണം</string>
+    <string name="assignment_detail_due">അവസാന തീയതി</string>
+    <string name="assignment_detail_group">ഗ്രൂപ്പ്</string>
+    <string name="assignment_detail_not_submitted">ഇതുവരെ സമർപ്പിച്ചിട്ടില്ല</string>
+    <string name="assignment_detail_submission">നിങ്ങളുടെ സമർപ്പണം</string>
+    <string name="assignment_detail_submit_on_moodle">Moodle-ൽ സമർപ്പിക്കുക</string>
+    <string name="assignment_detail_submitted_at">സമർപ്പിച്ച സമയം</string>
     <string name="assignment_filter_all">എല്ലാം</string>
     <string name="assignment_filter_ignored">അവഗണിച്ചവ</string>
     <string name="assignment_filter_incomplete">അപൂർണ്ണം</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">ഇഷ്ടാനുസൃത നിറം</string>
     <string name="course_color_picker_title">നിറം എഡിറ്റ് ചെയ്യുക</string>
     <string name="course_credits_value">ക്രെഡിറ്റുകൾ: %1$s</string>
+    <string name="course_detail_assignments_label">അസൈൻമെന്റുകൾ</string>
     <string name="course_detail_classroom_label">ക്ലാസ്റൂം</string>
     <string name="course_detail_code_copied">കോഡ് പകർത്തി</string>
     <string name="course_detail_code_label">കോഡ്</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">TigerDuck ഉപയോഗം ആരംഭിക്കുക</string>
     <string name="onboarding_sync_description">TigerSync നിങ്ങളുടെ എല്ലാ ഉപകരണങ്ങളിലും കോഴ്‌സുകൾ, അസൈൻമെന്റുകൾ, ക്രമീകരണങ്ങൾ എന്നിവ സിങ്ക് ചെയ്‌ത് നിലനിർത്തുന്നു. TigerSync ക്രമീകരണങ്ങളിൽ എന്തൊക്കെ സിങ്ക് ചെയ്യണമെന്ന് നിങ്ങൾക്ക് കൃത്യമായി തിരഞ്ഞെടുക്കാം.</string>
     <string name="onboarding_sync_not_shared_password">പാസ്‌വേഡ് ഒരിക്കലും അപ്‌ലോഡ് ചെയ്യില്ല</string>
-    <string name="onboarding_sync_note">സിങ്ക് ഓഫ് ആയിരിക്കുമ്പോൾ, എല്ലാ ഡാറ്റയും ഈ ഉപകരണത്തിൽ മാത്രം നിലനിൽക്കും. ഹോംവർക്ക് ഓർമ്മപ്പെടുത്തലുകൾക്കുള്ള പുഷ് അറിയിപ്പുകൾ TigerSync ഇല്ലാതെ പ്രാദേശികമായി പ്രവർത്തിക്കും.</string>
+    <string name="onboarding_sync_note">സിങ്ക് ഓഫായിരിക്കുമ്പോഴും, അസൈൻമെന്റ് ഓർമ്മപ്പെടുത്തലുകൾ അയയ്ക്കാൻ TigerDuck സെർവറിന് നിങ്ങളുടെ വിദ്യാർത്ഥി ID, Moodle ടോക്കൺ, ഈ ഉപകരണത്തിന്റെ പുഷ് ക്രെഡൻഷ്യലുകൾ എന്നിവ ലഭിക്കും</string>
     <string name="onboarding_sync_shared_assignments">അസൈൻമെന്റ് ഡാറ്റ</string>
     <string name="onboarding_sync_shared_courses">കോഴ്‌സ് ഡാറ്റ</string>
     <string name="onboarding_sync_shared_device_id">ഉപകരണ ID</string>
@@ -769,6 +778,7 @@
     <string name="school_mail_send">അയയ്ക്കുക</string>
     <string name="school_mail_send_confirm_title">ഈ ഇമെയിൽ അയയ്ക്കണോ?</string>
     <string name="school_mail_send_failed">ഇമെയിൽ അയയ്ക്കാനായില്ല</string>
+    <string name="school_mail_send_unconfirmed">ഇമെയിൽ അയച്ചോ എന്ന് സ്ഥിരീകരിക്കാനായില്ല; വീണ്ടും ശ്രമിച്ചാൽ ഇത് രണ്ടുതവണ എത്തിയേക്കാം</string>
     <string name="school_mail_sent_copy_failed">ഇമെയിൽ അയച്ചു, പക്ഷേ പകർപ്പ് അയച്ചവയിൽ സേവ് ചെയ്യാനായില്ല.</string>
     <string name="school_mail_sent_copy_no_folder">ഇമെയിൽ അയച്ചു, പക്ഷേ പകർപ്പ് സൂക്ഷിക്കാൻ അയച്ചവ ഫോൾഡർ ഇല്ല.</string>
     <string name="school_mail_sent_copy_not_saved">ഇമെയിൽ അയച്ചു, പക്ഷേ അതിന്റെ പകർപ്പ് അയച്ചവയിൽ സേവ് ചെയ്തില്ല</string>
@@ -956,7 +966,7 @@
     <string name="settings_sign_out_imported_tables">ഇമ്പോർട്ട് ചെയ്ത ക്ലാസ് ടൈംടേബിളുകളും ഇല്ലാതാക്കും.</string>
     <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync നിങ്ങളുടെ എല്ലാ ഉപകരണങ്ങളിലും വിവരങ്ങൾ സമന്വയിപ്പിക്കാൻ അനുവദിക്കുന്നു. സിങ്കിന് പ്രാപ്തമാക്കാത്ത വിവരങ്ങൾ ഈ ഉപകരണത്തിൽ മാത്രം നിലനിൽക്കും.</string>
-    <string name="settings_sync_disabled_note">സിങ്ക് ഓഫ് ആയിരിക്കുമ്പോൾ, എല്ലാ ഡാറ്റയും ഈ ഉപകരണത്തിൽ മാത്രം നിലനിൽക്കും.</string>
+    <string name="settings_sync_disabled_note">സിങ്ക് ഓഫായിരിക്കുമ്പോഴും, അസൈൻമെന്റ് ഓർമ്മപ്പെടുത്തലുകൾ അയയ്ക്കാൻ TigerDuck സെർവറിന് നിങ്ങളുടെ വിദ്യാർത്ഥി ID, Moodle ടോക്കൺ, ഈ ഉപകരണത്തിന്റെ പുഷ് ക്രെഡൻഷ്യലുകൾ എന്നിവ ലഭിക്കും</string>
     <string name="settings_sync_status_off">ഓഫ്</string>
     <string name="settings_sync_status_on">ഓൺ</string>
     <string name="settings_system_language">സിസ്റ്റം ഭാഷ</string>
@@ -1011,10 +1021,12 @@
     <string name="sync_status_hours_ago_short">%1$d മ. മുൻ</string>
     <string name="sync_status_just_now">ഇപ്പോൾ തന്നെ</string>
     <string name="sync_status_last_synced">അവസാനം സമന്വയിപ്പിച്ചത്</string>
+    <string name="sync_status_last_updated">അവസാനം അപ്‌ഡേറ്റ് ചെയ്തത്</string>
     <string name="sync_status_minimal">പരിമിതം</string>
     <string name="sync_status_minutes_ago_short">%1$d മി. മുൻ</string>
     <string name="sync_status_nav_label">TigerSync നില</string>
     <string name="sync_status_never_synced">ഒരിക്കലും സിൻക് ചെയ്തിട്ടില്ല</string>
+    <string name="sync_status_never_updated">ഒരിക്കലും അപ്‌ഡേറ്റ് ചെയ്തിട്ടില്ല</string>
     <string name="sync_status_ok">ശരി</string>
     <string name="sync_status_syncing">സിങ്ക് ചെയ്യുന്നു…</string>
     <string name="sync_status_title">സിങ്ക് നില</string>

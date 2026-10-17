@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">รีเซ็ต</string>
     <string name="app_reset_required_message">ไม่สามารถอ่านสถานะการเข้าสู่ระบบและการตั้งค่าของคุณได้ อาจเกิดจากการอัปเกรดระบบปฏิบัติการ การกู้คืนจากข้อมูลสำรอง หรือปัญหาที่จัดเก็บข้อมูล\n\nแตะ \"รีเซ็ต\" เพื่อล้างข้อมูลเก่า จากนั้นเข้าสู่ระบบและตั้งค่าใหม่</string>
     <string name="app_reset_required_title">ต้องตั้งค่าใหม่</string>
+    <string name="assignment_detail_comments">ความคิดเห็นการส่งงาน</string>
+    <string name="assignment_detail_description">คำอธิบาย</string>
+    <string name="assignment_detail_due">กำหนดส่ง</string>
+    <string name="assignment_detail_group">กลุ่ม</string>
+    <string name="assignment_detail_not_submitted">ยังไม่ได้ส่ง</string>
+    <string name="assignment_detail_submission">งานที่ส่ง</string>
+    <string name="assignment_detail_submit_on_moodle">ส่งใน Moodle</string>
+    <string name="assignment_detail_submitted_at">เวลาที่ส่ง</string>
     <string name="assignment_filter_all">ทั้งหมด</string>
     <string name="assignment_filter_ignored">ละเว้นแล้ว</string>
     <string name="assignment_filter_incomplete">ยังไม่เสร็จ</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">สีกำหนดเอง</string>
     <string name="course_color_picker_title">แก้ไขสี</string>
     <string name="course_credits_value">หน่วยกิต: %1$s</string>
+    <string name="course_detail_assignments_label">การบ้าน</string>
     <string name="course_detail_classroom_label">ห้องเรียน</string>
     <string name="course_detail_code_copied">คัดลอกรหัสแล้ว</string>
     <string name="course_detail_code_label">รหัส</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">เริ่มใช้งาน TigerDuck</string>
     <string name="onboarding_sync_description">TigerSync จะซิงค์รายวิชา งานมอบหมาย และการตั้งค่าของคุณในทุกอุปกรณ์ คุณสามารถเลือกได้ว่าจะซิงค์อะไรในการตั้งค่า TigerSync</string>
     <string name="onboarding_sync_not_shared_password">รหัสผ่านจะไม่ถูกอัปโหลด</string>
-    <string name="onboarding_sync_note">เมื่อปิดการซิงค์ ข้อมูลทั้งหมดจะอยู่บนอุปกรณ์นี้เท่านั้น การแจ้งเตือนแบบพุชสำหรับเตือนการบ้านยังคงทำงานในเครื่องโดยไม่ต้องใช้ TigerSync</string>
+    <string name="onboarding_sync_note">แม้จะปิดการซิงค์ เซิร์ฟเวอร์ TigerDuck ยังคงได้รับรหัสนักศึกษา โทเค็น Moodle และข้อมูลรับรอง push ของอุปกรณ์นี้เพื่อส่งการแจ้งเตือนงาน</string>
     <string name="onboarding_sync_shared_assignments">ข้อมูลงานมอบหมาย</string>
     <string name="onboarding_sync_shared_courses">ข้อมูลรายวิชา</string>
     <string name="onboarding_sync_shared_device_id">รหัสอุปกรณ์</string>
@@ -769,6 +778,7 @@
     <string name="school_mail_send">ส่ง</string>
     <string name="school_mail_send_confirm_title">ส่งอีเมลนี้หรือไม่?</string>
     <string name="school_mail_send_failed">ส่งอีเมลไม่สำเร็จ</string>
+    <string name="school_mail_send_unconfirmed">ไม่สามารถยืนยันได้ว่าส่งอีเมลแล้วหรือไม่ การลองอีกครั้งอาจทำให้ผู้รับได้รับสองฉบับ</string>
     <string name="school_mail_sent_copy_failed">ส่งอีเมลแล้ว แต่บันทึกสำเนาลงในส่งแล้วไม่สำเร็จ</string>
     <string name="school_mail_sent_copy_no_folder">ส่งอีเมลแล้ว แต่ไม่มีโฟลเดอร์ส่งแล้วสำหรับเก็บสำเนา</string>
     <string name="school_mail_sent_copy_not_saved">ส่งอีเมลแล้ว แต่ไม่ได้บันทึกสำเนาไว้ในส่งแล้ว</string>
@@ -956,7 +966,7 @@
     <string name="settings_sign_out_imported_tables">ตารางเรียนที่นำเข้าจะถูกลบด้วย</string>
     <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync ช่วยให้คุณซิงค์ข้อมูลที่เลือกในอุปกรณ์ทั้งหมด ข้อมูลที่ไม่ได้เปิดใช้จะอยู่ในอุปกรณ์นี้เท่านั้น</string>
-    <string name="settings_sync_disabled_note">เมื่อปิดการซิงค์ ข้อมูลทั้งหมดจะอยู่บนอุปกรณ์นี้เท่านั้น</string>
+    <string name="settings_sync_disabled_note">แม้จะปิดการซิงค์ เซิร์ฟเวอร์ TigerDuck ยังคงได้รับรหัสนักศึกษา โทเค็น Moodle และข้อมูลรับรอง push ของอุปกรณ์นี้เพื่อส่งการแจ้งเตือนงาน</string>
     <string name="settings_sync_status_off">ปิด</string>
     <string name="settings_sync_status_on">เปิด</string>
     <string name="settings_system_language">ภาษาระบบ</string>
@@ -1011,10 +1021,12 @@
     <string name="sync_status_hours_ago_short">%1$d ชม. ที่แล้ว</string>
     <string name="sync_status_just_now">เมื่อกี้</string>
     <string name="sync_status_last_synced">ซิงค์ล่าสุด</string>
+    <string name="sync_status_last_updated">อัปเดตล่าสุด</string>
     <string name="sync_status_minimal">จำกัด</string>
     <string name="sync_status_minutes_ago_short">%1$d น. ที่แล้ว</string>
     <string name="sync_status_nav_label">สถานะ TigerSync</string>
     <string name="sync_status_never_synced">ยังไม่เคยซิงก์</string>
+    <string name="sync_status_never_updated">ยังไม่เคยอัปเดต</string>
     <string name="sync_status_ok">ปกติ</string>
     <string name="sync_status_syncing">กำลังซิงค์…</string>
     <string name="sync_status_title">สถานะการซิงค์</string>

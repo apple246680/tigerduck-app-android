@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">Resetten</string>
     <string name="app_reset_required_message">Je inlogstatus en voorkeuren kunnen niet meer worden gelezen, mogelijk door een OS-upgrade, het terugzetten van een back-up of een opslagprobleem.\n\nTik op \"Resetten\" om oude gegevens te wissen, log dan opnieuw in en stel je voorkeuren opnieuw in.</string>
     <string name="app_reset_required_title">Reset vereist</string>
+    <string name="assignment_detail_comments">Opmerkingen bij inzending</string>
+    <string name="assignment_detail_description">Beschrijving</string>
+    <string name="assignment_detail_due">Deadline</string>
+    <string name="assignment_detail_group">Groep</string>
+    <string name="assignment_detail_not_submitted">Nog niet ingeleverd</string>
+    <string name="assignment_detail_submission">Jouw inzending</string>
+    <string name="assignment_detail_submit_on_moodle">Inleveren in Moodle</string>
+    <string name="assignment_detail_submitted_at">Ingeleverd</string>
     <string name="assignment_filter_all">Alles</string>
     <string name="assignment_filter_ignored">Genegeerd</string>
     <string name="assignment_filter_incomplete">Onvoltooid</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">Aangepaste kleur</string>
     <string name="course_color_picker_title">Kleur bewerken</string>
     <string name="course_credits_value">Studiepunten: %1$s</string>
+    <string name="course_detail_assignments_label">Opdrachten</string>
     <string name="course_detail_classroom_label">Lokaal</string>
     <string name="course_detail_code_copied">Code gekopieerd</string>
     <string name="course_detail_code_label">Code</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">Begin met TigerDuck</string>
     <string name="onboarding_sync_description">TigerSync houdt je vakken, opdrachten en instellingen gesynchroniseerd op al je apparaten. Je kunt precies kiezen wat je synchroniseert in de TigerSync-instellingen.</string>
     <string name="onboarding_sync_not_shared_password">Wachtwoord wordt nooit geüpload</string>
-    <string name="onboarding_sync_note">Wanneer synchronisatie uit staat, blijven alle gegevens alleen op dit apparaat. Pushmeldingen voor huiswerkherinneringen werken lokaal zonder TigerSync.</string>
+    <string name="onboarding_sync_note">Als synchronisatie uit staat, ontvangt de TigerDuck-server nog steeds je studentnummer, je Moodle-token en de push-inloggegevens van dit apparaat om opdrachtherinneringen te sturen</string>
     <string name="onboarding_sync_shared_assignments">Opdrachtgegevens</string>
     <string name="onboarding_sync_shared_courses">Cursusgegevens</string>
     <string name="onboarding_sync_shared_device_id">Apparaat-ID</string>
@@ -769,6 +778,7 @@
     <string name="school_mail_send">Verzenden</string>
     <string name="school_mail_send_confirm_title">Deze mail verzenden?</string>
     <string name="school_mail_send_failed">Mail kon niet worden verzonden</string>
+    <string name="school_mail_send_unconfirmed">Kon niet bevestigen dat de mail is verzonden; opnieuw proberen kan hem twee keer bezorgen</string>
     <string name="school_mail_sent_copy_failed">De mail is verzonden, maar de kopie kon niet worden opgeslagen in Verzonden.</string>
     <string name="school_mail_sent_copy_no_folder">De mail is verzonden, maar er is geen map Verzonden om een kopie in te bewaren.</string>
     <string name="school_mail_sent_copy_not_saved">Mail verzonden, maar er is geen kopie opgeslagen in Verzonden</string>
@@ -956,7 +966,7 @@
     <string name="settings_sign_out_imported_tables">Geïmporteerde roosters worden ook verwijderd.</string>
     <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync synchroniseert je gekozen informatie op al je apparaten. Niet-ingeschakelde informatie blijft alleen op dit apparaat.</string>
-    <string name="settings_sync_disabled_note">Wanneer synchronisatie uit staat, blijven alle gegevens alleen op dit apparaat.</string>
+    <string name="settings_sync_disabled_note">Als synchronisatie uit staat, ontvangt de TigerDuck-server nog steeds je studentnummer, je Moodle-token en de push-inloggegevens van dit apparaat om opdrachtherinneringen te sturen</string>
     <string name="settings_sync_status_off">Uit</string>
     <string name="settings_sync_status_on">Aan</string>
     <string name="settings_system_language">Systeemtaal</string>
@@ -1011,10 +1021,12 @@
     <string name="sync_status_hours_ago_short">%1$d u geleden</string>
     <string name="sync_status_just_now">Zojuist</string>
     <string name="sync_status_last_synced">Laatst gesynchroniseerd</string>
+    <string name="sync_status_last_updated">Laatst bijgewerkt</string>
     <string name="sync_status_minimal">Beperkt</string>
     <string name="sync_status_minutes_ago_short">%1$d min geleden</string>
     <string name="sync_status_nav_label">TigerSync-status</string>
     <string name="sync_status_never_synced">Nooit gesynchroniseerd</string>
+    <string name="sync_status_never_updated">Nooit bijgewerkt</string>
     <string name="sync_status_ok">OK</string>
     <string name="sync_status_syncing">Synchroniseren…</string>
     <string name="sync_status_title">Synchronisatiestatus</string>

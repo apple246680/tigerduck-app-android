@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">Repor</string>
     <string name="app_reset_required_message">Já não é possível ler o estado da tua sessão e as preferências, possivelmente devido a uma atualização do sistema operativo, restauro de cópia de segurança ou problema de armazenamento.\n\nToca em \"Repor\" para limpar dados antigos e, depois, inicia sessão e reconfigura as tuas preferências.</string>
     <string name="app_reset_required_title">Reinicialização necessária</string>
+    <string name="assignment_detail_comments">Comentários da entrega</string>
+    <string name="assignment_detail_description">Descrição</string>
+    <string name="assignment_detail_due">Prazo</string>
+    <string name="assignment_detail_group">Grupo</string>
+    <string name="assignment_detail_not_submitted">Ainda não entregue</string>
+    <string name="assignment_detail_submission">A sua entrega</string>
+    <string name="assignment_detail_submit_on_moodle">Entregar no Moodle</string>
+    <string name="assignment_detail_submitted_at">Entregue em</string>
     <string name="assignment_filter_all">Todos</string>
     <string name="assignment_filter_ignored">Ignorados</string>
     <string name="assignment_filter_incomplete">Por concluir</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">Cor personalizada</string>
     <string name="course_color_picker_title">Editar cor</string>
     <string name="course_credits_value">Créditos: %1$s</string>
+    <string name="course_detail_assignments_label">Trabalhos</string>
     <string name="course_detail_classroom_label">Sala de aula</string>
     <string name="course_detail_code_copied">Código copiado</string>
     <string name="course_detail_code_label">Código</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">Começar a usar o TigerDuck</string>
     <string name="onboarding_sync_description">O TigerSync mantém os seus cursos, trabalhos e definições sincronizados em todos os seus dispositivos. Pode escolher exatamente o que sincronizar nas definições do TigerSync.</string>
     <string name="onboarding_sync_not_shared_password">A palavra-passe nunca é carregada</string>
-    <string name="onboarding_sync_note">Quando a sincronização está desativada, todos os dados ficam apenas neste dispositivo. As notificações push para lembretes de trabalhos funcionam localmente sem o TigerSync.</string>
+    <string name="onboarding_sync_note">Com a sincronização desativada, o servidor TigerDuck continua a receber o seu número de estudante, o token do Moodle e as credenciais push deste dispositivo para enviar lembretes de tarefas</string>
     <string name="onboarding_sync_shared_assignments">Dados das tarefas</string>
     <string name="onboarding_sync_shared_courses">Dados dos cursos</string>
     <string name="onboarding_sync_shared_device_id">ID do dispositivo</string>
@@ -769,6 +778,7 @@
     <string name="school_mail_send">Enviar</string>
     <string name="school_mail_send_confirm_title">Enviar este correio?</string>
     <string name="school_mail_send_failed">Não foi possível enviar o correio</string>
+    <string name="school_mail_send_unconfirmed">Não foi possível confirmar se o correio foi enviado; tentar novamente pode entregá-lo duas vezes</string>
     <string name="school_mail_sent_copy_failed">O correio foi enviado, mas não foi possível guardar a cópia em Enviados.</string>
     <string name="school_mail_sent_copy_no_folder">O correio foi enviado, mas não há nenhuma pasta Enviados onde guardar uma cópia.</string>
     <string name="school_mail_sent_copy_not_saved">Correio enviado, mas a cópia não foi guardada em Enviados</string>
@@ -956,7 +966,7 @@
     <string name="settings_sign_out_imported_tables">Os horários importados também serão eliminados.</string>
     <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">O TigerSync permite sincronizar as informações escolhidas em todos os dispositivos. As informações não ativadas permanecem apenas neste dispositivo.</string>
-    <string name="settings_sync_disabled_note">Quando a sincronização está desativada, todos os dados ficam apenas neste dispositivo.</string>
+    <string name="settings_sync_disabled_note">Com a sincronização desativada, o servidor TigerDuck continua a receber o seu número de estudante, o token do Moodle e as credenciais push deste dispositivo para enviar lembretes de tarefas</string>
     <string name="settings_sync_status_off">Desligado</string>
     <string name="settings_sync_status_on">Ligado</string>
     <string name="settings_system_language">Idioma do sistema</string>
@@ -1011,10 +1021,12 @@
     <string name="sync_status_hours_ago_short">há %1$d h</string>
     <string name="sync_status_just_now">Agora mesmo</string>
     <string name="sync_status_last_synced">Última sincronização</string>
+    <string name="sync_status_last_updated">Última atualização</string>
     <string name="sync_status_minimal">Limitado</string>
     <string name="sync_status_minutes_ago_short">há %1$d min</string>
     <string name="sync_status_nav_label">Estado do TigerSync</string>
     <string name="sync_status_never_synced">Nunca sincronizado</string>
+    <string name="sync_status_never_updated">Nunca atualizado</string>
     <string name="sync_status_ok">OK</string>
     <string name="sync_status_syncing">A sincronizar…</string>
     <string name="sync_status_title">Estado da sincronização</string>

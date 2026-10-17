@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">I-reset</string>
     <string name="app_reset_required_message">Hindi na mabasa ang iyong sign-in state at mga kagustuhan, posibleng dahil sa pag-upgrade ng OS, pagpapanumbalik ng backup, o isyu sa storage.\n\nI-tap ang \"I-reset\" para burahin ang lumang data, pagkatapos ay mag-sign in muli at i-reconfigure ang iyong mga kagustuhan.</string>
     <string name="app_reset_required_title">Kailangan ng reset</string>
+    <string name="assignment_detail_comments">Mga komento sa isinumite</string>
+    <string name="assignment_detail_description">Paglalarawan</string>
+    <string name="assignment_detail_due">Takdang petsa</string>
+    <string name="assignment_detail_group">Grupo</string>
+    <string name="assignment_detail_not_submitted">Hindi pa naisusumite</string>
+    <string name="assignment_detail_submission">Ang iyong isinumite</string>
+    <string name="assignment_detail_submit_on_moodle">Isumite sa Moodle</string>
+    <string name="assignment_detail_submitted_at">Naisumite</string>
     <string name="assignment_filter_all">Lahat</string>
     <string name="assignment_filter_ignored">Binabalewala</string>
     <string name="assignment_filter_incomplete">Hindi pa tapos</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">Pasadyang kulay</string>
     <string name="course_color_picker_title">I-edit ang kulay</string>
     <string name="course_credits_value">Mga credit: %1$s</string>
+    <string name="course_detail_assignments_label">Mga takdang-aralin</string>
     <string name="course_detail_classroom_label">Silid-aralan</string>
     <string name="course_detail_code_copied">Nakopya ang code</string>
     <string name="course_detail_code_label">Code</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">Simulan na gamitin ang TigerDuck</string>
     <string name="onboarding_sync_description">Pinapanatili ng TigerSync na naka-sync ang iyong mga kurso, assignment, at settings sa lahat ng iyong device. Maaari mong piliin nang eksakto kung ano ang isi-sync sa TigerSync settings.</string>
     <string name="onboarding_sync_not_shared_password">Hindi kailanman ina-upload ang password</string>
-    <string name="onboarding_sync_note">Kapag naka-off ang sync, ang lahat ng data ay nananatili sa device na ito lamang. Gumagana nang lokal ang push notification para sa mga paalala sa takdang-aralin kahit walang TigerSync.</string>
+    <string name="onboarding_sync_note">Kapag naka-off ang sync, natatanggap pa rin ng TigerDuck server ang iyong ID ng estudyante, Moodle token at ang push credentials ng device na ito para makapagpadala ng mga paalala sa takdang-aralin</string>
     <string name="onboarding_sync_shared_assignments">Data ng mga gawain</string>
     <string name="onboarding_sync_shared_courses">Data ng mga kurso</string>
     <string name="onboarding_sync_shared_device_id">Device ID</string>
@@ -769,6 +778,7 @@
     <string name="school_mail_send">Ipadala</string>
     <string name="school_mail_send_confirm_title">Ipadala ang mail na ito?</string>
     <string name="school_mail_send_failed">Hindi maipadala ang mail</string>
+    <string name="school_mail_send_unconfirmed">Hindi makumpirma kung naipadala ang mail; kapag inulit, maaaring dalawang beses itong matanggap</string>
     <string name="school_mail_sent_copy_failed">Naipadala ang mail, pero hindi na-save ang kopya sa Naipadala.</string>
     <string name="school_mail_sent_copy_no_folder">Naipadala ang mail, pero walang folder na Naipadala na mapaglalagyan ng kopya.</string>
     <string name="school_mail_sent_copy_not_saved">Naipadala ang mail, pero hindi na-save ang kopya sa Naipadala</string>
@@ -956,7 +966,7 @@
     <string name="settings_sign_out_imported_tables">Buburahin din ang mga na-import na iskedyul ng klase.</string>
     <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">Pinapayagan ka ng TigerSync na i-sync ang iyong napiling impormasyon sa lahat ng device. Ang impormasyong hindi naka-enable ay mananatili lamang sa device na ito.</string>
-    <string name="settings_sync_disabled_note">Kapag naka-off ang sync, ang lahat ng data ay nananatili sa device na ito lamang.</string>
+    <string name="settings_sync_disabled_note">Kapag naka-off ang sync, natatanggap pa rin ng TigerDuck server ang iyong ID ng estudyante, Moodle token at ang push credentials ng device na ito para makapagpadala ng mga paalala sa takdang-aralin</string>
     <string name="settings_sync_status_off">Naka-off</string>
     <string name="settings_sync_status_on">Naka-on</string>
     <string name="settings_system_language">Wika ng sistema</string>
@@ -1011,10 +1021,12 @@
     <string name="sync_status_hours_ago_short">%1$d o nakaraon</string>
     <string name="sync_status_just_now">Ngayon lang</string>
     <string name="sync_status_last_synced">Huling na-sync</string>
+    <string name="sync_status_last_updated">Huling na-update</string>
     <string name="sync_status_minimal">Limitado</string>
     <string name="sync_status_minutes_ago_short">%1$d min nakaraon</string>
     <string name="sync_status_nav_label">Katayuan ng TigerSync</string>
     <string name="sync_status_never_synced">Hindi pa na-sync</string>
+    <string name="sync_status_never_updated">Hindi pa na-update</string>
     <string name="sync_status_ok">OK</string>
     <string name="sync_status_syncing">Nagsi-sync…</string>
     <string name="sync_status_title">Katayuan ng pag-sync</string>
