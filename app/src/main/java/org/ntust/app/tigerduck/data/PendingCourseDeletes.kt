@@ -62,6 +62,8 @@ class PendingCourseDeletes internal constructor(
     private val deleter: CourseDeleter,
     private val signInGeneration: () -> Int,
     private val clock: () -> Long = System::currentTimeMillis,
+    // The file's read; a test holds it to order two callers around it.
+    private val load: suspend () -> Map<String, Map<String, Long>> = dataCache::loadPendingCourseDeletes,
 ) {
     @Inject constructor(
         dataCache: DataCache,
@@ -196,7 +198,7 @@ class PendingCourseDeletes internal constructor(
         return true
     }
 
-    private suspend fun waiting(): Map<String, Map<String, Long>> = dataCache.loadPendingCourseDeletes()
+    private suspend fun waiting(): Map<String, Map<String, Long>> = load()
 
     // False, and nothing written, once the data was wiped since [generation].
     private suspend fun edit(

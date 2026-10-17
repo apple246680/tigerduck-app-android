@@ -308,29 +308,27 @@ class PendingCourseDeletesTest {
     @Test
     fun `two first stamps of a process rank in the order they were asked`() {
         runBlocking { cache.savePendingCourseDeletes(mapOf(term to mapOf(typed to 1_000L))) }
+        // The read goes back through the main looper first, so the first stamp always holds the
+        // lock over it when the second is asked, and resumes from the looper, not inline.
+        val fresh = PendingCourseDeletes(
+            cache, adds, { _, _ -> },
+            signInGeneration = { signIn },
+            clock = { ++tick },
+            load = { yield(); cache.loadPendingCourseDeletes() },
+        )
+        val stamps = mutableMapOf<String, Long>()
         val scope = CoroutineScope(Dispatchers.Main.immediate)
-        // A read of the file can end before the first call suspends on it, and the second then
-        // never waits: each try is a new process's outbox, until the second is seen waiting.
-        repeat(20) {
-            val fresh = PendingCourseDeletes(cache, adds, { _, _ -> }, signInGeneration = { signIn }, clock = { ++tick })
-            val stamps = mutableMapOf<String, Long>()
-            val first = scope.launch { stamps["first"] = fresh.stamp() }
-            val second = scope.launch { stamps["second"] = fresh.stamp() }
-            // Neither done: the first holds the lock over its read, the second waits for it.
-            val waited = !first.isCompleted && !second.isCompleted
-            // The first one's read of the file resumes on the main looper.
-            val deadline = System.currentTimeMillis() + 5_000
-            while (!(first.isCompleted && second.isCompleted) && System.currentTimeMillis() < deadline) {
-                shadowOf(Looper.getMainLooper()).idle()
-                Thread.sleep(2)
-            }
-            assertTrue("both stamps taken", first.isCompleted && second.isCompleted)
-            if (!waited) return@repeat
-            assertTrue("the first asked has the earlier stamp: $stamps", stamps.getValue("first") < stamps.getValue("second"))
-            assertTrue("both above the delete kept", stamps.values.all { it > 1_000 })
-            return
+        val first = scope.launch { stamps["first"] = fresh.stamp() }
+        val second = scope.launch { stamps["second"] = fresh.stamp() }
+        assertTrue("the first holds the lock over its read, the second waits for it", !first.isCompleted && !second.isCompleted)
+        val deadline = System.currentTimeMillis() + 5_000
+        while (!(first.isCompleted && second.isCompleted) && System.currentTimeMillis() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(2)
         }
-        throw AssertionError("the second stamp never waited for the first one's read")
+        assertTrue("both stamps taken", first.isCompleted && second.isCompleted)
+        assertTrue("the first asked has the earlier stamp: $stamps", stamps.getValue("first") < stamps.getValue("second"))
+        assertTrue("both above the delete kept", stamps.values.all { it > 1_000 })
     }
 
     /**
