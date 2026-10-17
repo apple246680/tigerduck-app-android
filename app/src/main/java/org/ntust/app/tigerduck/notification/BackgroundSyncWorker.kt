@@ -517,7 +517,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
         // Keep the old unique name so existing users' enqueued 6h work is
         // replaced in place via ExistingPeriodicWorkPolicy.UPDATE instead of
         // leaving an orphaned entry behind.
-        private const val UNIQUE_NAME = "homework_refresh_periodic"
+        internal const val UNIQUE_NAME = "homework_refresh_periodic"
 
         /** How often the run syncs with TigerDuck's backend, whatever the pages ask. */
         private val OVERRIDES_EVERY = 1.hours

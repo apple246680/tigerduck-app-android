@@ -490,6 +490,22 @@ class DataCache @Inject constructor(
             ?: emptySet()
     }
 
+    /**
+     * Every term's courses on this phone, fetched and added by hand, keyed by
+     * term, for the sign-out's check of what it would delete that exists
+     * nowhere else.
+     */
+    suspend fun loadEveryTermCourses(): Map<String, List<Course>> {
+        fun termOf(name: String, prefix: String): String? =
+            name.takeIf { it.startsWith(prefix) && it.endsWith(".json") }
+                ?.removePrefix(prefix)?.removeSuffix(".json")
+        val semesters = withContext(Dispatchers.IO) {
+            cacheDir.list().orEmpty().mapNotNull { termOf(it, "courses_") } +
+                userDataDir.list().orEmpty().mapNotNull { termOf(it, "manual_courses_") }
+        }
+        return semesters.toSortedSet().associateWith { loadCourses(it) }
+    }
+
     // --- Ignored Assignments (set of assignmentIds) ---
     // Stored in filesDir so the user's ignore decisions survive OS cache eviction
     // and remote re-fetches, mirroring skipped_dates.json handling.

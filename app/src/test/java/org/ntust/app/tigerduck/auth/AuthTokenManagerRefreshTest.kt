@@ -2,9 +2,11 @@ package org.ntust.app.tigerduck.auth
 
 import android.app.Application
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.SharedPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -33,8 +35,10 @@ import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore.Companion.KEY_ACCESS_TOKEN
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore.Companion.KEY_EXPIRES_AT
+import org.ntust.app.tigerduck.data.preferences.V3TokenStore.Companion.KEY_ISSUED_BY
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore.Companion.KEY_REFRESH_TOKEN
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore.Companion.KEY_REFRESH_TOKEN_SENDS
+import org.ntust.app.tigerduck.data.preferences.V3TokenStore.Companion.KEY_STUDENT_ID
 import org.ntust.app.tigerduck.network.resolveAnnouncementEndpoint
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
@@ -50,6 +54,7 @@ import java.net.SocketAddress
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import javax.net.SocketFactory
@@ -79,6 +84,25 @@ class AuthTokenManagerRefreshTest {
 
     /** Runs as each sign-in reaches the fake backend, before its reply. */
     private var onLoginSent: () -> Unit = {}
+
+    /**
+     * Runs as a request resolves the backend's address from [endpointReadPrefs], which a refresh
+     * does after it is marked on its way and before it counts its send on disk.
+     */
+    private var onEndpointRead: () -> Unit = {}
+
+    /** [AppPreferences] whose read of the API endpoint setting runs [onEndpointRead]. */
+    private fun endpointReadPrefs(): AppPreferences = AppPreferences(object : ContextWrapper(context) {
+        override fun getSharedPreferences(name: String, mode: Int): SharedPreferences {
+            val real = super.getSharedPreferences(name, mode)
+            return object : SharedPreferences by real {
+                override fun getString(key: String, defValue: String?): String? {
+                    if (key == "announcementApiBaseUrlOverride") onEndpointRead()
+                    return real.getString(key, defValue)
+                }
+            }
+        }
+    })
 
     /** The requests the client of [networkManager] began. */
     private val calls = AtomicInteger()
@@ -154,7 +178,8 @@ class AuthTokenManagerRefreshTest {
 
         manager.login("B00000000", moodleToken = "moodle", moodlePrivateToken = null)
 
-        assertEquals(listOf(PAIR_KEYS), file.commits)
+        // With the backend that issued it and the student it is for, for the sign-out's unregister.
+        assertEquals(listOf(PAIR_KEYS + KEY_ISSUED_BY + KEY_STUDENT_ID), file.commits)
         assertEquals(0, file.applies)
         assertEquals("refresh-2", tokens.refreshToken)
     }
@@ -374,7 +399,8 @@ class AuthTokenManagerRefreshTest {
 
         assertEquals(1, relogins)
         assertNull(tokens.refreshToken)
-        assertEquals(listOf(setOf(KEY_REFRESH_TOKEN_SENDS), PAIR_KEYS), file.commits)
+        // The send counted first; then the clear, of the issuer and student with the pair.
+        assertEquals(listOf(setOf(KEY_REFRESH_TOKEN_SENDS), PAIR_KEYS + KEY_ISSUED_BY + KEY_STUDENT_ID), file.commits)
         assertEquals(0, file.applies)
     }
 
@@ -450,8 +476,8 @@ class AuthTokenManagerRefreshTest {
 
         assertNull(tokens.accessToken)
         assertNull(tokens.refreshToken)
-        // The send's count, the sign-out's clear, and no save after it.
-        assertEquals(listOf(setOf(KEY_REFRESH_TOKEN_SENDS), PAIR_KEYS), file.commits)
+        // The send's count, the sign-out's clear (of the issuer and student too), and no save after it.
+        assertEquals(listOf(setOf(KEY_REFRESH_TOKEN_SENDS), PAIR_KEYS + KEY_ISSUED_BY + KEY_STUDENT_ID), file.commits)
         assertEquals(0, relogins)
     }
 
@@ -690,12 +716,212 @@ class AuthTokenManagerRefreshTest {
         }
     }
 
-    private fun manager(vararg replies: Reply, reloginSucceeds: Boolean = false) = AuthTokenManager(
+    // The sign-out's unregister refreshes the departing session, which is never stored
+
+    private fun departing() = DepartingSession("access-1", "refresh-1", 0L, "http://127.0.0.1:9/v3")
+
+    @Test
+    fun `a departing refresh whose reply was lost says so, and the next send takes the pair`() = runTest {
+        val manager = manager(Reply.Lost, Reply.Pair("access-2", "refresh-2"))
+
+        assertEquals(DepartingRefresh.NoReply, manager.refreshDeparting(departing(), sendsWithoutReply = 0))
+        val reply = manager.refreshDeparting(departing(), sendsWithoutReply = 1)
+
+        assertEquals("refresh-2", (reply as DepartingRefresh.Refreshed).session.refreshToken)
+        assertEquals(listOf("refresh-1", "refresh-1"), sentRefreshTokens)
+    }
+
+    @Test
+    fun `a departing token gone twice without a reply is never sent a third time`() = runTest {
+        // Within its grace the backend answers a rotated token once more; any later send of it is
+        // taken for reuse, which revokes the session and leaves the unregister nothing to go out as.
+        val manager = manager(Reply.Pair("access-3", "refresh-3"))
+
+        // Two counted with the debt, by a process that has ended since.
+        assertEquals(DepartingRefresh.Refused, manager.refreshDeparting(departing(), sendsWithoutReply = 2))
+        assertEquals(emptyList<String>(), sentRefreshTokens)
+    }
+
+    @Test
+    fun `a departing refresh the backend did not take is left for a later try`() = runTest {
+        val manager = manager(Reply.Status(503))
+
+        assertEquals(DepartingRefresh.Unavailable, manager.refreshDeparting(departing(), sendsWithoutReply = 0))
+    }
+
+    @Test
+    fun `a departing refresh turned away or never sent did not use the token, and says so`() = runTest {
+        // A 429 comes from the limiter before the refresh runs; a connect refused never left the
+        // phone. Neither counts as a send, unlike a 5xx, which may follow the backend's rotation.
+        assertEquals(DepartingRefresh.Unused, manager(Reply.Status(429)).refreshDeparting(departing(), sendsWithoutReply = 0))
+        assertEquals(DepartingRefresh.Unused, manager(Reply.Unsent).refreshDeparting(departing(), sendsWithoutReply = 0))
+    }
+
+    @Test
+    fun `the departing session carries every send of the token that may have been used, the one on its way too`() = runTest {
+        val manager = manager(Reply.Lost, Reply.Lost)
+        // Signed out as the resend goes, after the first send's reply was lost: either may have
+        // reached the backend, and each is counted on disk before it goes out.
+        var departing: DepartingSession? = null
+        var sends = 0
+        onRefreshSent = { if (++sends == 2) departing = manager.logout() }
+
+        assertNull(manager.authHeader())
+
+        assertEquals(2, departing?.sendsWithoutReply)
+    }
+
+    @Test
+    fun `a sign-out between a refresh's start and the count of its send keeps the token in`() = runTest {
+        // The refresh marks itself on its way, then counts its send on disk. Signed out between
+        // the two, the session was taken with no send counted, so this one must not go out: a
+        // 5xx would leave nothing in this process to count it, and the unregister could send the
+        // token twice more, the second time as its third.
+        val manager = manager(Reply.Status(503), prefs = endpointReadPrefs())
+        var departing: DepartingSession? = null
+        onEndpointRead = {
+            onEndpointRead = {}
+            departing = manager.logout()
+        }
+
+        assertNull(manager.authHeader())
+
+        assertEquals("nothing went out as the account signed out", emptyList<String>(), sentRefreshTokens)
+        assertEquals(0, departing?.sendsWithoutReply)
+        assertEquals(0, relogins)
+        // The unregister's refresh is the token's first send.
+        assertEquals(DepartingRefresh.Unavailable, manager.refreshDeparting(departing!!, sendsWithoutReply = 0))
+        assertEquals(listOf("refresh-1"), sentRefreshTokens)
+    }
+
+    @Test
+    fun `a send answered with a 5xx and one on its way at sign-out are both counted, so the unregister never sends a third`() = runTest {
+        val manager = manager(Reply.Status(503), Reply.Lost, Reply.Pair("access-3", "refresh-3"))
+        // A 5xx may come from a gateway after the backend rotated: the send stays counted.
+        assertNull(manager.authHeader())
+        assertEquals(1, tokens.refreshTokenSends)
+        clock += 60_000
+        // The next refresh is on its way as the account signs out, and its reply is lost.
+        var departing: DepartingSession? = null
+        onRefreshSent = { departing = manager.logout() }
+        assertNull(manager.authHeader())
+
+        assertEquals(2, departing?.sendsWithoutReply)
+        assertEquals(
+            DepartingRefresh.Refused,
+            manager.refreshDeparting(departing!!, sendsWithoutReply = departing!!.sendsWithoutReply),
+        )
+        assertEquals(listOf("refresh-1", "refresh-1"), sentRefreshTokens)
+    }
+
+    @Test
+    fun `a sign-out hands back the session it wipes, with a refresh that landed before it`() = runTest {
+        val manager = manager(Reply.Pair("access-2", "refresh-2"))
+        assertEquals("Bearer access-2", manager.authHeader())
+
+        val departing = manager.logout()
+
+        assertEquals("refresh-2", departing?.refreshToken)
+        assertNull(tokens.refreshToken)
+        assertNull("nothing to hand back the second time", manager.logout())
+    }
+
+    // A session refresh still on its way at sign-out, with the same token as the departing one
+
+    @Test
+    fun `a departing refresh takes the pair of a refresh on its way at sign-out instead of sending again`() = runTest {
+        val manager = manager(Reply.Pair("access-2", "refresh-2"), Reply.Pair("access-3", "refresh-3"))
+        // As AuthService.logout() takes it: while the session's refresh is on its way.
+        var departing: DepartingSession? = null
+        onRefreshSent = {
+            departing = manager.departingSession()
+            manager.logout()
+            onRefreshSent = {}
+        }
+        assertNull(manager.authHeader())
+
+        val reply = manager.refreshDeparting(departing!!, sendsWithoutReply = 0)
+
+        assertEquals("refresh-2", (reply as DepartingRefresh.Refreshed).session.refreshToken)
+        assertEquals(listOf("refresh-1"), sentRefreshTokens)
+        assertNull("still nothing stored", tokens.refreshToken)
+    }
+
+    @Test
+    fun `a departing refresh waits for the session refresh of its token still on its way`() = runBlocking {
+        val manager = manager(Reply.Pair("access-2", "refresh-2"), Reply.Pair("access-3", "refresh-3"))
+        val sent = CountDownLatch(1)
+        val answer = CountDownLatch(1)
+        var departing: DepartingSession? = null
+        onRefreshSent = {
+            departing = manager.departingSession()
+            manager.logout()
+            onRefreshSent = {}
+            sent.countDown()
+            answer.await(5, TimeUnit.SECONDS)
+        }
+        val sessionRefresh = async(Dispatchers.IO) { manager.authHeader() }
+        assertTrue(sent.await(5, TimeUnit.SECONDS))
+
+        val unregisterRefresh = async(Dispatchers.IO) { manager.refreshDeparting(departing!!, sendsWithoutReply = 0) }
+        Thread.sleep(300)
+        answer.countDown()
+
+        assertNull(sessionRefresh.await())
+        assertEquals("refresh-2", (unregisterRefresh.await() as DepartingRefresh.Refreshed).session.refreshToken)
+        assertEquals(listOf("refresh-1"), sentRefreshTokens)
+    }
+
+    @Test
+    fun `a departing refresh waits for the session refresh on its way only so long`() = runBlocking {
+        val manager = manager(Reply.Pair("access-2", "refresh-2"), departingWaitMs = 200)
+        val sent = CountDownLatch(1)
+        val answer = CountDownLatch(1)
+        var departing: DepartingSession? = null
+        onRefreshSent = {
+            departing = manager.departingSession()
+            manager.logout()
+            onRefreshSent = {}
+            sent.countDown()
+            answer.await(5, TimeUnit.SECONDS)
+        }
+        val sessionRefresh = async(Dispatchers.IO) { manager.authHeader() }
+        assertTrue(sent.await(5, TimeUnit.SECONDS))
+
+        // Left for a later try, rather than holding up whoever waits on the unregister.
+        assertEquals(DepartingRefresh.Unavailable, manager.refreshDeparting(departing!!, sendsWithoutReply = 0))
+        assertEquals(listOf("refresh-1"), sentRefreshTokens)
+
+        answer.countDown()
+        sessionRefresh.await()
+        Unit
+    }
+
+    @Test
+    fun `a token the session sent twice without a reply is not sent a third time for the unregister`() = runTest {
+        val manager = manager(Reply.Lost, Reply.Lost, Reply.Pair("access-3", "refresh-3"))
+        val departing = manager.departingSession()!!
+        // The resend's reply is lost as the account signs out.
+        var sends = 0
+        onRefreshSent = { if (++sends == 2) manager.logout() }
+        assertNull(manager.authHeader())
+
+        assertEquals(DepartingRefresh.Refused, manager.refreshDeparting(departing, sendsWithoutReply = 0))
+        assertEquals(listOf("refresh-1", "refresh-1"), sentRefreshTokens)
+    }
+
+    private fun manager(
+        vararg replies: Reply,
+        reloginSucceeds: Boolean = false,
+        departingWaitMs: Long = 20_000,
+        prefs: AppPreferences = AppPreferences(context),
+    ) = AuthTokenManager(
         tokens = tokens,
         httpClient = backend(*replies),
-        prefs = AppPreferences(context),
+        prefs = prefs,
         deviceUuid = "device-1",
         now = { clock },
+        departingWaitMs = departingWaitMs,
     ).apply {
         // Stands in for AuthService's automatic sign-in, which signs in through login().
         signInWithStoredAccount = {

@@ -1,7 +1,6 @@
 package org.ntust.app.tigerduck.push
 
 import com.google.gson.Gson
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -20,6 +19,7 @@ import org.ntust.app.tigerduck.shared.Course
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -109,27 +109,35 @@ class PushApiClient @Inject constructor(
         }
 
     /**
-     * Deletes this device's row with [authHeader], the header a sign-out takes
-     * before it wipes the tokens: this fire-and-forget call runs after that.
-     * Without one nothing is sent, as a session looked up now could be the
-     * next account's, or its sign-in, and the DELETE would remove its row.
+     * Deletes this device's row as the account that signed out, with [accessToken] from the
+     * session it left, at [base], the backend that issued it, and gives the HTTP status. The
+     * sign-out's unregister runs after the tokens are wiped, and a session looked up now could be
+     * the next account's, or its sign-in, whose row the DELETE would remove; and the endpoint
+     * setting may name another host by now. Throws [java.io.IOException] when no reply came back.
      */
-    suspend fun unregister(
+    suspend fun deleteDevice(
+        base: String,
         deviceId: String,
-        authHeader: String?,
-    ) = withContext(Dispatchers.IO) {
+        accessToken: String,
+    ): Int = withContext(Dispatchers.IO) {
         // v3: DELETE /devices/{client_device_id}, scoped to the authed user
         // (matches iOS + the server). `deviceId` is PushIdentity.uuid().
         val request = Request.Builder()
-            .url("$baseUrl/devices/$deviceId")
+            .url("$base/devices/$deviceId")
             .delete()
-            .header("Authorization", authHeader ?: throw NotSignedInException())
+            .header("Authorization", "Bearer $accessToken")
             .build()
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw PushApiException("unregister failed: HTTP ${response.code}")
-            }
-        }
+        deleteClient.newCall(request).execute().use { response -> response.code }
+    }
+
+    // A sign-in of the same student waits for the sign-out's unregister, so its
+    // DELETE gives up within a bound; and it is retried by its own debt, never
+    // sent again by OkHttp on its own.
+    internal val deleteClient: OkHttpClient by lazy {
+        client.newBuilder()
+            .retryOnConnectionFailure(false)
+            .callTimeout(DELETE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .build()
     }
 
     /** PATCH the user-facing server-push opt-out for this device. */
@@ -517,3 +525,5 @@ internal fun preferencesPatchBlockedOnFdroid(
         request.syncLiveActivity != null
     return changesAPreference && flavor.equals("fdroid", ignoreCase = true)
 }
+
+private const val DELETE_TIMEOUT_SECONDS = 20L

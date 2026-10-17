@@ -31,9 +31,6 @@ import org.ntust.app.tigerduck.data.preferences.CredentialManager
 import org.ntust.app.tigerduck.library.libraryErrorMessage
 import org.ntust.app.tigerduck.data.sharing.ImportedClassTableStore
 import org.ntust.app.tigerduck.data.sharing.ImportedClassTables
-import org.ntust.app.tigerduck.liveactivity.LiveActivityManager
-import org.ntust.app.tigerduck.notification.AssignmentNotificationScheduler
-import org.ntust.app.tigerduck.notification.BackgroundSyncWorker
 import org.ntust.app.tigerduck.shared.LibraryService
 import org.ntust.app.tigerduck.analytics.AnalyticsLogger
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
@@ -62,9 +59,7 @@ class SettingsViewModel @Inject constructor(
     private val libraryService: LibraryService,
     private val credentials: CredentialManager,
     val prefs: AppPreferences,
-    private val notificationScheduler: AssignmentNotificationScheduler,
     private val courseColorStore: CourseColorStore,
-    private val liveActivityManager: LiveActivityManager,
     private val wearBridge: WearScheduleBridge,
     val identity: PushIdentity,
     private val pushRegistration: PushRegistrationService,
@@ -72,6 +67,7 @@ class SettingsViewModel @Inject constructor(
     private val syncApiClient: SyncApiClient,
     private val semesterCatalog: SemesterCatalog,
     private val dataCache: DataCache,
+    private val signOutLossCheck: SignOutLossCheck,
     private val debugFixtures: DebugFixtureStore,
     private val demoAccount: DemoAccount,
     private val courseIgnoreSync: CourseIgnoreSync,
@@ -451,21 +447,52 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun loginNtust(studentId: String, password: String) {
+        // The background sync follows the sign-in: AccountSessionEffects.
+        viewModelScope.launch { authService.login(studentId, password) }
+    }
+
+    private val _signOutConfirmation = MutableStateFlow<Set<SignOutLoss>?>(null)
+
+    /** What the NTUST sign-out waiting for an answer would delete; null when none is waiting. */
+    val signOutConfirmation: StateFlow<Set<SignOutLoss>?> = _signOutConfirmation
+
+    /**
+     * The Sign out button. A sign-out deletes this phone's data, so it asks first when that
+     * holds anything that exists nowhere else ([SignOutLoss]), and signs out at once otherwise.
+     */
+    fun requestNtustSignOut() {
+        // A second tap while the first is still reading the phone's data.
+        if (checkingSignOut) return
+        checkingSignOut = true
         viewModelScope.launch {
-            val success = authService.login(studentId, password)
-            if (success) BackgroundSyncWorker.schedule(context)
+            try {
+                val losses = signOutLossCheck.losses()
+                if (losses.isEmpty()) logoutNtust() else _signOutConfirmation.value = losses
+            } finally {
+                checkingSignOut = false
+            }
         }
+    }
+
+    private var checkingSignOut = false
+
+    fun confirmNtustSignOut() {
+        _signOutConfirmation.value = null
+        logoutNtust()
+    }
+
+    fun dismissNtustSignOut() {
+        _signOutConfirmation.value = null
     }
 
     fun logoutNtust() {
         // Persisted-data clearing now lives in AuthService.logout() on an
         // application-scoped coroutine, so it survives ViewModel destruction
         // when the user navigates away from Settings immediately after logout.
+        // The reminders, notifications, Live Update and background sync follow
+        // the sign-out itself: AccountSessionEffects.
         authService.logout()
         appState.librarySession.refresh()
-        notificationScheduler.cancelAllTracked()
-        liveActivityManager.stop()
-        BackgroundSyncWorker.cancel(context)
     }
 
     fun loginLibrary(username: String, password: String) {

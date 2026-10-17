@@ -141,6 +141,7 @@ class CredentialManager private constructor(
     // ── v3 JWT tokens ────────────────────────────────────────────────────────
 
     val v3Tokens = V3TokenStore(prefs)
+    val pendingUnregister = PendingUnregisterPrefs(prefs)
 
     @Synchronized
     fun clearNtustCredentials() {
@@ -149,10 +150,9 @@ class CredentialManager private constructor(
             .remove("ntust_password")
             .remove("moodle_token")
             .remove("moodle_private_token")
-            .remove(V3TokenStore.KEY_ACCESS_TOKEN)
-            .remove(V3TokenStore.KEY_REFRESH_TOKEN)
-            .remove(V3TokenStore.KEY_EXPIRES_AT)
-            .remove(V3TokenStore.KEY_REFRESH_TOKEN_SENDS)
+            // Not the backend session, nor its refresh token's send count:
+            // AuthTokenManager.logout() drops them under its own lock, and hands
+            // the session to the sign-out's unregister as it does.
             .apply()
     }
 
@@ -241,7 +241,8 @@ class CredentialManager private constructor(
     /** Wipe every credential key. Used by the full-reset flow. */
     @Synchronized
     fun clearAll() {
-        libraryAccount.signOut { prefs.edit().clear().apply() }
+        // All but the device unregister a sign-out still owes; see PendingUnregisterPrefs.
+        libraryAccount.signOut { clearAllButOwedUnregister(prefs) }
     }
 
     private class Opened(val prefs: SharedPreferences, val encrypted: Boolean, val recreated: Boolean)

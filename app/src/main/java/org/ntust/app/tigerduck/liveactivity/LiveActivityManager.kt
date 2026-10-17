@@ -45,9 +45,9 @@ class LiveActivityManager internal constructor(
 ) {
     // The real entry point, which Hilt calls. The primary constructor takes
     // the sign-in state and the class reminder alarms as plain types, so
-    // LiveActivityManagerTest can build the real manager around a fake
-    // scheduler without AuthService's dependency graph. Same split as
-    // LiveActivityPreferences and NotificationSettingsSync.
+    // LiveActivityManagerTest and LiveActivityManagerRestartTest can build the
+    // real manager around a fake scheduler without AuthService's dependency
+    // graph. Same split as LiveActivityPreferences and NotificationSettingsSync.
     @Inject constructor(
         preferences: LiveActivityPreferences,
         notifier: LiveActivityNotifier,
@@ -72,8 +72,7 @@ class LiveActivityManager internal constructor(
     )
 
     private val resolver = LiveActivityResolver()
-    private val managerJob = SupervisorJob(appScope.coroutineContext[Job])
-    private val scope = appScope + managerJob
+    private val scope = appScope + SupervisorJob(appScope.coroutineContext[Job])
     private var refreshJob: Job? = null
 
     // One refresh at a time. The two boundary alarms can land together — a
@@ -82,13 +81,10 @@ class LiveActivityManager internal constructor(
     // chime twice.
     private val refreshLock = Mutex()
 
-    // Hold a reference so `stop()` can halt preference-driven refreshes too;
-    // otherwise a `preferences.changeEvent` arriving after `stop()` would
-    // silently resurrect the notifier machinery.
-    private var prefsCollectorJob: Job? = null
-
     init {
-        prefsCollectorJob = scope.launch {
+        // Kept for the life of the process, signed in or not: a refresh while
+        // nobody is signed in only takes everything down.
+        scope.launch {
             // And on every write of the ignored, marked-done and ignored-course
             // sets: the resolver only sees what is still outstanding. And on a
             // change to the class reminder's settings, which this arms.
@@ -107,7 +103,6 @@ class LiveActivityManager internal constructor(
      * language; see [LiveActivityNotifier.apply].
      */
     fun refresh(quiet: Boolean = false) {
-        if (!managerJob.isActive) return
         refreshJob?.cancel()
         refreshJob = scope.launch {
             refreshInternal(quiet)
@@ -123,14 +118,18 @@ class LiveActivityManager internal constructor(
         refreshInternal()
     }
 
+    /**
+     * Takes the Live Update, the class reminders and their alarms down at
+     * sign-out. The manager itself stays up: it used to stop for the rest of
+     * the process, so after signing in again only a restart brought the Live
+     * Update back. The refresh queued here waits for any still running, finds
+     * nobody signed in, and takes down whatever that one put up.
+     */
     fun stop() {
-        prefsCollectorJob?.cancel()
-        prefsCollectorJob = null
         boundaryScheduler.cancel()
-        refreshJob?.cancel()
         notifier.cancel()
         classPreparingScheduler.cancelAllTracked()
-        managerJob.cancel()
+        refresh()
     }
 
     private suspend fun refreshInternal(quiet: Boolean = false) =
