@@ -202,9 +202,12 @@ object MoodleDepartment {
     /** Every department the app can name. */
     val keys: Set<String> = keysByCode.values.toSet()
 
-    /** The department code of a bachelor's [studentId], its 5th and 6th characters; null for any other ID. */
+    /** A bachelor's ID as NTUST writes it: B and eight ASCII digits, and nothing else, so a cut-short ID carries no code. */
+    private val bachelorId = Regex("""B[0-9]{8}""")
+
+    /** The department code of a bachelor's [studentId], its 5th and 6th characters; null for any other or malformed ID. */
     fun code(studentId: String?): String? {
-        if (studentId == null || studentId.length < 6 || studentId[0] != 'B') return null
+        if (studentId == null || !bachelorId.matches(studentId)) return null
         return studentId.substring(4, 6)
     }
 

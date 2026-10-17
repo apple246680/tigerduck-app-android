@@ -135,9 +135,9 @@ class MoodleLogicTest {
     @Test
     fun `the search matches name, student ID or the department name the row shows`() {
         val members = listOf(
-            member(1, "B11315001 @ Amy", "student"),
+            member(1, "B00015001 @ Amy", "student"),
             // Moodle's own field: the degree level, which the row no longer shows.
-            member(2, "B11300002 @ Bob", "student").copy(department = "大學部"),
+            member(2, "B00000002 @ Bob", "student").copy(department = "大學部"),
         )
         val names = mapOf("cs" to "Computer Science and Information Engineering")
         fun found(query: String) = MoodleMembers.sections(members, query, departmentNames = names).flatMap { it.members }.map { it.id }
@@ -151,13 +151,13 @@ class MoodleLogicTest {
 
     @Test
     fun `a bachelor's student ID names the department its code stands for`() {
-        assertEquals("15", MoodleDepartment.code("B11315999"))
-        assertEquals("cs", MoodleDepartment.key("B11315999"))
+        assertEquals("15", MoodleDepartment.code("B00015999"))
+        assertEquals("cs", MoodleDepartment.key("B00015999"))
         // The 12 confirmed codes, and no other (#697).
         val confirmed = mapOf(
-            "B11301999" to "im", "B11302999" to "et", "B11303999" to "me", "B11304999" to "tx",
-            "B11305999" to "ct", "B11306999" to "ch", "B11307999" to "ee", "B11308999" to "ba",
-            "B11310999" to "dt", "B11313999" to "ad", "B11315999" to "cs", "B11330999" to "hc",
+            "B00001999" to "im", "B00002999" to "et", "B00003999" to "me", "B00004999" to "tx",
+            "B00005999" to "ct", "B00006999" to "ch", "B00007999" to "ee", "B00008999" to "ba",
+            "B00010999" to "dt", "B00013999" to "ad", "B00015999" to "cs", "B00030999" to "hc",
         )
         assertEquals(confirmed, confirmed.keys.associateWith(MoodleDepartment::key))
         assertEquals(confirmed.values.toSet(), MoodleDepartment.keys)
@@ -165,27 +165,40 @@ class MoodleLogicTest {
 
     @Test
     fun `only a bachelor's ID has a department code`() {
-        for (id in listOf("M11315999", "D11315999", "T11315999", "b11315999")) {
+        for (id in listOf("M00015999", "D00015999", "T00015999", "b00015999")) {
             assertNull(id, MoodleDepartment.code(id))
             assertNull(id, MoodleDepartment.key(id))
         }
         assertNull(MoodleDepartment.key(null))
         assertNull(MoodleDepartment.key(""))
-        assertNull("too short to carry a code", MoodleDepartment.key("B113"))
+        assertNull("too short to carry a code", MoodleDepartment.key("B000"))
     }
 
     @Test
     fun `a code the app has no name for shows no department`() {
-        assertEquals("09", MoodleDepartment.code("B11309999"))
-        assertNull(MoodleDepartment.key("B11309999"))
-        assertNull(MoodleDepartment.key("B11399999"))
-        assertNull(MoodleDepartment.key("B113AB999"))
+        assertEquals("09", MoodleDepartment.code("B00009999"))
+        assertNull(MoodleDepartment.key("B00009999"))
+        assertNull(MoodleDepartment.key("B00099999"))
+    }
+
+    @Test
+    fun `an ID that is not B and eight digits has no department, whatever its 5th and 6th characters`() {
+        // Cut short at 6, 7 and 8 characters, or one too long, each with a confirmed code in place.
+        for (id in listOf("B00015", "B000159", "B0001599", "B000159999")) {
+            assertNull(id, MoodleDepartment.code(id))
+            assertNull(id, MoodleDepartment.key(id))
+        }
+        // Nine characters, but not digits after the B: letters, a space, or another script's digits.
+        for (id in listOf("B000AB999", "BX0015999", "B0001599X", "B000 5999", "B000１５999")) {
+            assertNull(id, MoodleDepartment.code(id))
+            assertNull(id, MoodleDepartment.key(id))
+        }
     }
 
     @Test
     fun `names read from NTUST's ID @ name form`() {
-        assertEquals("Amy", MoodlePersonName.displayName("B11300001 @ Amy"))
-        assertEquals("B11300001", MoodlePersonName.studentId("B11300001 @ Amy"))
+        assertEquals("Amy", MoodlePersonName.displayName("B00000001 @ Amy"))
+        assertEquals("B00000001", MoodlePersonName.studentId("B00000001 @ Amy"))
         assertEquals("Teacher Wang", MoodlePersonName.displayName("Teacher Wang"))
         assertNull(MoodlePersonName.studentId("Teacher Wang"))
     }

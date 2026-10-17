@@ -106,9 +106,9 @@ class MoodleMemberDepartmentTest {
     @Test
     fun `the page names the department in full from the ID, and never from Moodle's field`() {
         val members = listOf(
-            student(1, "B11315001 @ Amy"),
-            student(2, "M11315002 @ Max", department = "大學部"),
-            student(3, "B11309003 @ Uma"),
+            student(1, "B00015001 @ Amy"),
+            student(2, "M00015002 @ Max", department = "大學部"),
+            student(3, "B00009003 @ Uma"),
         )
         var rows: Map<Int, List<MemberRow>> = emptyMap()
         composeRule.setContent { rows = members.associate { it.id to memberRows(it) } }
@@ -118,18 +118,18 @@ class MoodleMemberDepartmentTest {
         val department = composeRule.activity.getString(R.string.course_member_department)
         assertEquals(
             listOf(
-                MemberRow(studentId, "B11315001"),
+                MemberRow(studentId, "B00015001"),
                 MemberRow(department, "Department of Computer Science and Information Engineering"),
             ),
             rows[1],
         )
-        assertEquals("a master's ID has no code, and Moodle's field is not shown", listOf(MemberRow(studentId, "M11315002")), rows[2])
-        assertEquals("a code the app does not know", listOf(MemberRow(studentId, "B11309003")), rows[3])
+        assertEquals("a master's ID has no code, and Moodle's field is not shown", listOf(MemberRow(studentId, "M00015002")), rows[2])
+        assertEquals("a code the app does not know", listOf(MemberRow(studentId, "B00009003")), rows[3])
     }
 
     @Test
     fun `the list shows the short name beside the ID, and the search matches it`() {
-        val members = listOf(student(1, "B11315001 @ Amy"), student(2, "B11300002 @ Bob", department = "大學部"))
+        val members = listOf(student(1, "B00015001 @ Amy"), student(2, "B00000002 @ Bob", department = "大學部"))
         val store = MoodleCourseStore(5, emptyList(), emptyList(), api(members), MoodleCacheContext("B1", cache, { true }), scope)
         var query by mutableStateOf("")
         composeRule.setContent {
@@ -139,8 +139,8 @@ class MoodleMemberDepartmentTest {
         composeRule.waitForIdle()
 
         composeRule.onNode(hasContentDescription("Amy"))
-            .assert(stateDescription("B11315001 · Computer Science and Information Engineering"))
-        composeRule.onNode(hasContentDescription("Bob")).assert(stateDescription("B11300002"))
+            .assert(stateDescription("B00015001 · Computer Science and Information Engineering"))
+        composeRule.onNode(hasContentDescription("Bob")).assert(stateDescription("B00000002"))
 
         query = "computer science"
         composeRule.waitForIdle()
