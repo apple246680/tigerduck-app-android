@@ -10,8 +10,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.ntust.app.tigerduck.util.forgetFileProviderRoots
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
@@ -22,6 +24,9 @@ import java.io.File
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
 class MoodleFileIntentTest {
+
+    @Before
+    fun freshFileProvider() = forgetFileProviderRoots()
 
     /**
      * One test for everything the FileProvider decides: it keeps the roots it read the first time

@@ -18,6 +18,9 @@ import org.ntust.app.tigerduck.mail.InMemoryMailStateStore
 import org.ntust.app.tigerduck.mail.MailAccount
 import org.ntust.app.tigerduck.mail.MailError
 import org.ntust.app.tigerduck.mail.MailLimits
+import org.ntust.app.tigerduck.mail.SentCopyNotice
+import org.ntust.app.tigerduck.mail.SentCopyNotices
+import org.ntust.app.tigerduck.mail.SentCopyOrigin
 import org.ntust.app.tigerduck.mail.MainDispatcherRule
 import org.ntust.app.tigerduck.mail.RecordingNotifier
 import org.ntust.app.tigerduck.mail.RecordingScheduler
@@ -69,12 +72,14 @@ class SchoolMailMessageViewModelTest {
     private val credentials = InMemoryCredentialStore()
     private lateinit var account: MailAccount
     private lateinit var cache: MailCache
+    private lateinit var notices: SentCopyNotices
 
     @Before
     fun setUp() {
         cache = MailCache(tmp.newFolder("cache"))
         account = MailAccount(credentials, InMemoryMailStateStore(), FakeMailServer().factory(), cache,
             FakeDemoGate(), schoolMailSite(), RecordingScheduler(), RecordingNotifier(), testApplicationScope())
+        notices = SentCopyNotices(account, testApplicationScope())
     }
 
     // The same TestDispatcher backs both Dispatchers.Main and the injected @IoDispatcher, so a
@@ -82,7 +87,8 @@ class SchoolMailMessageViewModelTest {
     // Pass a [HeldDispatcher] as [io] instead to make a hop off Main observable.
     private fun vm(folder: String = "INBOX", uid: Long = 5, io: CoroutineDispatcher = main.dispatcher) =
         SchoolMailMessageViewModel(
-            SavedStateHandle(mapOf("folder" to folder, "uid" to uid)), repo, account, notifier, cache, schoolMailSite(), io,
+            SavedStateHandle(mapOf("folder" to folder, "uid" to uid)), repo, account, notifier, cache, schoolMailSite(),
+            notices, io,
         )
 
     private fun ready(vm: SchoolMailMessageViewModel) = vm.state.value.content as Content.Ready
@@ -194,7 +200,7 @@ class SchoolMailMessageViewModelTest {
     }
 
     @Test
-    fun `a source that fails to load surfaces as an action error rather than a stuck spinner`() {
+    fun `a source that fails to load says so in place, and Retry loads it`() {
         repo.add("INBOX", mailSummary(5))
         repo.bodies[5] = MailBody(null, "hello", emptyList(), emptyMap())
         repo.rawSourceError = MailError.Network()
@@ -203,7 +209,38 @@ class SchoolMailMessageViewModelTest {
         vm.selectMode(ViewMode.SOURCE)
         assertNull(vm.state.value.source)
         assertFalse(vm.state.value.sourceLoading)
-        assertTrue(vm.state.value.actionError is MailError.Network)
+        // Where the source would be, not a toast that leaves a blank view behind it.
+        assertTrue(vm.state.value.sourceError is MailError.Network)
+        assertNull(vm.state.value.actionError)
+
+        repo.rawSourceError = null
+        vm.retrySource()
+        assertEquals(repo.raw, vm.state.value.source)
+        assertNull(vm.state.value.sourceError)
+    }
+
+    @Test
+    fun `a source refused for a rejected password still reaches the account`() {
+        repo.add("INBOX", mailSummary(5))
+        repo.bodies[5] = MailBody(null, "hello", emptyList(), emptyMap())
+        repo.rawSourceError = MailError.AuthFailed()
+        val vm = vm()
+        vm.load()
+        vm.selectMode(ViewMode.SOURCE)
+        assertTrue(account.authFailed.value)
+    }
+
+    @Test
+    fun `a body that fails to load is loaded again by Retry`() {
+        repo.add("INBOX", mailSummary(5))
+        repo.bodyError = MailError.Network()
+        val vm = vm()
+        vm.load()
+        assertTrue(vm.state.value.content is Content.Failed)
+        repo.bodyError = null
+        repo.bodies[5] = MailBody(null, "hello", emptyList(), emptyMap())
+        vm.load()
+        assertEquals("hello", ready(vm).plain)
     }
 
     @Test
@@ -431,6 +468,34 @@ class SchoolMailMessageViewModelTest {
         vm.load()
         vm.setMailTheme(MailHtmlTheme(background = "#121212", foreground = "#e6e6e6", isDark = true))
         assertNull(ready(vm).document)
+    }
+
+    // --- attachments: share -----------------------------------------------------------------
+
+    @Test
+    fun `sharing downloads the attachment for the share sheet, asking first for a risky one`() {
+        val risky = MailAttachment("2", "invoice.pdf.exe", "application/octet-stream", 10, null)
+        val safe = MailAttachment("3", "notes.txt", "text/plain", 5, null)
+        repo.add("INBOX", mailSummary(5, hasAttachments = true))
+        repo.bodies[5] = MailBody(null, "see attached", listOf(risky, safe), emptyMap())
+        val vm = vm()
+        vm.load()
+
+        vm.requestShare(safe)
+        val shared = vm.state.value.shareRequest!!
+        assertEquals("notes.txt", shared.file.name)
+        assertEquals("text/plain", shared.contentType)
+        assertEquals("attachment 3", shared.file.readText())
+        assertTrue(shared.file.canonicalPath.startsWith(cache.attachmentsDir.canonicalPath))
+        assertNull("sharing is not opening", vm.state.value.openRequest)
+        vm.consumeShareRequest()
+        assertNull(vm.state.value.shareRequest)
+
+        vm.requestShare(risky)
+        assertEquals(PendingAttachment(risky, AttachmentAction.SHARE), vm.state.value.confirmAttachment)
+        assertNull(vm.state.value.shareRequest)
+        vm.confirmAttachment(true)
+        assertEquals("invoice.pdf.exe", vm.state.value.shareRequest!!.file.name)
     }
 
     // --- attachments: open ------------------------------------------------------------------
@@ -683,6 +748,65 @@ class SchoolMailMessageViewModelTest {
         assertFalse(cleanedUp)
         assertTrue(vm.state.value.actionError is MailError.Protocol)
         assertEquals(0, vm.state.value.savedCount)
+    }
+
+    // --- read / unread ----------------------------------------------------------------------
+
+    @Test
+    fun `Mark unread keeps the mail open, and Mark read takes it back`() {
+        repo.add("INBOX", mailSummary(5))
+        repo.bodies[5] = MailBody(null, "hello", emptyList(), emptyMap())
+        val vm = vm()
+        vm.load()
+        // Opening it read it, and the menu has to know that to offer Mark unread.
+        assertTrue(ready(vm).summary.flags.seen)
+
+        vm.toggleSeen()
+        assertEquals(Triple("INBOX", 5L, false), repo.seenCalls.last())
+        assertFalse(ready(vm).summary.flags.seen)
+        assertFalse(vm.state.value.closed)
+
+        vm.toggleSeen()
+        assertEquals(Triple("INBOX", 5L, true), repo.seenCalls.last())
+        assertTrue(ready(vm).summary.flags.seen)
+        assertFalse(vm.state.value.closed)
+    }
+
+    @Test
+    fun `a read toggle the server refuses leaves the flag as it was`() {
+        repo.add("INBOX", mailSummary(5, seen = true))
+        repo.bodies[5] = MailBody(null, "hello", emptyList(), emptyMap())
+        val vm = vm()
+        vm.load()
+        repo.seenError = MailError.ServerBusy()
+        vm.toggleSeen()
+        assertTrue(ready(vm).summary.flags.seen)
+        assertTrue(vm.state.value.actionError is MailError.ServerBusy)
+    }
+
+    // --- links in a plain-text mail ------------------------------------------------------------
+
+    @Test
+    fun `a plain-text mail's URLs and addresses are links that go through the same check`() {
+        repo.add("INBOX", mailSummary(5))
+        repo.bodies[5] = MailBody(null, "Hours: https://www.lib.ntust.edu.tw/hours\nAsk library@mail.ntust.edu.tw", emptyList(), emptyMap())
+        val vm = vm()
+        vm.load()
+
+        val content = ready(vm)
+        assertEquals(ViewMode.PLAIN, vm.state.value.mode)
+        assertEquals(
+            listOf("https://www.lib.ntust.edu.tw/hours", "library@mail.ntust.edu.tw"),
+            content.plainLinks.map { content.plain.substring(it.start, it.end) },
+        )
+        val web = vm.plainLinkTarget(0)!!
+        assertEquals("https://www.lib.ntust.edu.tw/hours", web.href)
+        assertEquals("www.lib.ntust.edu.tw", web.verdict.host)
+        assertTrue(web.canOpen)
+        val mail = vm.plainLinkTarget(1)!!
+        assertEquals("mailto:library@mail.ntust.edu.tw", mail.href)
+        assertTrue(mail.canOpen)
+        assertNull(vm.plainLinkTarget(2))
     }
 
     // --- link target: addressed by index into the rewritten document's links -----------------
@@ -955,5 +1079,17 @@ class SchoolMailMessageViewModelTest {
         // A lone high surrogate at the very end (its low half was cut off) means a pair got
         // split; ending on a low surrogate is fine -- that IS a pair's completed second half.
         assertFalse(stem.isNotEmpty() && Character.isHighSurrogate(stem.last()))
+    }
+
+    @Test
+    fun `a sent-copy notice shows on the mail it was a reply to, and on no other`() {
+        val vm = vm("INBOX", 5)
+        notices.report(SentCopyNotice.NoFolder, SentCopyOrigin.Message("INBOX", 5), notices.accountGeneration)
+        assertEquals(SentCopyNotice.NoFolder, vm.sentCopyNotice.value)
+        val other = vm("INBOX", 6)
+        assertNull(other.sentCopyNotice.value)
+        // A new mail from the list is the list's to say.
+        notices.report(SentCopyNotice.Unknown, SentCopyOrigin.List, notices.accountGeneration)
+        assertNull(vm.sentCopyNotice.value)
     }
 }

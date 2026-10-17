@@ -223,9 +223,14 @@ class AngusMailSession internal constructor(
         val start = maxOf(1, end - pageSize + 1)
         val messages = f.getMessages(start, end)
         f.fetch(messages, summaryProfile())
-        val summaries = messages.reversed().map { toSummary(f, it as IMAPMessage) }.filterNot { it.flags.deleted }
-        MailPage(f.uidValidity, total, summaries, if (start > 1) start else null)
+        val all = messages.reversed().map { toSummary(f, it as IMAPMessage) }
+        // Spanned before the \Deleted rows go: they are still in the range the page read.
+        val window = all.takeIf { it.isNotEmpty() }?.let { rows -> rows.minOf { it.uid }..rows.maxOf { it.uid } }
+        MailPage(f.uidValidity, total, all.filterNot { it.flags.deleted }, if (start > 1) start else null, window)
     }
+
+    /** From the folder held open (opening it if need be), not a STATUS, which would close it. */
+    override fun uidValidity(folder: String): Long = io { folder(folder, Folder.READ_ONLY).uidValidity }
 
     override fun fetchSince(folder: String, fromUid: Long): List<MailSummary> = io {
         val f = folder(folder, Folder.READ_ONLY)

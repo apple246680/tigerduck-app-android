@@ -7,22 +7,31 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.mail.MailAccount
 import org.ntust.app.tigerduck.mail.MailError
+import org.ntust.app.tigerduck.mail.MailRepository
 import org.ntust.app.tigerduck.mail.MailSite
 import org.ntust.app.tigerduck.mail.SchoolMailRepository
 import org.ntust.app.tigerduck.mail.SearchOutcome
+import org.ntust.app.tigerduck.mail.SentCopyNotice
+import org.ntust.app.tigerduck.mail.SentCopyNotices
+import org.ntust.app.tigerduck.mail.SentCopyOrigin
+import org.ntust.app.tigerduck.mail.matchesLoadedMail
 import org.ntust.app.tigerduck.mail.imap.FolderSelection
 import org.ntust.app.tigerduck.mail.imap.SpecialFolder
 import org.ntust.app.tigerduck.mail.model.MailPage
 import org.ntust.app.tigerduck.mail.model.MailRow
 import org.ntust.app.tigerduck.mail.model.MailSummary
 import org.ntust.app.tigerduck.mail.sync.MailChecker
+import org.ntust.app.tigerduck.mail.sync.MailClock
 import java.time.Instant
 import javax.inject.Inject
 import kotlin.coroutines.coroutineContext
@@ -33,6 +42,8 @@ class SchoolMailListViewModel @Inject constructor(
     private val account: MailAccount,
     private val checker: MailChecker,
     private val site: MailSite,
+    private val clock: MailClock,
+    private val sentCopyNotices: SentCopyNotices,
 ) : ViewModel() {
 
     /** The account's own domain: what the list's External badge measures a sender against. */
@@ -64,8 +75,8 @@ class SchoolMailListViewModel @Inject constructor(
         val mergedFolders: List<String> = emptyList(),
         val messages: List<MailRow> = emptyList(),
         /**
-         * Only ever describes a *load*: [load], [fetchFirstPage], [paginate], [runSearch]. A
-         * failed one-off action reports through [actionError] instead, so it can neither paint
+         * Only ever describes a *load*: [load], [fetchFirstPage], [paginate]. A failed search, like a
+         * failed one-off action, reports through [actionError] instead, so it can neither paint
          * the header dot red for the rest of the session nor replace a list that loaded perfectly
          * well with the "couldn't load" empty state.
          */
@@ -133,11 +144,53 @@ class SchoolMailListViewModel @Inject constructor(
     val signedIn: StateFlow<Boolean> = account.signedIn
     val authFailed: StateFlow<Boolean> = account.authFailed
 
+    /** The user closed the sign-in-failed banner; cleared each time [authFailed] changes. */
+    private val authBannerClosed = MutableStateFlow(false)
+
+    /**
+     * Whether the sign-in-failed banner shows: while the server rejects the password, until it is
+     * closed. It comes back with the next change of [authFailed] -- a new sign-in that fails
+     * again, or the next rejection -- as on the iPhone. Closing it changes nothing about the account.
+     */
+    val showAuthFailedBanner: StateFlow<Boolean> =
+        combine(account.authFailed, authBannerClosed) { failed, closed -> failed && !closed }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, account.authFailed.value)
+
+    fun dismissAuthFailedBanner() {
+        authBannerClosed.value = true
+    }
+
+    /**
+     * A new mail or a draft sent from compose went out without its copy reaching the sent folder
+     * (a reply's notice is the replied mail's to show, not this list's). Kept out of
+     * [UiState] on purpose: no load clears it, only [dismissSentCopyNotice] (or signing out), so
+     * the reload that follows the compose screen closing cannot wipe it before it is seen.
+     */
+    val sentCopyNotice: StateFlow<SentCopyNotice?> = sentCopyNotices.noticeFor(SentCopyOrigin.List, viewModelScope)
+
+    fun dismissSentCopyNotice() = sentCopyNotices.dismiss()
+
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     private var pollJob: Job? = null
     private var prefetchJob: Job? = null
+
+    /** The [load] in progress, so a second call -- Retry tapped twice, a pull -- waits on it instead of starting another. */
+    private var loadJob: Job? = null
+
+    /** The [MailAccount.accountGeneration] that [loadJob] loads for. */
+    private var loadGeneration = 0
+
+    /**
+     * True while a load asked for by another account than [loadJob]'s waits for that one to end:
+     * a student who signed in over the one whose folder list was still out -- through the sign-in
+     * sheet a rejected password shows -- and whose screen asked for its load at once. The single
+     * flight refuses that call, the old load then comes back for nobody, and nothing else would
+     * start theirs: the screen's load effect does not run again, and polling resolves no folders.
+     * So it starts as soon as the old one has ended.
+     */
+    private var loadPending = false
 
     /**
      * True once a warm queue has run to the end, so a resume knows there is nothing left to warm.
@@ -145,15 +198,55 @@ class SchoolMailListViewModel @Inject constructor(
      */
     private var prefetchDone = false
 
+    /**
+     * The server matches the last search has not fetched yet, per folder, newest first: what
+     * scrolling to the end of the results fetches next ([loadMoreSearchResults]).
+     */
+    private var unfetchedMatches: Map<String, UnfetchedMatches> = emptyMap()
+
+    /** A folder's matches still to fetch, and the UIDVALIDITY they were found under ([SearchOutcome.Server.uidValidity]). */
+    private data class UnfetchedMatches(val uidValidity: Long?, val uids: List<Long>)
+
+    /**
+     * Bumped whenever [UiState.messages] and [UiState.cursors] are replaced wholesale -- a first
+     * page, the cached page, another folder, a sign-out -- so an older page asked for before is
+     * dropped rather than merged: its cursor belonged to the list that was replaced.
+     */
+    private var listGeneration = 0
+
+    /**
+     * Each real folder's UIDVALIDITY as its last first page gave it -- the server's, or the cached
+     * one painted while the server is asked ([showCached]). Every cursor in [UiState.cursors] was
+     * taken under the validity recorded here for its folder, so [paginate] can tell an older page
+     * from a recreated folder apart from one of the mailbox the list is showing.
+     */
+    private var folderValidity: Map<String, Long> = emptyMap()
+
+    /**
+     * Bumped by every search submitted or cleared, so a page of results still on its way for an
+     * earlier query is dropped rather than added to this one's.
+     */
+    private var searchGeneration = 0
+
+    /** When the last first page landed, by [clock]: a resume right after it has nothing new to ask. */
+    private var firstPageAt: Long? = null
+
     init {
+        viewModelScope.launch { account.authFailed.collect { authBannerClosed.value = false } }
         // Signing out must not leave the previous account's mail on screen for
         // whoever signs in next (spec §7.5).
         viewModelScope.launch {
             account.signedIn.collect { signedIn ->
                 if (!signedIn) {
+                    loadJob?.cancel()
+                    loadJob = null
                     prefetchJob?.cancel()
                     prefetchJob = null
                     prefetchDone = false
+                    forgetSearch()
+                    firstPageAt = null
+                    listGeneration++
+                    folderValidity = emptyMap()
                     _state.value = UiState()
                 }
             }
@@ -162,14 +255,37 @@ class SchoolMailListViewModel @Inject constructor(
 
     fun load() {
         if (!account.signedIn.value) return
+        loadJob?.takeIf { it.isActive }?.let { running ->
+            // Not discarded when it is another account's than the running load's; see [loadPending].
+            if (!loadPending && loadGeneration != account.accountGeneration) {
+                loadPending = true
+                viewModelScope.launch {
+                    running.join()
+                    loadPending = false
+                    load()
+                }
+            }
+            return
+        }
         showFetchedAt()
         val generation = account.accountGeneration
-        viewModelScope.launch {
+        loadGeneration = generation
+        // At once, not when the first page is asked for: the folder list comes first, and a failed
+        // state left up meanwhile is a Retry button that starts a second load.
+        _state.update { it.copy(loadState = LoadState.Loading) }
+        loadJob = viewModelScope.launch {
             try {
                 // The first request of the load, and asked the same question as the rest (see
                 // fetchFirstPage): a folder list that waited for the session across a sign-out
                 // must not be fetched as the next account.
                 val folders = repository.folders { account.accountGeneration == generation }
+                // A LIST already out when another student signed in over this one comes back
+                // under their generation. No sign-out reset the screen, so it is refused here;
+                // their own load resolves their folders.
+                if (account.accountGeneration != generation) {
+                    loadDropped()
+                    return@launch
+                }
                 val merged = FolderSelection.AllMail.MERGED.mapNotNull { folders.nameOf(it) }
                 val real = SpecialFolder.entries.mapNotNull { kind ->
                     folders.nameOf(kind)?.let { FolderChip(FolderSelection.Real(it), kind) }
@@ -191,7 +307,7 @@ class SchoolMailListViewModel @Inject constructor(
                 // The folders on screen are known now, and so is their date.
                 showFetchedAt()
             } catch (e: MailError) {
-                if (!dropped(e, generation)) fail(e)
+                if (dropped(e, generation)) loadDropped() else fail(e)
                 return@launch
             }
             showCached()
@@ -201,6 +317,12 @@ class SchoolMailListViewModel @Inject constructor(
     }
 
     fun refresh() {
+        // A load that failed at the folder list resolved nothing: there is no page to fetch yet,
+        // so Retry and a pull start over from the folder list.
+        if (_state.value.chips.isEmpty()) {
+            load()
+            return
+        }
         // Stops the warm queue before it takes the connection again. SessionHolder serialises
         // every command behind one mutex, so without this a refresh could wait out several
         // folders' pages rather than at most one.
@@ -225,6 +347,8 @@ class SchoolMailListViewModel @Inject constructor(
         if (selection == _state.value.selected) return
         prefetchJob?.cancel()
         prefetchJob = null
+        forgetSearch()
+        listGeneration++
         _state.update {
             it.copy(selected = selection, messages = emptyList(), cursors = emptyMap(), searchResults = null, searchText = "", searchLocalOnly = false)
         }
@@ -243,17 +367,34 @@ class SchoolMailListViewModel @Inject constructor(
 
     fun setUnreadOnly(value: Boolean) = _state.update { it.copy(unreadOnly = value) }
 
-    fun setSearchText(text: String) = _state.update {
-        if (text.isBlank()) it.copy(searchText = text, searchResults = null, searchLocalOnly = false) else it.copy(searchText = text)
+    fun setSearchText(text: String) {
+        if (text.isBlank()) forgetSearch()
+        _state.update {
+            if (text.isBlank()) it.copy(searchText = text, searchResults = null, searchLocalOnly = false) else it.copy(searchText = text)
+        }
+    }
+
+    private fun forgetSearch() {
+        searchGeneration++
+        unfetchedMatches = emptyMap()
     }
 
     fun submitSearch() {
         viewModelScope.launch { runSearch() }
     }
 
+    /**
+     * [last] is the last row on screen, so it is matched against [UiState.displayed]: under unread
+     * only, the list's own last row can be a read one the screen never shows.
+     */
     fun loadMoreIfNeeded(last: MailRow) {
         val s = _state.value
-        if (s.searchResults != null || s.isPaginating || s.cursors.isEmpty() || s.messages.lastOrNull()?.key != last.key) return
+        if (s.isPaginating || s.displayed.lastOrNull()?.key != last.key) return
+        if (s.searchResults != null) {
+            if (unfetchedMatches.values.any { it.uids.isNotEmpty() }) viewModelScope.launch { loadMoreSearchResults() }
+            return
+        }
+        if (s.cursors.isEmpty()) return
         viewModelScope.launch { paginate() }
     }
 
@@ -282,6 +423,14 @@ class SchoolMailListViewModel @Inject constructor(
      * would otherwise re-send the same rejected LOGIN once a minute for as long
      * as the page is open. Signing in again clears the flag, and the screen
      * restarts polling from that.
+     *
+     * The first look is at once, not a minute in: this runs whenever the page comes back, from
+     * the background or from a mail, and mail that arrived meanwhile -- its notification perhaps
+     * already in the shade -- should be on the list when it does. Not while a load is still
+     * running, or has not run yet, and not within [RESUME_POLL_FRESH_MS] of a first page landing:
+     * that page already is the answer, and not while it has failed, which Retry is there for.
+     * Decided [RESUME_POLL_GRACE_MS] in rather than here, since coming back from a mail composes
+     * the list again, and the load that starts as it appears lands just after this call.
      */
     fun startPolling() {
         // A background check may have reached the inbox while the page was away.
@@ -297,12 +446,25 @@ class SchoolMailListViewModel @Inject constructor(
         if (!prefetchDone && _state.value.loadState is LoadState.Loaded) startPrefetch()
         pollJob?.cancel()
         pollJob = viewModelScope.launch {
+            launch {
+                delay(RESUME_POLL_GRACE_MS)
+                if (pollsOnResume() && !account.authFailed.value) poll()
+            }
             while (isActive && !account.authFailed.value) {
                 delay(POLL_MS)
                 if (account.authFailed.value) break
                 poll()
             }
         }
+    }
+
+    private fun pollsOnResume(): Boolean {
+        val s = _state.value
+        // A failed list says so and offers Retry; a look of its own on every return would only
+        // repeat the failure as a toast over it.
+        if (s.loadState !is LoadState.Loaded) return false
+        val landed = firstPageAt ?: return true
+        return clock.now() - landed >= RESUME_POLL_FRESH_MS
     }
 
     fun stopPolling() {
@@ -319,6 +481,11 @@ class SchoolMailListViewModel @Inject constructor(
         val generation = account.accountGeneration
         val pages = _state.value.targets.mapNotNull { folder -> repository.cachedPage(folder)?.let { folder to it } }
         if (pages.isEmpty() || !stillCurrent(selection, generation)) return
+        listGeneration++
+        // The validity the cached page was read under goes with its cursor: should the first page
+        // fail -- offline at startup -- this is the list that gets paged, and without it an older
+        // page from a folder recreated since would be merged in unchecked.
+        folderValidity = folderValidity + pages.associate { (folder, page) -> folder to page.uidValidity }
         _state.update { it.copy(messages = rowsOf(selection, pages), cursors = cursorsOf(pages)) }
     }
 
@@ -327,11 +494,18 @@ class SchoolMailListViewModel @Inject constructor(
      * two for All mail, however far the merged list has already been scrolled. That bound is the
      * reason the merged view refreshes only the newest page per folder -- Mail2000 caps
      * connections and starts answering "server busy" under load.
+     *
+     * True once the server's first page is on screen; false when the fetch failed, or when the
+     * selection changed before it landed and the page was dropped.
      */
-    private suspend fun fetchFirstPage() {
+    private suspend fun fetchFirstPage(): Boolean {
         val selection = _state.value.selected
         val targets = _state.value.targets
-        if (targets.isEmpty()) return
+        if (targets.isEmpty()) {
+            // Nothing to read, so nothing still loading either.
+            _state.update { if (it.loadState is LoadState.Loading) it.copy(loadState = LoadState.Loaded) else it }
+            return false
+        }
         val generation = account.accountGeneration
         _state.update { it.copy(loadState = LoadState.Loading) }
         try {
@@ -345,17 +519,54 @@ class SchoolMailListViewModel @Inject constructor(
                 dated(folder, generation)
                 folder to page
             }
-            if (!stillCurrent(selection, generation)) return
+            if (!stillCurrent(selection, generation)) return false
+            listGeneration++
+            folderValidity = folderValidity + pages.associate { (folder, page) -> folder to page.uidValidity }
             _state.update { it.copy(messages = rowsOf(selection, pages), cursors = cursorsOf(pages), loadState = LoadState.Loaded) }
+            firstPageAt = clock.now()
             // Was "only for Inbox itself"; All mail shows the inbox's own mail too, so it must
             // move the notification seen marker exactly as viewing Inbox always did.
             if (_state.value.inboxInView) {
                 runCatching { checker.noteSeenByPage(repository.inboxStatus { account.accountGeneration == generation }, generation) }
             }
+            return true
         } catch (e: MailError) {
-            if (dropped(e, generation)) return
+            if (dropped(e, generation)) return false
             fail(e)
+            return false
         }
+    }
+
+    /**
+     * [folders], each with the UIDVALIDITY its rows were read under, were found recreated: the
+     * server no longer has that generation, so the rows and cursors the list holds for them name
+     * other mail now and the list starts again from the top. Should that fail, they go rather than
+     * stay -- nothing may read them again, not the next scroll and not a search falling back to the
+     * loaded mail -- and the folder shows nothing until a first page lands, which Retry, a pull or
+     * the poll's next look brings. True once the list has reloaded.
+     *
+     * The folder's cached page goes first, for the same reason: it is the old mailbox's too, and
+     * [showCached] would otherwise paint it again, rows and cursor, on the next visit to the folder
+     * while the server keeps failing. Only a page of that same old generation, though: a refresh
+     * that failed on another folder may already have cached this one under the new generation, and
+     * that page is the only offline copy of the new mailbox. A reload that lands writes its own.
+     */
+    private suspend fun reloadRecreated(folders: Map<String, Long>): Boolean {
+        val selection = _state.value.selected
+        val list = listGeneration
+        val generation = account.accountGeneration
+        folders.forEach { (folder, obsolete) -> repository.dropCachedPage(folder, obsolete) }
+        // The eviction is a disk write the user can tap through, or sign out during. A chip or an
+        // account that moved meanwhile has its own load, and this request -- the one that found
+        // the folder recreated -- starts none for it: [fetchFirstPage] would otherwise take the new
+        // selection and account for its own and send, cache and date a load on their behalf.
+        if (!stillCurrent(selection, generation) || list != listGeneration) return false
+        if (fetchFirstPage()) return true
+        // Only while this is still the list that was found stale: a newer one owns its rows.
+        if (stillCurrent(selection, generation) && list == listGeneration) {
+            _state.update { st -> st.copy(messages = st.messages.filterNot { it.folder in folders }, cursors = st.cursors - folders.keys) }
+        }
+        return false
     }
 
     /**
@@ -435,26 +646,52 @@ class SchoolMailListViewModel @Inject constructor(
      * one page further and the result re-merged. So the merged list runs out only once *both*
      * folders genuinely have ([UiState.cursors] empty), never merely because the sparser of the
      * two did -- it never stops short while the server still has mail to give.
+     *
+     * Each page is merged the way [mergeOlderPage] says, not appended: a row the list already
+     * holds takes the server's flags, and one inside the page's range the server no longer lists
+     * goes. Only the newest page is ever written to the cache ([MailRepository.loadPage]), so
+     * what is kept on disk stays one page per folder however far the list is scrolled.
      */
     private suspend fun paginate() {
         val selection = _state.value.selected
-        val cursors = _state.value.cursors
-        if (cursors.isEmpty()) return
+        if (_state.value.cursors.isEmpty()) return
+        val list = listGeneration
         val generation = account.accountGeneration
         _state.update { it.copy(isPaginating = true) }
         try {
-            val pages = cursors.entries.sortedBy { it.key }.map { (folder, before) ->
-                folder to repository.loadPage(folder, before) { stillCurrent(selection, generation) }
-            }
-            if (!stillCurrent(selection, generation)) return
-            _state.update { st ->
-                val known = st.messages.mapTo(mutableSetOf()) { it.key }
-                val added = pages.flatMap { (folder, page) -> page.messages.map { MailRow(folder, it) } }
-                    .filter { it.key !in known }
-                st.copy(
-                    messages = ordered(selection, st.messages + added),
-                    cursors = st.cursors - cursors.keys + cursorsOf(pages),
-                )
+            var walkedBack = 0
+            while (true) {
+                val cursors = _state.value.cursors
+                if (cursors.isEmpty()) return
+                val end = _state.value.displayed.lastOrNull()?.key
+                // No request of the batch goes out once the account, the view or the list that
+                // asked has gone (see [fetchFirstPage]): an older page of a list a refresh has
+                // replaced since would only be dropped on return, and under the next account's
+                // credentials it must not be sent at all.
+                val pages = cursors.entries.sortedBy { it.key }.map { (folder, before) ->
+                    folder to repository.loadPage(folder, before) { stillCurrent(selection, generation) && list == listGeneration }
+                }
+                if (!stillCurrent(selection, generation) || list != listGeneration) return
+                // A folder recreated since its first page: the older page's UIDs name other mail
+                // than the list's, so it is not merged, and the list starts again from the top.
+                val recreated = pages.mapNotNull { (folder, page) ->
+                    folderValidity[folder]?.takeIf { it != page.uidValidity }?.let { folder to it }
+                }.toMap()
+                if (recreated.isNotEmpty()) {
+                    reloadRecreated(recreated)
+                    return
+                }
+                _state.update { st ->
+                    val merged = pages.fold(st.messages) { rows, (folder, page) -> mergeOlderPage(rows, folder, page) }
+                    st.copy(
+                        messages = if (selection is FolderSelection.AllMail) merged.sortedWith(NEWEST_FIRST) else merged.sortedByDescending { it.uid },
+                        cursors = st.cursors - cursors.keys + cursorsOf(pages),
+                    )
+                }
+                // A page that adds nothing on screen leaves no new last row to ask for the next one,
+                // so a few more are fetched straight away ([EMPTY_PAGE_WALKBACK]).
+                if (_state.value.displayed.lastOrNull()?.key != end || walkedBack == EMPTY_PAGE_WALKBACK) return
+                walkedBack++
             }
         } catch (e: MailError) {
             if (dropped(e, generation)) return
@@ -467,6 +704,8 @@ class SchoolMailListViewModel @Inject constructor(
     private suspend fun runSearch() {
         val selection = _state.value.selected
         val query = _state.value.searchText.trim()
+        forgetSearch()
+        val search = searchGeneration
         if (query.isEmpty()) {
             _state.update { it.copy(searchResults = null, searchLocalOnly = false) }
             return
@@ -475,24 +714,153 @@ class SchoolMailListViewModel @Inject constructor(
         _state.update { it.copy(isSearching = true) }
         try {
             // One SEARCH per real folder, merged the same way the list itself is. A folder whose
-            // server refused the search still contributes its locally-matched mail, and the
-            // "loaded only" note appears as soon as any one of them fell back.
+            // server refused the search, or could not be reached, still contributes its matches
+            // among the mail already loaded, and the "loaded only" note appears as soon as any
+            // one of them fell back.
+            //
+            // A failure is the search's, never the list's: the list it would replace is as good as
+            // it was a moment ago, so it reaches [UiState.actionError] and not [UiState.loadState]
+            // -- except a certificate failure, which stays on screen as the poll's does.
+            //
+            // A rejected password, a connection that could not be made or a certificate that
+            // could not be trusted ends the server's part of the search: every folder after it
+            // searches its loaded mail instead. Searching on would open the connection again for
+            // each folder, and for a rejected password that is the same LOGIN sent again (spec
+            // §7.4), so the rejection reaches the account at once, before anything else runs.
+            //
+            // And no SEARCH of the batch goes out once the account, the view or the search that
+            // asked has gone (see [fetchFirstPage]). One let go unsent, or one that failed for an
+            // account that has left, ends the whole search without a word: it is nobody's to fall
+            // back on, and the loaded mail it would search is not this account's.
+            var failure: MailError? = null
+            var serverUnreachable = false
             val outcomes = _state.value.targets.map { folder ->
-                folder to repository.search(folder, query) { stillCurrent(selection, generation) }
+                val loadedMatches = {
+                    SearchOutcome.LoadedOnly(
+                        _state.value.messages.filter { it.folder == folder && matchesLoadedMail(it.summary, query) }.map { it.summary },
+                    )
+                }
+                folder to if (serverUnreachable) {
+                    loadedMatches()
+                } else {
+                    try {
+                        val outcome = repository.search(folder, query) { stillCurrent(selection, generation) && search == searchGeneration }
+                        // The server could not search: the repository's fallback knows only the
+                        // folder's cached newest page, while the list may have paged further, so
+                        // the matches are read from the rows it has loaded, as a failed folder's
+                        // are -- but only rows read under the UIDVALIDITY that page has. A refresh
+                        // can have cached a recreated folder's new page and then failed on another
+                        // folder, leaving the old mailbox's rows on screen; those must not stand in
+                        // for the new mailbox, whose matches the repository found.
+                        if (outcome is SearchOutcome.LoadedOnly && (outcome.uidValidity == null || outcome.uidValidity == folderValidity[folder])) {
+                            loadedMatches()
+                        } else {
+                            outcome
+                        }
+                    } catch (e: MailError) {
+                        if (dropped(e, generation)) return
+                        if (failure == null) failure = e
+                        if (e is MailError.AuthFailed) account.onAuthFailure()
+                        if (endsServerSearch(e)) serverUnreachable = true
+                        loadedMatches()
+                    }
+                }
             }
-            if (!stillCurrent(selection, generation)) return
+            if (!stillCurrent(selection, generation) || search != searchGeneration) {
+                // The results are nobody's now, but a failure that must stick is still this
+                // account's: a certificate that could not be trusted is the interception case the
+                // page stays failed for, and a rejected password reaches the account and the
+                // screen as it would have. Anything else -- a busy server behind a search the
+                // user has moved on from -- is not worth a toast.
+                failure?.takeIf { it is MailError.Certificate || it is MailError.AuthFailed }?.let(::searchFail)
+                return
+            }
             val rows = outcomes.flatMap { (folder, outcome) -> outcome.messages.map { MailRow(folder, it) } }
+            unfetchedMatches = outcomes.mapNotNull { (folder, outcome) ->
+                (outcome as? SearchOutcome.Server)?.takeIf { it.remaining.isNotEmpty() }
+                    ?.let { folder to UnfetchedMatches(it.uidValidity, it.remaining) }
+            }.toMap()
             _state.update {
                 it.copy(
                     searchResults = ordered(selection, rows),
                     searchLocalOnly = outcomes.any { (_, outcome) -> outcome is SearchOutcome.LoadedOnly },
                 )
             }
-        } catch (e: MailError) {
-            if (dropped(e, generation)) return
-            fail(e)
+            failure?.let(::searchFail)
+            // Nothing on screen means no last row to scroll to, however many matches are left.
+            // Unless the server's part of the search ended early: in All mail the inbox can have
+            // answered, with matches left to fetch, before Sent found the connection gone or the
+            // password rejected, and a page of them now would open the connection again -- for a
+            // rejected password, the LOGIN that was just decided against (spec §7.4).
+            if (!serverUnreachable && _state.value.displayed.isEmpty()) loadMoreSearchResults()
         } finally {
             _state.update { it.copy(isSearching = false) }
+        }
+    }
+
+    /**
+     * The next page of each folder's [unfetchedMatches], added to the results. A page can add
+     * nothing that shows -- every match since deleted, or read under unread only -- and then no
+     * new last row appears to ask for the next one, so up to [EMPTY_PAGE_WALKBACK] more follow
+     * until the end of the list moves or the matches run out. A failure stops it and says so; the
+     * page it was fetching stays unfetched for the next scroll to try again.
+     *
+     * A page read under another UIDVALIDITY than the search's means the folder was recreated since:
+     * its matches, listed and unfetched alike, name other mail now. They go, the list reloads
+     * ([reloadRecreated]), and the query runs again over the recreated folder: the results are what
+     * the screen shows while searching, so a reloaded list alone would leave a search of that one
+     * folder empty. Not after a reload that failed, though -- that search would fail the same way
+     * and fall back to the loaded mail, which is exactly the old rows the reload was to replace.
+     */
+    private suspend fun loadMoreSearchResults() {
+        val selection = _state.value.selected
+        val search = searchGeneration
+        val generation = account.accountGeneration
+        _state.update { it.copy(isPaginating = true) }
+        try {
+            var walkedBack = 0
+            while (true) {
+                val end = _state.value.displayed.lastOrNull()?.key
+                val pending = unfetchedMatches.filterValues { it.uids.isNotEmpty() }
+                if (pending.isEmpty()) return
+                for ((folder, matches) in pending) {
+                    val batch = matches.uids.take(MailRepository.PAGE_SIZE)
+                    // Not sent once the account, the view or the search that asked has gone (see
+                    // [fetchFirstPage]); a page let go unsent, or one that failed for an account
+                    // that has left, is nobody's to report.
+                    val page = try {
+                        repository.searchPage(folder, batch) { stillCurrent(selection, generation) && search == searchGeneration }
+                    } catch (e: MailError) {
+                        if (!dropped(e, generation) && search == searchGeneration) searchFail(e)
+                        return
+                    }
+                    if (!stillCurrent(selection, generation) || search != searchGeneration) return
+                    val searched = matches.uidValidity
+                    if (searched != null && page.uidValidity != null && page.uidValidity != searched) {
+                        unfetchedMatches = unfetchedMatches - folder
+                        _state.update { st -> st.copy(searchResults = st.searchResults?.filterNot { it.folder == folder }) }
+                        val reloaded = reloadRecreated(mapOf(folder to searched))
+                        // Not if the search was cleared or replaced meanwhile: that one is the
+                        // user's, and this would be a second round trip for the same query. Nor
+                        // after a reload that failed: the server was just found unreachable, or
+                        // rejected the password, and a search now asks it again (spec §7.4).
+                        if (!reloaded || !stillCurrent(selection, generation) || search != searchGeneration) return
+                        runSearch()
+                        return
+                    }
+                    unfetchedMatches = unfetchedMatches + (folder to matches.copy(uids = matches.uids.drop(batch.size)))
+                    _state.update { st ->
+                        val results = st.searchResults ?: return@update st
+                        val listed = results.mapTo(HashSet()) { it.key }
+                        val added = page.messages.map { MailRow(folder, it) }.filter { it.key !in listed }
+                        st.copy(searchResults = ordered(selection, results + added))
+                    }
+                }
+                if (_state.value.displayed.lastOrNull()?.key != end || walkedBack == EMPTY_PAGE_WALKBACK) return
+                walkedBack++
+            }
+        } finally {
+            _state.update { it.copy(isPaginating = false) }
         }
     }
 
@@ -634,6 +1002,13 @@ class SchoolMailListViewModel @Inject constructor(
         e is MailError.Abandoned || account.accountGeneration != generation
 
     /**
+     * A [load] dropped for an account that has left announced [LoadState.Loading] up front; that
+     * is over, and whoever is signed in now starts their own. A sign-out has reset the state
+     * already; another student signing in over this one has not, and must not inherit a spinner.
+     */
+    private fun loadDropped() = _state.update { if (it.loadState is LoadState.Loading) it.copy(loadState = LoadState.Idle) else it }
+
+    /**
      * The date of the folders on screen: the older of All mail's two, and 0 while one of them has
      * none, as on the iPhone -- a merged list is only as fresh as its staler half. Nothing is on
      * screen to date before [load] has resolved the folders.
@@ -661,6 +1036,24 @@ class SchoolMailListViewModel @Inject constructor(
     private fun ordered(selection: FolderSelection, rows: List<MailRow>): List<MailRow> =
         if (selection is FolderSelection.AllMail) rows.sortedWith(NEWEST_FIRST) else rows
 
+    /**
+     * [page], an older page of [folder], merged into [rows]: every row it lists wins, and a row of
+     * [folder] inside the page's UID range that it does not list was read, moved or deleted
+     * elsewhere and goes. Rows outside that range, and every other folder's, stay.
+     *
+     * The range overlaps rows already listed whenever mail below the cursor was expunged, as the
+     * sequence numbers it was taken from have shifted down since. A single folder's order is the
+     * server's, UID descending, which re-sorting keeps.
+     */
+    private fun mergeOlderPage(rows: List<MailRow>, folder: String, page: MailPage): List<MailRow> {
+        val window = page.windowUids
+            ?: page.messages.takeIf { it.isNotEmpty() }?.let { m -> m.minOf { it.uid }..m.maxOf { it.uid } }
+        val kept = if (window == null) rows else rows.filterNot { it.folder == folder && it.uid in window }
+        val fresh = page.messages.map { MailRow(folder, it) }
+        val freshKeys = fresh.mapTo(HashSet()) { it.key }
+        return kept.filterNot { it.key in freshKeys } + fresh
+    }
+
     private fun cursorsOf(pages: List<Pair<String, MailPage>>): Map<String, Int> =
         pages.mapNotNull { (folder, page) -> page.nextBeforeSeq?.let { folder to it } }.toMap()
 
@@ -680,10 +1073,36 @@ class SchoolMailListViewModel @Inject constructor(
         _state.update { it.copy(actionError = error) }
     }
 
+    /**
+     * A search, or a page of its results, failed. Reported once as a toast like any other action,
+     * but a certificate failure stays on screen the way the poll leaves it ([poll]): it is the
+     * interception case, and a toast is easy to miss.
+     */
+    private fun searchFail(error: MailError) {
+        if (error is MailError.Certificate) fail(error) else actionFail(error)
+    }
+
+    /** A failure after which a search stops asking the server for the folders still to go. */
+    private fun endsServerSearch(error: MailError): Boolean =
+        error is MailError.AuthFailed || error is MailError.Network || error is MailError.Certificate
+
     fun dismissActionError() = _state.update { it.copy(actionError = null) }
 
     companion object {
         const val POLL_MS = 60_000L
+
+        /** How long after a first page lands a resume skips its look at the inbox. */
+        internal const val RESUME_POLL_FRESH_MS = 5_000L
+
+        /** How long a resume waits before deciding its look at the inbox; see [startPolling]. */
+        internal const val RESUME_POLL_GRACE_MS = 500L
+
+        /**
+         * How many more pages a scroll to the end fetches, of the list or of search results, when
+         * the one it asked for added nothing on screen: all deleted, already listed, or read under
+         * unread only. Bounded, so one scroll can never page through a whole mailbox.
+         */
+        internal const val EMPTY_PAGE_WALKBACK = 3
 
         /** Enough to fill a screen; the real load that follows a chip tap replaces it. */
         internal const val PREFETCH_LIMIT = 20

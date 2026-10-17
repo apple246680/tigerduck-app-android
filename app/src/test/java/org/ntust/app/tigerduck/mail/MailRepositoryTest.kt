@@ -212,6 +212,56 @@ class MailRepositoryTest {
         assertEquals(opened, opens.get())
     }
 
+    /**
+     * Another student can sign in over this one without a sign-out -- the one account change the
+     * sign-out collector never sees. A LIST already out when that happens comes back under the new
+     * student's generation, and must not be what their own first request finds resolved.
+     */
+    @Test
+    fun `a folder list that returns after another student signed in over this one is not kept as theirs`() = runTest {
+        val setup = TestSetup(backgroundScope)
+        setup.signedIn()
+        val before = setup.account.accountGeneration
+        server.onListFolders = {
+            server.onListFolders = null
+            server.passwords["B10000002"] = "pw"
+            runBlocking { setup.account.signIn("b10000002", "pw") }
+        }
+        // The first student's LIST was sent, and comes back for nobody.
+        setup.repository.folders { setup.account.accountGeneration == before }
+        assertTrue(setup.account.accountGeneration != before)
+        val lists = server.listCalls
+
+        // The second student's first request asks the server, not what the first one's LIST resolved.
+        setup.repository.folders()
+        assertEquals(lists + 1, server.listCalls)
+    }
+
+    @Test
+    fun `a dropped cached page is gone until the next first page writes a new one`() = runTest {
+        server.deliver("a")
+        val repo = TestSetup(backgroundScope).signedIn()
+        repo.loadPage("INBOX", null)
+        // Only a page of the generation found obsolete goes; this one is the server's current one.
+        repo.dropCachedPage("INBOX", server.uidValidity + 1)
+        assertNotNull(repo.cachedPage("INBOX"))
+        repo.dropCachedPage("INBOX", server.uidValidity)
+        assertNull(repo.cachedPage("INBOX"))
+        // Dropping a folder that has no cached page is nothing to fail over.
+        repo.dropCachedPage("INBOX", server.uidValidity)
+        assertEquals(listOf("a"), repo.loadPage("INBOX", null).messages.map { it.subject })
+        assertEquals(listOf("a"), repo.cachedPage("INBOX")!!.messages.map { it.subject })
+    }
+
+    @Test
+    fun `dropping a cached page leaves the demo mailbox as it is, having no cache behind it`() = runTest {
+        val repo = TestSetup(backgroundScope).signedIn("B10000099", "demo")
+        // The demo page reports validity 1, so this names exactly the page a real cache would drop.
+        repo.dropCachedPage("INBOX", 1)
+        assertEquals(listOf("期中考時間公告"), repo.cachedPage("INBOX")!!.messages.map { it.subject })
+        assertEquals(0, server.opens)
+    }
+
     @Test
     fun `a mail's source is downloaded once and served from the cache on every later visit`() = runTest {
         server.deliver("a")
@@ -413,6 +463,19 @@ class MailRepositoryTest {
         val local = repo.search("INBOX", "期中")
         assertTrue(local is SearchOutcome.LoadedOnly)
         assertEquals(listOf("期中考公告"), local.messages.map { it.subject })
+    }
+
+    @Test
+    fun `search returns the newest page of matches and keeps the rest to fetch`() = runTest {
+        val uids = (1..MailRepository.PAGE_SIZE + 2).map { server.deliver("期中考 $it") }
+        val repo = TestSetup(backgroundScope).signedIn()
+        val outcome = repo.search("INBOX", "期中") as SearchOutcome.Server
+        assertEquals(uids.takeLast(MailRepository.PAGE_SIZE).reversed(), outcome.messages.map { it.uid })
+        assertEquals(uids.take(2).reversed(), outcome.remaining)
+        assertEquals(server.uidValidity, outcome.uidValidity)
+        val page = repo.searchPage("INBOX", outcome.remaining)
+        assertEquals(uids.take(2).reversed(), page.messages.map { it.uid })
+        assertEquals(server.uidValidity, page.uidValidity)
     }
 
     @Test

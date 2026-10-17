@@ -4,10 +4,14 @@ import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -21,6 +25,9 @@ import org.ntust.app.tigerduck.mail.InMemoryCredentialStore
 import org.ntust.app.tigerduck.mail.InMemoryMailStateStore
 import org.ntust.app.tigerduck.mail.MailAccount
 import org.ntust.app.tigerduck.mail.MailError
+import org.ntust.app.tigerduck.mail.SentCopyNotice
+import org.ntust.app.tigerduck.mail.SentCopyNotices
+import org.ntust.app.tigerduck.mail.SentCopyOrigin
 import org.ntust.app.tigerduck.mail.MainDispatcherRule
 import org.ntust.app.tigerduck.mail.RecordingNotifier
 import org.ntust.app.tigerduck.mail.RecordingScheduler
@@ -47,6 +54,7 @@ class SchoolMailComposeViewModelTest {
     private val repo = FakeSchoolMailRepository()
     private lateinit var account: MailAccount
     private lateinit var cache: MailCache
+    private lateinit var notices: SentCopyNotices
     private val labels = ComposePrefill.Labels({ d, s -> "On $d, $s wrote:" }, "-- Forwarded --", { "From: $it" }, { "Date: $it" }, { "Subject: $it" }, { "To: $it" })
     private val noPicks = PickedAttachmentReader { null }
 
@@ -55,15 +63,16 @@ class SchoolMailComposeViewModelTest {
         cache = MailCache(tmp.newFolder("cache"))
         account = MailAccount(InMemoryCredentialStore(), InMemoryMailStateStore(), FakeMailServer().factory(), cache,
             FakeDemoGate(), schoolMailSite(), RecordingScheduler(), RecordingNotifier(), testApplicationScope())
+        notices = SentCopyNotices(account, testApplicationScope())
     }
 
     // The same TestDispatcher backs both Dispatchers.Main and the injected @IoDispatcher, so a
     // withContext(io) hop stays synchronous under the test the way SchoolMailMessageViewModelTest does it.
-    private fun handle(mode: ComposeMode, folder: String = "", uid: Long = -1) =
-        SavedStateHandle(mapOf("mode" to mode.name, "folder" to folder, "uid" to uid))
+    private fun handle(mode: ComposeMode, folder: String = "", uid: Long = -1, mailto: String = "") =
+        SavedStateHandle(mapOf("mode" to mode.name, "folder" to folder, "uid" to uid, "mailto" to mailto))
 
-    private fun vm(mode: ComposeMode, folder: String = "", uid: Long = -1) =
-        SchoolMailComposeViewModel(handle(mode, folder, uid), repo, account, cache, noPicks, main.dispatcher)
+    private fun vm(mode: ComposeMode, folder: String = "", uid: Long = -1, mailto: String = "") =
+        SchoolMailComposeViewModel(handle(mode, folder, uid, mailto), repo, account, cache, noPicks, notices, main.dispatcher)
             .also { it.prefill(labels) }
 
     @Test
@@ -71,7 +80,7 @@ class SchoolMailComposeViewModelTest {
         repo.add("INBOX", mailSummary(5, subject = "期中考"))
         repo.bodies[5] = MailBody("<p>line1</p>", null, emptyList(), emptyMap())
         val io = HeldDispatcher()
-        val vm = SchoolMailComposeViewModel(handle(ComposeMode.REPLY, "INBOX", 5), repo, account, cache, noPicks, io)
+        val vm = SchoolMailComposeViewModel(handle(ComposeMode.REPLY, "INBOX", 5), repo, account, cache, noPicks, notices, io)
         vm.prefill(labels)
         // The original is already fetched, and neither jsoup pass has run: the form is still
         // loading rather than sanitizing and flattening the sender's HTML on Main.
@@ -87,7 +96,7 @@ class SchoolMailComposeViewModelTest {
     fun `a new message opened for someone starts addressed to them and is not dirty`() {
         val vm = SchoolMailComposeViewModel(
             SavedStateHandle(mapOf("mode" to "NEW", "folder" to "", "uid" to -1L, "to" to "amy@mail.ntust.edu.tw")),
-            repo, account, cache, noPicks, main.dispatcher,
+            repo, account, cache, noPicks, notices, main.dispatcher,
         ).also { it.prefill(labels) }
 
         assertEquals(listOf("amy@mail.ntust.edu.tw"), vm.state.value.to.entries)
@@ -194,26 +203,55 @@ class SchoolMailComposeViewModelTest {
     @Test
     fun `a pick that can't be measured shows the attachment error instead of vanishing silently`() {
         val unmeasurable = PickedAttachmentReader { null }
-        val vm = SchoolMailComposeViewModel(handle(ComposeMode.NEW), repo, account, cache, unmeasurable, main.dispatcher)
+        val vm = SchoolMailComposeViewModel(handle(ComposeMode.NEW), repo, account, cache, unmeasurable, notices, main.dispatcher)
         vm.addPicked(listOf<Uri?>(null))
         assertEquals(ComposeError.TooLarge, vm.state.value.error)
         assertTrue(vm.state.value.attachments.isEmpty())
+    }
+
+    // --- a mailto link -----------------------------------------------------------------
+
+    @Test
+    fun `a mailto link starts a new mail from its fields, and leaving it untouched asks nothing`() {
+        val vm = SchoolMailComposeViewModel(
+            handle(ComposeMode.NEW, mailto = "mailto:office@mail.ntust.edu.tw?cc=b@x.tw&subject=%E8%AB%8B%E5%95%8F&body=Hi"),
+            repo, account, cache, noPicks, notices, main.dispatcher,
+        )
+        vm.prefill(labels)
+        val s = vm.state.value
+        assertEquals(listOf("office@mail.ntust.edu.tw"), s.to.entries)
+        assertEquals(listOf("b@x.tw"), s.cc.entries)
+        assertTrue(s.showCcBcc)
+        assertEquals("請問", s.subject)
+        assertEquals("Hi", s.body)
+        assertFalse("nothing typed yet", s.dirty)
+        vm.send()
+        assertEquals(listOf("office@mail.ntust.edu.tw"), repo.sent.single().first.to.map { it.address })
     }
 
     // --- the sent copy ---------------------------------------------------------------
 
     @Test
     fun `a filed sent copy raises no notice`() {
-        val vm = vm(ComposeMode.NEW)
-        vm.setTo("a@x.tw")
-        vm.send()
-        assertTrue(vm.state.value.done)
-        assertFalse(vm.state.value.sentCopyMissing)
+        listOf(SentCopy.Filed, SentCopy.ServerFiledItself).forEach { outcome ->
+            repo.sentCopy = outcome
+            val vm = vm(ComposeMode.NEW)
+            vm.setTo("a@x.tw")
+            vm.send()
+            assertTrue(vm.state.value.done)
+            assertNull("$outcome", notices.posted?.notice)
+        }
     }
 
     @Test
-    fun `a sent copy that never reached the server is a notice, not a failed send`() {
-        listOf(SentCopy.NotAttempted, SentCopy.Unknown, SentCopy.Failed(MailError.ServerBusy())).forEach { outcome ->
+    fun `a sent copy that never reached the server is a notice with its reason, not a failed send`() {
+        val busy = MailError.ServerBusy()
+        listOf(
+            SentCopy.NotAttempted to SentCopyNotice.NoFolder,
+            SentCopy.Unknown to SentCopyNotice.Unknown,
+            SentCopy.Failed(busy) to SentCopyNotice.Failed(busy),
+        ).forEach { (outcome, notice) ->
+            notices.dismiss()
             repo.sentCopy = outcome
             val vm = vm(ComposeMode.NEW)
             vm.setTo("a@x.tw")
@@ -221,9 +259,44 @@ class SchoolMailComposeViewModelTest {
             val s = vm.state.value
             assertTrue("$outcome still sent the mail", s.done)
             assertEquals("$outcome must never read as a failed send", null, s.error)
-            assertTrue("$outcome must say the copy is missing", s.sentCopyMissing)
+            assertEquals("$outcome must say why the copy is missing", notice, notices.posted?.notice)
         }
         assertEquals(3, repo.sent.size)
+    }
+
+    @Test
+    fun `a sent-copy notice names the screen the mail goes back to`() {
+        repo.sentCopy = SentCopy.NotAttempted
+        repo.add("INBOX", mailSummary(5, subject = "期中考"))
+        repo.bodies[5] = MailBody(null, "line1", emptyList(), emptyMap())
+        fun originAfterSending(vm: SchoolMailComposeViewModel): SentCopyOrigin? {
+            notices.dismiss()
+            if (vm.state.value.to.entries.isEmpty()) vm.setTo("a@x.tw")
+            vm.send()
+            return notices.posted?.origin
+        }
+        assertEquals(SentCopyOrigin.List, originAfterSending(vm(ComposeMode.NEW)))
+        assertEquals(SentCopyOrigin.Message("INBOX", 5), originAfterSending(vm(ComposeMode.REPLY, "INBOX", 5)))
+        assertEquals(SentCopyOrigin.Message("INBOX", 5), originAfterSending(vm(ComposeMode.FORWARD, "INBOX", 5)))
+        // A mailto: link tapped in a mail goes back to that mail.
+        assertEquals(
+            SentCopyOrigin.Message("INBOX", 5),
+            originAfterSending(vm(ComposeMode.NEW, "INBOX", 5, mailto = "mailto:office@mail.ntust.edu.tw")),
+        )
+    }
+
+    @Test
+    fun `a send the account left during reports nothing to the next one`() {
+        repo.sentCopy = SentCopy.NotAttempted
+        // Unconfined, so the sign-out's cleanup has run by the time the send comes back.
+        val notices = SentCopyNotices(account, CoroutineScope(SupervisorJob() + Dispatchers.Unconfined))
+        val vm = SchoolMailComposeViewModel(handle(ComposeMode.NEW), repo, account, cache, noPicks, notices, main.dispatcher)
+        vm.prefill(labels)
+        vm.setTo("a@x.tw")
+        repo.onSend = { account.signOut() }
+        vm.send()
+        assertTrue(vm.state.value.done)
+        assertNull(notices.posted)
     }
 
     @Test
@@ -237,7 +310,7 @@ class SchoolMailComposeViewModelTest {
         assertTrue(account.authFailed.value)
         assertTrue("the send still succeeded", vm.state.value.done)
         assertEquals(null, vm.state.value.error)
-        assertTrue(vm.state.value.sentCopyMissing)
+        assertTrue(notices.posted?.notice is SentCopyNotice.Failed)
     }
 
     @Test
@@ -448,7 +521,7 @@ class SchoolMailComposeViewModelTest {
         val slowReader = PickedAttachmentReader {
             ComposeAttachment("p", "p.txt", "text/plain", 3, ComposeAttachment.Source.Local { ByteArrayInputStream("hi!".toByteArray()) })
         }
-        val vm = SchoolMailComposeViewModel(handle(ComposeMode.NEW), repo, account, cache, slowReader, pickerDispatcher)
+        val vm = SchoolMailComposeViewModel(handle(ComposeMode.NEW), repo, account, cache, slowReader, notices, pickerDispatcher)
         vm.setTo("a@x.tw")
         vm.addPicked(listOf<Uri?>(null))
         assertTrue(vm.state.value.pendingPicks > 0)

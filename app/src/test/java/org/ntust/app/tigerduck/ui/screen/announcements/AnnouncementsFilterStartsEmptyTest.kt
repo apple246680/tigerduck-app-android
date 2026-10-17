@@ -26,6 +26,7 @@ import org.ntust.app.tigerduck.network.model.BulletinSummary
 import org.ntust.app.tigerduck.network.model.OrgLabel
 import org.ntust.app.tigerduck.network.model.TaxonomyResponse
 import org.ntust.app.tigerduck.ui.screen.announcements.AnnouncementsViewModel.LoadState
+import org.ntust.app.tigerduck.util.AppReturns
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
@@ -80,7 +81,7 @@ class AnnouncementsFilterStartsEmptyTest {
         val api = BulletinApiClient(client, prefs, AuthTokenManager(tokens, client, prefs, "device-1"))
         return AnnouncementsViewModel(
             SavedStateHandle(), api, cache, repository, BulletinReadStateStore(context),
-            testDemoAccount(context, prefs, cache), testCredentials(context),
+            testDemoAccount(context, prefs, cache), testCredentials(context), AppReturns(now = { 0L }, register = {}),
         )
     }
 

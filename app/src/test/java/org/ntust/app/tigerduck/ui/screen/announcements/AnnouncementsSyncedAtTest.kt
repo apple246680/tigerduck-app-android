@@ -25,6 +25,7 @@ import org.ntust.app.tigerduck.mail.MainDispatcherRule
 import org.ntust.app.tigerduck.network.BulletinApiClient
 import org.ntust.app.tigerduck.network.model.BulletinSummary
 import org.ntust.app.tigerduck.ui.screen.announcements.AnnouncementsViewModel.LoadState
+import org.ntust.app.tigerduck.util.AppReturns
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
@@ -89,7 +90,7 @@ class AnnouncementsSyncedAtTest {
         val api = BulletinApiClient(client, prefs, AuthTokenManager(tokens, client, prefs, "device-1"))
         return AnnouncementsViewModel(
             SavedStateHandle(), api, cache, BulletinRepository(), BulletinReadStateStore(context),
-            testDemoAccount(context, prefs, cache), credentials,
+            testDemoAccount(context, prefs, cache), credentials, AppReturns(now = { 0L }, register = {}),
         )
     }
 

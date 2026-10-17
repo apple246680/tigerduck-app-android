@@ -69,6 +69,19 @@ class MailCache(
         File(foldersDir, key(folder)).delete()
     }
 
+    /**
+     * Drops [folder]'s cached page only while it is still the one read under [uidValidity]. A
+     * caller that found that generation gone on the server must not take with it a page the
+     * current generation has written since -- the only offline copy of the new mailbox there is.
+     * Read, compared and deleted under the one lock, so a save in between is never the page that goes.
+     */
+    @Synchronized
+    fun deleteFolderUnder(folder: String, uidValidity: Long) {
+        val file = File(foldersDir, key(folder))
+        val dto = read(file, FolderCacheDto::class.java) ?: return
+        if (dto.uidValidity == uidValidity) file.delete()
+    }
+
     @Synchronized
     fun loadBody(folder: String, uid: Long, uidValidity: Long): MailBody? {
         val file = File(bodiesDir, key(bodyKey(folder, uid)))

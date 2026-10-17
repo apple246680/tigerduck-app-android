@@ -32,6 +32,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.FilterAltOff
@@ -121,6 +122,7 @@ import org.ntust.app.tigerduck.ui.component.rememberAppBarState
 import org.ntust.app.tigerduck.ui.component.rememberChromeContentPadding
 import org.ntust.app.tigerduck.ui.component.rememberSearchRevealState
 import org.ntust.app.tigerduck.ui.component.scrollbar
+import org.ntust.app.tigerduck.ui.component.searchClearIcon
 import org.ntust.app.tigerduck.ui.component.statusText
 import org.ntust.app.tigerduck.ui.screen.settings.LoginSheet
 import org.ntust.app.tigerduck.ui.screen.settings.signInFieldValue
@@ -142,6 +144,8 @@ fun SchoolMailScreen(
     val signedIn by viewModel.signedIn.collectAsStateWithLifecycle()
     val authFailed by viewModel.authFailed.collectAsStateWithLifecycle()
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val sentCopyNotice by viewModel.sentCopyNotice.collectAsStateWithLifecycle()
+    val showAuthFailedBanner by viewModel.showAuthFailedBanner.collectAsStateWithLifecycle()
     val signingIn by accountViewModel.signingIn.collectAsStateWithLifecycle()
     val signInError by accountViewModel.error.collectAsStateWithLifecycle()
     var showReauthSheet by remember { mutableStateOf(false) }
@@ -284,6 +288,8 @@ fun SchoolMailScreen(
                                 icon = Icons.Filled.Mail,
                                 title = stringResource(R.string.school_mail_load_failed_title),
                                 message = stringResource(failed.error.messageRes()),
+                                actionLabel = stringResource(R.string.action_retry),
+                                onAction = viewModel::refresh,
                             )
                         }
                     }
@@ -364,12 +370,16 @@ fun SchoolMailScreen(
                     }
                 }
                 DevMailServerBanner(accountViewModel.devServer)
-                if (authFailed) {
-                    AuthFailedBanner(onSignInAgain = {
-                        accountViewModel.clearError()
-                        showReauthSheet = true
-                    })
+                if (showAuthFailedBanner) {
+                    AuthFailedBanner(
+                        onSignInAgain = {
+                            accountViewModel.clearError()
+                            showReauthSheet = true
+                        },
+                        onClose = viewModel::dismissAuthFailedBanner,
+                    )
                 }
+                sentCopyNotice?.let { SentCopyNoticeBanner(it, onDismiss = viewModel::dismissSentCopyNotice) }
                 SearchDrawer(searchReveal) {
                     OutlinedTextField(
                         value = state.searchText,
@@ -379,6 +389,7 @@ fun SchoolMailScreen(
                             .padding(horizontal = 16.dp, vertical = 4.dp)
                             .onFocusChanged { searchFocused = it.isFocused },
                         leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                        trailingIcon = searchClearIcon(state.searchText) { viewModel.setSearchText("") },
                         placeholder = { Text(stringResource(R.string.school_mail_search_prompt)) },
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp),
@@ -612,13 +623,14 @@ private fun SwipeableMailCard(
     }
 }
 
+/** [onClose] hides it until the account signs in again or fails again; the mail already loaded stays readable. */
 @Composable
-private fun AuthFailedBanner(onSignInAgain: () -> Unit) {
+internal fun AuthFailedBanner(onSignInAgain: () -> Unit, onClose: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
     ) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 stringResource(R.string.school_mail_auth_failed_banner),
                 style = MaterialTheme.typography.bodySmall,
@@ -626,6 +638,13 @@ private fun AuthFailedBanner(onSignInAgain: () -> Unit) {
                 modifier = Modifier.weight(1f),
             )
             TextButton(onClick = onSignInAgain) { Text(stringResource(R.string.action_sign_in_again)) }
+            IconButton(onClick = onClose) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.action_close),
+                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
         }
     }
 }

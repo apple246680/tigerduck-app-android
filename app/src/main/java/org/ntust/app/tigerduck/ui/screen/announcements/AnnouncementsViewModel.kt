@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.ntust.app.tigerduck.R
+import org.ntust.app.tigerduck.util.AppReturns
 import org.ntust.app.tigerduck.data.BulletinReadStateStore
 import org.ntust.app.tigerduck.data.BulletinRepository
 import org.ntust.app.tigerduck.data.RefreshPolicy
@@ -41,6 +43,47 @@ import javax.inject.Inject
 internal val AnnouncementsRefreshPolicy = RefreshPolicy()
 
 /**
+ * The empty list's title and message. With bulletins loaded but none shown, a filter, a search or
+ * unread only is what hid them, and the message says nothing matches rather than that there is
+ * nothing at all.
+ */
+internal fun bulletinEmptyText(hasItems: Boolean, unreadOnly: Boolean, hasActiveFilter: Boolean): Pair<Int, Int> = when {
+    !hasItems -> R.string.bulletin_no_bulletins_title to R.string.bulletin_no_bulletins_message
+    else -> (if (unreadOnly) R.string.bulletin_no_unread_title else R.string.bulletin_no_bulletins_title) to
+        (if (unreadOnly || hasActiveFilter) R.string.bulletin_no_match_message else R.string.bulletin_no_bulletins_message)
+}
+
+internal enum class BulletinPlaceholder { EMPTY, FAILED }
+
+/**
+ * What stands in for an empty list, or null for none: the failure only while there are no
+ * bulletins at all -- bulletins a filter or search hides are still there, and saying the load
+ * failed would hide that it was the filter -- and the empty state once a load has answered or
+ * bulletins are in hand.
+ */
+internal fun bulletinPlaceholder(hasItems: Boolean, hasDisplayed: Boolean, loadState: AnnouncementsViewModel.LoadState): BulletinPlaceholder? = when {
+    hasDisplayed -> null
+    !hasItems && loadState is AnnouncementsViewModel.LoadState.Failed -> BulletinPlaceholder.FAILED
+    hasItems || loadState is AnnouncementsViewModel.LoadState.Loaded -> BulletinPlaceholder.EMPTY
+    else -> null
+}
+
+/**
+ * Whether a bulletin answers the search [text]: its title as shown, its original title -- the
+ * shown one may have been cleaned up past the wording someone remembers -- or its summary.
+ */
+internal fun BulletinSummary.matchesSearch(text: String): Boolean =
+    displayTitle.contains(text, ignoreCase = true) ||
+        title.contains(text, ignoreCase = true) ||
+        summary?.contains(text, ignoreCase = true) == true
+
+/** How long the app may sit in the background before the bulletin search is cleared on return. */
+internal const val BULLETIN_SEARCH_RESET_MS = 5 * 60_000L
+
+/** Whether coming back after [awayMs] in the background clears the search. */
+internal fun bulletinSearchResets(awayMs: Long): Boolean = awayMs > BULLETIN_SEARCH_RESET_MS
+
+/**
  * Drives AnnouncementsScreen. Ports BulletinsViewModel.swift faithfully:
  * disk-cache seed → network refresh → background prefetch chain → filter
  * intersection. Sort key is `(postedAt DESC, id DESC)` so server pages and
@@ -55,6 +98,7 @@ class AnnouncementsViewModel @Inject constructor(
     private val readState: BulletinReadStateStore,
     private val demoAccount: DemoAccount,
     private val credentials: CredentialManager,
+    appReturns: AppReturns,
 ) : ViewModel() {
 
 
@@ -89,6 +133,10 @@ class AnnouncementsViewModel @Inject constructor(
     ) {
         val hasUnread: Boolean
             get() = filtered.any { it.id !in readIds }
+
+        /** A department, category or search narrows the list, so an empty one has hidden bulletins. */
+        val hasActiveFilter: Boolean
+            get() = selectedOrgs.isNotEmpty() || selectedTags.isNotEmpty() || searchText.isNotBlank()
     }
 
     private val _state = MutableStateFlow(
@@ -102,9 +150,28 @@ class AnnouncementsViewModel @Inject constructor(
     )
     val state: StateFlow<State> = _state.asStateFlow()
 
+    /**
+     * Counts the searches cleared on the app's return ([BULLETIN_SEARCH_RESET_MS]), for the screen
+     * to drop the search field's focus along with its text.
+     */
+    private val _searchResets = MutableStateFlow(0)
+    val searchResets: StateFlow<Int> = _searchResets.asStateFlow()
+
     init {
         readState.readIds
             .onEach { ids -> _state.update { withDisplayed(it.copy(readIds = ids)) } }
+            .launchIn(viewModelScope)
+        // A search left behind for more than five minutes in the background is cleared, so coming
+        // back later does not open on a stale filtered list; a quick switch to another app keeps
+        // it. The whole app's coming and going, not the list screen's: the app can be left from a
+        // bulletin's own page, where the list is not on screen to notice.
+        appReturns.returns
+            .onEach { away ->
+                if (bulletinSearchResets(away) && _state.value.searchText.isNotEmpty()) {
+                    setSearch("")
+                    _searchResets.update { it + 1 }
+                }
+            }
             .launchIn(viewModelScope)
     }
 
@@ -455,11 +522,7 @@ class AnnouncementsViewModel @Inject constructor(
             .filter {
                 s.selectedTags.isEmpty() || it.contentTags.any { tag -> tag in s.selectedTags }
             }
-            .filter {
-                if (text.isEmpty()) true
-                else it.displayTitle.contains(text, ignoreCase = true) ||
-                        it.summary?.contains(text, ignoreCase = true) == true
-            }
+            .filter { text.isEmpty() || it.matchesSearch(text) }
             .toList()
         return withDisplayed(s.copy(filtered = filtered))
     }

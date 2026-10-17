@@ -1,9 +1,11 @@
 package org.ntust.app.tigerduck.ui.screen.mail
 
+import android.net.Uri
 import android.text.format.Formatter
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -88,10 +91,8 @@ fun SchoolMailComposeScreen(onDone: () -> Unit, viewModel: SchoolMailComposeView
     LaunchedEffect(state.done) {
         if (!state.done) return@LaunchedEffect
         if (state.savedDraft) Toast.makeText(context, R.string.school_mail_saved, Toast.LENGTH_SHORT).show()
-        // The mail went out; only the student's own copy of it is missing. A notice on the way
-        // out, not an error -- LENGTH_LONG because, unlike "Saved", it asks them to do something
-        // about it later.
-        if (state.sentCopyMissing) Toast.makeText(context, R.string.school_mail_sent_copy_not_saved, Toast.LENGTH_LONG).show()
+        // A missing sent copy is not told here: the list and the mail this goes back to show it
+        // until it is dismissed (SentCopyNoticeBanner).
         onDone()
     }
 
@@ -111,6 +112,9 @@ fun SchoolMailComposeScreen(onDone: () -> Unit, viewModel: SchoolMailComposeView
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         viewModel.addPicked(uris)
     }
+    // Photos through the system Photo Picker, the usual way to send one, as the iPhone's Photos
+    // picker sits beside its file importer. The same size checks as a picked file.
+    val pickPhotos = rememberPhotoPicker(viewModel::addPicked)
     val fieldsEnabled = !state.sending && !state.loading
 
     Scaffold(
@@ -135,6 +139,9 @@ fun SchoolMailComposeScreen(onDone: () -> Unit, viewModel: SchoolMailComposeView
                     }
                 },
                 actions = {
+                    IconButton(onClick = pickPhotos, enabled = fieldsEnabled) {
+                        Icon(Icons.Filled.Image, contentDescription = stringResource(R.string.class_table_import_choose_photo))
+                    }
                     IconButton(onClick = { picker.launch(arrayOf("*/*")) }, enabled = fieldsEnabled) {
                         Icon(Icons.Filled.AttachFile, contentDescription = stringResource(R.string.school_mail_add_attachment))
                     }
@@ -251,6 +258,19 @@ fun SchoolMailComposeScreen(onDone: () -> Unit, viewModel: SchoolMailComposeView
             }
         }
     }
+}
+
+/**
+ * Launches the system Photo Picker for images and hands back what was picked. Where the platform
+ * has no picker of its own, androidx falls back to the document picker for images, with no Play
+ * services involved, so the F-Droid build gets the same button.
+ */
+@Composable
+internal fun rememberPhotoPicker(onPicked: (List<Uri>) -> Unit): () -> Unit {
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
+        if (uris.isNotEmpty()) onPicked(uris)
+    }
+    return { launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
 }
 
 /** The one place that turns a [ComposeError] into display text, shared by the inline [ErrorText]

@@ -3,6 +3,7 @@
 package org.ntust.app.tigerduck.ui.screen.mail
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -24,6 +25,9 @@ import org.ntust.app.tigerduck.mail.InMemoryCredentialStore
 import org.ntust.app.tigerduck.mail.InMemoryMailStateStore
 import org.ntust.app.tigerduck.mail.MailAccount
 import org.ntust.app.tigerduck.mail.MailError
+import org.ntust.app.tigerduck.mail.SentCopyNotice
+import org.ntust.app.tigerduck.mail.SentCopyOrigin
+import org.ntust.app.tigerduck.mail.SentCopyNotices
 import org.ntust.app.tigerduck.mail.MainDispatcherRule
 import org.ntust.app.tigerduck.mail.RecordingNotifier
 import org.ntust.app.tigerduck.mail.RecordingScheduler
@@ -34,6 +38,7 @@ import org.ntust.app.tigerduck.mail.imap.SpecialFolder
 import org.ntust.app.tigerduck.mail.mailSummary
 import org.ntust.app.tigerduck.mail.model.FolderStatus
 import org.ntust.app.tigerduck.mail.model.MailBody
+import org.ntust.app.tigerduck.mail.model.MailPage
 import org.ntust.app.tigerduck.mail.store.MailCache
 import org.ntust.app.tigerduck.mail.sync.CheckOutcome
 import org.ntust.app.tigerduck.mail.sync.CheckSource
@@ -52,6 +57,7 @@ class SchoolMailListViewModelTest {
     private lateinit var account: MailAccount
     private lateinit var checker: MailChecker
     private lateinit var vm: SchoolMailListViewModel
+    private lateinit var notices: SentCopyNotices
 
     // Where the sign-out test's cache wipe runs, stopped before TemporaryFolder deletes its folder.
     private val appScope = testApplicationScope()
@@ -67,8 +73,12 @@ class SchoolMailListViewModelTest {
         account = MailAccount(InMemoryCredentialStore(), state, server.factory(), MailCache(tmp.root),
             FakeDemoGate(), schoolMailSite(), RecordingScheduler(), RecordingNotifier(), appScope)
         runBlocking { account.signIn("b10000001", "pw") }
+        notices = SentCopyNotices(account, CoroutineScope(main.dispatcher))
         checker = MailChecker(account, state, server.factory(), RecordingNotifier(), MailCache(tmp.root)) { now }
-        vm = SchoolMailListViewModel(repo, account, checker, schoolMailSite())
+        vm = SchoolMailListViewModel(
+            repo, account, checker, schoolMailSite(),
+            { main.dispatcher.scheduler.currentTime }, notices,
+        )
     }
 
     @Test
@@ -130,6 +140,498 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
+    fun `a search the server fails keeps the list and shows the loaded matches`() {
+        repo.add("INBOX", mailSummary(1, subject = "期中考"), mailSummary(2, subject = "other"))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        repo.searchError = MailError.Network()
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        val s = vm.state.value
+        assertTrue(s.loadState is SchoolMailListViewModel.LoadState.Loaded)
+        assertEquals(listOf(1L), s.displayed.map { it.uid })
+        assertTrue(s.searchLocalOnly)
+        assertTrue(s.actionError is MailError.Network)
+    }
+
+    @Test
+    fun `a password the server rejects during a search is not sent again for the next folder`() {
+        repo.add("INBOX", mailSummary(1, subject = "期中考"))
+        repo.add("寄件備份匣", mailSummary(2, subject = "期中考 reply"))
+        vm.load()
+        repo.foldersTouched.clear()
+        repo.searchError = MailError.AuthFailed()
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        // Spec §7.4: the rejection reaches the account before Sent is searched, so no second LOGIN.
+        assertEquals(listOf("INBOX"), repo.foldersTouched)
+        assertTrue(account.authFailed.value)
+        // Both folders still show their matches among the loaded mail.
+        assertEquals(setOf(1L, 2L), vm.state.value.displayed.map { it.uid }.toSet())
+        assertTrue(vm.state.value.searchLocalOnly)
+    }
+
+    @Test
+    fun `a search that cannot reach the server stops trying folder after folder`() {
+        repo.add("INBOX", mailSummary(1, subject = "期中考"))
+        repo.add("寄件備份匣", mailSummary(2, subject = "期中考 reply"))
+        vm.load()
+        repo.foldersTouched.clear()
+        repo.searchError = MailError.Network()
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        assertEquals(listOf("INBOX"), repo.foldersTouched)
+        assertEquals(setOf(1L, 2L), vm.state.value.displayed.map { it.uid }.toSet())
+        assertTrue(vm.state.value.actionError is MailError.Network)
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Loaded)
+    }
+
+    /**
+     * All mail, with every match read: under unread only the first page shows nothing, which is the
+     * one case where a search fetches another page by itself. The inbox answers, and then [error]
+     * ends the server's part of the search at Sent.
+     */
+    private fun searchWhoseServerIsLostAfterTheInbox(error: MailError) {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..5L).map { mailSummary(it, subject = "期中考 $it", seen = true) }.toTypedArray())
+        repo.add(SENT, mailSummary(9, subject = "期中考 reply", seen = true))
+        vm.load()
+        vm.setUnreadOnly(true)
+        repo.searchError = error
+        repo.searchErrorFolder = SENT
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        assertTrue(vm.state.value.displayed.isEmpty())
+        assertTrue(vm.state.value.searchLocalOnly)
+        assertFalse(vm.state.value.isPaginating)
+    }
+
+    @Test
+    fun `a search that lost the connection fetches no more results on its own, even with nothing on screen`() {
+        searchWhoseServerIsLostAfterTheInbox(MailError.Network())
+        assertTrue(vm.state.value.actionError is MailError.Network)
+        // The inbox's remaining matches are left alone: fetching a page of them would open the
+        // connection again right after the search decided to stop trying it.
+        assertTrue(repo.searchPages.isEmpty())
+    }
+
+    @Test
+    fun `a search the password was rejected during fetches no more results on its own`() {
+        searchWhoseServerIsLostAfterTheInbox(MailError.AuthFailed())
+        assertTrue(account.authFailed.value)
+        // Spec §7.4: a page of results is one more LOGIN with the rejected password.
+        assertTrue(repo.searchPages.isEmpty())
+    }
+
+    @Test
+    fun `a certificate failure during a search stays on screen, as it does for the poll`() {
+        repo.add("INBOX", mailSummary(1, subject = "期中考"))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        repo.searchError = MailError.Certificate()
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        val s = vm.state.value
+        assertTrue((s.loadState as? SchoolMailListViewModel.LoadState.Failed)?.error is MailError.Certificate)
+        // The list it searched is still there, with the loaded matches.
+        assertEquals(listOf(1L), s.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `a certificate failure while paging search results stays on screen`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..5L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        repo.searchPageError = MailError.Certificate()
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertTrue((vm.state.value.loadState as? SchoolMailListViewModel.LoadState.Failed)?.error is MailError.Certificate)
+    }
+
+    @Test
+    fun `a page of search results that fails is asked for once, not again and again`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..9L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        repo.searchPageError = MailError.ServerBusy()
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertEquals(1, repo.searchPages.size)
+        assertTrue(vm.state.value.actionError is MailError.ServerBusy)
+        assertFalse(vm.state.value.isPaginating)
+        // The page stays unfetched: the next scroll to the end asks for the same page again.
+        repo.searchPageError = null
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertEquals(2, repo.searchPages.size)
+        assertEquals(repo.searchPages[0], repo.searchPages[1])
+    }
+
+    @Test
+    fun `search results keep paging past the first page as the list scrolls`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..5L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray(), mailSummary(6, subject = "other"))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        assertEquals(listOf(5L, 4L), vm.state.value.displayed.map { it.uid })
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertEquals(listOf(5L, 4L, 3L, 2L, 1L), vm.state.value.displayed.map { it.uid })
+        assertEquals(listOf("INBOX" to listOf(3L, 2L, 1L)), repo.searchPages)
+        // The matches have run out; scrolling to the end again asks for nothing.
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertEquals(1, repo.searchPages.size)
+    }
+
+    @Test
+    fun `a search whose first page shows nothing under unread only fetches on until something shows`() {
+        repo.pageSize = 2
+        repo.add("INBOX", mailSummary(1, subject = "期中考 1"), mailSummary(2, subject = "期中考 2", seen = true), mailSummary(3, subject = "期中考 3", seen = true))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setUnreadOnly(true)
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        // No row on screen means no last row to scroll to, so the search cannot wait for one.
+        assertEquals(listOf(1L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `search results from a recreated folder are dropped, the list reloads and the search runs again`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..5L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        val firstPages = repo.pageLimits.size
+        val searches = repo.searchCalls
+        repo.searchPageValidity = 2
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        // The matches were found under another UIDVALIDITY: none of them can be trusted now, so
+        // the page is not added, the list reloads, and the query runs again over the recreated
+        // folder. What is on screen is the new search's answer -- not an empty result left over
+        // a list that reloaded perfectly well, which is all a search of this one folder showed.
+        assertEquals(firstPages + 1, repo.pageLimits.size)
+        assertEquals(1, repo.searchPages.size)
+        assertEquals(searches + 1, repo.searchCalls)
+        assertEquals(listOf(5L, 4L), vm.state.value.displayed.map { it.uid })
+        assertEquals("期中", vm.state.value.searchText)
+        assertFalse(vm.state.value.isSearching)
+        assertFalse(vm.state.value.isPaginating)
+    }
+
+    @Test
+    fun `a recreated folder whose reload fails shows none of its old rows, not even as loaded matches`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..5L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        val searches = repo.searchCalls
+        // The folder was recreated, and the connection goes before the list can reload from it.
+        repo.searchPageValidity = 2
+        repo.loadError = MailError.Network()
+        repo.searchError = MailError.Network()
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        // The rows the list held were read under the old UIDVALIDITY. A search run again now would
+        // fail too and fall back to the loaded mail -- which must not be those rows, so it is not
+        // run, and the list keeps nothing of the old mailbox for a later one to fall back to.
+        assertEquals(emptyList<Long>(), vm.state.value.displayed.map { it.uid })
+        assertEquals(searches, repo.searchCalls)
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        vm.setSearchText("")
+        assertEquals(emptyList<Long>(), vm.state.value.displayed.map { it.uid })
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        assertEquals(emptyList<Long>(), vm.state.value.displayed.map { it.uid })
+        assertFalse(vm.state.value.isSearching)
+        assertFalse(vm.state.value.isPaginating)
+    }
+
+    @Test
+    fun `a recreated folder whose reload fails is not painted from its cache again`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..5L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        repo.searchPageValidity = 2
+        repo.loadError = MailError.Network()
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertTrue(vm.state.value.messages.isEmpty())
+        // Away and back while the server stays unreachable. The folder's cache still held the old
+        // mailbox's page, and painting it again would put the rows -- and a cursor into them --
+        // back for the next scroll and the next failing search to read.
+        vm.setSearchText("")
+        vm.selectFolder(FolderSelection.Real("回收筒"))
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        assertEquals(emptyList<Long>(), vm.state.value.messages.map { it.uid })
+        assertTrue(vm.state.value.cursors.isEmpty())
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        repo.searchError = MailError.Network()
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        assertEquals(emptyList<Long>(), vm.state.value.displayed.map { it.uid })
+        // Once the server answers again, the folder loads afresh.
+        repo.loadError = null
+        vm.setSearchText("")
+        vm.refresh()
+        assertEquals(listOf(5L, 4L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `a recreated folder's failed reload leaves a cache that already holds the new mailbox alone`() {
+        repo.pageSize = 2
+        repo.add("INBOX", mailSummary(1, sentAt = at(100)), mailSummary(2, sentAt = at(200)), mailSummary(3, sentAt = at(300)), mailSummary(4, sentAt = at(400)))
+        repo.add(SENT, mailSummary(9, sentAt = at(50)))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        // The inbox was recreated. A refresh of All mail caches its page under the new UIDVALIDITY
+        // but fails at Sent, so the rows on screen -- and the cursor into them -- stay the old
+        // mailbox's.
+        repo.pageValidity = 2
+        repo.loadError = MailError.Network()
+        repo.loadErrorFolder = SENT
+        selectAll()
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        assertEquals(2L, runBlocking { repo.cachedPage("INBOX") }!!.uidValidity)
+        assertEquals(mapOf("INBOX" to 2), vm.state.value.cursors)
+        // The older page comes down under the new validity, and the connection goes right after.
+        repo.olderPage = { _, _ ->
+            repo.loadErrorFolder = null
+            MailPage(2, 4, listOf(mailSummary(2, sentAt = at(200)), mailSummary(1, sentAt = at(100))), null)
+        }
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        // The old rows go, as they must. The page cached under the new validity is the only
+        // offline copy of the new mailbox there is, and it is not what was found obsolete: it stays.
+        assertTrue(vm.state.value.messages.none { it.folder == "INBOX" })
+        assertEquals(2L, runBlocking { repo.cachedPage("INBOX") }!!.uidValidity)
+        // So the inbox still paints from it while the server is away.
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        assertEquals(listOf(4L, 3L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `a recreated folder's reload starts no request for a folder the user moved to meanwhile`() {
+        repo.pageSize = 2
+        repo.add("INBOX", mailSummary(1), mailSummary(2), mailSummary(3), mailSummary(4))
+        repo.add("回收筒", mailSummary(7))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        repo.olderPage = { _, _ -> MailPage(2, 4, listOf(mailSummary(9), mailSummary(8)), null) }
+        // The user taps another chip while the recreated inbox's cached page is being dropped -- a
+        // disk write the request suspends on. That chip's own load is the only one to run.
+        repo.onDropCachedPage = {
+            repo.onDropCachedPage = null
+            vm.selectFolder(FolderSelection.Real("回收筒"))
+        }
+        val sent = repo.loadsSent.size
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        // The older page that found the inbox recreated, then the chip's load, and nothing more.
+        assertEquals(listOf("INBOX", "回收筒"), repo.loadsSent.drop(sent))
+        assertEquals(listOf(7L), vm.state.value.displayed.map { it.uid })
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Loaded)
+    }
+
+    @Test
+    fun `a folder list that returns after another student signed in over this one installs nothing and loads nothing`() {
+        repo.add("INBOX", mailSummary(1))
+        // Sent, and still out when the other student signs in: no sign-out, so nothing resets the screen.
+        repo.onFolders = {
+            repo.onFolders = null
+            signInAnotherOverThisOne()
+        }
+        vm.load()
+        assertEquals(emptyList<SchoolMailListViewModel.FolderChip>(), vm.state.value.chips)
+        assertEquals(emptyList<String>(), repo.loadsSent)
+        // The loading it announced is over; whoever is signed in now starts their own.
+        assertFalse(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Loading)
+    }
+
+    @Test
+    fun `a student who signs in over another while that one's folder list is out gets their own load`() {
+        repo.add("INBOX", mailSummary(1))
+        val answer = CompletableDeferred<Unit>()
+        repo.foldersAnswerGate = answer
+        vm.load()
+        assertEquals(1, repo.foldersSent)
+        // B signs in over A through the sign-in sheet, and B's screen asks for its load at once --
+        // while A's folder list is still out, so the single flight refuses it.
+        signInAnotherOverThisOne()
+        vm.load()
+        repo.foldersAnswerGate = null
+        answer.complete(Unit)
+        // A's list came back for nobody, and B's own load ran once it had: B's folders and inbox
+        // are on screen, not a blank page waiting for a pull.
+        assertEquals(2, repo.foldersSent)
+        assertTrue(vm.state.value.chips.isNotEmpty())
+        assertEquals(listOf(1L), vm.state.value.displayed.map { it.uid })
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Loaded)
+    }
+
+    @Test
+    fun `a certificate failure of a search the user has cleared still stays on screen`() {
+        repo.add("INBOX", mailSummary(1, subject = "期中考"))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        val gate = CompletableDeferred<Unit>()
+        repo.searchGate = gate
+        repo.searchError = MailError.Certificate()
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        // Cleared while the SEARCH is out; it then fails because the connection could not be
+        // trusted -- which is this account's to know, whatever became of the search.
+        vm.setSearchText("")
+        repo.searchGate = null
+        gate.complete(Unit)
+        assertTrue((vm.state.value.loadState as? SchoolMailListViewModel.LoadState.Failed)?.error is MailError.Certificate)
+        assertNull(vm.state.value.searchResults)
+    }
+
+    @Test
+    fun `a password rejected during a search the user moved away from still reaches the account and the screen`() {
+        repo.add("INBOX", mailSummary(1, subject = "期中考"))
+        repo.add(SENT, mailSummary(2))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        val gate = CompletableDeferred<Unit>()
+        repo.searchGate = gate
+        repo.searchError = MailError.AuthFailed()
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        vm.selectFolder(FolderSelection.Real(SENT))
+        repo.searchGate = null
+        gate.complete(Unit)
+        assertTrue(account.authFailed.value)
+        assertTrue(vm.state.value.actionError is MailError.AuthFailed)
+    }
+
+    @Test
+    fun `a server that cannot search matches the mail already loaded, pages back included`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..5L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertEquals(listOf(5L, 4L, 3L, 2L), vm.state.value.displayed.map { it.uid })
+        // The repository keeps only the folder's newest page; the list has paged further, and
+        // every match it has loaded shows, not just the newest page's.
+        repo.searchUnsupported = true
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        assertEquals(listOf(5L, 4L, 3L, 2L), vm.state.value.displayed.map { it.uid })
+        assertTrue(vm.state.value.searchLocalOnly)
+    }
+
+    @Test
+    fun `a server that cannot search does not match rows of a mailbox generation the server has replaced`() {
+        repo.pageSize = 2
+        repo.add("INBOX", mailSummary(1, subject = "期中考 1", sentAt = at(100)), mailSummary(2, subject = "期中考 2", sentAt = at(200)))
+        repo.add(SENT, mailSummary(9, subject = "other", sentAt = at(50)))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        // The inbox was recreated, with one mail that reads differently under the same UID. A
+        // refresh of All mail caches its page under the new UIDVALIDITY but fails at Sent, so the
+        // rows on screen stay the old mailbox's.
+        repo.mail.getValue("INBOX").clear()
+        repo.add("INBOX", mailSummary(1, subject = "期中考 新", sentAt = at(300)))
+        repo.pageValidity = 2
+        repo.loadError = MailError.Network()
+        repo.loadErrorFolder = SENT
+        selectAll()
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        assertEquals(listOf(2L, 1L, 9L), vm.state.value.displayed.map { it.uid })
+        assertEquals(2L, runBlocking { repo.cachedPage("INBOX") }!!.uidValidity)
+        // The server cannot search. The repository matched the new mailbox's cached page; the
+        // inbox rows on screen were read under the old UIDVALIDITY and must not stand in for it.
+        repo.searchUnsupported = true
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        assertEquals(listOf(1L to "期中考 新"), vm.state.value.displayed.map { it.uid to it.summary.subject })
+        assertTrue(vm.state.value.searchLocalOnly)
+    }
+
+    @Test
+    fun `a scroll to the end fetches a few pages of search results at most`() {
+        repo.pageSize = 2
+        // Under unread only every match is read but the oldest, so page after page adds nothing.
+        repo.add("INBOX", mailSummary(1, subject = "期中考 1"))
+        // More than four pages of them: a page of search results is MailRepository.PAGE_SIZE matches.
+        repo.add("INBOX", *(2L..301L).map { mailSummary(it, subject = "期中考 $it", seen = true) }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setUnreadOnly(true)
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        assertEquals(1 + SchoolMailListViewModel.EMPTY_PAGE_WALKBACK, repo.searchPages.size)
+        assertFalse(vm.state.value.isPaginating)
+    }
+
+    @Test
+    fun `a page of results still on its way when the search is cleared is dropped, and nothing more is fetched`() {
+        repo.pageSize = 2
+        // More than one page of matches left (a page is MailRepository.PAGE_SIZE), so there is a next one to not fetch.
+        repo.add("INBOX", *(1L..120L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        val gate = CompletableDeferred<Unit>()
+        repo.searchPageGate = gate
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        vm.setSearchText("")
+        repo.searchPageGate = null
+        gate.complete(Unit)
+        assertNull(vm.state.value.searchResults)
+        assertEquals(1, repo.searchPages.size)
+        assertFalse(vm.state.value.isPaginating)
+    }
+
+    @Test
+    fun `signing out while a page of results is on its way leaves nothing of the search behind`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..9L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        val gate = CompletableDeferred<Unit>()
+        repo.searchPageGate = gate
+        repo.searchPageError = MailError.Network()
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        account.signOut()
+        repo.searchPageGate = null
+        gate.complete(Unit)
+        val s = vm.state.value
+        assertNull(s.searchResults)
+        assertTrue(s.messages.isEmpty())
+        // The departed account's failure is not reported to whoever signs in next.
+        assertNull(s.actionError)
+        assertEquals(1, repo.searchPages.size)
+    }
+
+    @Test
+    fun `clearing the search drops the matches it had left to fetch`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..5L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        vm.setSearchText("")
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertTrue(repo.searchPages.isEmpty())
+        assertNull(vm.state.value.searchResults)
+    }
+
+    @Test
     fun `swiping toggles read on the server and in the list`() {
         repo.add("INBOX", mailSummary(1))
         vm.load()
@@ -147,6 +649,227 @@ class SchoolMailListViewModelTest {
         assertEquals(listOf(9L, 8L), vm.state.value.displayed.map { it.uid })
         vm.loadMoreIfNeeded(vm.state.value.displayed.last())
         assertEquals(listOf(9L, 8L, 7L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `the list keeps paging while unread only hides its last rows`() {
+        repo.pageSize = 2
+        repo.add("INBOX", mailSummary(1), mailSummary(2), mailSummary(3, seen = true), mailSummary(4))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        vm.setUnreadOnly(true)
+        // 3 is read, so 4 is the last row on screen while the list's own last row is 3.
+        assertEquals(listOf(4L), vm.state.value.displayed.map { it.uid })
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertEquals(listOf(4L, 2L, 1L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `an older page updates the rows it covers and drops the ones the server no longer lists`() {
+        repo.pageSize = 2
+        repo.add("INBOX", mailSummary(1), mailSummary(2), mailSummary(3), mailSummary(4))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        assertEquals(listOf(4L, 3L), vm.state.value.displayed.map { it.uid })
+        // Mail below the list's cursor was expunged on webmail, so the next older range reaches
+        // back up over rows already listed: 4 has been read since, and 3 is gone.
+        repo.olderPage = { _, _ -> MailPage(1, 3, listOf(mailSummary(4, seen = true), mailSummary(2)), null) }
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        val rows = vm.state.value.displayed
+        assertEquals(listOf(4L, 2L), rows.map { it.uid })
+        assertTrue(rows.first().summary.flags.seen)
+    }
+
+    @Test
+    fun `an older page's range reaches past the mail it lists when that range ends in deleted mail`() {
+        repo.pageSize = 2
+        repo.add("INBOX", mailSummary(1), mailSummary(2), mailSummary(3), mailSummary(4))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        // The range read 2 and 3, and 3 is flagged deleted: the page lists 2 alone.
+        repo.olderPage = { _, _ -> MailPage(1, 3, listOf(mailSummary(2)), null, windowUids = 2L..3L) }
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertEquals(listOf(4L, 2L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `an older page asked for before a refresh landed is dropped, not merged into the new list`() {
+        repo.pageSize = 2
+        repo.add("INBOX", mailSummary(1), mailSummary(2), mailSummary(3), mailSummary(4))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        val gate = CompletableDeferred<Unit>()
+        repo.olderPageGate = gate
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        // New mail, and a refresh lands while that older page is still on its way.
+        repo.add("INBOX", mailSummary(5), mailSummary(6))
+        vm.refresh()
+        assertEquals(listOf(6L, 5L), vm.state.value.displayed.map { it.uid })
+        repo.olderPageGate = null
+        gate.complete(Unit)
+        // Its cursor was taken from the list the refresh replaced: merging it would skip mail.
+        assertEquals(listOf(6L, 5L), vm.state.value.displayed.map { it.uid })
+        assertEquals(mapOf("INBOX" to 2), vm.state.value.cursors)
+        assertFalse(vm.state.value.isPaginating)
+    }
+
+    @Test
+    fun `an older page from a recreated folder reloads the list instead of merging into it`() {
+        repo.pageSize = 2
+        repo.add("INBOX", mailSummary(1), mailSummary(2), mailSummary(3), mailSummary(4))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        val firstPages = repo.pageLimits.size
+        // UIDVALIDITY 2: the UIDs on this page name other mail than the list's.
+        repo.olderPage = { _, _ -> MailPage(2, 4, listOf(mailSummary(9), mailSummary(8)), null) }
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertEquals(listOf(4L, 3L), vm.state.value.displayed.map { it.uid })
+        // The older page, then the first page again.
+        assertEquals(firstPages + 2, repo.pageLimits.size)
+    }
+
+    @Test
+    fun `an older page from a recreated folder whose reload fails leaves none of the old rows to page or search`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..4L).map { mailSummary(it, subject = "期中考 $it") }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        // The older page comes down under UIDVALIDITY 2, and the connection goes right after it,
+        // so the reload from the top fails.
+        repo.olderPage = { _, _ ->
+            repo.loadError = MailError.Network()
+            MailPage(2, 4, listOf(mailSummary(9), mailSummary(8)), null)
+        }
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        // The list's rows and cursor belong to the mailbox before: with the reload failed, they
+        // go rather than stay to be paged again or shown as another mailbox's mail -- and so does
+        // the cached page they came from, or the next visit would paint them again.
+        assertEquals(emptyList<Long>(), vm.state.value.displayed.map { it.uid })
+        assertTrue(vm.state.value.cursors.isEmpty())
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        assertNull(runBlocking { repo.cachedPage("INBOX") })
+        // And a search that cannot reach the server has nothing of the old mailbox to fall back to.
+        repo.searchError = MailError.Network()
+        vm.setSearchText("期中")
+        vm.submitSearch()
+        assertEquals(emptyList<Long>(), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `a list painted from the cache whose refresh failed still checks UIDVALIDITY before paging`() {
+        repo.pageSize = 2
+        repo.add("INBOX", mailSummary(1), mailSummary(2), mailSummary(3), mailSummary(4))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        // The app is opened again: a new view model paints the inbox from the cache, and the
+        // first refresh fails, so the cached page is all it knows about the folder.
+        val reopened = SchoolMailListViewModel(
+            repo, account, checker, schoolMailSite(),
+            { main.dispatcher.scheduler.currentTime }, notices,
+        )
+        repo.loadError = MailError.Network()
+        reopened.load()
+        reopened.selectFolder(FolderSelection.Real("INBOX"))
+        assertEquals(listOf(4L, 3L), reopened.state.value.displayed.map { it.uid })
+        assertTrue(reopened.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        // The folder was recreated meanwhile (UIDVALIDITY 2): the older page's UIDs name other
+        // mail than the cached rows, so merging them would mix two mailboxes into one list.
+        repo.loadError = null
+        val firstPages = repo.pageLimits.size
+        repo.olderPage = { _, _ -> MailPage(2, 4, listOf(mailSummary(9), mailSummary(8)), null) }
+        reopened.loadMoreIfNeeded(reopened.state.value.displayed.last())
+        assertEquals(listOf(4L, 3L), reopened.state.value.displayed.map { it.uid })
+        // The older page, then the first page again.
+        assertEquals(firstPages + 2, repo.pageLimits.size)
+    }
+
+    @Test
+    fun `an older page that adds nothing on screen walks back for one that does`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..6L).map { mailSummary(it) }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        // The range after the first page holds only mail flagged deleted.
+        repo.olderPage = { _, before -> if (before == 2) MailPage(1, 6, emptyList(), 4, windowUids = 3L..4L) else null }
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertEquals(listOf(6L, 5L, 2L, 1L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `walking back for something to show stops after a few pages`() {
+        repo.pageSize = 2
+        repo.add("INBOX", *(1L..40L).map { mailSummary(it) }.toTypedArray())
+        vm.load()
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        var asked = 0
+        repo.olderPage = { _, before -> asked++; MailPage(1, 40, emptyList(), before + 2) }
+        vm.loadMoreIfNeeded(vm.state.value.displayed.last())
+        assertEquals(1 + SchoolMailListViewModel.EMPTY_PAGE_WALKBACK, asked)
+        assertFalse(vm.state.value.isPaginating)
+    }
+
+    @Test
+    fun `retrying a load whose folder list failed loads the list`() {
+        repo.add("INBOX", mailSummary(1))
+        repo.foldersError = MailError.Network()
+        vm.load()
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        repo.foldersError = null
+        // What Retry and a pull both call: with no folders resolved yet there is no page to
+        // fetch, so it has to start from the folder list again.
+        vm.refresh()
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Loaded)
+        assertEquals(listOf(1L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `Retry while the folder list is still on its way starts no second load`() {
+        repo.add("INBOX", mailSummary(1))
+        repo.foldersError = MailError.Network()
+        vm.load()
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        repo.foldersError = null
+        val gate = CompletableDeferred<Unit>()
+        repo.foldersGate = gate
+        vm.refresh()
+        // The failed state, and its Retry, give way at once to the load.
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Loading)
+        vm.refresh()
+        vm.load()
+        assertEquals(2, repo.foldersCalls)
+        repo.foldersGate = null
+        gate.complete(Unit)
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Loaded)
+        assertEquals(listOf(1L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `coming back to a list that failed to load does not look at the inbox on its own`() {
+        repo.add("INBOX", mailSummary(1))
+        repo.loadError = MailError.Network()
+        vm.load()
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        val calls = repo.statusCalls
+        vm.startPolling()
+        main.dispatcher.scheduler.advanceTimeBy(SchoolMailListViewModel.RESUME_POLL_GRACE_MS + 1)
+        main.dispatcher.scheduler.runCurrent()
+        assertEquals(calls, repo.statusCalls)
+        vm.stopPolling()
+    }
+
+    @Test
+    fun `the sign-in-failed banner can be closed, and comes back with the next sign-in or failure`() {
+        assertFalse(vm.showAuthFailedBanner.value)
+        account.onAuthFailure()
+        assertTrue(vm.showAuthFailedBanner.value)
+        vm.dismissAuthFailedBanner()
+        assertFalse(vm.showAuthFailedBanner.value)
+        // Closing it changes nothing about the account.
+        assertTrue(account.authFailed.value)
+        runBlocking { account.signIn("b10000001", "pw") }
+        assertFalse(vm.showAuthFailedBanner.value)
+        account.onAuthFailure()
+        assertTrue(vm.showAuthFailedBanner.value)
     }
 
     @Test
@@ -190,6 +913,64 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
+    fun `coming back to the list checks the inbox at once, not a minute later`() {
+        repo.add("INBOX", mailSummary(1))
+        repo.status = FolderStatus(server.uidValidity, 2, 1, 1)
+        vm.load()
+        vm.startPolling()
+        vm.stopPolling()
+        // Away for ten minutes, and mail arrived meanwhile.
+        main.dispatcher.scheduler.advanceTimeBy(10 * 60_000L)
+        repo.add("INBOX", mailSummary(2))
+        repo.status = FolderStatus(server.uidValidity, 3, 2, 2)
+        vm.startPolling()
+        main.dispatcher.scheduler.advanceTimeBy(SchoolMailListViewModel.RESUME_POLL_GRACE_MS + 1)
+        main.dispatcher.scheduler.runCurrent()
+        assertEquals(listOf(2L, 1L), vm.state.value.displayed.map { it.uid })
+        vm.stopPolling()
+    }
+
+    @Test
+    fun `coming back from a mail, which reloads the list, does not check the inbox as well`() {
+        repo.add("INBOX", mailSummary(1))
+        vm.load()
+        vm.startPolling()
+        vm.stopPolling()
+        main.dispatcher.scheduler.advanceTimeBy(10 * 60_000L)
+        val calls = repo.statusCalls
+        // The list screen is composed again on the way back, and loads as it appears.
+        vm.startPolling()
+        vm.load()
+        main.dispatcher.scheduler.advanceTimeBy(SchoolMailListViewModel.RESUME_POLL_GRACE_MS + 1)
+        main.dispatcher.scheduler.runCurrent()
+        // The load's own status read for the seen marker, and no second look.
+        assertEquals(calls + 1, repo.statusCalls)
+        vm.stopPolling()
+    }
+
+    @Test
+    fun `the screen appearing right after its own load does not check the inbox again at once`() {
+        repo.add("INBOX", mailSummary(1))
+        vm.load()
+        val calls = repo.statusCalls
+        vm.startPolling()
+        main.dispatcher.scheduler.advanceTimeBy(SchoolMailListViewModel.RESUME_POLL_GRACE_MS + 1)
+        main.dispatcher.scheduler.runCurrent()
+        assertEquals(calls, repo.statusCalls)
+        vm.stopPolling()
+    }
+
+    @Test
+    fun `polling does not check at once while the list has not loaded yet`() {
+        repo.add("INBOX", mailSummary(1))
+        vm.startPolling()
+        main.dispatcher.scheduler.advanceTimeBy(SchoolMailListViewModel.RESUME_POLL_GRACE_MS + 1)
+        main.dispatcher.scheduler.runCurrent()
+        assertEquals(0, repo.statusCalls)
+        vm.stopPolling()
+    }
+
+    @Test
     fun `a password the poll finds rejected marks the account, surfaces, and stops the poll`() {
         // Spec §7.4: the page poll must not keep re-sending a rejected LOGIN every minute --
         // repeated failures can lock the school account and the campus Wi-Fi that share the password.
@@ -221,14 +1002,15 @@ class SchoolMailListViewModelTest {
         assertEquals(0, repo.acquired)
         assertEquals(statusCallsAfterLoad, repo.statusCalls)
 
-        // Signing in again clears the flag, and polling works from then on.
+        // Signing in again clears the flag, and polling works from then on: a look at once, the
+        // list having loaded minutes ago, then one a minute.
         runBlocking { account.signIn("b10000001", "pw") }
         assertFalse(account.authFailed.value)
         vm.startPolling()
         main.dispatcher.scheduler.advanceTimeBy(SchoolMailListViewModel.POLL_MS + 1)
         main.dispatcher.scheduler.runCurrent()
         assertEquals(1, repo.acquired)
-        assertEquals(statusCallsAfterLoad + 1, repo.statusCalls)
+        assertEquals(statusCallsAfterLoad + 2, repo.statusCalls)
     }
 
     @Test
@@ -316,6 +1098,33 @@ class SchoolMailListViewModelTest {
 
         assertTrue(account.authFailed.value)
         assertTrue(vm.state.value.actionError is MailError.AuthFailed)
+    }
+
+    @Test
+    fun `a sent-copy notice outlives the reload after compose and goes only when dismissed`() {
+        repo.add("INBOX", mailSummary(1))
+        vm.load()
+        notices.report(SentCopyNotice.NoFolder, SentCopyOrigin.List, notices.accountGeneration)
+        vm.refresh()
+        vm.load()
+        assertEquals(SentCopyNotice.NoFolder, vm.sentCopyNotice.value)
+        vm.dismissSentCopyNotice()
+        assertNull(vm.sentCopyNotice.value)
+    }
+
+    @Test
+    fun `a notice about a reply sent from a mail is that mail's, not the list's`() {
+        notices.report(SentCopyNotice.NoFolder, SentCopyOrigin.Message("INBOX", 1), notices.accountGeneration)
+        assertNull(vm.sentCopyNotice.value)
+    }
+
+    @Test
+    fun `signing out takes the sent-copy notice with it`() {
+        notices.report(SentCopyNotice.Unknown, SentCopyOrigin.List, notices.accountGeneration)
+        account.signOut()
+        main.dispatcher.scheduler.runCurrent()
+        assertNull(notices.posted)
+        assertNull(vm.sentCopyNotice.value)
     }
 
     @Test
@@ -439,26 +1248,34 @@ class SchoolMailListViewModelTest {
     }
 
     /**
-     * A load still out across a sign-out and another account's sign-in is the first account's:
-     * its rows must not go on the second account's screen, nor its dates on folders nothing was
-     * fetched for (spec §7.5). The load is not cancelled -- it is blocking IMAP I/O -- so its
-     * answer is dropped when it lands.
+     * A page still out across a sign-out and another account's sign-in is the first account's: it
+     * must not go on the second account's screen, nor into the cache, nor date a folder nothing was
+     * fetched for (spec §7.5). The fetch is blocking IMAP I/O the sign-out cannot cancel, so the
+     * page really comes back -- held here after it was sent, on a refresh, which runs outside the
+     * load a sign-out cancels -- and is dropped when it lands.
      */
     @Test
-    fun `a load that lands after a sign-out and another sign-in shows and dates nothing`() {
+    fun `a page that comes back after a sign-out and another sign-in shows, caches and dates nothing`() {
         now = 5_000
         repo.add("INBOX", mailSummary(1))
-        repo.loadGate = CompletableDeferred()
         vm.load()
-        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Loading)
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        assertEquals(5_000L, state.fetchedAt("INBOX"))
+        // As the real repository: a page whose account moved while it was out is not cached.
+        repo.accountGeneration = { account.accountGeneration }
+        repo.dropCache("INBOX")
+        repo.onLoaded = {
+            repo.onLoaded = null
+            now = 9_000
+            signOutAndSignInAnother()
+        }
+        val sent = repo.loadsSent.size
+        vm.refresh()
 
-        account.signOut()
-        main.dispatcher.scheduler.runCurrent()
-        server.passwords["B10000002"] = "pw"
-        runBlocking { account.signIn("b10000002", "pw") }
-        repo.loadGate!!.complete(Unit)
-
+        // The page was sent, and came back across the change.
+        assertEquals(listOf("INBOX"), repo.loadsSent.drop(sent))
         assertEquals(SchoolMailListViewModel.UiState(), vm.state.value)
+        assertNull(runBlocking { repo.cachedPage("INBOX") })
         assertEquals(0L, state.fetchedAt("INBOX"))
         assertEquals(0L, state.fetchedAt("寄件備份匣"))
     }
@@ -626,6 +1443,12 @@ class SchoolMailListViewModelTest {
         assertEquals(9_000L, state.fetchedAt("INBOX"))
         assertEquals(5_000L, state.fetchedAt("寄件備份匣"))
         vm.stopPolling()
+    }
+
+    /** Another student signs in over this one with no sign-out between, as the sign-in sheet after a rejected password allows. */
+    private fun signInAnotherOverThisOne() {
+        server.passwords["B10000002"] = "pw"
+        runBlocking { account.signIn("b10000002", "pw") }
     }
 
     /** The account leaves and another arrives, as Settings does it, in the middle of whatever is running. */
