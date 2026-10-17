@@ -185,6 +185,14 @@ class ClassTableViewModel @Inject constructor(
     val showClassroomInClassTable: StateFlow<Boolean> =
         appPreferences.showClassroomInClassTableFlow
 
+    /** Whether today's courses show above the grid; see [AppPreferences.pinTodayCoursesOnClassTable]. */
+    val pinTodayCoursesOnClassTable: StateFlow<Boolean> =
+        appPreferences.pinTodayCoursesOnClassTableFlow
+
+    /** Whether a required course's cell is outlined; see [AppPreferences.outlineRequiredCourses]. */
+    val outlineRequiredCourses: StateFlow<Boolean> =
+        appPreferences.outlineRequiredCoursesFlow
+
     private val _selectedCourse = MutableStateFlow<Course?>(null)
     val selectedCourse: StateFlow<Course?> = _selectedCourse
 
@@ -934,6 +942,25 @@ class ClassTableViewModel @Inject constructor(
     }
 
     /**
+     * Takes back a course [addCourse] added in this Add course session, for
+     * the sheet's tap-to-toggle: add a course, tap it again to back out.
+     * Without a tombstone: one in `deletedCourseNos` would later hide a real
+     * enrolled course with the same [courseNo] from cache and network merges.
+     * Otherwise the regular delete, so the backend row the add already
+     * uploaded goes too, or the next full sync brings the course back.
+     *
+     * Only a hand-added course: the sheet gates on its own session, and this
+     * is the net under it, so an enrolled course leaves only through
+     * [deleteCourse]. As the iPhone's `removeUserAddedCourse`.
+     */
+    fun removeAddedCourse(courseNo: String) {
+        if (isShowingSomeoneElse) return
+        val course = _courses.value.firstOrNull { it.courseNo == courseNo } ?: return
+        if (!course.isManual) return
+        deleteCourse(courseNo, tombstone = false)
+    }
+
+    /**
      * Sets the user-supplied display override for [courseNo]. A blank input or
      * one that matches the current default — either the abbreviation-aware
      * [Course.courseName] or the full cached name the rename dialog prefilled
@@ -1034,7 +1061,12 @@ class ClassTableViewModel @Inject constructor(
         localEdits.noteEdit()
     }
 
-    fun deleteCourse(courseNo: String) {
+    /**
+     * Removes [courseNo] from the term, here and on the backend. With a
+     * [tombstone] the course stays gone through the next sync; without one,
+     * for [removeAddedCourse], a later sync may list it again.
+     */
+    fun deleteCourse(courseNo: String, tombstone: Boolean = true) {
         if (isShowingSomeoneElse) return
         val moodleId = _courses.value.firstOrNull { it.courseNo == courseNo }?.moodleIdNumber
         val updated = _courses.value.filter { it.courseNo != courseNo }
@@ -1050,10 +1082,12 @@ class ClassTableViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            val deleted = CourseTombstoneKeys.hide(
-                courseNo, semester, dataCache.loadDeletedCourseNos()
-            )
-            dataCache.saveDeletedCourseNos(deleted)
+            if (tombstone) {
+                val deleted = CourseTombstoneKeys.hide(
+                    courseNo, semester, dataCache.loadDeletedCourseNos()
+                )
+                dataCache.saveDeletedCourseNos(deleted)
+            }
             dataCache.saveCourses(updated, semester)
             // A colour or name of it still waiting to go up goes with it; see
             // PendingCourseOverrides.forget.

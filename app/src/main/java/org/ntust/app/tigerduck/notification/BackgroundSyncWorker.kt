@@ -425,6 +425,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
                                     // them out would erase them.
                                     dimension = CourseService.firstNonEmpty(results.map { it.dimension }),
                                     allYear = CourseService.firstNonEmpty(results.map { it.allYear }),
+                                    requireOption = CourseService.firstNonEmpty(results.map { it.requireOption }),
                                 )
                             } else {
                                 CourseService.fallbackCourseFromMoodle(
