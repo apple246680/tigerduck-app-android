@@ -337,14 +337,23 @@ internal fun SwipeableAssignmentRow(
                 showAbsoluteTime = showAbsoluteTime,
                 markedCompleted = isMarkedCompleted,
                 isIgnored = isIgnored,
-                onClick = onClick,
+                // A tap opens the assignment in Moodle, so a row Moodle gave no
+                // address takes none: it is not a button, as on iOS, rather
+                // than one that does nothing.
+                onClick = onClick.takeIf { assignment.moodleDeepLink != null },
             )
         }
     }
 }
+
+/**
+ * Opens [assignment] in the Moodle app, or in the browser when no app takes
+ * the link. One Moodle gave no address opens nothing, as on iOS; see
+ * [Assignment.moodleDeepLink].
+ */
 internal fun openAssignmentInMoodle(context: Context, assignment: Assignment) {
-    val targets = listOfNotNull(assignment.moodleDeepLink, assignment.moodleUrl)
-    for (target in targets) {
+    val deepLink = assignment.moodleDeepLink ?: return
+    for (target in listOfNotNull(deepLink, assignment.moodleUrl)) {
         val intent = Intent(Intent.ACTION_VIEW, target.toUri()).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
         }
