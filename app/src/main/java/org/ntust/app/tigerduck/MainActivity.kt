@@ -46,6 +46,8 @@ import org.ntust.app.tigerduck.network.NetworkChecker
 import org.ntust.app.tigerduck.notification.BackgroundSyncWorker
 import org.ntust.app.tigerduck.push.FcmBootstrap
 import org.ntust.app.tigerduck.push.PushApiClient
+import org.ntust.app.tigerduck.review.InAppReview
+import org.ntust.app.tigerduck.review.ReviewPrompt
 import org.ntust.app.tigerduck.serverpush.ServerPopupRequest
 import org.ntust.app.tigerduck.serverpush.ServerPushIntentToken
 import org.ntust.app.tigerduck.serverpush.ServerPushPopupCoordinator
@@ -121,6 +123,12 @@ class MainActivity : AppCompatActivity() {
 
     @Inject
     lateinit var fcmBootstrap: FcmBootstrap
+
+    @Inject
+    lateinit var reviewPrompt: ReviewPrompt
+
+    @Inject
+    lateinit var inAppReview: InAppReview
 
     @Inject
     lateinit var mailChecker: org.ntust.app.tigerduck.mail.sync.MailChecker
@@ -276,6 +284,25 @@ class MainActivity : AppCompatActivity() {
                         ) {
                             FirstTriggerPromptHost(firstTriggerPromptController)
                         }
+
+                        // The one Play Store rating ask (issue #332), at a
+                        // moment ReviewPrompt picks and, like the prompt
+                        // above, not over another prompt: the root-level
+                        // ones here, AppNavigation's permission warning,
+                        // reset dialog and sign-in sheet, and the retired-
+                        // API dialog. A dialog a page owns is the page's to
+                        // hold the moment back for.
+                        val popupPending by serverPushPopupCoordinator.pending.collectAsStateWithLifecycle()
+                        val permissionWarning by appState.systemPermissions.warningShowing.collectAsStateWithLifecycle()
+                        val needsReset by appState.needsUserReset.collectAsStateWithLifecycle()
+                        val apiRetired by ApiVersionGate.isRetired.collectAsStateWithLifecycle()
+                        ReviewPromptHost(
+                            reviewPrompt = reviewPrompt,
+                            inAppReview = inAppReview,
+                            otherPromptShowing = whatsNewFlow.value != null || updatePending != null ||
+                                pendingPrompt != null || popupPending != null || permissionWarning ||
+                                needsReset || apiRetired || appState.ntustSignInSheetRequested,
+                        )
 
                         // Operator-issued popup: rendered over whatever screen
                         // the user lands on after tapping the notification.
@@ -696,3 +723,40 @@ internal fun startRouteFor(link: AppLink): String? = when (link) {
 
 /** Page ids of a pending What's New sheet, kept across a config-change recreation. */
 private const val KEY_WHATS_NEW_PAGE_IDS = "whatsNewPageIds"
+
+/**
+ * Launches Play's in-app review when [ReviewPrompt] says the moment has come
+ * (issue #332), and not over another prompt: Play's sheet on top of What's
+ * new, the update prompt, a first-trigger question or an operator popup
+ * would be two asks at once. Held back, the ask waits for them to close, as
+ * the first-trigger prompt does. On fdroid [InAppReview] launches nothing
+ * and says so, which leaves the ask unrecorded.
+ */
+@Composable
+private fun ReviewPromptHost(
+    reviewPrompt: ReviewPrompt,
+    inAppReview: InAppReview,
+    otherPromptShowing: Boolean,
+) {
+    val pending by reviewPrompt.pending.collectAsStateWithLifecycle()
+    val activity = LocalContext.current as? Activity ?: return
+    if (!pending || otherPromptShowing) return
+    // Keyed on nothing: a recomposition while Play is being asked for the
+    // flow must not ask twice. Leaving composition — the ask withdrawn, or
+    // another prompt opened — cancels that request before a launch; and the
+    // request is a round trip, so ReviewPrompt re-checks its gates before
+    // the flow it brought back is started.
+    LaunchedEffect(Unit) {
+        val flow = inAppReview.request()
+        if (flow == null) {
+            reviewPrompt.refused()
+        } else {
+            // A dialog, a sheet or a system prompt opened meanwhile is a
+            // window of its own and holds the focus, whatever page owns it;
+            // the page's own state says whether it is still on screen.
+            reviewPrompt.launchIfStillCalm(windowFocused = { activity.hasWindowFocus() }) {
+                inAppReview.launch(activity, flow)
+            }
+        }
+    }
+}

@@ -64,6 +64,8 @@ import org.ntust.app.tigerduck.shared.Course
 import org.ntust.app.tigerduck.ui.component.AssignmentItem
 import org.ntust.app.tigerduck.ui.component.EmptyStateView
 import org.ntust.app.tigerduck.ui.navigation.icon
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.MoodleWebPages
+import org.ntust.app.tigerduck.ui.screen.coursemoodle.openMoodleWebPage
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -345,19 +347,20 @@ internal fun SwipeableAssignmentRow(
         }
     }
 }
-
 /**
- * Opens [assignment] in the Moodle app, or in the browser when no app takes
- * the link. One Moodle gave no address opens nothing, as on iOS; see
+ * In the Moodle app through its link, else on the website signed in, as every "Open in Moodle"
+ * opens a page. One Moodle gave no address opens nothing, as on iOS; see
  * [Assignment.moodleDeepLink].
  */
-internal fun openAssignmentInMoodle(context: Context, assignment: Assignment) {
+internal fun openAssignmentInMoodle(
+    context: Context,
+    assignment: Assignment,
+    pages: () -> MoodleWebPages = { MoodleWebPages.of(context) },
+) {
     val deepLink = assignment.moodleDeepLink ?: return
-    for (target in listOfNotNull(deepLink, assignment.moodleUrl)) {
-        val intent = Intent(Intent.ACTION_VIEW, target.toUri()).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
-        }
-        val opened = runCatching { context.startActivity(intent) }.isSuccess
-        if (opened) return
+    val intent = Intent(Intent.ACTION_VIEW, deepLink.toUri()).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
     }
+    if (runCatching { context.startActivity(intent) }.isSuccess) return
+    assignment.moodleUrl?.let { openMoodleWebPage(context, it, pages = pages) }
 }

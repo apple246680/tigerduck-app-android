@@ -84,7 +84,7 @@ class SignedOutSignInButtonTest {
                     invertDirection = false,
                     isLoggedIn = false,
                     onSignIn = { taps++ },
-                    onSelectCourse = { _, _ -> },
+                    onSelectCourse = {},
                 )
             }
         }

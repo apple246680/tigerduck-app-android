@@ -4,6 +4,7 @@ package org.ntust.app.tigerduck.mail
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -22,14 +23,21 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.ntust.app.tigerduck.mail.compose.MessageBuilder
 import org.ntust.app.tigerduck.mail.compose.OutgoingMail
+import org.ntust.app.tigerduck.mail.imap.MailSession
+import org.ntust.app.tigerduck.mail.imap.MailSessionFactory
 import org.ntust.app.tigerduck.mail.imap.SpecialFolder
+import org.ntust.app.tigerduck.mail.model.FolderStatus
 import org.ntust.app.tigerduck.mail.model.MailAddress
+import org.ntust.app.tigerduck.mail.model.MailBody
+import org.ntust.app.tigerduck.mail.model.MailPage
 import org.ntust.app.tigerduck.mail.smtp.MailSender
 import org.ntust.app.tigerduck.mail.smtp.MailTransport
 import org.ntust.app.tigerduck.mail.smtp.SentCopy
 import org.ntust.app.tigerduck.mail.store.MailCache
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 class MailRepositoryTest {
     @get:Rule val tmp = TemporaryFolder()
@@ -46,13 +54,27 @@ class MailRepositoryTest {
         return repository
     }
 
-    private inner class TestSetup(scope: kotlinx.coroutines.CoroutineScope) {
+    private inner class TestSetup(
+        scope: kotlinx.coroutines.CoroutineScope,
+        /** What the repository opens its sessions with; the account signs in on the server itself. */
+        sessions: MailSessionFactory = server.factory(),
+    ) {
         val cache = MailCache(tmp.root)
-        val account = MailAccount(credentials, state, server.factory(), cache, demo, schoolMailSite(), RecordingScheduler(), RecordingNotifier(), scope)
+        val notifier = RecordingNotifier()
+        val account = MailAccount(credentials, state, server.factory(), cache, demo, schoolMailSite(), RecordingScheduler(), notifier, scope)
         val repository = MailRepository(
-            account, server.factory(), cache, state,
+            account, sessions, cache, state,
             MailSender(MessageBuilder(), transport, pause = {}), MessageBuilder(), demo, scope,
         )
+
+        /** Signs out as Settings does, and waits for the cleanup the sign-out then runs on its own. */
+        fun signOutAndSettle() {
+            val cleaned = CountDownLatch(1)
+            notifier.onCancelAll = { cleaned.countDown() }
+            account.signOut()
+            assertTrue("sign-out's cleanup never ran", cleaned.await(5, TimeUnit.SECONDS))
+            notifier.onCancelAll = null
+        }
     }
 
     @Test
@@ -62,6 +84,182 @@ class MailRepositoryTest {
         assertEquals("回收筒", repo.folders().nameOf(SpecialFolder.TRASH))
         assertEquals(listOf("b", "a"), repo.loadPage("INBOX", null).messages.map { it.subject })
         assertEquals(listOf("b", "a"), repo.cachedPage("INBOX")!!.messages.map { it.subject })
+    }
+
+    /**
+     * A page that lands after its account signed out is not cached: the sign-out cleared the
+     * cache, and whoever signs in next must not find the departing account's page in it. Asked
+     * under the cache's lock, which the clear takes too.
+     */
+    @Test
+    fun `a page that lands after the sign-out is not cached`() = runTest {
+        server.deliver("a")
+        lateinit var setup: TestSetup
+        val interrupting = MailSessionFactory { credentials ->
+            val session = server.factory().open(credentials)
+            object : MailSession by session {
+                override fun fetchPage(folder: String, beforeSeq: Int?, pageSize: Int): MailPage {
+                    val page = session.fetchPage(folder, beforeSeq, pageSize)
+                    setup.signOutAndSettle()
+                    return page
+                }
+            }
+        }
+        setup = TestSetup(backgroundScope, interrupting)
+        val repo = setup.signedIn()
+
+        assertEquals(listOf("a"), repo.loadPage("INBOX", null).messages.map { it.subject })
+
+        assertNull(setup.cache.loadFolder("INBOX"))
+    }
+
+    /**
+     * `stillWanted` is asked with the session held, right before the command: a request that
+     * queued behind another and is no longer wanted when its turn comes is never sent, and ends
+     * as [MailError.Abandoned].
+     */
+    @Test
+    fun `a request no longer wanted once the session comes free is not sent`() = runTest {
+        server.deliver("a")
+        val holding = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val statuses = AtomicInteger()
+        val sessions = MailSessionFactory { credentials ->
+            val session = server.factory().open(credentials)
+            object : MailSession by session {
+                override fun status(folder: String): FolderStatus {
+                    statuses.incrementAndGet()
+                    return session.status(folder)
+                }
+
+                override fun fetchBody(folder: String, uid: Long): MailBody {
+                    holding.countDown()
+                    release.await(5, TimeUnit.SECONDS)
+                    return session.fetchBody(folder, uid)
+                }
+            }
+        }
+        val setup = TestSetup(backgroundScope, sessions)
+        val repo = setup.signedIn()
+        val uid = repo.loadPage("INBOX", null).messages.single().uid
+
+        // One request holds the session (after a STATUS of its own).
+        val body = launch(Dispatchers.IO) { repo.body("INBOX", uid) }
+        assertTrue(holding.await(5, TimeUnit.SECONDS))
+        val sentBefore = statuses.get()
+        // The STATUS reaches the wait for the session while still wanted...
+        val reached = CountDownLatch(1)
+        setup.repository.holder.onWait = { reached.countDown() }
+        val wanted = AtomicBoolean(true)
+        val status = async(Dispatchers.IO) { runCatching { repo.status("INBOX") { wanted.get() } } }
+        assertTrue(reached.await(5, TimeUnit.SECONDS))
+        // ...and is no longer wanted by the time the session comes free.
+        wanted.set(false)
+        release.countDown()
+
+        assertTrue(status.await().exceptionOrNull() is MailError.Abandoned)
+        assertEquals(sentBefore, statuses.get())
+        body.join()
+    }
+
+    /**
+     * Asked before the connection is touched, not only before the command: probing or opening
+     * it logs in with the credentials the caller read, so a request of an account that has left
+     * -- with the next one signed in -- must not log in as the next one. A refusal then would be
+     * the next account's, dropped as the old one's.
+     */
+    @Test
+    fun `a request of a departed account opens no session for the next one`() = runTest {
+        val opens = AtomicInteger()
+        val sessions = MailSessionFactory { credentials ->
+            opens.incrementAndGet()
+            server.factory().open(credentials)
+        }
+        val setup = TestSetup(backgroundScope, sessions)
+        val repo = setup.signedIn()
+        repo.loadPage("INBOX", null)
+        val before = setup.account.accountGeneration
+        setup.signOutAndSettle()
+        server.passwords["B10000002"] = "pw"
+        setup.account.signIn("b10000002", "pw")
+        val opened = opens.get()
+
+        val outcome = runCatching { repo.status("INBOX") { setup.account.accountGeneration == before } }
+
+        assertTrue(outcome.exceptionOrNull() is MailError.Abandoned)
+        assertEquals(opened, opens.get())
+    }
+
+    /** The folder list a first request resolves is a request too, and asked the same question. */
+    @Test
+    fun `a departed account's inbox status resolves no folders for the next one`() = runTest {
+        val opens = AtomicInteger()
+        val sessions = MailSessionFactory { credentials ->
+            opens.incrementAndGet()
+            server.factory().open(credentials)
+        }
+        val setup = TestSetup(backgroundScope, sessions)
+        setup.signedIn()
+        val before = setup.account.accountGeneration
+        setup.signOutAndSettle()
+        server.passwords["B10000002"] = "pw"
+        setup.account.signIn("b10000002", "pw")
+        val opened = opens.get()
+
+        val outcome = runCatching { setup.repository.inboxStatus { setup.account.accountGeneration == before } }
+
+        assertTrue(outcome.exceptionOrNull() is MailError.Abandoned)
+        assertEquals(opened, opens.get())
+    }
+
+    /**
+     * Another student can sign in over this one without a sign-out -- the one account change the
+     * sign-out collector never sees. A LIST already out when that happens comes back under the new
+     * student's generation, and must not be what their own first request finds resolved.
+     */
+    @Test
+    fun `a folder list that returns after another student signed in over this one is not kept as theirs`() = runTest {
+        val setup = TestSetup(backgroundScope)
+        setup.signedIn()
+        val before = setup.account.accountGeneration
+        server.onListFolders = {
+            server.onListFolders = null
+            server.passwords["B10000002"] = "pw"
+            runBlocking { setup.account.signIn("b10000002", "pw") }
+        }
+        // The first student's LIST was sent, and comes back for nobody.
+        setup.repository.folders { setup.account.accountGeneration == before }
+        assertTrue(setup.account.accountGeneration != before)
+        val lists = server.listCalls
+
+        // The second student's first request asks the server, not what the first one's LIST resolved.
+        setup.repository.folders()
+        assertEquals(lists + 1, server.listCalls)
+    }
+
+    @Test
+    fun `a dropped cached page is gone until the next first page writes a new one`() = runTest {
+        server.deliver("a")
+        val repo = TestSetup(backgroundScope).signedIn()
+        repo.loadPage("INBOX", null)
+        // Only a page of the generation found obsolete goes; this one is the server's current one.
+        repo.dropCachedPage("INBOX", server.uidValidity + 1)
+        assertNotNull(repo.cachedPage("INBOX"))
+        repo.dropCachedPage("INBOX", server.uidValidity)
+        assertNull(repo.cachedPage("INBOX"))
+        // Dropping a folder that has no cached page is nothing to fail over.
+        repo.dropCachedPage("INBOX", server.uidValidity)
+        assertEquals(listOf("a"), repo.loadPage("INBOX", null).messages.map { it.subject })
+        assertEquals(listOf("a"), repo.cachedPage("INBOX")!!.messages.map { it.subject })
+    }
+
+    @Test
+    fun `dropping a cached page leaves the demo mailbox as it is, having no cache behind it`() = runTest {
+        val repo = TestSetup(backgroundScope).signedIn("B10000099", "demo")
+        // The demo page reports validity 1, so this names exactly the page a real cache would drop.
+        repo.dropCachedPage("INBOX", 1)
+        assertEquals(listOf("期中考時間公告"), repo.cachedPage("INBOX")!!.messages.map { it.subject })
+        assertEquals(0, server.opens)
     }
 
     @Test
@@ -265,6 +463,19 @@ class MailRepositoryTest {
         val local = repo.search("INBOX", "期中")
         assertTrue(local is SearchOutcome.LoadedOnly)
         assertEquals(listOf("期中考公告"), local.messages.map { it.subject })
+    }
+
+    @Test
+    fun `search returns the newest page of matches and keeps the rest to fetch`() = runTest {
+        val uids = (1..MailRepository.PAGE_SIZE + 2).map { server.deliver("期中考 $it") }
+        val repo = TestSetup(backgroundScope).signedIn()
+        val outcome = repo.search("INBOX", "期中") as SearchOutcome.Server
+        assertEquals(uids.takeLast(MailRepository.PAGE_SIZE).reversed(), outcome.messages.map { it.uid })
+        assertEquals(uids.take(2).reversed(), outcome.remaining)
+        assertEquals(server.uidValidity, outcome.uidValidity)
+        val page = repo.searchPage("INBOX", outcome.remaining)
+        assertEquals(uids.take(2).reversed(), page.messages.map { it.uid })
+        assertEquals(server.uidValidity, page.uidValidity)
     }
 
     @Test

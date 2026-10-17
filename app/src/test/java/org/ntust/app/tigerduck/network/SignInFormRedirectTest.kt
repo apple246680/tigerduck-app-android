@@ -100,11 +100,15 @@ class SignInFormRedirectTest {
 
     private fun kotlinx.coroutines.test.TestScope.moodleTokens(): MoodleTokenService {
         moodle = true
-        val tokens = object : MoodleTokenCoordinator.Tokens {
+        val tokens = object : MoodleTokenPairStore {
             override var token: String? = null
+            override var privateToken: String? = null
             override val studentId: String = STUDENT
             override val password: String = PASSWORD
-            override fun storeIfSignedIn(studentId: String, token: String) = true.also { this.token = token }
+            override fun storeIfSignedIn(studentId: String, token: String, privateToken: String?) = true.also {
+                this.token = token
+                this.privateToken = privateToken
+            }
         }
         return MoodleTokenService({ school }, tokens, latch(), backgroundScope) { 1_800_000_000_000L }
     }

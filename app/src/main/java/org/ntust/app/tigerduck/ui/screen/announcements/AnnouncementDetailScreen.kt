@@ -1,5 +1,6 @@
 package org.ntust.app.tigerduck.ui.screen.announcements
 
+import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +40,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mikepenz.markdown.m3.Markdown
@@ -89,7 +91,7 @@ fun AnnouncementDetailScreen(
         floatingActionButton = {
             if (!sourceUrl.isNullOrEmpty()) {
                 ExtendedFloatingActionButton(
-                    onClick = { openLink(context, sourceUrl, browserPreference) },
+                    onClick = { openBulletinSource(context, sourceUrl, browserPreference) },
                     icon = {
                         Icon(Icons.Filled.OpenInBrowser, contentDescription = null)
                     },
@@ -295,3 +297,18 @@ private fun BodyMarkdown(markdown: String) {
     val normalized = remember(markdown) { BulletinBodyRenderer.normalize(markdown) }
     Markdown(content = normalized)
 }
+
+/**
+ * Opens a bulletin's source page through [openLink], the way the link-opening setting says: in an
+ * in-app browser tab, or in the system's default browser.
+ *
+ * Only a web page: the address comes from the bulletin feed, and [openLink] would also hand a
+ * `mailto:` link to a mail app -- handed to the system as it is, any other scheme could start
+ * whatever app claims it.
+ */
+internal fun openBulletinSource(context: Context, url: String, browserPreference: String) {
+    if (url.toUri().scheme?.lowercase() !in WEB_SCHEMES) return
+    openLink(context, url, browserPreference)
+}
+
+private val WEB_SCHEMES = setOf("http", "https")

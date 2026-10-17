@@ -17,6 +17,15 @@ import java.util.Calendar
 object ClassTableSelection {
 
     /**
+     * Whether a course picked now is someone else's, which its detail shows read-only: one picked
+     * from the class table while it shows someone else's. One picked from the live term, as Home
+     * and the today strip pick it, is the user's own whatever the class table shows, as iOS opens
+     * it from Home.
+     */
+    fun isSomeoneElses(showingSomeoneElse: Boolean, fromLiveTerm: Boolean): Boolean =
+        showingSomeoneElse && !fromLiveTerm
+
+    /**
      * The course the detail shows for [selected], as it is now, so a rename made from the detail
      * shows at once: the copy in the term it was picked from. That is [courses], the grid's term,
      * unless it was picked [fromAnotherTerm], the live term the today strip shows while the grid

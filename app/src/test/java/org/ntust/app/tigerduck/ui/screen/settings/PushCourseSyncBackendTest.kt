@@ -8,8 +8,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import okhttp3.OkHttpClient
+import org.ntust.app.tigerduck.academic.AcademicCalendarStore
 import org.ntust.app.tigerduck.auth.AuthTokenManager
 import org.ntust.app.tigerduck.auth.ScriptedBackend
+import org.ntust.app.tigerduck.data.PendingCourseOverrides
+import org.ntust.app.tigerduck.data.cache.DataCache
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore
 import org.ntust.app.tigerduck.network.resolveAnnouncementEndpoint
@@ -41,8 +45,10 @@ class PushCourseSyncBackendTest {
         assertTrue(resolveAnnouncementEndpoint(prefs).overrideApplied)
         val tokens = V3TokenStore(context.getSharedPreferences("v3-tokens-use-local-test", Context.MODE_PRIVATE))
         tokens.save("access", "refresh", Long.MAX_VALUE)
-        val api = PushApiClient(backend.client, prefs, AuthTokenManager(tokens, backend.client, prefs, "device-1"))
-        courses = PushCourseSyncBackend(api, prefs)
+        val tokenManager = AuthTokenManager(tokens, backend.client, prefs, "device-1")
+        val api = PushApiClient(backend.client, prefs, tokenManager)
+        val cache = DataCache(context, AcademicCalendarStore(context, OkHttpClient(), prefs))
+        courses = PushCourseSyncBackend(api, prefs, PendingCourseOverrides(cache, api, prefs, tokenManager))
     }
 
     private suspend fun fails(request: suspend () -> Unit): Boolean = runCatching { request() }.isFailure
@@ -54,6 +60,7 @@ class PushCourseSyncBackendTest {
         assertTrue(fails { courses.deleteAllCourses("1151") })
         assertTrue(fails { courses.uploadCourses(listOf(Course(courseNo = "CS1", courseName = "CS1")), "1151") })
         assertTrue(fails { courses.deleteCourse("client:1151:CS1") })
+        assertTrue(fails { courses.patchCustomName("1151CS1", "Calc", "en") })
         assertEquals(emptyList<String>(), backend.endpoints())
     }
 

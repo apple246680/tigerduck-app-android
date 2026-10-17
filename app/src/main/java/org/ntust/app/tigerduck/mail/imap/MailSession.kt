@@ -33,6 +33,9 @@ interface MailSession : Closeable {
      */
     fun createFolder(name: String)
     fun status(folder: String): FolderStatus
+
+    /** [folder]'s UIDVALIDITY. An implementation that holds the folder open answers from it without a round trip of its own. */
+    fun uidValidity(folder: String): Long = status(folder).uidValidity
     fun fetchPage(folder: String, beforeSeq: Int?, pageSize: Int): MailPage
     fun fetchSince(folder: String, fromUid: Long): List<MailSummary>
     fun fetchByUids(folder: String, uids: List<Long>): List<MailSummary>

@@ -2,6 +2,7 @@ package org.ntust.app.tigerduck.auth
 
 import android.util.Log
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -10,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Call
 import okhttp3.EventListener
 import okhttp3.MediaType.Companion.toMediaType
@@ -23,6 +25,7 @@ import org.ntust.app.tigerduck.BuildConfig
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.V3TokenStore
 import org.ntust.app.tigerduck.network.resolveAnnouncementEndpoint
+import org.ntust.app.tigerduck.push.OwedUnregister
 import org.ntust.app.tigerduck.push.currentDeviceModel
 import org.ntust.app.tigerduck.util.logSummary
 import java.io.IOException
@@ -48,6 +51,10 @@ class AuthTokenManager(
     private val prefs: AppPreferences,
     private val deviceUuid: String,
     private val now: () -> Long = System::currentTimeMillis,
+    // The unregister a sign-out owes, which a login waits for and then ends; see [login].
+    private val owedUnregister: OwedUnregister? = null,
+    // How long a departing refresh waits for a session refresh of its token on its way.
+    private val departingWaitMs: Long = REFRESH_TIMEOUT_SECONDS * 1000,
     signInCallTimeoutMs: Long = SIGN_IN_CALL_TIMEOUT_SECONDS * 1_000,
 ) {
     private val refreshMutex = Mutex()
@@ -246,13 +253,95 @@ class AuthTokenManager(
     }
 
     /**
-     * Non-suspending snapshot of the current bearer header, or null if no
-     * access token is stored. Does NOT trigger a refresh — intended for
-     * capturing the header before [logout] wipes the tokens, so a fire-and-
-     * forget device-unregister DELETE can still authenticate.
+     * The session as it stands, for a sign-out to take before [logout] wipes
+     * it: the device unregister goes out as the departing account after. Null
+     * without one.
      */
-    fun currentAuthHeader(): String? =
-        tokens.accessToken?.let { "Bearer $it" }
+    fun departingSession(): DepartingSession? = synchronized(signInLock) {
+        val access = tokens.accessToken ?: return null
+        val refresh = tokens.refreshToken ?: return null
+        // The backend recorded at sign-in; the one set now for a pair stored before that was.
+        // The count of the token's sends goes with it as the disk has it: every send that may
+        // have reached the backend, from before a restart or answered with a 5xx too, and one
+        // still on its way, counted there before it went out. That one stays counted even when
+        // it comes back unused: once the pair is gone the count cannot be put back on disk, and
+        // the departing refresh must never be the token's third send (MAX_REFRESH_TOKEN_SENDS).
+        // This process's own count of replies lost is taken as well; the disk's is never below it.
+        DepartingSession(
+            access, refresh, tokens.expiresAt, tokens.issuedBy ?: baseUrl, tokens.studentId,
+            maxOf(sendsWithoutReply(refresh), tokens.refreshTokenSends),
+        )
+    }
+
+    /**
+     * Sends one refresh of a [DepartingSession] for the sign-out's device
+     * unregister. Stores nothing: the pair is the departing account's, and the
+     * session here is whoever signs in next.
+     *
+     * [sendsWithoutReply] is how many sends of the token may have reached the
+     * backend without a pair coming back, which the caller keeps with the debt
+     * across launches, counted before each send goes out; this process's own
+     * count of replies lost is taken too. At two, nothing is sent and the
+     * refresh is [DepartingRefresh.Refused]: within its grace the backend
+     * answers a rotated token once more, and takes a later send of it for
+     * reuse. A send the backend did not use is [DepartingRefresh.Unused], for
+     * the caller to leave uncounted; a 5xx is [DepartingRefresh.Unavailable],
+     * which stays counted.
+     */
+    suspend fun refreshDeparting(departing: DepartingSession, sendsWithoutReply: Int): DepartingRefresh {
+        val token = departing.refreshToken
+        // The session's own refresh of this token may still be on its way, sent
+        // before the sign-out: its pair is waited for and taken rather than the
+        // token sent once more. That refresh belongs to the departing account,
+        // so it signs nobody in and never waits on the caller.
+        val onItsWay = synchronized(signInLock) { refreshOnItsWay?.takeIf { it.first == token }?.second }
+        // Bounded, as whoever waits on the unregister waits on this: past it the
+        // refresh is left for a later try rather than the token sent alongside.
+        if (onItsWay != null && withTimeoutOrNull(departingWaitMs) { onItsWay.await() } == null) {
+            return DepartingRefresh.Unavailable
+        }
+        return withContext(Dispatchers.IO) {
+            // To the backend that issued the session, whatever the endpoint setting says now.
+            val base = departing.baseUrl
+            val sends = maxOf(sendsWithoutReply, sendsWithoutReply(token))
+            val outcome = takeUnstoredPair(token)
+                ?: if (sends >= MAX_REFRESH_TOKEN_SENDS) {
+                    RefreshOutcome.Refused
+                } else {
+                    // Counted by the caller, not on disk: the pair is no longer the stored one.
+                    send(token, sends, DEPARTING, base)
+                }
+            when (outcome) {
+                is RefreshOutcome.Refreshed -> DepartingRefresh.Refreshed(
+                    DepartingSession(outcome.accessToken, outcome.refreshToken, outcome.expiresAt, base, departing.studentId),
+                )
+                RefreshOutcome.Refused -> DepartingRefresh.Refused
+                RefreshOutcome.NoReply -> DepartingRefresh.NoReply
+                // A 5xx: the same token goes out on a later try, this send counted.
+                RefreshOutcome.Unavailable -> DepartingRefresh.Unavailable
+                // Turned away or never sent: the same token goes out on a later try, uncounted.
+                RefreshOutcome.Unused -> DepartingRefresh.Unused
+            }
+        }
+    }
+
+    // Under signInLock. The pair a refresh got back after a sign-out, which it
+    // could not store, by the token it replaced; for refreshDeparting to take.
+    private var unstoredPair: Pair<String, RefreshOutcome.Refreshed>? = null
+
+    // Under signInLock. How many sends of a refresh token in a row got no reply.
+    private var unanswered: Pair<String, Int>? = null
+
+    // Under signInLock. The session refresh on its way, by the token it sends.
+    private var refreshOnItsWay: Pair<String, CompletableDeferred<Unit>>? = null
+
+    private fun takeUnstoredPair(token: String): RefreshOutcome.Refreshed? = synchronized(signInLock) {
+        unstoredPair?.takeIf { it.first == token }?.second?.also { unstoredPair = null }
+    }
+
+    private fun sendsWithoutReply(token: String): Int = synchronized(signInLock) {
+        unanswered?.takeIf { it.first == token }?.second ?: 0
+    }
 
     /**
      * Signs in to the backend and stores the pair it returns. When [logout]
@@ -270,7 +359,7 @@ class AuthTokenManager(
         moodlePrivateToken: String?,
         platform: String = "android",
         signInGeneration: Int = this.signInGeneration,
-    ): LoginResult = withContext(Dispatchers.IO) {
+    ): LoginResult = signingIn(studentId) {
         if (moodleToken.isBlank()) throw AuthException("no Moodle token")
         val json = JSONObject().apply {
             put("student_id", studentId)
@@ -285,8 +374,9 @@ class AuthTokenManager(
             })
         }
         val body = json.toString().toRequestBody(jsonType)
+        val issuer = baseUrl
         val request = Request.Builder()
-            .url("$baseUrl/auth/login")
+            .url("$issuer/auth/login")
             .post(body)
             .build()
         signInClient.newCall(request).execute().use { response ->
@@ -295,7 +385,8 @@ class AuthTokenManager(
             val accessToken = result.getString("access_token")
             val refreshToken = result.getString("refresh_token")
             val expiresIn = result.getInt("expires_in")
-            if (!saveIfSignedIn(signInGeneration, accessToken, refreshToken, now() + expiresIn * 1000L)) {
+            val expiresAt = now() + expiresIn * 1000L
+            if (!saveIfSignedIn(signInGeneration, accessToken, refreshToken, expiresAt, issuer, studentId)) {
                 throw AuthException("signed out during login")
             }
             LoginResult(
@@ -306,24 +397,49 @@ class AuthTokenManager(
     }
 
     /**
+     * A backend login, on the I/O dispatcher and under the lock of the
+     * unregister a sign-out owes, which a login that lands ends: see
+     * [OwedUnregister.signingIn].
+     */
+    private suspend fun <T> signingIn(studentId: String, login: suspend CoroutineScope.() -> T): T =
+        withContext(Dispatchers.IO) {
+            val owed = owedUnregister ?: return@withContext login()
+            owed.signingIn(studentId) { login() }
+        }
+
+    /**
      * Drops the pair, and keeps a login or refresh reply still on its way from
      * storing one. The next account's automatic sign-in then goes at once.
+     *
+     * Hands back the session it drops, for the sign-out's unregister: taken
+     * under the same lock, as the generation moves, so it is the pair a refresh
+     * landing just before stored, and nothing lands after.
      */
-    fun logout() {
+    fun logout(): DepartingSession? {
+        var departing: DepartingSession? = null
         synchronized(signInLock) {
+            departing = departingSession()
             generation++
             tokens.clear()
             signInUnderWay = null
             signInFailedAt = null
             _lastSignInFailed.value = false
         }
+        return departing
     }
 
     /** Stores the pair unless [logout] has run since [signIn] was read, and says whether it did. */
-    private fun saveIfSignedIn(signIn: Int, access: String, refresh: String, expiresAt: Long): Boolean {
+    private fun saveIfSignedIn(
+        signIn: Int,
+        access: String,
+        refresh: String,
+        expiresAt: Long,
+        issuedBy: String? = null,
+        studentId: String? = null,
+    ): Boolean {
         synchronized(signInLock) {
             if (generation != signIn) return false
-            tokens.save(access, refresh, expiresAt)
+            tokens.save(access, refresh, expiresAt, issuedBy, studentId)
             return true
         }
     }
@@ -356,34 +472,60 @@ class AuthTokenManager(
         validTokenIfSignedIn(signIn)?.let { return it }
 
         // With the generation under the lock a sign-out takes, so the token is
-        // the account's that asked; its count with it.
-        val (refreshToken, sends) = synchronized(signInLock) {
-            if (generation == signIn) tokens.refreshToken?.let { it to tokens.refreshTokenSends } else null
+        // the account's that asked; its count with it. Marked on its way in the
+        // same step, so a departing refresh of the token waits for this one
+        // rather than send it alongside.
+        val (onItsWay, sends) = synchronized(signInLock) {
+            val token = if (generation == signIn) tokens.refreshToken else null
+            token?.let {
+                (it to CompletableDeferred<Unit>()).also { mark -> refreshOnItsWay = mark } to tokens.refreshTokenSends
+            }
         } ?: return null
-        // No header rather than the access token in its last seconds, which
-        // would draw a 401, and Home answers a 401 with a relogin.
-        if (isRefreshPaused()) return null
-        // Finishes even when the caller is cancelled: stopped between a send
-        // and what follows it, a token the backend may have rotated would stay
-        // on disk for the next refresh.
-        withContext(NonCancellable) { refreshAndSettle(refreshToken, sends, signIn) }
+        try {
+            // No header rather than the access token in its last seconds, which
+            // would draw a 401, and Home answers a 401 with a relogin.
+            if (isRefreshPaused()) return null
+            // Finishes even when the caller is cancelled: stopped between a send
+            // and what follows it, a token the backend may have rotated would stay
+            // on disk for the next refresh.
+            withContext(NonCancellable) { refreshAndSettle(onItsWay, sends, signIn) }
+        } finally {
+            arrived(onItsWay)
+        }
     }
 
-    /** [sends]: the sends of [refreshToken] counted before this refresh; see [V3TokenStore.refreshTokenSends]. */
-    private suspend fun refreshAndSettle(refreshToken: String, sends: Int, signIn: Int): String? {
+    /** The refresh [onItsWay] marked has its answer, or never went out. */
+    private fun arrived(onItsWay: Pair<String, CompletableDeferred<Unit>>) {
+        synchronized(signInLock) { if (refreshOnItsWay === onItsWay) refreshOnItsWay = null }
+        onItsWay.second.complete(Unit)
+    }
+
+    /**
+     * [sends]: the sends of the token [onItsWay] marks, counted before this refresh; see
+     * [V3TokenStore.refreshTokenSends].
+     */
+    private suspend fun refreshAndSettle(
+        onItsWay: Pair<String, CompletableDeferred<Unit>>,
+        sends: Int,
+        signIn: Int,
+    ): String? {
         val outcome = try {
             if (sends >= MAX_REFRESH_TOKEN_SENDS) {
                 // Another send could be its third use: sign in again instead.
                 Log.w(TAG, "refresh token may have been used twice; signing in again")
                 RefreshOutcome.Refused
             } else {
-                withContext(Dispatchers.IO) { sendWithOneResend(refreshToken, sends, signIn) }
+                withContext(Dispatchers.IO) { sendWithOneResend(onItsWay.first, sends, signIn) }
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "refresh failed: ${e.javaClass.simpleName}")
             RefreshOutcome.Refused
+        } finally {
+            // Before any sign-in below: a departing refresh waiting on this
+            // one wants its answer, not the relogin after it.
+            arrived(onItsWay)
         }
         // Signed out since the refresh began: what came back is the departing
         // account's, and a relogin or a clear would act on whoever signed in since.
@@ -444,15 +586,16 @@ class AuthTokenManager(
      * killed while it is out leaves it counted; [sendsBefore] is the count
      * before it. A count the disk does not take keeps it from going out. A
      * 429 and a send that never left the device put the count back, as the
-     * backend did not use the token.
+     * backend did not use the token. It goes to [base]: for a departing
+     * session, the backend that issued it, whatever the endpoint setting says.
      */
-    private fun send(refreshToken: String, sendsBefore: Int, signIn: Int): RefreshOutcome {
+    private fun send(refreshToken: String, sendsBefore: Int, signIn: Int, base: String = baseUrl): RefreshOutcome {
         val json = JSONObject().apply {
             put("refresh_token", refreshToken)
         }
         val body = json.toString().toRequestBody(jsonType).oneShot()
         val request = Request.Builder()
-            .url("$baseUrl/auth/refresh")
+            .url("$base/auth/refresh")
             .post(body)
             .build()
         if (!countSends(refreshToken, sendsBefore + 1, signIn)) {
@@ -463,6 +606,8 @@ class AuthTokenManager(
         val progress = SendProgress()
         return try {
             refreshClient.newCall(request).apply { addEventListener(progress) }.execute().use { response ->
+                // Answered: whatever the token's sends before got, this one has a reply.
+                synchronized(signInLock) { if (unanswered?.first == refreshToken) unanswered = null }
                 if (response.code == 429 || response.code >= 500) {
                     Log.w(TAG, "refresh got HTTP ${response.code}; keeping the tokens")
                     // The backend's limiter answers before the refresh runs. A
@@ -475,10 +620,14 @@ class AuthTokenManager(
                 val result = JSONObject(response.body.string())
                 val newAccess = result.getString("access_token")
                 val newRefresh = result.getString("refresh_token")
-                val expiresIn = result.getInt("expires_in")
+                val expiresAt = now() + result.getInt("expires_in") * 1000L
+                val refreshed = RefreshOutcome.Refreshed(newAccess, newRefresh, expiresAt)
                 // Stores nothing after a sign-out, which refreshAndSettle then sees.
-                saveIfSignedIn(signIn, newAccess, newRefresh, now() + expiresIn * 1000L)
-                RefreshOutcome.Refreshed(newAccess)
+                // The pair is kept aside instead, for the sign-out's unregister.
+                if (!saveIfSignedIn(signIn, newAccess, newRefresh, expiresAt) && signIn != DEPARTING) {
+                    synchronized(signInLock) { unstoredPair = refreshToken to refreshed }
+                }
+                refreshed
             }
         } catch (e: IOException) {
             if (e.wasNeverSent() || progress.failedBeforeWriting) {
@@ -487,17 +636,30 @@ class AuthTokenManager(
                 RefreshOutcome.Unused
             } else {
                 Log.w(TAG, "refresh got no reply: ${e.javaClass.simpleName}")
+                synchronized(signInLock) {
+                    val count = unanswered?.takeIf { it.first == refreshToken }?.second ?: 0
+                    unanswered = refreshToken to count + 1
+                }
                 RefreshOutcome.NoReply
             }
         }
     }
 
     // Only while [refreshToken] is still the account's stored token: a pair
-    // stored since, by a sign-in or for the next account, has a count of its own.
-    // False when the disk did not take the count.
+    // stored since by a sign-in has a count of its own. False when the disk did
+    // not take the count, and once the account has signed out: the sign-out
+    // took the departing session under this lock with the count as it stood,
+    // so a send counted after it would be one the debt never knows of, and
+    // answered with a 5xx nothing here would count it either. A departing
+    // refresh ([DEPARTING]) is counted by its caller, with the debt.
     private fun countSends(refreshToken: String, count: Int, signIn: Int): Boolean =
         synchronized(signInLock) {
-            generation != signIn || tokens.refreshToken != refreshToken || tokens.saveRefreshTokenSends(count)
+            when {
+                signIn == DEPARTING -> true
+                generation != signIn -> false
+                tokens.refreshToken != refreshToken -> true
+                else -> tokens.saveRefreshTokenSends(count)
+            }
         }
 
     // OkHttp 5 raises these before it writes the request: the DNS lookup's
@@ -541,7 +703,7 @@ class AuthTokenManager(
 
     private sealed interface RefreshOutcome {
         // Not a data class, whose toString() would print the token.
-        class Refreshed(val accessToken: String) : RefreshOutcome
+        class Refreshed(val accessToken: String, val refreshToken: String, val expiresAt: Long) : RefreshOutcome
 
         /** No reply came back, so the backend may or may not have rotated the token. */
         data object NoReply : RefreshOutcome
@@ -582,6 +744,9 @@ class AuthTokenManager(
     private companion object {
         const val TAG = "AuthTokenManager"
         const val REFRESH_TIMEOUT_SECONDS = 20L
+
+        // No generation is ever this, so a departing refresh stores nothing.
+        const val DEPARTING = -1
 
         // The backend answers a refresh token twice at most: once, and again
         // while the pair it gave is unused. It takes a third use for theft and

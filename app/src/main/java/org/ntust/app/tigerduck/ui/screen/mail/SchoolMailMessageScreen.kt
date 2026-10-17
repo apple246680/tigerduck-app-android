@@ -34,6 +34,7 @@ import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.ReplyAll
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -57,6 +58,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
+import org.ntust.app.tigerduck.mail.sanitize.PlainTextLink
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -111,13 +119,22 @@ fun SchoolMailMessageScreen(
     browserPreference: String,
     onBack: () -> Unit,
     onCompose: (mode: ComposeMode, folder: String, uid: Long) -> Unit,
+    /**
+     * A confirmed `mailto:` link, for School Mail's own compose to start from; [folder] and [uid]
+     * name this mail, which compose closes back to.
+     */
+    onComposeMailto: (folder: String, uid: Long, href: String) -> Unit,
     viewModel: SchoolMailMessageViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val sentCopyNotice by viewModel.sentCopyNotice.collectAsStateWithLifecycle()
+    val signedIn by viewModel.signedIn.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var menuOpen by remember { mutableStateOf(false) }
     var showMove by remember { mutableStateOf(false) }
     var pendingLink by rememberSaveable { mutableStateOf<Int?>(null) }
+    // A link tapped in the plain view, by its index in Content.Ready.plainLinks.
+    var pendingPlainLink by rememberSaveable { mutableStateOf<Int?>(null) }
     var pendingSavePart by rememberSaveable { mutableStateOf<String?>(null) }
     // "View in light mode". Kept by this screen alone, like the view mode is by its view model --
     // never persisted to preferences (rememberSaveable only carries it across a rotation or a
@@ -170,6 +187,11 @@ fun SchoolMailMessageScreen(
         val request = state.openRequest ?: return@LaunchedEffect
         openAttachment(context, request)
         viewModel.consumeOpenRequest()
+    }
+    LaunchedEffect(state.shareRequest) {
+        val request = state.shareRequest ?: return@LaunchedEffect
+        shareAttachment(context, request)
+        viewModel.consumeShareRequest()
     }
 
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
@@ -237,7 +259,8 @@ fun SchoolMailMessageScreen(
                                 onDismiss = { menuOpen = false },
                                 onMode = { menuOpen = false; viewModel.selectMode(it) },
                                 onViewInLight = { menuOpen = false; userViewInLightOverride = !viewInLight },
-                                onMarkUnread = { menuOpen = false; viewModel.markUnread() },
+                                seen = ready?.summary?.flags?.seen,
+                                onToggleSeen = { menuOpen = false; viewModel.toggleSeen() },
                                 onMove = { menuOpen = false; showMove = true },
                                 onDelete = { menuOpen = false; viewModel.delete() },
                             )
@@ -258,6 +281,8 @@ fun SchoolMailMessageScreen(
                     icon = Icons.Filled.WarningAmber,
                     title = stringResource(R.string.school_mail_load_failed_title),
                     message = stringResource(content.error.messageRes()),
+                    actionLabel = stringResource(R.string.action_retry),
+                    onAction = viewModel::load,
                 )
             }
             is Content.LoadingBody -> Column(Modifier.fillMaxSize().padding(padding)) {
@@ -280,6 +305,9 @@ fun SchoolMailMessageScreen(
                     modifier = Modifier.fillMaxSize().padding(padding).scrollbar(listState),
                     contentPadding = PaddingValues(bottom = 32.dp),
                 ) {
+                    sentCopyNotice?.let { notice ->
+                        item(key = "sent-copy") { SentCopyNoticeBanner(notice, onDismiss = viewModel::dismissSentCopyNotice) }
+                    }
                     item(key = "header") { MessageHeader(content.summary, viewModel.mailDomain, state.selfAddress) }
                     if (state.parseFailed) {
                         item(key = "parse-failed") { WarningCard(stringResource(R.string.school_mail_parse_failed), null) }
@@ -333,9 +361,10 @@ fun SchoolMailMessageScreen(
                         }
                         ViewMode.PLAIN -> item(key = "plain") {
                             SelectionContainer {
-                                Text(
-                                    content.plain,
-                                    style = MaterialTheme.typography.bodyMedium,
+                                LinkedPlainText(
+                                    text = content.plain,
+                                    links = content.plainLinks,
+                                    onLink = { pendingPlainLink = it },
                                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                                 )
                             }
@@ -343,7 +372,18 @@ fun SchoolMailMessageScreen(
                         ViewMode.SOURCE -> {
                             val source = state.source
                             val chunks = sourceChunks
-                            if (source == null || chunks == null) {
+                            val sourceError = state.sourceError
+                            if ((source == null || chunks == null) && sourceError != null && !state.sourceLoading) {
+                                item(key = "source-failed") {
+                                    EmptyStateView(
+                                        icon = Icons.Filled.WarningAmber,
+                                        title = stringResource(R.string.school_mail_source_failed),
+                                        message = stringResource(sourceError.messageRes()),
+                                        actionLabel = stringResource(R.string.action_retry),
+                                        onAction = viewModel::retrySource,
+                                    )
+                                }
+                            } else if (source == null || chunks == null) {
                                 item(key = "source-loading") {
                                     Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
                                         if (state.sourceLoading) CircularProgressIndicator()
@@ -377,6 +417,7 @@ fun SchoolMailMessageScreen(
                                 downloading = attachment.partId in state.downloading,
                                 onOpen = { viewModel.requestOpen(attachment) },
                                 onSave = { viewModel.requestSave(attachment) },
+                                onShare = { viewModel.requestShare(attachment) },
                             )
                         }
                     }
@@ -385,21 +426,27 @@ fun SchoolMailMessageScreen(
         }
     }
 
-    pendingLink?.let { index ->
-        // MailWebView only calls onLink with an index it range-checked against the same
-        // document.links it was given, so this is null only if the content changed underneath
-        // since the tap; skip the dialog rather than show one with nothing to open.
-        val target = viewModel.linkTarget(index)
-        if (target != null) {
-            LinkDialog(
-                target = target,
-                onOpen = {
-                    pendingLink = null
-                    openBodyLink(context, target.href, browserPreference)
-                },
-                onDismiss = { pendingLink = null },
-            )
-        }
+    // MailWebView only calls onLink with an index it range-checked against the same
+    // document.links it was given, and the plain view's indices come from the very list it was
+    // drawn from, so a target is null only if the content changed underneath since the tap; skip
+    // the dialog rather than show one with nothing to open.
+    val linkTarget = pendingLink?.let(viewModel::linkTarget) ?: pendingPlainLink?.let(viewModel::plainLinkTarget)
+    if (linkTarget != null) {
+        LinkDialog(
+            target = linkTarget,
+            onOpen = {
+                pendingLink = null
+                pendingPlainLink = null
+                openBodyLink(
+                    context, linkTarget.href, browserPreference,
+                    if (signedIn) { href -> onComposeMailto(viewModel.folder, viewModel.uid, href) } else null,
+                )
+            },
+            onDismiss = {
+                pendingLink = null
+                pendingPlainLink = null
+            },
+        )
     }
     state.confirmAttachment?.let { pending ->
         // Spec lines 416/653 ("confirm once more before opening or saving"): the same
@@ -494,7 +541,9 @@ internal fun MessageMenu(
     onDismiss: () -> Unit,
     onMode: (ViewMode) -> Unit,
     onViewInLight: () -> Unit,
-    onMarkUnread: () -> Unit,
+    /** Whether the mail is read, which decides Mark unread or Mark read; null, before it has loaded, leaves the item out. */
+    seen: Boolean?,
+    onToggleSeen: () -> Unit,
     onMove: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -529,7 +578,12 @@ internal fun MessageMenu(
             )
         }
         HorizontalDivider()
-        DropdownMenuItem(text = { Text(stringResource(R.string.school_mail_mark_unread)) }, onClick = onMarkUnread)
+        if (seen != null) {
+            DropdownMenuItem(
+                text = { Text(stringResource(if (seen) R.string.school_mail_mark_unread else R.string.school_mail_mark_read)) },
+                onClick = onToggleSeen,
+            )
+        }
         DropdownMenuItem(text = { Text(stringResource(R.string.school_mail_move_to)) }, onClick = onMove)
         HorizontalDivider()
         // Red, like deleting a course from the class table (ClassTableCourseCell) -- the one
@@ -611,9 +665,7 @@ private fun MessageHeader(summary: MailSummary, mailDomain: String, selfAddress:
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (secondary != null) {
-                    Text(secondary, style = MaterialTheme.typography.bodySmall, color = cs.outline)
-                }
+                if (secondary != null) SenderAddress(secondary)
             }
             if (MailWarnings.isExternalSender(from, summary.returnPath, mailDomain)) {
                 Surface(shape = RoundedCornerShape(50), color = WarningOrange.copy(alpha = 0.18f)) {
@@ -636,6 +688,34 @@ private fun MessageHeader(summary: MailSummary, mailDomain: String, selfAddress:
         val labelWidth = recipientLabelWidth(toLabel, ccLabel)
         if (to.isNotEmpty()) MailRecipientRow(toLabel, to, labelWidth = labelWidth)
         if (cc.isNotEmpty()) MailRecipientRow(ccLabel, cc, labelWidth = labelWidth)
+    }
+}
+
+/**
+ * A plain-text mail with its URLs and addresses drawn as links. A tap only reports the link's
+ * index: what it opens goes through the same check dialog an HTML link does. Kept selectable --
+ * the caller wraps it in a SelectionContainer, and a long press still selects across links.
+ */
+@Composable
+internal fun LinkedPlainText(text: String, links: List<PlainTextLink>, onLink: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val linkStyle = TextLinkStyles(SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline))
+    val latestOnLink by rememberUpdatedState(onLink)
+    val annotated = remember(text, links, linkStyle) {
+        buildAnnotatedString {
+            append(text)
+            links.forEachIndexed { index, link ->
+                addLink(LinkAnnotation.Clickable(tag = "link-$index", styles = linkStyle) { latestOnLink(index) }, link.start, link.end)
+            }
+        }
+    }
+    Text(annotated, style = MaterialTheme.typography.bodyMedium, modifier = modifier)
+}
+
+/** The sender's address under their name, selectable so it can be copied like the recipients'. */
+@Composable
+internal fun SenderAddress(address: String) {
+    SelectionContainer {
+        Text(address, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
     }
 }
 
@@ -667,7 +747,13 @@ private fun WarningCard(title: String, action: (@Composable () -> Unit)?) {
 }
 
 @Composable
-private fun AttachmentRow(attachment: MailAttachment, downloading: Boolean, onOpen: () -> Unit, onSave: () -> Unit) {
+private fun AttachmentRow(
+    attachment: MailAttachment,
+    downloading: Boolean,
+    onOpen: () -> Unit,
+    onSave: () -> Unit,
+    onShare: () -> Unit,
+) {
     val context = LocalContext.current
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
@@ -688,6 +774,13 @@ private fun AttachmentRow(attachment: MailAttachment, downloading: Boolean, onOp
         } else {
             TextButton(onClick = onOpen) { Text(stringResource(R.string.school_mail_open)) }
             TextButton(onClick = onSave) { Text(stringResource(R.string.action_save)) }
+            IconButton(onClick = onShare) {
+                Icon(
+                    Icons.Filled.Share,
+                    contentDescription = stringResource(R.string.school_mail_attachment_share),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
         }
     }
 }
@@ -739,12 +832,21 @@ private fun LinkDialog(target: SchoolMailMessageViewModel.LinkTarget, onOpen: ()
  * ([SchoolMailMessageViewModel.OPENABLE_SCHEMES]), so the two cannot drift apart into an enabled
  * button that silently does nothing. Nothing new is launchable: the set is exactly the schemes
  * this already handled.
+ *
+ * A `mailto:` link goes to [composeMailto], School Mail's own compose, so the answer goes out from
+ * the school account the mail came to, as on the iPhone. Signed out ([composeMailto] null) there
+ * is no account to send from, and the link goes to another mail app instead, through [openLink].
  */
-private fun openBodyLink(context: Context, href: String, browserPreference: String) {
+internal fun openBodyLink(context: Context, href: String, browserPreference: String, composeMailto: ((String) -> Unit)?) {
     val scheme = Uri.parse(href).scheme?.lowercase()
     if (scheme !in SchoolMailMessageViewModel.OPENABLE_SCHEMES) return
-    // openLink sends mailto: to a new message and refuses every other non-web scheme too.
-    openLink(context, href, browserPreference)
+    if (scheme == "mailto" && composeMailto != null) {
+        composeMailto(href)
+    } else {
+        // openLink sends mailto: to a new message in another mail app, and refuses every other
+        // non-web scheme too.
+        openLink(context, href, browserPreference)
+    }
 }
 
 private fun openAttachment(context: Context, request: SchoolMailMessageViewModel.OpenRequest) {
@@ -759,6 +861,26 @@ private fun openAttachment(context: Context, request: SchoolMailMessageViewModel
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         context.startActivity(Intent.createChooser(view, request.file.name))
     }.onFailure { Toast.makeText(context, R.string.school_mail_error_generic, Toast.LENGTH_SHORT).show() }
+}
+
+/**
+ * Hands a downloaded attachment to the system share sheet, read-only through the same
+ * FileProvider [openAttachment] uses. The grant rides on the ClipData as well as the flag, so it
+ * reaches the app picked in the chooser, not only the chooser itself.
+ */
+private fun shareAttachment(context: Context, request: SchoolMailMessageViewModel.OpenRequest) {
+    runCatching { context.startActivity(attachmentShareIntent(context, request)) }
+        .onFailure { Toast.makeText(context, R.string.school_mail_error_generic, Toast.LENGTH_SHORT).show() }
+}
+
+internal fun attachmentShareIntent(context: Context, request: SchoolMailMessageViewModel.OpenRequest): Intent {
+    val uri = FileProvider.getUriForFile(context, fileProviderAuthority(context), request.file)
+    val send = Intent(Intent.ACTION_SEND)
+        .setType(resolveAttachmentMimeType(request.contentType, request.file.name))
+        .putExtra(Intent.EXTRA_STREAM, uri)
+        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    send.clipData = ClipData.newRawUri(request.file.name, uri)
+    return Intent.createChooser(send, request.file.name)
 }
 
 private fun copyToClipboard(context: Context, text: String) {

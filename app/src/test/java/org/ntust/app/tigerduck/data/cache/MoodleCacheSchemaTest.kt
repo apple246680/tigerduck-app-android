@@ -3,16 +3,21 @@ package org.ntust.app.tigerduck.data.cache
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseGrades
+import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseMaterials
 import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseSummary
 import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussion
 import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussionList
+import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussionThread
 import org.ntust.app.tigerduck.network.model.moodle.MoodleFile
 import org.ntust.app.tigerduck.network.model.moodle.MoodleForum
 import org.ntust.app.tigerduck.network.model.moodle.MoodleGradeItem
+import org.ntust.app.tigerduck.network.model.moodle.MoodleMaterial
+import org.ntust.app.tigerduck.network.model.moodle.MoodleMaterialSection
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMember
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberField
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberList
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberRole
+import org.ntust.app.tigerduck.network.model.moodle.MoodlePost
 import org.ntust.app.tigerduck.network.model.moodle.MoodleTermForums
 import java.lang.reflect.Modifier
 
@@ -24,9 +29,10 @@ import java.lang.reflect.Modifier
 class MoodleCacheSchemaTest {
 
     private val persisted = listOf(
-        MoodleCourseGrades::class, MoodleCourseSummary::class, MoodleDiscussion::class,
-        MoodleDiscussionList::class, MoodleFile::class, MoodleForum::class, MoodleGradeItem::class,
-        MoodleMember::class, MoodleMemberField::class, MoodleMemberList::class, MoodleMemberRole::class,
+        MoodleCourseGrades::class, MoodleCourseMaterials::class, MoodleCourseSummary::class, MoodleDiscussion::class,
+        MoodleDiscussionList::class, MoodleDiscussionThread::class, MoodleFile::class, MoodleForum::class,
+        MoodleGradeItem::class, MoodleMaterial::class, MoodleMaterialSection::class, MoodleMember::class,
+        MoodleMemberField::class, MoodleMemberList::class, MoodleMemberRole::class, MoodlePost::class,
         MoodleTermForums::class,
     )
 
@@ -40,25 +46,30 @@ class MoodleCacheSchemaTest {
 
     @Test
     fun `the cache schema moves with the shape of what it keeps`() {
-        assertEquals(1, DataCache.MOODLE_CACHE_SCHEMA)
-        assertEquals(SHAPE_AT_SCHEMA_1, shape())
+        assertEquals(2, DataCache.MOODLE_CACHE_SCHEMA)
+        assertEquals(SHAPE_AT_SCHEMA_2, shape())
     }
 
     private companion object {
         val PACKAGE = Regex("""\b(?:[a-z]\w*\.)+""")
 
-        val SHAPE_AT_SCHEMA_1 = """
+        val SHAPE_AT_SCHEMA_2 = """
             MoodleCourseGrades(items: List<MoodleGradeItem>)
+            MoodleCourseMaterials(sections: List<MoodleMaterialSection>)
             MoodleCourseSummary(html: String, names: List<String>, text: String)
             MoodleDiscussion(attachments: List<MoodleFile>, authorId: Integer, authorName: String, created: long, id: int, isPinned: boolean, message: String, modified: long, postId: int, preview: String, replyCount: int, title: String, unreadCount: int)
             MoodleDiscussionList(discussions: List<MoodleDiscussion>, forumId: int, hasMore: boolean, pageCount: int)
+            MoodleDiscussionThread(discussionId: int, posts: List<MoodlePost>)
             MoodleFile(mimeType: String, modified: Long, name: String, path: String, size: long, url: String)
             MoodleForum(cmid: int, courseId: int, discussionCount: int, id: int, intro: String, name: String, type: String, unreadPostCount: int)
             MoodleGradeItem(cmid: Integer, feedback: String, grade: String, id: int, isHidden: boolean, maxGrade: Double, module: String, name: String, type: String)
+            MoodleMaterial(files: List<MoodleFile>, id: int, instance: int, link: String, module: String, name: String)
+            MoodleMaterialSection(id: int, materials: List<MoodleMaterial>, name: String)
             MoodleMember(department: String, description: String, email: String, fields: List<MoodleMemberField>, fullName: String, groups: List<String>, id: int, idNumber: String, interests: List<String>, pictureUrl: String, roles: List<MoodleMemberRole>)
             MoodleMemberField(name: String, value: String)
             MoodleMemberList(members: List<MoodleMember>, ownId: Integer)
             MoodleMemberRole(name: String, shortName: String, sortOrder: int)
+            MoodlePost(attachments: List<MoodleFile>, authorId: Integer, authorName: String, created: Long, id: int, isDeleted: boolean, isUnread: boolean, message: String, parentId: Integer, subject: String)
             MoodleTermForums(courseIds: List<Integer>, forums: List<MoodleForum>)
         """.trimIndent()
     }

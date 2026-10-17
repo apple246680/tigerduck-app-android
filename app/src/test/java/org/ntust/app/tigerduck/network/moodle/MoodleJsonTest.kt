@@ -133,4 +133,84 @@ class MoodleJsonTest {
         assertFalse(MoodleJson.isOwnPicture("https://evil.example/pluginfile.php/9/user/icon/f1"))
         assertFalse(MoodleJson.isOwnPicture("http://moodle2.ntust.edu.tw/pluginfile.php/9/user/icon/f1"))
     }
+
+    @Test
+    fun `a thread's posts keep whom they answer, their state and their attachments`() {
+        val posts = MoodleJson.posts(
+            json(
+                """
+                {"posts":[
+                  {"id":1,"subject":"Re: <b>HW3</b>","message":"<p>First</p>","timecreated":1700000000,
+                   "author":{"id":9,"fullname":"B1 @ Wang"},"hasparent":false,"parentid":0,"unread":true,
+                   "attachments":[{"filename":"a.pdf","filepath":"/","filesize":3,
+                     "url":"https://moodle2.ntust.edu.tw/pluginfile.php/1/mod_forum/attachment/1/a.pdf",
+                     "mimetype":"application/pdf","timemodified":1700000001}]},
+                  {"id":2,"subject":"Re: HW3","message":"<p>Removed</p>","timecreated":0,
+                   "author":{},"hasparent":true,"parentid":1,"isdeleted":true},
+                  {"id":3,"hasparent":true,"parentid":0},
+                  {"subject":"no id"}
+                ]}
+                """,
+            ),
+        )
+        assertEquals(listOf(1, 2, 3), posts.map { it.id })
+        assertNull(posts[0].parentId)
+        assertEquals("Re: HW3", posts[0].subject)
+        assertEquals(1700000000L, posts[0].created)
+        assertEquals("B1 @ Wang", posts[0].authorName)
+        assertEquals(9, posts[0].authorId)
+        assertTrue(posts[0].isUnread)
+        assertEquals("a.pdf", posts[0].attachments.single().name)
+        assertEquals(1, posts[1].parentId)
+        assertTrue(posts[1].isDeleted)
+        assertNull("no time reads as none", posts[1].created)
+        assertNull(posts[1].authorName)
+        assertNull("a parent id of 0 is none", posts[2].parentId)
+    }
+
+    @Test
+    fun `materials keep the sections in order with their files, folders and links`() {
+        val materials = MoodleJson.materials(
+            json(
+                """
+                [{"id":10,"name":"General","modules":[
+                   {"id":101,"instance":7,"modname":"resource","name":"Syllabus","contents":[
+                     {"type":"file","filename":"syllabus.pdf","filepath":"/","filesize":10,
+                      "fileurl":"https://moodle2.ntust.edu.tw/webservice/pluginfile.php/1/mod_resource/content/1/syllabus.pdf",
+                      "mimetype":"application/pdf","timemodified":1700000000},
+                     {"type":"file","filename":"extra.css","filepath":"/","filesize":1,
+                      "fileurl":"https://moodle2.ntust.edu.tw/webservice/pluginfile.php/1/mod_resource/content/1/extra.css"}]},
+                   {"id":102,"instance":8,"modname":"forum","name":"Q&amp;A"},
+                   {"id":103,"instance":9,"modname":"url","name":"Slides site","contents":[
+                     {"type":"url","filename":"Slides","fileurl":"https://slides.example.com/ds"}]},
+                   {"id":104,"instance":10,"modname":"url","name":"Script","contents":[
+                     {"type":"url","filename":"x","fileurl":"javascript:alert(1)"}]}]},
+                 {"id":11,"name":"<b>Week 1</b>","modules":[
+                   {"id":105,"instance":11,"modname":"folder","name":"Labs","contents":[
+                     {"type":"file","filename":"lab1.zip","filepath":"/a/","filesize":5,
+                      "fileurl":"https://moodle2.ntust.edu.tw/webservice/pluginfile.php/2/mod_folder/content/0/a/lab1.zip"},
+                     {"type":"file","filename":"lab2.zip","filepath":"/b/","filesize":6,
+                      "fileurl":"https://moodle2.ntust.edu.tw/webservice/pluginfile.php/2/mod_folder/content/0/b/lab2.zip"}]},
+                   {"id":106,"instance":12,"modname":"resource","name":"Hidden","uservisible":false,"contents":[
+                     {"type":"file","filename":"h.pdf","fileurl":"https://moodle2.ntust.edu.tw/webservice/pluginfile.php/3/h.pdf"}]}]},
+                 {"id":12,"name":"Closed","uservisible":false,"modules":[
+                   {"id":107,"instance":13,"modname":"resource","name":"R","contents":[
+                     {"type":"file","filename":"r.pdf","fileurl":"https://moodle2.ntust.edu.tw/webservice/pluginfile.php/4/r.pdf"}]}]},
+                 {"id":13,"name":"Empty","modules":[{"id":108,"instance":14,"modname":"quiz","name":"Q"}]}]
+                """,
+            ),
+        )
+        assertEquals(listOf(10, 11), materials.sections.map { it.id })
+        assertEquals("Week 1", materials.sections[1].name)
+        val general = materials.sections[0].materials
+        assertEquals(listOf(101, 103), general.map { it.id })
+        assertEquals("a resource shows its first file", listOf("syllabus.pdf"), general[0].files.map { it.name })
+        assertEquals(7, general[0].instance)
+        assertEquals("https://slides.example.com/ds", general[1].link)
+        assertTrue(general[1].files.isEmpty())
+        val labs = materials.sections[1].materials.single()
+        assertEquals("folder", labs.module)
+        assertEquals(listOf("/a/", "/b/"), labs.files.map { it.path })
+        assertEquals("files and links, a folder by its files", 4, org.ntust.app.tigerduck.data.moodle.MoodleMaterials.count(materials))
+    }
 }

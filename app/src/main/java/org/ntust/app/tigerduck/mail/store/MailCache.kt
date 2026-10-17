@@ -50,10 +50,36 @@ class MailCache(
         )
     }
 
+    /**
+     * [saveFolder] while [stillCurrent] says the page is still the signed-in account's, asked
+     * under the lock [clearAll] takes, and says whether it saved. As [saveBodyIf]: a sign-out
+     * moves its account before it clears the cache, so a page it allows lands before that clear
+     * and goes with it, and a page that lands after it is not kept for whoever signs in next.
+     */
+    @Synchronized
+    fun saveFolderIf(folder: String, page: MailPage, stillCurrent: () -> Boolean): Boolean {
+        if (!stillCurrent()) return false
+        saveFolder(folder, page)
+        return true
+    }
+
     /** Drops [folder]'s cached page, e.g. once its UIDVALIDITY no longer matches the server's. */
     @Synchronized
     fun deleteFolder(folder: String) {
         File(foldersDir, key(folder)).delete()
+    }
+
+    /**
+     * Drops [folder]'s cached page only while it is still the one read under [uidValidity]. A
+     * caller that found that generation gone on the server must not take with it a page the
+     * current generation has written since -- the only offline copy of the new mailbox there is.
+     * Read, compared and deleted under the one lock, so a save in between is never the page that goes.
+     */
+    @Synchronized
+    fun deleteFolderUnder(folder: String, uidValidity: Long) {
+        val file = File(foldersDir, key(folder))
+        val dto = read(file, FolderCacheDto::class.java) ?: return
+        if (dto.uidValidity == uidValidity) file.delete()
     }
 
     @Synchronized

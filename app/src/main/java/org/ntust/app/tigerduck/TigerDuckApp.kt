@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.academic.AcademicCalendarStore
+import org.ntust.app.tigerduck.auth.AccountSessionEffects
 import org.ntust.app.tigerduck.auth.AuthService
 import org.ntust.app.tigerduck.data.DataMigration
 import org.ntust.app.tigerduck.data.cache.DataCache
@@ -73,6 +74,9 @@ class TigerDuckApp : Application(), Configuration.Provider {
     lateinit var notificationChannels: NotificationChannelRegistrar
 
     @Inject
+    lateinit var accountSessionEffects: AccountSessionEffects
+
+    @Inject
     lateinit var librarySession: org.ntust.app.tigerduck.library.LibrarySession
 
     @Inject
@@ -131,6 +135,8 @@ class TigerDuckApp : Application(), Configuration.Provider {
         appScope.launch {
             appPreferences.accentColorChanged.collect { wearBridge.publish() }
         }
+        // The background sync, reminders, notifications and Live Update follow the sign-in from every page.
+        accountSessionEffects.start(appScope)
         // The dot hides itself while signed out, but the tracker is
         // process-wide: a status written before logout would still be here
         // for the next account to inherit, green from the moment the dot

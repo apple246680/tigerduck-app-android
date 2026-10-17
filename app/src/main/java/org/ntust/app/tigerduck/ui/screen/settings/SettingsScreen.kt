@@ -109,9 +109,8 @@ fun SettingsScreen(
     }
 
     var showNtustLoginSheet by remember { mutableStateOf(false) }
-    var confirmNtustSignOut by remember { mutableStateOf(false) }
-    val importedClassTables by viewModel.importedClassTables.collectAsStateWithLifecycle()
     var showLibraryLoginSheet by remember { mutableStateOf(false) }
+    val signOutConfirmation by viewModel.signOutConfirmation.collectAsStateWithLifecycle()
 
     // Auto-dismiss dialogs when login succeeds
     LaunchedEffect(isNtustLoggedIn) {
@@ -126,7 +125,6 @@ fun SettingsScreen(
     val showAbsoluteTime = viewModel.appState.showAbsoluteAssignmentTime
     val alwaysShowAllPeriods = viewModel.appState.alwaysShowAllPeriods
     val showClassroomInClassTable = viewModel.appState.showClassroomInClassTable
-    val rememberAnnouncementFilter = viewModel.appState.rememberAnnouncementFilter
     val browserPreference = viewModel.appState.browserPreference
     val useEnglishCourseAbbreviation = viewModel.appState.useEnglishCourseAbbreviation
     val useEnglishClassroomAbbreviation = viewModel.appState.useEnglishClassroomAbbreviation
@@ -239,13 +237,9 @@ fun SettingsScreen(
                             subtitle = if (isNtustLoggedIn) viewModel.ntustStudentId else null,
                             isLoggingIn = isNtustLoggingIn,
                             onLogin = { showNtustLoginSheet = true },
-                            onLogout = {
-                                // The sign-out deletes the imported class tables, so it asks first.
-                                importedClassTables.requestSignOut(
-                                    confirm = { confirmNtustSignOut = true },
-                                    signOut = { viewModel.logoutNtust() },
-                                )
-                            },
+                            // Asks first when the sign-out would delete what only this phone has,
+                            // the imported class tables among it.
+                            onLogout = { viewModel.requestNtustSignOut() },
                             actionMinWidth = accountButtonMinWidth,
                             highlight = highlightNtustRow,
                             onHighlightConsumed = { highlightNtustRow = false },
@@ -346,13 +340,6 @@ fun SettingsScreen(
                             alwaysShowAllPeriods
                         ) {
                             viewModel.appState.alwaysShowAllPeriods = it
-                        }
-                        HorizontalDivider()
-                        SettingsToggleRow(
-                            stringResource(R.string.settings_remember_bulletin_filter),
-                            rememberAnnouncementFilter
-                        ) {
-                            viewModel.appState.rememberAnnouncementFilter = it
                         }
                         HorizontalDivider()
                         // Link opening method
@@ -714,20 +701,19 @@ fun SettingsScreen(
         )
     }
 
-    if (confirmNtustSignOut) {
+    // Every loss the sign-out would cause, one line each: the iPhone app asks about the imported
+    // class tables, and this phone may also hold edits TigerSync does not keep.
+    signOutConfirmation?.let { losses ->
         TigerDuckDialog(
-            onDismissRequest = { confirmNtustSignOut = false },
+            onDismissRequest = viewModel::dismissNtustSignOut,
             title = stringResource(R.string.action_sign_out),
-            message = stringResource(R.string.settings_sign_out_imported_tables),
+            message = losses.sortedBy { it.ordinal }.map { stringResource(it.message) }.joinToString("\n"),
             confirmText = stringResource(R.string.action_sign_out),
             confirmColors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.error,
                 contentColor = MaterialTheme.colorScheme.onError,
             ),
-            onConfirm = {
-                confirmNtustSignOut = false
-                viewModel.logoutNtust()
-            },
+            onConfirm = viewModel::confirmNtustSignOut,
             dismissText = stringResource(R.string.action_cancel),
         )
     }

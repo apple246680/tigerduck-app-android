@@ -20,6 +20,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.ntust.app.tigerduck.BuildConfig
 import org.ntust.app.tigerduck.auth.AuthTokenManager
+import org.ntust.app.tigerduck.auth.DepartingSession
 import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
 import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.data.preferences.UiLanguageMonitor
@@ -67,6 +68,7 @@ class PushRegistrationService @Inject constructor(
     private val uiLanguage: UiLanguageMonitor,
     @param:ApplicationScope private val scope: CoroutineScope,
     private val fixtures: org.ntust.app.tigerduck.debug.DebugFixtureStore,
+    private val departingUnregister: DepartingDeviceUnregister,
 ) {
     private val mutex = Mutex()
     private var fcmToken: String? = null
@@ -258,8 +260,12 @@ class PushRegistrationService @Inject constructor(
         }
     }
 
-    /** [authHeader] is the one a sign-out takes before it wipes the tokens; see [PushApiClient.unregister]. */
-    fun unregister(authHeader: String?) {
+    /**
+     * Unregisters the device as the account that signed out, with [departing], the session the
+     * sign-out took before it wiped the tokens; null when it had none. Kept until the server has
+     * it, see [DepartingDeviceUnregister].
+     */
+    fun unregister(departing: DepartingSession?) {
         // The demo account registered nothing, so there is nothing to delete
         // and no server to tell. Read now rather than in the coroutine:
         // sign-out leaves demo mode straight after calling this.
@@ -267,14 +273,15 @@ class PushRegistrationService @Inject constructor(
             scope.launch { updateDiagnostic { it.copy(isRegistered = false, lastError = null) } }
             return
         }
+        val deviceId = identity.uuid()
         scope.launch {
-            // Clear fcmToken and latch isUnregistering in the same critical
-            // section that cancels the debounce so a token rotation or
-            // scheduleRegister fired during the API round-trip can't resurrect
-            // the row we're deleting under anon-$deviceId.
+            // Latch isUnregistering in the same critical section that cancels
+            // the debounce so a token rotation or scheduleRegister fired during
+            // the API round-trip can't resurrect the row we're deleting under
+            // anon-$deviceId. The token is kept: the next sign-in registers
+            // with it at once, and nothing else in this process fetches one.
             mutex.withLock {
                 debounceJob?.cancel()
-                fcmToken = null
                 isUnregistering = true
                 // A sign-out owes no registration: the row is being deleted on
                 // purpose, and the next sign-in or token asks for a new one.
@@ -282,13 +289,14 @@ class PushRegistrationService @Inject constructor(
                 consecutiveRegistrationFailures = 0
                 registrationAskedWhileRunning = false
             }
-            val deviceId = identity.uuid()
             try {
-                runCatching { api.unregister(deviceId, authHeader) }
-                    .onFailure { e ->
-                        if (e is CancellationException) throw e
-                        Log.w(TAG, "unregister failed: ${e.logSummary()}")
-                    }
+                if (departing != null) {
+                    departingUnregister.owe(deviceId, departing)
+                    // Queued before the first try, so a process ended during
+                    // it still has the debt sent; a run finding it paid ends.
+                    DepartingUnregisterWorker.enqueue(context)
+                }
+                departingUnregister.send()
             } finally {
                 // Always reset state so a cancelled coroutine (e.g. test scope
                 // cancellation) can't leave isUnregistering latched true and
@@ -297,13 +305,17 @@ class PushRegistrationService @Inject constructor(
                     mutex.withLock { isUnregistering = false }
                 }
             }
+            val hasToken = mutex.withLock { fcmToken != null }
             updateDiagnostic {
                 PushDiagnostic(
-                    hasFcmToken = false,
+                    hasFcmToken = hasToken,
                     isRegistered = false,
                     lastError = null,
                 )
             }
+            // A sign-in while the DELETE was out asked for a registration,
+            // which the latch held back until now.
+            mutex.withLock { if (registrationOwed) requestRegistration() }
         }
     }
 
@@ -539,6 +551,9 @@ class PushRegistrationService @Inject constructor(
      * about success once it stops.
      */
     suspend fun syncNow(): Boolean {
+        // Called when the API endpoint setting changes: an unregister owed to
+        // the backend it named before is dropped, not sent to the new one.
+        departingUnregister.dropIfEndpointMoved()
         val ok = performRegister()
         if (!ok) {
             // No "not signed in" case: signed out is a supported outcome now

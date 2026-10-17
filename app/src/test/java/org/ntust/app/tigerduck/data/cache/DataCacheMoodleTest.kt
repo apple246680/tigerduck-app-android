@@ -7,6 +7,7 @@ import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -58,14 +59,14 @@ class DataCacheMoodleTest {
     }
 
     @Test
-    fun `sign-out wipes every account's copies, pictures and opened files`() = runTest {
+    fun `sign-out wipes every account's copies, pictures and downloaded files`() = runTest {
         cache.saveMoodleData(grades, 1L, "courses/5/grades", "B11300001")
         val picture = File(cache.moodleFilesDir("B11300001"), "pictures/1-3").apply {
             parentFile!!.mkdirs()
             writeBytes(byteArrayOf(1))
         }
 
-        val opened = File(cache.moodleOpenedFilesDir("B11300001"), "90/hw3.pdf").apply {
+        val downloaded = File(cache.moodleDownloadsDir("B11300001"), "90/p1/ab/1/hw3.pdf").apply {
             parentFile!!.mkdirs()
             writeText("pdf")
         }
@@ -74,7 +75,7 @@ class DataCacheMoodleTest {
 
         assertNull(cache.loadMoodleData<MoodleCourseGrades>(type, "courses/5/grades", "B11300001"))
         assertFalse(picture.exists())
-        assertFalse("opened attachments go too", opened.exists())
+        assertFalse("downloaded files go too", downloaded.exists())
     }
 
     @Test
@@ -86,42 +87,56 @@ class DataCacheMoodleTest {
     }
 
     @Test
-    fun `the opened files' folder does not name the account, nor hash it where anyone could redo it`() {
-        val dir = cache.moodleOpenedFilesDir("B11300001")
+    fun `the downloaded files' folder does not name the account, nor hash it where anyone could redo it`() {
+        val dir = cache.moodleDownloadsDir("B11300001")
         assertFalse(dir.path.contains("B11300001", ignoreCase = true))
         val plainHash = java.security.MessageDigest.getInstance("SHA-256").digest("B11300001".toByteArray())
             .take(8).joinToString("") { "%02x".format(it) }
         assertFalse("salted per install", dir.name == plainHash)
-        assertEquals(dir, cache.moodleOpenedFilesDir("B11300001"))
+        assertEquals(dir, cache.moodleDownloadsDir("B11300001"))
         assertEquals(
             "the same on this install after a restart",
             dir,
-            DataCache(context, AcademicCalendarStore(context, OkHttpClient(), AppPreferences(context))).moodleOpenedFilesDir("B11300001"),
+            DataCache(context, AcademicCalendarStore(context, OkHttpClient(), AppPreferences(context))).moodleDownloadsDir("B11300001"),
         )
-        assertFalse(dir == cache.moodleOpenedFilesDir("B11300002"))
+        assertFalse(dir == cache.moodleDownloadsDir("B11300002"))
     }
 
     @Test
     fun `the folder salt is kept for the process, even when it never reached the disk`() {
-        val dir = cache.moodleOpenedFilesDir("B11300001")
+        val dir = cache.moodleDownloadsDir("B11300001")
         // As if the write had failed: nothing on disk.
         context.getSharedPreferences("moodle_files", android.content.Context.MODE_PRIVATE).edit().clear().commit()
 
-        assertEquals(dir, cache.moodleOpenedFilesDir("B11300001"))
+        assertEquals(dir, cache.moodleDownloadsDir("B11300001"))
     }
 
     @Test
     fun `a full reset makes a new folder salt`() = runTest {
-        val before = cache.moodleOpenedFilesDir("B11300001")
+        val before = cache.moodleDownloadsDir("B11300001")
 
         cache.clearEverything()
 
-        val after = cache.moodleOpenedFilesDir("B11300001")
+        val after = cache.moodleDownloadsDir("B11300001")
         assertFalse("a new salt names the folder anew", before == after)
         assertEquals(
             "and the new one is the one kept",
             after,
-            DataCache(context, AcademicCalendarStore(context, OkHttpClient(), AppPreferences(context))).moodleOpenedFilesDir("B11300001"),
+            DataCache(context, AcademicCalendarStore(context, OkHttpClient(), AppPreferences(context))).moodleDownloadsDir("B11300001"),
         )
+    }
+
+    @Test
+    fun `downloaded files are kept where the system does not clear them for space, and a full reset deletes them`() = runTest {
+        val file = File(cache.moodleDownloadsDir("B11300001"), "5/m1/ab/1/syllabus.pdf").apply {
+            parentFile!!.mkdirs()
+            writeText("pdf")
+        }
+        assertTrue(file.path.startsWith(context.filesDir.path))
+
+        cache.clearEverything()
+
+        assertFalse(file.exists())
+        assertFalse(cache.moodleDownloadsRoot().exists())
     }
 }

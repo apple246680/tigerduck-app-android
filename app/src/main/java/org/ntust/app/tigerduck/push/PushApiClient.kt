@@ -1,7 +1,6 @@
 package org.ntust.app.tigerduck.push
 
 import com.google.gson.Gson
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -20,6 +19,7 @@ import org.ntust.app.tigerduck.shared.Course
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -109,27 +109,35 @@ class PushApiClient @Inject constructor(
         }
 
     /**
-     * Deletes this device's row with [authHeader], the header a sign-out takes
-     * before it wipes the tokens: this fire-and-forget call runs after that.
-     * Without one nothing is sent, as a session looked up now could be the
-     * next account's, or its sign-in, and the DELETE would remove its row.
+     * Deletes this device's row as the account that signed out, with [accessToken] from the
+     * session it left, at [base], the backend that issued it, and gives the HTTP status. The
+     * sign-out's unregister runs after the tokens are wiped, and a session looked up now could be
+     * the next account's, or its sign-in, whose row the DELETE would remove; and the endpoint
+     * setting may name another host by now. Throws [java.io.IOException] when no reply came back.
      */
-    suspend fun unregister(
+    suspend fun deleteDevice(
+        base: String,
         deviceId: String,
-        authHeader: String?,
-    ) = withContext(Dispatchers.IO) {
+        accessToken: String,
+    ): Int = withContext(Dispatchers.IO) {
         // v3: DELETE /devices/{client_device_id}, scoped to the authed user
         // (matches iOS + the server). `deviceId` is PushIdentity.uuid().
         val request = Request.Builder()
-            .url("$baseUrl/devices/$deviceId")
+            .url("$base/devices/$deviceId")
             .delete()
-            .header("Authorization", authHeader ?: throw NotSignedInException())
+            .header("Authorization", "Bearer $accessToken")
             .build()
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw PushApiException("unregister failed: HTTP ${response.code}")
-            }
-        }
+        deleteClient.newCall(request).execute().use { response -> response.code }
+    }
+
+    // A sign-in of the same student waits for the sign-out's unregister, so its
+    // DELETE gives up within a bound; and it is retried by its own debt, never
+    // sent again by OkHttp on its own.
+    internal val deleteClient: OkHttpClient by lazy {
+        client.newBuilder()
+            .retryOnConnectionFailure(false)
+            .callTimeout(DELETE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .build()
     }
 
     /** PATCH the user-facing server-push opt-out for this device. */
@@ -252,15 +260,25 @@ class PushApiClient @Inject constructor(
         }
     }
 
+    /**
+     * PATCH the colour of the course [courseId], or its name in [locale].
+     * Returns whether anything went out: false when TigerSync, or the switch
+     * for colours or names, is off, or when [allowed] says no right before
+     * the request goes, after the header is made. Throws when the request
+     * fails. [signIn], when given, pins the request to that sign-in, as
+     * [patchAssignmentOverride]'s is.
+     */
     suspend fun patchCourseOverride(
         courseId: Any,
         colorHex: String? = null,
         customName: String? = null,
         locale: String? = null,
-    ) = withContext(Dispatchers.IO) {
-        if (!isSyncCapable) return@withContext
-        if (colorHex != null && !prefs.syncCourseColors) return@withContext
-        if (customName != null && !prefs.syncCourseNames) return@withContext
+        signIn: Int? = null,
+        allowed: () -> Boolean = { true },
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!isSyncCapable) return@withContext false
+        if (colorHex != null && !prefs.syncCourseColors) return@withContext false
+        if (customName != null && !prefs.syncCourseNames) return@withContext false
         val payload = mutableMapOf<String, Any?>()
         if (colorHex != null) payload["color_hex"] = colorHex
         if (customName != null) payload["custom_name"] = customName
@@ -269,13 +287,18 @@ class PushApiClient @Inject constructor(
         val request = Request.Builder()
             .url("$baseUrl/sync/courses/$courseId/override")
             .patch(body)
-            .addAuthHeader()
+            .addAuthHeader(signIn)
             .build()
+        // Read once the header is made, which can renew the session and so
+        // suspend: a hold the course outbox put on the kind meanwhile must
+        // stop the request, which the switches above alone would let through.
+        if (!allowed()) return@withContext false
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                throw PushApiException("patchCourseOverride failed: HTTP ${response.code}")
+                throw PushApiException("patchCourseOverride failed: HTTP ${response.code}", response.code)
             }
         }
+        true
     }
 
     /**
@@ -502,3 +525,5 @@ internal fun preferencesPatchBlockedOnFdroid(
         request.syncLiveActivity != null
     return changesAPreference && flavor.equals("fdroid", ignoreCase = true)
 }
+
+private const val DELETE_TIMEOUT_SECONDS = 20L

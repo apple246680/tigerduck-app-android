@@ -13,6 +13,22 @@ class MailRoutesTest {
     }
 
     @Test
+    fun `a mailto link rides along encoded, so its own query survives the route's`() {
+        assertEquals(
+            "schoolMail/compose?mode=NEW&folder=&uid=-1&mailto=mailto%3Aa%40x.tw%3Fsubject%3DHi%26body%3Da%2520b",
+            MailRoutes.compose(ComposeMode.NEW, mailto = "mailto:a@x.tw?subject=Hi&body=a%20b"),
+        )
+    }
+
+    @Test
+    fun `a mailto link too long to carry in the route rides along with its addresses alone`() {
+        // The route's arguments are saved with the back stack; a sender-chosen link of hundreds of
+        // kilobytes would overflow that when the app goes to the background.
+        val route = MailRoutes.compose(ComposeMode.NEW, mailto = "mailto:a@x.tw?body=" + "x".repeat(300_000))
+        assertEquals("schoolMail/compose?mode=NEW&folder=&uid=-1&mailto=mailto%3Aa%40x.tw", route)
+    }
+
+    @Test
     fun `a new message can name its recipient`() {
         assertEquals(
             "schoolMail/compose?mode=NEW&folder=&uid=-1&to=b11300001%40mail.ntust.edu.tw",

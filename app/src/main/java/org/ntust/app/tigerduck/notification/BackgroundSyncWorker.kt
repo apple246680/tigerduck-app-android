@@ -32,6 +32,7 @@ import org.ntust.app.tigerduck.data.CourseIgnoreSync
 import org.ntust.app.tigerduck.data.CourseTombstoneKeys
 import org.ntust.app.tigerduck.auth.StoredPasswordLatch
 import org.ntust.app.tigerduck.data.PendingCourseAdds
+import org.ntust.app.tigerduck.data.PendingCourseOverrides
 import org.ntust.app.tigerduck.data.UnsentMarks
 import org.ntust.app.tigerduck.di.ApplicationScope
 import org.ntust.app.tigerduck.push.BackendSyncResult
@@ -77,6 +78,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
     private val storedPasswordLatch: StoredPasswordLatch,
     private val unsentMarks: UnsentMarks,
     private val pendingCourseAdds: PendingCourseAdds,
+    private val pendingCourseOverrides: PendingCourseOverrides,
     private val academicCalendar: AcademicCalendarStore,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) : CoroutineWorker(context, params) {
@@ -188,10 +190,11 @@ class BackgroundSyncWorker @AssistedInject constructor(
             val account = authService.storedStudentId
             val generation = courseIgnoreSync.currentGeneration()
             courseIgnoreSync.retryPending()
-            // Marks whose PATCH failed, and course adds whose upload did, go
-            // first, so the snapshot has them.
+            // Marks and course colours and names whose PATCH failed, and
+            // course adds whose upload did, go first, so the snapshot has them.
             unsentMarks.retry()
             pendingCourseAdds.retry()
+            pendingCourseOverrides.retry()
             val result = syncApiClient.fetchFullSync()
             pendingCourseAdds.listed(result.serverCourses)
             // With the Assignments switch off, the re-enable check pending,
@@ -207,7 +210,9 @@ class BackgroundSyncWorker @AssistedInject constructor(
                 prefs.syncCourseColors, prefs.pendingConflictCategories,
             )
             if (syncColors && result.courseOverrides.isNotEmpty()) {
-                applyCourseOverridesBackground(result.courseOverrides)
+                // Not over a colour this phone has waiting to go up, or sent
+                // since the fetch: the snapshot's is the older.
+                applyCourseOverridesBackground(result.courseOverrides, pendingCourseOverrides.held(result.fetchedAtMs))
             }
             if (CourseSyncReconciler.syncsCourseList(prefs.syncCourses, prefs.pendingConflictCategories)) {
                 reconcileCurrentSemester(result)
@@ -294,7 +299,12 @@ class BackgroundSyncWorker @AssistedInject constructor(
         // Unconditional: a course hidden by an earlier build and left in
         // the cache is pruned on the first run, not the next change.
         CourseSyncReconciler.pruneHidden(semester, localCourses, outcome.tombstones, legacyBare = false)
-            ?.let { dataCache.saveCourses(it, semester) }
+            ?.let { kept ->
+                dataCache.saveCourses(kept, semester)
+                // A course hidden since takes its waiting colour and name
+                // with it; see PendingCourseOverrides.forget.
+                pendingCourseOverrides.forget(localCourses.filter { it !in kept }.mapNotNull { it.moodleIdNumber })
+            }
         var known = outcome.serverKnownNos
         if (outcome.uploadLocal) {
             runCatching { pushApiClient.uploadCourses(outcome.toUpload, semester) }
@@ -307,17 +317,24 @@ class BackgroundSyncWorker @AssistedInject constructor(
         }
     }
 
-    /** Home's colour pass ([CourseSyncReconciler.applyColorOverrides]) over the cached term. */
-    private suspend fun applyCourseOverridesBackground(overrides: List<org.ntust.app.tigerduck.push.CourseOverrideResult>) {
+    /**
+     * Home's colour pass ([CourseSyncReconciler.applyColorOverrides]) over the
+     * cached term, [held] being what the snapshot must not overwrite.
+     */
+    private suspend fun applyCourseOverridesBackground(
+        overrides: List<org.ntust.app.tigerduck.push.CourseOverrideResult>,
+        held: Set<String>,
+    ) {
         val outcome = CourseSyncReconciler.applyColorOverrides(
             courses = dataCache.loadCourses(),
             overrides = overrides,
             syncColors = true,
+            held = held,
         ) ?: return
         dataCache.saveCourses(outcome.courses)
         widgetUpdater.requestUpdate()
         sendMovedColors(outcome.courses, outcome.moved) { moodleId, hex ->
-            pushApiClient.patchCourseOverride(moodleId, colorHex = hex)
+            pendingCourseOverrides.send(moodleId, colorHex = hex)
         }
     }
 
@@ -500,7 +517,7 @@ class BackgroundSyncWorker @AssistedInject constructor(
         // Keep the old unique name so existing users' enqueued 6h work is
         // replaced in place via ExistingPeriodicWorkPolicy.UPDATE instead of
         // leaving an orphaned entry behind.
-        private const val UNIQUE_NAME = "homework_refresh_periodic"
+        internal const val UNIQUE_NAME = "homework_refresh_periodic"
 
         /** How often the run syncs with TigerDuck's backend, whatever the pages ask. */
         private val OVERRIDES_EVERY = 1.hours

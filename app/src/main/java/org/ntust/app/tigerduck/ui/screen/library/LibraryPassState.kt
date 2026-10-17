@@ -3,9 +3,12 @@ package org.ntust.app.tigerduck.ui.screen.library
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withTimeoutOrNull
 import org.ntust.app.tigerduck.library.LibraryQRCache
 
@@ -31,6 +34,8 @@ internal class LibraryPassState<Image : Any>(
     now: () -> Long,
     /** A new code has landed; see [LibraryQRCycle]. */
     onFetched: () -> Unit = {},
+    /** When the last code landed, epoch ms, kept across restarts; see [org.ntust.app.tigerduck.data.preferences.AppPreferences.librarySyncedAtMs]. */
+    fetchedAt: StateFlow<Long>,
 ) {
     /** What failed, for the page to say; a sign-in on the page writes it too. */
     val errors = MutableStateFlow<String?>(null)
@@ -63,6 +68,15 @@ internal class LibraryPassState<Image : Any>(
     val image: StateFlow<Image?> = cycle.image
     val countdown: StateFlow<Int> = cycle.countdown
     val isLoading: StateFlow<Boolean> = cycle.isLoading
+
+    /**
+     * When the code on screen was fetched, for the dot's "Last synced" row: [fetchedAt] while a
+     * code is up, 0 while none is -- before the first lands, after an expired one has gone, or
+     * signed out -- as on the iPhone. The kept date alone would say the page was synced minutes
+     * ago while it shows no pass at all; a date belongs to the code it dates.
+     */
+    val syncedAt: StateFlow<Long> = combine(cycle.image, fetchedAt) { image, at -> if (image == null) 0L else at }
+        .stateIn(scope, SharingStarted.Eagerly, if (cycle.image.value == null) 0L else fetchedAt.value)
 
     init {
         // Signed out elsewhere, such as a refusal the sign-in at a return to
