@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">ਰੀਸੈੱਟ ਕਰੋ</string>
     <string name="app_reset_required_message">ਤੁਹਾਡੀ ਸਾਈਨ-ਇਨ ਸਥਿਤੀ ਅਤੇ ਤਰਜੀਹਾਂ ਹੁਣ ਪੜ੍ਹੀਆਂ ਨਹੀਂ ਜਾ ਸਕਦੀਆਂ, ਸੰਭਵ ਤੌਰ \'ਤੇ OS ਅੱਪਗ੍ਰੇਡ, ਬੈਕਅੱਪ ਰੀਸਟੋਰ ਜਾਂ ਸਟੋਰੇਜ ਸਮੱਸਿਆ ਕਾਰਨ।\n\n\"ਰੀਸੈੱਟ\" ਟੈਪ ਕਰੋ ਤਾਂ ਜੋ ਪੁਰਾਣਾ ਡੇਟਾ ਸਾਫ਼ ਕੀਤਾ ਜਾ ਸਕੇ, ਫਿਰ ਸਾਈਨ ਇਨ ਕਰੋ ਅਤੇ ਆਪਣੀਆਂ ਤਰਜੀਹਾਂ ਦੁਬਾਰਾ ਸੈੱਟ ਕਰੋ।</string>
     <string name="app_reset_required_title">ਰੀਸੈੱਟ ਲੋੜੀਂਦਾ ਹੈ</string>
+    <string name="assignment_detail_comments">ਸਬਮਿਸ਼ਨ ਟਿੱਪਣੀਆਂ</string>
+    <string name="assignment_detail_description">ਵੇਰਵਾ</string>
+    <string name="assignment_detail_due">ਨਿਯਤ ਸਮਾਂ</string>
+    <string name="assignment_detail_group">ਗਰੁੱਪ</string>
+    <string name="assignment_detail_not_submitted">ਅਜੇ ਜਮ੍ਹਾਂ ਨਹੀਂ ਕੀਤਾ</string>
+    <string name="assignment_detail_submission">ਤੁਹਾਡੀ ਸਬਮਿਸ਼ਨ</string>
+    <string name="assignment_detail_submit_on_moodle">Moodle ਉੱਤੇ ਜਮ੍ਹਾਂ ਕਰੋ</string>
+    <string name="assignment_detail_submitted_at">ਜਮ੍ਹਾਂ ਕਰਨ ਦਾ ਸਮਾਂ</string>
     <string name="assignment_filter_all">ਸਭ</string>
     <string name="assignment_filter_ignored">ਅਣਡਿੱਠਾ</string>
     <string name="assignment_filter_incomplete">ਅਧੂਰਾ</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">ਕਸਟਮ ਰੰਗ</string>
     <string name="course_color_picker_title">ਰੰਗ ਬਦਲੋ</string>
     <string name="course_credits_value">ਕ੍ਰੈਡਿਟ: %1$s</string>
+    <string name="course_detail_assignments_label">ਅਸਾਈਨਮੈਂਟਾਂ</string>
     <string name="course_detail_classroom_label">ਕਲਾਸਰੂਮ</string>
     <string name="course_detail_code_copied">ਕੋਡ ਕਾਪੀ ਹੋ ਗਿਆ</string>
     <string name="course_detail_code_label">ਕੋਡ</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">TigerDuck ਵਰਤਣਾ ਸ਼ੁਰੂ ਕਰੋ</string>
     <string name="onboarding_sync_description">TigerSync ਤੁਹਾਡੇ ਕੋਰਸਾਂ, ਅਸਾਈਨਮੈਂਟਾਂ ਅਤੇ ਸੈਟਿੰਗਾਂ ਨੂੰ ਤੁਹਾਡੇ ਸਾਰੇ ਡਿਵਾਈਸਾਂ ਵਿੱਚ ਸਿੰਕ ਰੱਖਦਾ ਹੈ। ਤੁਸੀਂ TigerSync ਸੈਟਿੰਗਾਂ ਵਿੱਚ ਚੁਣ ਸਕਦੇ ਹੋ ਕਿ ਕੀ ਸਿੰਕ ਕਰਨਾ ਹੈ।</string>
     <string name="onboarding_sync_not_shared_password">ਪਾਸਵਰਡ ਕਦੇ ਅੱਪਲੋਡ ਨਹੀਂ ਹੁੰਦਾ</string>
-    <string name="onboarding_sync_note">ਜਦੋਂ ਸਿੰਕ ਬੰਦ ਹੁੰਦਾ ਹੈ, ਸਾਰਾ ਡੇਟਾ ਸਿਰਫ਼ ਇਸ ਡਿਵਾਈਸ \'ਤੇ ਰਹਿੰਦਾ ਹੈ। ਹੋਮਵਰਕ ਰੀਮਾਈਂਡਰਾਂ ਲਈ ਪੁਸ਼ ਸੂਚਨਾਵਾਂ TigerSync ਤੋਂ ਬਿਨਾਂ ਸਥਾਨਕ ਤੌਰ \'ਤੇ ਕੰਮ ਕਰਦੀਆਂ ਹਨ।</string>
+    <string name="onboarding_sync_note">ਸਿੰਕ ਬੰਦ ਹੋਣ ਤੇ ਵੀ, ਅਸਾਈਨਮੈਂਟ ਯਾਦ-ਦਹਾਨੀਆਂ ਭੇਜਣ ਲਈ TigerDuck ਸਰਵਰ ਨੂੰ ਤੁਹਾਡੀ ਵਿਦਿਆਰਥੀ ID, Moodle ਟੋਕਨ ਅਤੇ ਇਸ ਡਿਵਾਈਸ ਦੇ ਪੁਸ਼ ਕ੍ਰੇਡੈਂਸ਼ੀਅਲ ਮਿਲਦੇ ਹਨ</string>
     <string name="onboarding_sync_shared_assignments">ਅਸਾਈਨਮੈਂਟ ਡੇਟਾ</string>
     <string name="onboarding_sync_shared_courses">ਕੋਰਸ ਡੇਟਾ</string>
     <string name="onboarding_sync_shared_device_id">ਡਿਵਾਈਸ ID</string>
@@ -768,6 +777,7 @@
     <string name="school_mail_send">ਭੇਜੋ</string>
     <string name="school_mail_send_confirm_title">ਇਹ ਮੇਲ ਭੇਜਣੀ ਹੈ?</string>
     <string name="school_mail_send_failed">ਮੇਲ ਨਹੀਂ ਭੇਜੀ ਜਾ ਸਕੀ</string>
+    <string name="school_mail_send_unconfirmed">ਪੁਸ਼ਟੀ ਨਹੀਂ ਹੋ ਸਕੀ ਕਿ ਮੇਲ ਭੇਜੀ ਗਈ ਜਾਂ ਨਹੀਂ; ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰਨ ਤੇ ਇਹ ਦੋ ਵਾਰ ਪਹੁੰਚ ਸਕਦੀ ਹੈ</string>
     <string name="school_mail_sent_copy_failed">ਮੇਲ ਭੇਜ ਦਿੱਤੀ ਗਈ, ਪਰ ਕਾਪੀ ਭੇਜੀ ਵਿੱਚ ਸੇਵ ਨਹੀਂ ਹੋ ਸਕੀ।</string>
     <string name="school_mail_sent_copy_no_folder">ਮੇਲ ਭੇਜ ਦਿੱਤੀ ਗਈ, ਪਰ ਕਾਪੀ ਰੱਖਣ ਲਈ ਕੋਈ ਭੇਜੀ ਫੋਲਡਰ ਨਹੀਂ ਹੈ।</string>
     <string name="school_mail_sent_copy_not_saved">ਮੇਲ ਭੇਜ ਦਿੱਤੀ ਗਈ, ਪਰ ਇਸਦੀ ਕਾਪੀ ਭੇਜੀ ਵਿੱਚ ਸੇਵ ਨਹੀਂ ਹੋਈ</string>
@@ -953,7 +963,7 @@
     <string name="settings_show_classroom_on_class_table">ਸਮਾਂ-ਸਾਰਣੀ ਵਿੱਚ ਕਲਾਸਰੂਮ ਦਿਖਾਓ</string>
     <string name="settings_sign_out_imported_tables">ਆਯਾਤ ਕੀਤੀਆਂ ਕਲਾਸ ਸਾਰਣੀਆਂ ਵੀ ਮਿਟਾ ਦਿੱਤੀਆਂ ਜਾਣਗੀਆਂ।</string>
     <string name="settings_sync_brief_description">TigerSync ਤੁਹਾਨੂੰ ਸਾਰੇ ਡਿਵਾਈਸਾਂ ਤੇ ਜਾਣਕਾਰੀ ਸਿੰਕ ਕਰਨ ਦਿੰਦਾ ਹੈ। ਸਿੰਕ ਲਈ ਸਮਰੱਥ ਨਾ ਹੋਈ ਜਾਣਕਾਰੀ ਸਿਰਫ਼ ਇਸ ਡਿਵਾਈਸ ਤੇ ਰਹਿੰਦੀ ਹੈ।</string>
-    <string name="settings_sync_disabled_note">ਜਦੋਂ ਸਿੰਕ ਬੰਦ ਹੁੰਦਾ ਹੈ, ਸਾਰਾ ਡੇਟਾ ਸਿਰਫ਼ ਇਸ ਡਿਵਾਈਸ \'ਤੇ ਰਹਿੰਦਾ ਹੈ।</string>
+    <string name="settings_sync_disabled_note">ਸਿੰਕ ਬੰਦ ਹੋਣ ਤੇ ਵੀ, ਅਸਾਈਨਮੈਂਟ ਯਾਦ-ਦਹਾਨੀਆਂ ਭੇਜਣ ਲਈ TigerDuck ਸਰਵਰ ਨੂੰ ਤੁਹਾਡੀ ਵਿਦਿਆਰਥੀ ID, Moodle ਟੋਕਨ ਅਤੇ ਇਸ ਡਿਵਾਈਸ ਦੇ ਪੁਸ਼ ਕ੍ਰੇਡੈਂਸ਼ੀਅਲ ਮਿਲਦੇ ਹਨ</string>
     <string name="settings_sync_status_off">ਬੰਦ</string>
     <string name="settings_sync_status_on">ਚਾਲੂ</string>
     <string name="settings_system_language">ਸਿਸਟਮ ਭਾਸ਼ਾ</string>
@@ -1008,10 +1018,12 @@
     <string name="sync_status_hours_ago_short">%1$d ਘੰ. ਪਹਿਲਾਂ</string>
     <string name="sync_status_just_now">ਹੁਣੇ</string>
     <string name="sync_status_last_synced">ਆਖਰੀ ਸਿੰਕ</string>
+    <string name="sync_status_last_updated">ਆਖਰੀ ਅੱਪਡੇਟ</string>
     <string name="sync_status_minimal">ਸੀਮਤ</string>
     <string name="sync_status_minutes_ago_short">%1$d ਮਿ. ਪਹਿਲਾਂ</string>
     <string name="sync_status_nav_label">TigerSync ਸਥਿਤੀ</string>
     <string name="sync_status_never_synced">ਕਦੇ ਸਿੰਕ ਨਹੀਂ ਕੀਤਾ</string>
+    <string name="sync_status_never_updated">ਕਦੇ ਅੱਪਡੇਟ ਨਹੀਂ ਹੋਇਆ</string>
     <string name="sync_status_ok">ਠੀਕ</string>
     <string name="sync_status_syncing">ਸਿੰਕ ਹੋ ਰਿਹਾ ਹੈ…</string>
     <string name="sync_status_title">ਸਿੰਕ ਸਥਿਤੀ</string>
