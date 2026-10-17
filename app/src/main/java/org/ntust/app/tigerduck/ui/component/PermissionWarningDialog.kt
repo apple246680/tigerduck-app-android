@@ -67,6 +67,14 @@ fun PermissionWarningDialogHost(systemPermissions: SystemPermissions) {
 
     if (revoked.isEmpty()) return
 
+    // Up: said to SystemPermissions, so the Play rating ask
+    // (ReviewPromptHost) does not open over the dialog; taken back when it
+    // closes.
+    DisposableEffect(Unit) {
+        systemPermissions.setWarningShowing(true)
+        onDispose { systemPermissions.setWarningShowing(false) }
+    }
+
     // Closing the popup acknowledges any launch-prompt refusal it showed, so
     // that refusal is not listed again on the next ON_RESUME; a revoke after
     // grant still is, until muted.

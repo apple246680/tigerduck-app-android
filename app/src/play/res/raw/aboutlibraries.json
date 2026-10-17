@@ -3216,8 +3216,23 @@
         },
         {
             "uniqueId": "com.google.android.play:core-common",
-            "artifactVersion": "2.0.3",
+            "artifactVersion": "2.0.4",
             "name": "core-common",
+            "description": "",
+            "developers": [
+                
+            ],
+            "licenses": [
+                "PCSDKToS"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "com.google.android.play:review",
+            "artifactVersion": "2.0.2",
+            "name": "review",
             "description": "",
             "developers": [
                 

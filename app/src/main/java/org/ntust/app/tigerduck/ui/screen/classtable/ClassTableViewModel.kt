@@ -57,6 +57,7 @@ import org.ntust.app.tigerduck.network.MoodleService
 import org.ntust.app.tigerduck.network.NetworkChecker
 import org.ntust.app.tigerduck.network.SemesterCatalog
 import org.ntust.app.tigerduck.network.model.MoodleEnrolledCourse
+import org.ntust.app.tigerduck.review.ReviewPrompt
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import org.ntust.app.tigerduck.ui.theme.TigerDuckTheme
 import org.ntust.app.tigerduck.util.SingleFlight
@@ -92,6 +93,7 @@ class ClassTableViewModel @Inject constructor(
     private val importedCourseLookup: ImportedCourseLookup,
     private val pendingCourseAdds: org.ntust.app.tigerduck.data.PendingCourseAdds,
     private val pendingCourseOverrides: org.ntust.app.tigerduck.data.PendingCourseOverrides,
+    private val reviewPrompt: ReviewPrompt,
     @param:ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
 
@@ -1172,8 +1174,33 @@ class ClassTableViewModel @Inject constructor(
         if (refreshTriggers.onShown()) viewModelScope.launch { fetchFlight.join(::fetchData) }
     }
 
-    /** The page left the screen for another page; see PageLeftEffect. */
-    fun onPageLeft() = refreshTriggers.onLeft()
+    /** The page left the screen for another page; see PageLeftEffect. An ask it offered goes with it. */
+    fun onPageLeft() {
+        refreshTriggers.onLeft()
+        reviewPrompt.withdraw()
+    }
+
+    /**
+     * The page paused with the activity — a background trip, a system prompt
+     * over it: the Play rating's moment it offered is withdrawn, so the ask
+     * cannot outlive what was on screen. Its next resume may offer one again.
+     */
+    fun onPagePaused() = reviewPrompt.withdraw()
+
+    /**
+     * The class table is on screen and the activity resumed: on coming to
+     * the page, and on each return from the background with it showing —
+     * the page's own ON_RESUME, so a return with another page up is not
+     * one. The Play rating's moment (issue #332), if ReviewPrompt agrees;
+     * not over the course detail sheet, which such a return can find open.
+     * On the launch's first resume, before any load, ReviewPrompt declines.
+     * [pageResumed] is the page's own answer, asked again right before the
+     * launch, to whether it is still on screen and resumed.
+     */
+    fun onPageResumed(pageResumed: () -> Boolean) {
+        if (_selectedCourse.value != null) return
+        reviewPrompt.calmMoment(pageResumed)
+    }
 
     /**
      * Reset the timetable for the semester on screen.
@@ -1266,6 +1293,8 @@ class ClassTableViewModel @Inject constructor(
             _isLoading.value = true
             if (!networkChecker.isAvailable()) {
                 _noNetworkEvent.tryEmit(Unit)
+                // The user just saw an error, not a moment to ask for a rating.
+                reviewPrompt.loadFailed()
                 kotlinx.coroutines.yield()
                 _isLoading.value = false
                 return@launch
@@ -1410,6 +1439,9 @@ class ClassTableViewModel @Inject constructor(
                                 TigerDuckTheme.buildCourseColorMap(merged)
                             }
                             dataCache.saveCourses(merged, semester)
+                            // The class table loaded: a day of use towards
+                            // the Play rating ask (issue #332).
+                            reviewPrompt.classTableLoaded()
                             runCatching { pushApiClient.uploadCourses(merged, semester) }
                                 .onFailure { Log.w("ClassTableVM", "uploadCourses failed (non-fatal): ${it.logSummary()}") }
                             widgetUpdater.requestUpdate()
@@ -1468,6 +1500,7 @@ class ClassTableViewModel @Inject constructor(
             // the default uncaught handler and killed the process instead of
             // failing one refresh. This is the only boundary in that path.
             Log.e("ClassTableVM", "fetchData failed: ${e.logSummary()}")
+            reviewPrompt.loadFailed()
         } finally {
             _isLoading.value = false
         }
