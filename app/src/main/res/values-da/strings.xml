@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">Nulstil</string>
     <string name="app_reset_required_message">Din login-tilstand og præferencer kan ikke længere læses, muligvis på grund af en OS-opgradering, sikkerhedskopigendannelse eller et lagringsproblem.\n\nTryk på \"Nulstil\" for at rydde gamle data, og log derefter ind og rekonfigurer dine præferencer.</string>
     <string name="app_reset_required_title">Nulstilling påkrævet</string>
+    <string name="assignment_detail_comments">Kommentarer til afleveringen</string>
+    <string name="assignment_detail_description">Beskrivelse</string>
+    <string name="assignment_detail_due">Frist</string>
+    <string name="assignment_detail_group">Gruppe</string>
+    <string name="assignment_detail_not_submitted">Ikke afleveret endnu</string>
+    <string name="assignment_detail_submission">Din aflevering</string>
+    <string name="assignment_detail_submit_on_moodle">Aflever i Moodle</string>
+    <string name="assignment_detail_submitted_at">Afleveret</string>
     <string name="assignment_filter_all">Alle</string>
     <string name="assignment_filter_ignored">Ignorerede</string>
     <string name="assignment_filter_incomplete">Ufuldstændige</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">Tilpasset farve</string>
     <string name="course_color_picker_title">Rediger farve</string>
     <string name="course_credits_value">ECTS-point: %1$s</string>
+    <string name="course_detail_assignments_label">Opgaver</string>
     <string name="course_detail_classroom_label">Klasseværelse</string>
     <string name="course_detail_code_copied">Koden er kopieret</string>
     <string name="course_detail_code_label">Kode</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">Begynd at bruge TigerDuck</string>
     <string name="onboarding_sync_description">TigerSync holder dine kurser, opgaver og indstillinger synkroniseret på tværs af alle dine enheder. Du kan vælge præcis, hvad der skal synkroniseres, i TigerSync-indstillingerne.</string>
     <string name="onboarding_sync_not_shared_password">Adgangskoden uploades aldrig</string>
-    <string name="onboarding_sync_note">Når synkronisering er slået fra, forbliver alle data kun på denne enhed. Push-notifikationer for lektiepåmindelser fungerer lokalt uden TigerSync.</string>
+    <string name="onboarding_sync_note">Når synkronisering er slået fra, modtager TigerDuck-serveren stadig dit studie-ID, dit Moodle-token og denne enheds push-legitimationsoplysninger for at kunne sende opgavepåmindelser</string>
     <string name="onboarding_sync_shared_assignments">Opgavedata</string>
     <string name="onboarding_sync_shared_courses">Kursusdata</string>
     <string name="onboarding_sync_shared_device_id">Enheds-ID</string>
@@ -769,6 +778,7 @@
     <string name="school_mail_send">Send</string>
     <string name="school_mail_send_confirm_title">Send denne mail?</string>
     <string name="school_mail_send_failed">Mailen kunne ikke sendes</string>
+    <string name="school_mail_send_unconfirmed">Det kunne ikke bekræftes, om mailen blev sendt; et nyt forsøg kan sende den to gange</string>
     <string name="school_mail_sent_copy_failed">Mailen blev sendt, men kopien kunne ikke gemmes i Sendt.</string>
     <string name="school_mail_sent_copy_no_folder">Mailen blev sendt, men der er ingen Sendt-mappe at gemme en kopi i.</string>
     <string name="school_mail_sent_copy_not_saved">Mail sendt, men der blev ikke gemt en kopi i Sendt</string>
@@ -956,7 +966,7 @@
     <string name="settings_sign_out_imported_tables">Importerede skemaer slettes også.</string>
     <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync lader dig synkronisere dine valgte oplysninger på tværs af alle enheder med TigerSync aktiveret. Oplysninger uden synkronisering forbliver kun på denne enhed.</string>
-    <string name="settings_sync_disabled_note">Når synkronisering er slået fra, forbliver alle data kun på denne enhed.</string>
+    <string name="settings_sync_disabled_note">Når synkronisering er slået fra, modtager TigerDuck-serveren stadig dit studie-ID, dit Moodle-token og denne enheds push-legitimationsoplysninger for at kunne sende opgavepåmindelser</string>
     <string name="settings_sync_status_off">Fra</string>
     <string name="settings_sync_status_on">Til</string>
     <string name="settings_system_language">Systemsprog</string>
@@ -1011,10 +1021,12 @@
     <string name="sync_status_hours_ago_short">for %1$d t siden</string>
     <string name="sync_status_just_now">Lige nu</string>
     <string name="sync_status_last_synced">Senest synkroniseret</string>
+    <string name="sync_status_last_updated">Senest opdateret</string>
     <string name="sync_status_minimal">Begrænset</string>
     <string name="sync_status_minutes_ago_short">for %1$d min siden</string>
     <string name="sync_status_nav_label">TigerSync-status</string>
     <string name="sync_status_never_synced">Aldrig synkroniseret</string>
+    <string name="sync_status_never_updated">Aldrig opdateret</string>
     <string name="sync_status_ok">OK</string>
     <string name="sync_status_syncing">Synkroniserer…</string>
     <string name="sync_status_title">Synkroniseringsstatus</string>

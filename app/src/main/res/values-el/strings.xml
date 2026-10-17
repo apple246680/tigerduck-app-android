@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">Επαναφορά</string>
     <string name="app_reset_required_message">Η κατάσταση σύνδεσης και οι προτιμήσεις σας δεν μπορούν πλέον να διαβαστούν, πιθανώς λόγω αναβάθμισης ΛΣ, επαναφοράς αντιγράφου ασφαλείας ή προβλήματος αποθήκευσης.\n\nΠατήστε «Επαναφορά» για εκκαθάριση παλιών δεδομένων, στη συνέχεια συνδεθείτε και ρυθμίστε ξανά τις προτιμήσεις σας.</string>
     <string name="app_reset_required_title">Απαιτείται επαναφορά</string>
+    <string name="assignment_detail_comments">Σχόλια υποβολής</string>
+    <string name="assignment_detail_description">Περιγραφή</string>
+    <string name="assignment_detail_due">Προθεσμία</string>
+    <string name="assignment_detail_group">Ομάδα</string>
+    <string name="assignment_detail_not_submitted">Δεν έχει υποβληθεί ακόμη</string>
+    <string name="assignment_detail_submission">Η υποβολή σας</string>
+    <string name="assignment_detail_submit_on_moodle">Υποβολή στο Moodle</string>
+    <string name="assignment_detail_submitted_at">Υποβλήθηκε</string>
     <string name="assignment_filter_all">Όλες</string>
     <string name="assignment_filter_ignored">Αγνοημένες</string>
     <string name="assignment_filter_incomplete">Ημιτελείς</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">Προσαρμοσμένο χρώμα</string>
     <string name="course_color_picker_title">Επεξεργασία χρώματος</string>
     <string name="course_credits_value">Πιστωτικές μονάδες: %1$s</string>
+    <string name="course_detail_assignments_label">Εργασίες</string>
     <string name="course_detail_classroom_label">Αίθουσα διδασκαλίας</string>
     <string name="course_detail_code_copied">Ο κωδικός αντιγράφηκε</string>
     <string name="course_detail_code_label">Κώδικας</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">Ξεκινήστε να χρησιμοποιείτε το TigerDuck</string>
     <string name="onboarding_sync_description">Το TigerSync διατηρεί τα μαθήματα, τις εργασίες και τις ρυθμίσεις σας συγχρονισμένα σε όλες τις συσκευές σας. Μπορείτε να επιλέξετε ακριβώς τι θα συγχρονίζεται στις ρυθμίσεις TigerSync.</string>
     <string name="onboarding_sync_not_shared_password">Ο κωδικός δεν μεταφορτώνεται ποτέ</string>
-    <string name="onboarding_sync_note">Όταν ο συγχρονισμός είναι απενεργοποιημένος, όλα τα δεδομένα παραμένουν μόνο σε αυτή τη συσκευή. Οι ειδοποιήσεις push για υπενθυμίσεις εργασιών λειτουργούν τοπικά χωρίς TigerSync.</string>
+    <string name="onboarding_sync_note">Όταν ο συγχρονισμός είναι απενεργοποιημένος, ο διακομιστής TigerDuck εξακολουθεί να λαμβάνει τον αριθμό φοιτητή σας, το token Moodle και τα διαπιστευτήρια push αυτής της συσκευής για να στέλνει υπενθυμίσεις εργασιών</string>
     <string name="onboarding_sync_shared_assignments">Δεδομένα εργασιών</string>
     <string name="onboarding_sync_shared_courses">Δεδομένα μαθημάτων</string>
     <string name="onboarding_sync_shared_device_id">Αναγνωριστικό συσκευής</string>
@@ -769,6 +778,7 @@
     <string name="school_mail_send">Αποστολή</string>
     <string name="school_mail_send_confirm_title">Αποστολή αυτού του email;</string>
     <string name="school_mail_send_failed">Δεν ήταν δυνατή η αποστολή του email</string>
+    <string name="school_mail_send_unconfirmed">Δεν ήταν δυνατό να επιβεβαιωθεί η αποστολή του email, και μια νέα προσπάθεια μπορεί να το παραδώσει δύο φορές</string>
     <string name="school_mail_sent_copy_failed">Το email στάλθηκε, αλλά το αντίγραφο δεν ήταν δυνατό να αποθηκευτεί στα Απεσταλμένα.</string>
     <string name="school_mail_sent_copy_no_folder">Το email στάλθηκε, αλλά δεν υπάρχει φάκελος Απεσταλμένων για να κρατηθεί αντίγραφο.</string>
     <string name="school_mail_sent_copy_not_saved">Email στάλθηκε, αλλά δεν αποθηκεύτηκε αντίγραφο στα Απεσταλμένα</string>
@@ -956,7 +966,7 @@
     <string name="settings_sign_out_imported_tables">Θα διαγραφούν επίσης τα προγράμματα μαθημάτων που εισαγάγατε.</string>
     <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">Το TigerSync σας επιτρέπει να συγχρονίζετε τις επιλεγμένες πληροφορίες σε όλες τις συσκευές. Οι πληροφορίες χωρίς συγχρονισμό παραμένουν μόνο σε αυτή τη συσκευή.</string>
-    <string name="settings_sync_disabled_note">Όταν ο συγχρονισμός είναι απενεργοποιημένος, όλα τα δεδομένα παραμένουν μόνο σε αυτή τη συσκευή.</string>
+    <string name="settings_sync_disabled_note">Όταν ο συγχρονισμός είναι απενεργοποιημένος, ο διακομιστής TigerDuck εξακολουθεί να λαμβάνει τον αριθμό φοιτητή σας, το token Moodle και τα διαπιστευτήρια push αυτής της συσκευής για να στέλνει υπενθυμίσεις εργασιών</string>
     <string name="settings_sync_status_off">Ανενεργό</string>
     <string name="settings_sync_status_on">Ενεργό</string>
     <string name="settings_system_language">Γλώσσα συστήματος</string>
@@ -1011,10 +1021,12 @@
     <string name="sync_status_hours_ago_short">%1$d ώρ πριν</string>
     <string name="sync_status_just_now">Μόλις τώρα</string>
     <string name="sync_status_last_synced">Τελευταίος συγχρονισμός</string>
+    <string name="sync_status_last_updated">Τελευταία ενημέρωση</string>
     <string name="sync_status_minimal">Περιορισμένο</string>
     <string name="sync_status_minutes_ago_short">%1$d λεπ πριν</string>
     <string name="sync_status_nav_label">Κατάσταση TigerSync</string>
     <string name="sync_status_never_synced">Ποτέ δεν συγχρονίστηκε</string>
+    <string name="sync_status_never_updated">Ποτέ δεν ενημερώθηκε</string>
     <string name="sync_status_ok">Εντάξει</string>
     <string name="sync_status_syncing">Συγχρονισμός…</string>
     <string name="sync_status_title">Κατάσταση συγχρονισμού</string>

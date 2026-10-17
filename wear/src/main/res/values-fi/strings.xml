@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">Nollaa</string>
     <string name="app_reset_required_message">Kirjautumistilasi ja asetuksiasi ei voida enää lukea, mahdollisesti käyttöjärjestelmäpäivityksen, varmuuskopiopalautuksen tai tallennusongelman vuoksi.\n\nNollaa vanhat tiedot napauttamalla \"Nollaa\", kirjaudu sitten sisään ja määritä asetukset uudelleen.</string>
     <string name="app_reset_required_title">Nollaus vaaditaan</string>
+    <string name="assignment_detail_comments">Palautuksen kommentit</string>
+    <string name="assignment_detail_description">Kuvaus</string>
+    <string name="assignment_detail_due">Määräaika</string>
+    <string name="assignment_detail_group">Ryhmä</string>
+    <string name="assignment_detail_not_submitted">Ei vielä palautettu</string>
+    <string name="assignment_detail_submission">Palautuksesi</string>
+    <string name="assignment_detail_submit_on_moodle">Palauta Moodlessa</string>
+    <string name="assignment_detail_submitted_at">Palautettu</string>
     <string name="assignment_filter_all">Kaikki</string>
     <string name="assignment_filter_ignored">Ohitettu</string>
     <string name="assignment_filter_incomplete">Kesken</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">Mukautettu väri</string>
     <string name="course_color_picker_title">Muokkaa väriä</string>
     <string name="course_credits_value">Opintopisteet: %1$s</string>
+    <string name="course_detail_assignments_label">Tehtävät</string>
     <string name="course_detail_classroom_label">Luokkahuone</string>
     <string name="course_detail_code_copied">Koodi kopioitu</string>
     <string name="course_detail_code_label">Koodi</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">Aloita TigerDuckin käyttö</string>
     <string name="onboarding_sync_description">TigerSync pitää kurssisi, tehtäväsi ja asetuksesi synkronoituina kaikilla laitteillasi. Voit valita tarkalleen, mitä synkronoidaan TigerSync -asetuksista.</string>
     <string name="onboarding_sync_not_shared_password">Salasanaa ei koskaan ladata</string>
-    <string name="onboarding_sync_note">Kun synkronointi on pois päältä, kaikki tiedot pysyvät vain tässä laitteessa. Kotitehtävämuistutusten push-ilmoitukset toimivat paikallisesti ilman TigerSync -palvelua.</string>
+    <string name="onboarding_sync_note">Kun synkronointi on pois päältä, TigerDuck-palvelin saa edelleen opiskelijanumerosi, Moodle-tunnuksesi ja tämän laitteen push-tunnukset tehtävämuistutusten lähettämistä varten</string>
     <string name="onboarding_sync_shared_assignments">Tehtävätiedot</string>
     <string name="onboarding_sync_shared_courses">Kurssitiedot</string>
     <string name="onboarding_sync_shared_device_id">Laitteen ID</string>
@@ -769,6 +778,7 @@
     <string name="school_mail_send">Lähetä</string>
     <string name="school_mail_send_confirm_title">Lähetetäänkö tämä viesti?</string>
     <string name="school_mail_send_failed">Viestiä ei voitu lähettää</string>
+    <string name="school_mail_send_unconfirmed">Viestin lähettämistä ei voitu vahvistaa; uusi yritys voi toimittaa sen kahdesti</string>
     <string name="school_mail_sent_copy_failed">Viesti lähetettiin, mutta kopiota ei voitu tallentaa Lähetetyt-kansioon.</string>
     <string name="school_mail_sent_copy_no_folder">Viesti lähetettiin, mutta Lähetetyt-kansiota ei ole, johon kopion voisi tallentaa.</string>
     <string name="school_mail_sent_copy_not_saved">Viesti lähetetty, mutta kopiota ei tallennettu Lähetetyt-kansioon</string>
@@ -956,7 +966,7 @@
     <string name="settings_sign_out_imported_tables">Myös tuodut lukujärjestykset poistetaan.</string>
     <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync mahdollistaa valittujen tietojen synkronoinnin kaikkien laitteiden välillä. Synkronoimattomat tiedot pysyvät vain tässä laitteessa.</string>
-    <string name="settings_sync_disabled_note">Kun synkronointi on pois päältä, kaikki tiedot pysyvät vain tässä laitteessa.</string>
+    <string name="settings_sync_disabled_note">Kun synkronointi on pois päältä, TigerDuck-palvelin saa edelleen opiskelijanumerosi, Moodle-tunnuksesi ja tämän laitteen push-tunnukset tehtävämuistutusten lähettämistä varten</string>
     <string name="settings_sync_status_off">Pois</string>
     <string name="settings_sync_status_on">Päällä</string>
     <string name="settings_system_language">Järjestelmän kieli</string>
@@ -1011,10 +1021,12 @@
     <string name="sync_status_hours_ago_short">%1$d t sitten</string>
     <string name="sync_status_just_now">Juuri nyt</string>
     <string name="sync_status_last_synced">Viimeksi synkronoitu</string>
+    <string name="sync_status_last_updated">Viimeksi päivitetty</string>
     <string name="sync_status_minimal">Rajoitettu</string>
     <string name="sync_status_minutes_ago_short">%1$d min sitten</string>
     <string name="sync_status_nav_label">TigerSync-tila</string>
     <string name="sync_status_never_synced">Ei koskaan synkronoitu</string>
+    <string name="sync_status_never_updated">Ei koskaan päivitetty</string>
     <string name="sync_status_ok">OK</string>
     <string name="sync_status_syncing">Synkronoidaan…</string>
     <string name="sync_status_title">Synkronoinnin tila</string>

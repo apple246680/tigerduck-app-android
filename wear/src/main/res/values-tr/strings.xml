@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">Sıfırla</string>
     <string name="app_reset_required_message">Giriş durumunuz ve tercihleriniz artık okunamıyor; bunun nedeni işletim sistemi yükseltmesi, yedekten geri yükleme veya depolama sorunu olabilir.\n\nEski verileri temizlemek için \"Sıfırla\"ya dokunun, ardından giriş yapıp tercihlerinizi yeniden yapılandırın.</string>
     <string name="app_reset_required_title">Sıfırlama gerekli</string>
+    <string name="assignment_detail_comments">Teslim yorumları</string>
+    <string name="assignment_detail_description">Açıklama</string>
+    <string name="assignment_detail_due">Son tarih</string>
+    <string name="assignment_detail_group">Grup</string>
+    <string name="assignment_detail_not_submitted">Henüz teslim edilmedi</string>
+    <string name="assignment_detail_submission">Teslim edilen ödev</string>
+    <string name="assignment_detail_submit_on_moodle">Moodle\'da teslim et</string>
+    <string name="assignment_detail_submitted_at">Teslim edildi</string>
     <string name="assignment_filter_all">Tümü</string>
     <string name="assignment_filter_ignored">Yoksayıldı</string>
     <string name="assignment_filter_incomplete">Tamamlanmamış</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">Özel renk</string>
     <string name="course_color_picker_title">Rengi düzenle</string>
     <string name="course_credits_value">Kredi: %1$s</string>
+    <string name="course_detail_assignments_label">Ödevler</string>
     <string name="course_detail_classroom_label">Derslik</string>
     <string name="course_detail_code_copied">Kod kopyalandı</string>
     <string name="course_detail_code_label">Kod</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">TigerDuck\'ı kullanmaya başla</string>
     <string name="onboarding_sync_description">TigerSync derslerinizi, ödevlerinizi ve ayarlarınızı tüm cihazlarınızda senkronize tutar. TigerSync ayarlarından tam olarak neyin senkronize edileceğini seçebilirsiniz.</string>
     <string name="onboarding_sync_not_shared_password">Şifre asla yüklenmez</string>
-    <string name="onboarding_sync_note">Senkronizasyon kapalıyken tüm veriler yalnızca bu cihazda kalır. Ödev hatırlatmaları için push bildirimleri TigerSync olmadan yerel olarak çalışır.</string>
+    <string name="onboarding_sync_note">Senkronizasyon kapalıyken de TigerDuck sunucusu, ödev hatırlatmaları gönderebilmek için öğrenci numaranızı, Moodle jetonunuzu ve bu cihazın push kimlik bilgilerini almaya devam eder</string>
     <string name="onboarding_sync_shared_assignments">Ödev verileri</string>
     <string name="onboarding_sync_shared_courses">Ders verileri</string>
     <string name="onboarding_sync_shared_device_id">Cihaz kimliği</string>
@@ -769,6 +778,7 @@
     <string name="school_mail_send">Gönder</string>
     <string name="school_mail_send_confirm_title">Bu posta gönderilsin mi?</string>
     <string name="school_mail_send_failed">Posta gönderilemedi</string>
+    <string name="school_mail_send_unconfirmed">Postanın gönderilip gönderilmediği doğrulanamadı; yeniden denemek iki kez teslim edilmesine yol açabilir</string>
     <string name="school_mail_sent_copy_failed">Posta gönderildi, ancak kopyası Gönderilmişe kaydedilemedi.</string>
     <string name="school_mail_sent_copy_no_folder">Posta gönderildi, ancak kopyayı saklayacak bir Gönderilmiş klasörü yok.</string>
     <string name="school_mail_sent_copy_not_saved">Posta gönderildi, ancak kopyası Gönderilmişe kaydedilmedi</string>
@@ -956,7 +966,7 @@
     <string name="settings_sign_out_imported_tables">İçe aktarılan ders programları da silinecek.</string>
     <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync, seçtiğiniz bilgileri tüm cihazlarınızda senkronize etmenizi sağlar. Etkinleştirilmemiş bilgiler yalnızca bu cihazda kalır.</string>
-    <string name="settings_sync_disabled_note">Senkronizasyon kapalıyken tüm veriler yalnızca bu cihazda kalır.</string>
+    <string name="settings_sync_disabled_note">Senkronizasyon kapalıyken de TigerDuck sunucusu, ödev hatırlatmaları gönderebilmek için öğrenci numaranızı, Moodle jetonunuzu ve bu cihazın push kimlik bilgilerini almaya devam eder</string>
     <string name="settings_sync_status_off">Kapalı</string>
     <string name="settings_sync_status_on">Açık</string>
     <string name="settings_system_language">Sistem dili</string>
@@ -1011,10 +1021,12 @@
     <string name="sync_status_hours_ago_short">%1$d sa önce</string>
     <string name="sync_status_just_now">Az önce</string>
     <string name="sync_status_last_synced">Son eşitleme</string>
+    <string name="sync_status_last_updated">Son güncelleme</string>
     <string name="sync_status_minimal">Sınırlı</string>
     <string name="sync_status_minutes_ago_short">%1$d dk önce</string>
     <string name="sync_status_nav_label">TigerSync durumu</string>
     <string name="sync_status_never_synced">Hiç eşitlenmedi</string>
+    <string name="sync_status_never_updated">Hiç güncellenmedi</string>
     <string name="sync_status_ok">Tamam</string>
     <string name="sync_status_syncing">Eşitleniyor…</string>
     <string name="sync_status_title">Eşitleme durumu</string>

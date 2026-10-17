@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">איפוס</string>
     <string name="app_reset_required_message">מצב הכניסה וההעדפות שלך אינם ניתנים לקריאה, אולי עקב שדרוג מערכת הפעלה, שחזור גיבוי או בעיית אחסון.\n\nהקש \"איפוס\" למחיקת נתונים ישנים, ולאחר מכן התחבר מחדש והגדר את ההעדפות שלך.</string>
     <string name="app_reset_required_title">נדרש איפוס</string>
+    <string name="assignment_detail_comments">הערות להגשה</string>
+    <string name="assignment_detail_description">תיאור</string>
+    <string name="assignment_detail_due">מועד הגשה</string>
+    <string name="assignment_detail_group">קבוצה</string>
+    <string name="assignment_detail_not_submitted">טרם הוגש</string>
+    <string name="assignment_detail_submission">ההגשה שלך</string>
+    <string name="assignment_detail_submit_on_moodle">הגשה ב-Moodle</string>
+    <string name="assignment_detail_submitted_at">הוגש</string>
     <string name="assignment_filter_all">הכל</string>
     <string name="assignment_filter_ignored">מתעלמים</string>
     <string name="assignment_filter_incomplete">לא הושלם</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">צבע מותאם אישית</string>
     <string name="course_color_picker_title">ערוך צבע</string>
     <string name="course_credits_value">נקודות זכות: %1$s</string>
+    <string name="course_detail_assignments_label">מטלות</string>
     <string name="course_detail_classroom_label">כיתה</string>
     <string name="course_detail_code_copied">הקוד הועתק</string>
     <string name="course_detail_code_label">קוד</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">התחל להשתמש ב-TigerDuck</string>
     <string name="onboarding_sync_description">TigerSync שומר על הקורסים, המטלות וההגדרות שלך מסונכרנים בכל המכשירים שלך. תוכל לבחור בדיוק מה לסנכרן בהגדרות TigerSync.</string>
     <string name="onboarding_sync_not_shared_password">הסיסמה לעולם לא מועלית</string>
-    <string name="onboarding_sync_note">כאשר הסנכרון כבוי, כל הנתונים נשארים במכשיר זה בלבד. התראות פוש לתזכורות שיעורי בית פועלות מקומית ללא TigerSync.</string>
+    <string name="onboarding_sync_note">כשהסנכרון כבוי, שרת TigerDuck עדיין מקבל את מספר הסטודנט, טוקן Moodle ואישורי ה-push של מכשיר זה כדי לשלוח תזכורות למטלות</string>
     <string name="onboarding_sync_shared_assignments">נתוני מטלות</string>
     <string name="onboarding_sync_shared_courses">נתוני קורסים</string>
     <string name="onboarding_sync_shared_device_id">מזהה מכשיר</string>
@@ -769,6 +778,7 @@
     <string name="school_mail_send">שלח</string>
     <string name="school_mail_send_confirm_title">לשלוח את ההודעה הזו?</string>
     <string name="school_mail_send_failed">לא ניתן היה לשלוח את ההודעה</string>
+    <string name="school_mail_send_unconfirmed">לא ניתן לאשר שההודעה נשלחה; ניסיון חוזר עלול לשלוח אותה פעמיים</string>
     <string name="school_mail_sent_copy_failed">ההודעה נשלחה, אך לא ניתן היה לשמור את העותק בתיקיית נשלח.</string>
     <string name="school_mail_sent_copy_no_folder">ההודעה נשלחה, אך אין תיקיית נשלח לשמירת עותק.</string>
     <string name="school_mail_sent_copy_not_saved">ההודעה נשלחה, אך העותק לא נשמר בתיקיית נשלח</string>
@@ -956,7 +966,7 @@
     <string name="settings_sign_out_imported_tables">גם מערכות השעות שיובאו יימחקו.</string>
     <string name="settings_sign_out_unsynced_data">Data not synced with TigerSync will be deleted.</string>
     <string name="settings_sync_brief_description">TigerSync מאפשר לך לסנכרן מידע נבחר בין כל המכשירים שלך. מידע שלא הופעל לסנכרון נשאר במכשיר זה בלבד.</string>
-    <string name="settings_sync_disabled_note">כאשר הסנכרון כבוי, כל הנתונים נשארים במכשיר זה בלבד.</string>
+    <string name="settings_sync_disabled_note">כשהסנכרון כבוי, שרת TigerDuck עדיין מקבל את מספר הסטודנט, טוקן Moodle ואישורי ה-push של מכשיר זה כדי לשלוח תזכורות למטלות</string>
     <string name="settings_sync_status_off">כבוי</string>
     <string name="settings_sync_status_on">פעיל</string>
     <string name="settings_system_language">שפת המערכת</string>
@@ -1011,10 +1021,12 @@
     <string name="sync_status_hours_ago_short">לפני %1$d ש</string>
     <string name="sync_status_just_now">הרגע</string>
     <string name="sync_status_last_synced">סנכרון אחרון</string>
+    <string name="sync_status_last_updated">עדכון אחרון</string>
     <string name="sync_status_minimal">מוגבל</string>
     <string name="sync_status_minutes_ago_short">לפני %1$d ד</string>
     <string name="sync_status_nav_label">סטטוס TigerSync</string>
     <string name="sync_status_never_synced">מעולם לא סונכרן</string>
+    <string name="sync_status_never_updated">מעולם לא עודכן</string>
     <string name="sync_status_ok">תקין</string>
     <string name="sync_status_syncing">מסנכרן…</string>
     <string name="sync_status_title">מצב הסנכרון</string>
