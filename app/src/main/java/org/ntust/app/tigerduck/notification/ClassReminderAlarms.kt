@@ -10,15 +10,16 @@ import org.ntust.app.tigerduck.shared.Course
  */
 interface ClassReminderAlarms {
     /**
-     * Arms a reminder [leadTimeSec] ahead of each class of [courses] in the
-     * days ahead, replacing every one armed before.
+     * Arms a reminder [leadTimeSec] ahead of each class in the days ahead,
+     * replacing every one armed before. Each day's classes come from its
+     * own term's courses in [coursesByTerm], keyed by term code.
      *
      * Returns the start of the next class these reminders cover, epoch ms in
      * AppClock time, or null for none. A class whose reminder has already
      * gone off counts until it begins, as its banner is still up then.
      */
     fun scheduleAll(
-        courses: List<Course>,
+        coursesByTerm: Map<String, List<Course>>,
         skippedDates: Map<String, List<String>>,
         leadTimeSec: Long,
         calendar: AcademicCalendar,

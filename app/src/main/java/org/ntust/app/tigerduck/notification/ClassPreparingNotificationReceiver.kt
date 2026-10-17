@@ -16,6 +16,7 @@ import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import org.ntust.app.tigerduck.AppConstants
 import org.ntust.app.tigerduck.AppLink
+import org.ntust.app.tigerduck.academic.AcademicCalendar
 import org.ntust.app.tigerduck.academic.AcademicCalendarStore
 import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.preferences.AppLanguageManager
@@ -23,6 +24,7 @@ import org.ntust.app.tigerduck.data.preferences.AppPreferences
 import org.ntust.app.tigerduck.pendingIntent
 import org.ntust.app.tigerduck.shared.clock.AppClock
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 
 class ClassPreparingNotificationReceiver : BroadcastReceiver() {
@@ -55,13 +57,14 @@ class ClassPreparingNotificationReceiver : BroadcastReceiver() {
         // still land here and post, so re-check at the point of posting rather
         // than trusting that the alarm should have existed at all. An empty
         // calendar reads as in session, so a device that has never reached the
-        // backend keeps the reminders it had.
+        // backend keeps the reminders it had. The term the day falls in is
+        // re-checked the same way; see stillDue.
         val startDate = runCatching {
             Instant.ofEpochMilli(startMs).atZone(AppConstants.TAIPEI_ZONE).toLocalDate()
         }.getOrNull() ?: return
         val deps = EntryPointAccessors
             .fromApplication(rawContext.applicationContext, Deps::class.java)
-        if (!deps.academicCalendar().current().isInSession(startDate)) return
+        if (!stillDue(deps.academicCalendar().current(), startDate, intent.getStringExtra(EXTRA_TERM))) return
         // The lead-time extra lets us auto-cancel the "即將上課" notification when
         // class actually starts: post-time + leadTimeMs ≈ classStart. Without it
         // (older intents from before the field existed) we fall back to manual
@@ -88,6 +91,23 @@ class ClassPreparingNotificationReceiver : BroadcastReceiver() {
         const val EXTRA_END_MS = "end_ms"
         const val EXTRA_NOTIFICATION_ID = "notification_id"
         const val EXTRA_LEAD_TIME_MS = "lead_time_ms"
+
+        /** The term whose timetable the reminder was armed from; absent on alarms armed before it was added. */
+        const val EXTRA_TERM = "term"
+
+        /**
+         * Whether a reminder for a class on [startDate], armed from
+         * [armedTerm]'s timetable, still goes out: classes meet that day,
+         * and the calendar still puts it in that term. An alarm armed before
+         * the calendar moved 開學 would otherwise announce the other term's
+         * class. With no calendar, or no term on the alarm (one armed by a
+         * build before [EXTRA_TERM]), only the first check applies.
+         */
+        internal fun stillDue(calendar: AcademicCalendar, startDate: LocalDate, armedTerm: String?): Boolean {
+            if (!calendar.isInSession(startDate)) return false
+            val term = calendar.currentTerm(startDate)?.code ?: return true
+            return armedTerm == null || armedTerm == term
+        }
 
         /**
          * On the posted banner, not the alarm: the class's start, epoch ms,
