@@ -106,7 +106,7 @@ class ClassBannerClearingTest {
         appPrefs = appPrefs,
         classPreparingScheduler = object : ClassReminderAlarms {
             override fun scheduleAll(
-                courses: List<Course>,
+                coursesByTerm: Map<String, List<Course>>,
                 skippedDates: Map<String, List<String>>,
                 leadTimeSec: Long,
                 calendar: AcademicCalendar,

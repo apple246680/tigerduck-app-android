@@ -787,6 +787,7 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
             .remove("schoolDataSyncedAtMs")
             .remove("backgroundOverridesSyncedAtMs")
             .remove("backgroundCoursesSyncedAtMs")
+            .remove("backgroundCoursesTerm")
             .remove("syncedCategories")
             .remove("assignmentMarksSyncedOnce")
             .remove("lastSeenCoursesResetAt")
@@ -836,6 +837,14 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
     var backgroundCoursesSyncedAtMs: Long
         get() = prefs.getLong("backgroundCoursesSyncedAtMs", 0L)
         set(value) = prefs.edit().putLong("backgroundCoursesSyncedAtMs", value).apply()
+
+    /**
+     * The term the background worker last fetched courses in, by the app's clock; null before the
+     * first. Its first run in another term fetches that term's courses.
+     */
+    var backgroundCoursesTerm: String?
+        get() = prefs.getString("backgroundCoursesTerm", null)
+        set(value) = prefs.edit().putString("backgroundCoursesTerm", value).apply()
 
     /**
      * Debug-only escape hatch from the Developer section: when true,

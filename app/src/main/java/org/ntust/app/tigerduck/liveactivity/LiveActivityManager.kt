@@ -158,7 +158,7 @@ class LiveActivityManager internal constructor(
 
         // Before the Live Update's own gate: class reminders have a switch of
         // their own and no longer stop with the Live Update.
-        val nextClassStart = armClassReminders(signedIn, skipped, calendar, optedIn)
+        val remindersWake = armClassReminders(signedIn, skipped, calendar, optedIn)
         // And whatever the Live Update shows: with a due-soon assignment
         // shown first, the switch to "in class" that cleared these may never
         // come. The boundary alarm at class start brings a refresh here,
@@ -177,10 +177,11 @@ class LiveActivityManager internal constructor(
             }
             notifier.cancel()
             // With no Live Update to follow, the boundary alarm is kept only
-            // to clear a class reminder's banner when its class begins, as
-            // the banner's own timeout is a hint that can come late.
+            // for the class reminders: to clear a reminder's banner when its
+            // class begins, as the banner's own timeout is a hint that can
+            // come late, and to arm them again when a term begins or ends.
             boundaryScheduler.cancel()
-            classStartWakeAt(AppClock.nowMillis(), nextClassStart)?.let(boundaryScheduler::scheduleAt)
+            reminderWakeAt(AppClock.nowMillis(), remindersWake)?.let(boundaryScheduler::scheduleAt)
             return
         }
         val now = Date(AppClock.nowMillis())
@@ -212,7 +213,7 @@ class LiveActivityManager internal constructor(
         }
         val spelledOut = notifier.apply(snapshot, quiet)
 
-        scheduleBoundaryRefresh(snapshot, courses, assignments, skipped, now, spelledOut)
+        scheduleBoundaryRefresh(snapshot, courses, assignments, skipped, now, spelledOut, calendar.termFlipMillis())
     }
 
     /**
@@ -220,8 +221,10 @@ class LiveActivityManager internal constructor(
      * class reminder's own switch and lead time ([ClassReminders]), so a
      * reminder fires even while the app is closed. Signing out cancels them.
      *
-     * Returns the start of the next class they cover, or null when none are
-     * armed; see [ClassReminderAlarms.scheduleAll].
+     * Returns when they next need a refresh, or null when none are armed:
+     * the start of the next class they cover (see
+     * [ClassReminderAlarms.scheduleAll]), or the next 開學 or 結業 if that
+     * comes first.
      */
     private suspend fun armClassReminders(
         signedIn: Boolean,
@@ -235,17 +238,26 @@ class LiveActivityManager internal constructor(
             classPreparingScheduler.cancelAllTracked()
             return null
         }
-        // The full course list, never one emptied for a quiet day: the
-        // scheduler reaches ten days ahead and does its own per-day check,
-        // so handing it today's emptiness would cancel next week's reminders
-        // too.
-        return classPreparingScheduler.scheduleAll(
-            courses = dataCache.loadCourses(),
+        // Every term the days ahead fall in, not just the one loadCourses()
+        // shows: in the last days of a break that is still the old term, and
+        // its timetable is not the new one's. Full course lists, never ones
+        // emptied for a quiet day: the scheduler reaches ten days ahead and
+        // does its own per-day check, so handing it today's emptiness would
+        // cancel next week's reminders too.
+        val today = AppClock.localDateTime().toLocalDate()
+        val nextClassStart = classPreparingScheduler.scheduleAll(
+            coursesByTerm = ClassPreparingNotificationScheduler.termsAhead(calendar, today)
+                .associateWith { dataCache.loadCourses(it) },
             skippedDates = skipped,
             leadTimeSec = leadSec,
             calendar = calendar,
             optedInHolidayIds = optedIn,
         )
+        // Nothing else announces a term flip, and the days past it are armed
+        // from whatever that term had cached by now; see
+        // AcademicCalendar.termFlipMillis.
+        val nextTermFlip = calendar.termFlipMillis().filter { it > AppClock.nowMillis() }.minOrNull()
+        return listOfNotNull(nextClassStart, nextTermFlip).minOrNull()
     }
 
     /**
@@ -259,6 +271,7 @@ class LiveActivityManager internal constructor(
         skippedDates: Map<String, List<String>>,
         now: Date,
         spelledOut: Boolean,
+        termFlips: List<Long>,
     ) {
         val candidates = mutableListOf<Long>()
         snapshot?.countdownTarget?.time?.let { candidates += it }
@@ -297,7 +310,9 @@ class LiveActivityManager internal constructor(
                 candidates += a.dueDate.time
             }
 
-        boundaryScheduler.scheduleAt(boundaryTriggerAt(now.time, candidates))
+        // And 開學 and 結業, which change what today shows and which term the
+        // class reminders are armed from, with nothing to announce them.
+        boundaryScheduler.scheduleAt(boundaryTriggerAt(now.time, candidates, termFlips))
     }
 
     private fun nextClassBoundaries(
@@ -331,21 +346,29 @@ class LiveActivityManager internal constructor(
 
 /**
  * When the boundary alarm fires with no Live Update to follow: just after the
- * next class a reminder covers begins ([nextClassStartMs]), padded and floored
- * as [boundaryTriggerAt] does, or null for no class.
+ * class reminders next need a refresh ([remindersWakeMs], see
+ * armClassReminders), padded and floored as [boundaryTriggerAt] does, or null
+ * for none.
  */
-internal fun classStartWakeAt(nowMs: Long, nextClassStartMs: Long?): Long? =
-    nextClassStartMs?.takeIf { it > nowMs }?.let { (it + 1_000L).coerceAtLeast(nowMs + 30_000L) }
+internal fun reminderWakeAt(nowMs: Long, remindersWakeMs: Long?): Long? =
+    remindersWakeMs?.takeIf { it > nowMs }?.let { (it + 1_000L).coerceAtLeast(nowMs + 30_000L) }
 
-/** When the boundary alarm fires: the earliest of [candidates] still ahead of [nowMs]. */
-internal fun boundaryTriggerAt(nowMs: Long, candidates: List<Long>): Long {
+/**
+ * When the boundary alarm fires: the earliest of [candidates] still ahead of
+ * [nowMs], or the next of [termFlips] if that comes first.
+ */
+internal fun boundaryTriggerAt(nowMs: Long, candidates: List<Long>, termFlips: List<Long> = emptyList()): Long {
     // Pad by 1s to make sure we land *after* the boundary tick, not on it,
     // so the resolver sees the new state instead of the prior one.
     val futureCandidates = candidates.filter { it > nowMs }.map { it + 1_000L }
     // Floor at 30s so a near-instant boundary doesn't burn battery, and
     // ceil at 30 min so a long-idle stretch still gets a watchdog refresh.
     val nextBoundary = futureCandidates.minOrNull() ?: (nowMs + 30 * 60_000L)
-    return nextBoundary.coerceAtLeast(nowMs + 30_000L)
+    // A term flip only ever brings the alarm forward, as it does the
+    // widgets' (WidgetBoundaryScheduler.chooseTriggerMillis): taken as a
+    // candidate, one months away would stand in for the watchdog.
+    val nextFlip = termFlips.filter { it > nowMs }.minOrNull()?.plus(1_000L) ?: nextBoundary
+    return minOf(nextBoundary, nextFlip).coerceAtLeast(nowMs + 30_000L)
 }
 
 /**

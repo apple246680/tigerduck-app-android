@@ -10,6 +10,7 @@ import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -57,6 +58,7 @@ import org.ntust.app.tigerduck.ui.firsttrigger.firstTriggerPromptMayShow
 import org.ntust.app.tigerduck.ui.navigation.AppNavigation
 import org.ntust.app.tigerduck.ui.navigation.Screen
 import org.ntust.app.tigerduck.ui.openLink
+import org.ntust.app.tigerduck.ui.screen.classtable.sharing.ClassTableImportViewModel
 import org.ntust.app.tigerduck.ui.screen.home.openAssignmentInMoodle
 import org.ntust.app.tigerduck.ui.screen.update.UpdatePromptDialog
 import org.ntust.app.tigerduck.ui.screen.whatsnew.WhatsNewCatalog
@@ -135,6 +137,9 @@ class MainActivity : AppCompatActivity() {
     private val widgetStartRoute = mutableStateOf<String?>(null)
     private val whatsNewFlow = mutableStateOf<WhatsNewFlow?>(null)
 
+    // The same activity-scoped instance MainNavigation's hiltViewModel() returns, which shows it.
+    private val classTableImport: ClassTableImportViewModel by viewModels()
+
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             appState.systemPermissions.recordLaunchPromptResult(granted)
@@ -161,6 +166,7 @@ class MainActivity : AppCompatActivity() {
         widgetStartRoute.value = resolveStartRoute(intent)
         handleServerPushIntent(intent)
         openLinkedAssignment(intent, restored = savedInstanceState != null)
+        openSharedClassTable(intent, restored = savedInstanceState != null)
 
         // Re-prompt for app updates only on a genuine fresh start, never on a
         // rotation/config-change recreation (issue #89).
@@ -372,6 +378,7 @@ class MainActivity : AppCompatActivity() {
         widgetStartRoute.value = resolveStartRoute(intent)
         handleServerPushIntent(intent)
         openLinkedAssignment(intent, restored = false)
+        openSharedClassTable(intent, restored = false)
     }
 
     /**
@@ -421,7 +428,8 @@ class MainActivity : AppCompatActivity() {
      * The NavHost route [intent] asks for; see [startRouteOf].
      * `widgetStartRoute` then drives the LaunchedEffect that navigates once
      * Compose is ready. An assignment link has no route:
-     * [openLinkedAssignment] takes it.
+     * [openLinkedAssignment] takes it, as [openSharedClassTable] takes a
+     * share code link.
      */
     private fun resolveStartRoute(intent: Intent?): String? = startRouteOf(intent)
 
@@ -446,6 +454,28 @@ class MainActivity : AppCompatActivity() {
             val assignment = linkedAssignment(id, dataCache.loadAssignments()) ?: return@launch
             openAssignmentInMoodle(this@MainActivity, assignment)
         }
+    }
+
+    /**
+     * Opens the class table with the import of the share code a link carries: an App Link from
+     * the camera, Google Lens, another QR app or a tapped link, or tigerduck.app's button. It
+     * takes the steps a scanned code does, and replaces an import already open. Only for someone
+     * signed in who has finished onboarding; otherwise the link just opens the app.
+     *
+     * Once per delivery, as [openLinkedAssignment]: see [takeSharedClassTableCode]. The import
+     * itself lives in [classTableImport], so a configuration change keeps it on screen.
+     */
+    private fun openSharedClassTable(intent: Intent?, restored: Boolean) {
+        intent ?: return
+        val hadData = intent.data != null
+        val mayImport = authService.authState.value && !appState.showOnboarding
+        val text = takeSharedClassTableCode(intent, restored, mayImport)
+        if (hadData && intent.data == null) setIntent(intent)
+        text ?: return
+        // As a widget's tap opens it, on the user's own table; the import, once saved, shows the
+        // person it added.
+        widgetStartRoute.value = Screen.ClassTable.route
+        classTableImport.openLink(text)
     }
 
     /**

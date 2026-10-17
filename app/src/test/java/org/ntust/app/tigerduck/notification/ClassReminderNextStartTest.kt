@@ -1,6 +1,7 @@
 package org.ntust.app.tigerduck.notification
 
 import android.app.Application
+import java.time.LocalDate
 import java.time.ZonedDateTime
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -40,7 +41,9 @@ class ClassReminderNextStartTest {
 
     private fun armAt(nowMs: Long, courses: List<Course> = listOf(course), leadMinutes: Long = 10): Long? {
         AppClock.setOverride(ClockOverride(nowMs, frozen = true, savedAtRealMillis = System.currentTimeMillis()))
-        return scheduler.scheduleAll(courses, emptyMap(), leadMinutes * 60, AcademicCalendar.EMPTY, emptySet())
+        // With no calendar every day falls in the one term.
+        val term = ClassPreparingNotificationScheduler.termOn(AcademicCalendar.EMPTY, LocalDate.now())
+        return scheduler.scheduleAll(mapOf(term to courses), emptyMap(), leadMinutes * 60, AcademicCalendar.EMPTY, emptySet())
     }
 
     @After
