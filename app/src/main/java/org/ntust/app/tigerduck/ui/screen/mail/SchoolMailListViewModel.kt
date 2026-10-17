@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.mail.MailAccount
+import org.ntust.app.tigerduck.mail.MailChange
 import org.ntust.app.tigerduck.mail.MailError
 import org.ntust.app.tigerduck.mail.MailRepository
 import org.ntust.app.tigerduck.mail.MailSite
@@ -164,7 +165,7 @@ class SchoolMailListViewModel @Inject constructor(
      * A new mail or a draft sent from compose went out without its copy reaching the sent folder
      * (a reply's notice is the replied mail's to show, not this list's). Kept out of
      * [UiState] on purpose: no load clears it, only [dismissSentCopyNotice] (or signing out), so
-     * the reload that follows the compose screen closing cannot wipe it before it is seen.
+     * the fetch that can follow the compose screen closing cannot wipe it before it is seen.
      */
     val sentCopyNotice: StateFlow<SentCopyNotice?> = sentCopyNotices.noticeFor(SentCopyOrigin.List, viewModelScope)
 
@@ -179,8 +180,16 @@ class SchoolMailListViewModel @Inject constructor(
     /** The [load] in progress, so a second call -- Retry tapped twice, a pull -- waits on it instead of starting another. */
     private var loadJob: Job? = null
 
-    /** The [MailAccount.accountGeneration] that [loadJob] loads for. */
-    private var loadGeneration = 0
+    /** The [MailAccount.accountGeneration] that [loadJob] loads for; null until the first [load]. */
+    private var loadGeneration: Int? = null
+
+    /**
+     * Folders a write made on another screen changed in a way this list cannot apply itself
+     * ([MailChange.Changed]): fetched again the next time one of them is on screen -- as the
+     * page appears ([loadIfNeeded]) -- and nothing happens for one that is not; a chip tap
+     * fetches anyway. A folder leaves the set with the first page that replaces its rows.
+     */
+    private val staleFolders = mutableSetOf<String>()
 
     /**
      * True while a load asked for by another account than [loadJob]'s waits for that one to end:
@@ -228,11 +237,16 @@ class SchoolMailListViewModel @Inject constructor(
      */
     private var searchGeneration = 0
 
-    /** When the last first page landed, by [clock]: a resume right after it has nothing new to ask. */
-    private var firstPageAt: Long? = null
+    /**
+     * When the folders on screen were last looked at, by [clock]: a first page that landed, or a
+     * poll that ran to the end. What a return's own look at the inbox is decided against
+     * ([pollsOnResume]).
+     */
+    private var lookedAt: Long? = null
 
     init {
         viewModelScope.launch { account.authFailed.collect { authBannerClosed.value = false } }
+        viewModelScope.launch { repository.changes.collect(::apply) }
         // Signing out must not leave the previous account's mail on screen for
         // whoever signs in next (spec §7.5).
         viewModelScope.launch {
@@ -244,12 +258,68 @@ class SchoolMailListViewModel @Inject constructor(
                     prefetchJob = null
                     prefetchDone = false
                     forgetSearch()
-                    firstPageAt = null
+                    lookedAt = null
+                    staleFolders.clear()
                     listGeneration++
                     folderValidity = emptyMap()
                     _state.value = UiState()
                 }
             }
+        }
+    }
+
+    /**
+     * What the screen asks for as it appears. The list screen is composed again on the way back
+     * from every mail, and used to load each time: one IMAP round trip per mail opened, against a
+     * server that caps connections and answers "server busy" under load. The list it left behind
+     * is still here, as on the iPhone, so this loads only when nothing has loaded for this
+     * account -- first entry, a sign-in since, a sign-out that reset the screen -- tries again a
+     * load that failed with nothing to show, which Retry would be the next tap for anyway, and
+     * fetches the page again where a write on another screen changed a folder on screen in a way
+     * only a fetch can show ([staleFolders]). Otherwise the list stays exactly as it was: what was
+     * done to a mail meanwhile has been applied ([apply]), the poll keeps the inbox fresh, and a
+     * pull is the user asking.
+     */
+    fun loadIfNeeded() {
+        if (loadGeneration != account.accountGeneration) {
+            load()
+            return
+        }
+        val s = _state.value
+        if (s.loadState is LoadState.Failed && s.messages.isEmpty()) {
+            refresh()
+        } else if (s.targets.any { it in staleFolders }) {
+            refetch()
+        }
+    }
+
+    /**
+     * The newest page of the folders on screen again, under whatever search is up -- a moved or
+     * deleted mail has left the results already ([apply]); mail new to a folder reaches them with
+     * the next search. The same stop and restart of the warm as [refresh], for the same reason.
+     */
+    private fun refetch() {
+        prefetchJob?.cancel()
+        prefetchJob = null
+        viewModelScope.launch {
+            fetchFirstPage()
+            if (_state.value.loadState is LoadState.Loaded) startPrefetch()
+        }
+    }
+
+    /**
+     * A write made on another screen, applied to the list it comes back to, as the iPhone's list
+     * is told (`markSeenLocally` / `removeLocally` there): the mail opened from this list read,
+     * moved or deleted, a draft saved, a mail sent. What can be applied is applied here, at once
+     * and without a fetch; a folder with mail only a fetch can describe is noted for the next
+     * time it is on screen ([staleFolders]). A change of an account that has left meets a list
+     * the sign-out emptied, or one the next load replaces, and can do no harm there.
+     */
+    private fun apply(change: MailChange) {
+        when (change) {
+            is MailChange.Seen -> updateMessage(MailRow.key(change.folder, change.uid)) { it.copy(flags = it.flags.copy(seen = change.seen)) }
+            is MailChange.Removed -> removeMessage(MailRow.key(change.folder, change.uid))
+            is MailChange.Changed -> staleFolders += change.folder
         }
     }
 
@@ -424,15 +494,19 @@ class SchoolMailListViewModel @Inject constructor(
      * as the page is open. Signing in again clears the flag, and the screen
      * restarts polling from that.
      *
-     * The first look is at once, not a minute in: this runs whenever the page comes back, from
-     * the background or from a mail, and mail that arrived meanwhile -- its notification perhaps
-     * already in the shade -- should be on the list when it does. Not while a load is still
-     * running, or has not run yet, and not within [RESUME_POLL_FRESH_MS] of a first page landing:
-     * that page already is the answer, and not while it has failed, which Retry is there for.
-     * Decided [RESUME_POLL_GRACE_MS] in rather than here, since coming back from a mail composes
-     * the list again, and the load that starts as it appears lands just after this call.
+     * The first look is at once, not a minute in, when the app comes back to the foreground on
+     * this page ([fromBackground]): mail that arrived meanwhile -- its notification perhaps
+     * already in the shade -- should be on the list when it does (#251). Not as the page merely
+     * appears: first entry, or the way back from a mail, which composes it again. The list is
+     * then the one the user left moments ago ([loadIfNeeded]), and a look on every return would
+     * be the round trip per mail opened that keeping it is there to save (#336) -- unless the
+     * poll missed a tick while the page was away, when the look it owes is taken now. Never
+     * while a load is still running, or has not run yet, nor within [RESUME_POLL_FRESH_MS] of a
+     * first page landing, which already is the answer; nor while it has failed, which Retry is
+     * there for. Decided [RESUME_POLL_GRACE_MS] in rather than here, since the fetch the page
+     * makes for itself as it appears, when it has one to make, lands just after this call.
      */
-    fun startPolling() {
+    fun startPolling(fromBackground: Boolean = false) {
         // A background check may have reached the inbox while the page was away.
         showFetchedAt()
         if (account.authFailed.value) return
@@ -448,7 +522,7 @@ class SchoolMailListViewModel @Inject constructor(
         pollJob = viewModelScope.launch {
             launch {
                 delay(RESUME_POLL_GRACE_MS)
-                if (pollsOnResume() && !account.authFailed.value) poll()
+                if (pollsOnResume(fromBackground) && !account.authFailed.value) poll()
             }
             while (isActive && !account.authFailed.value) {
                 delay(POLL_MS)
@@ -458,13 +532,15 @@ class SchoolMailListViewModel @Inject constructor(
         }
     }
 
-    private fun pollsOnResume(): Boolean {
+    private fun pollsOnResume(fromBackground: Boolean): Boolean {
         val s = _state.value
         // A failed list says so and offers Retry; a look of its own on every return would only
         // repeat the failure as a toast over it.
         if (s.loadState !is LoadState.Loaded) return false
-        val landed = firstPageAt ?: return true
-        return clock.now() - landed >= RESUME_POLL_FRESH_MS
+        val looked = lookedAt ?: return true
+        // Back from the background, any look older than the page's own just-landed one is stale;
+        // merely appearing, only the tick the poll missed is owed (see [startPolling]).
+        return clock.now() - looked >= if (fromBackground) RESUME_POLL_FRESH_MS else POLL_MS
     }
 
     fun stopPolling() {
@@ -523,7 +599,8 @@ class SchoolMailListViewModel @Inject constructor(
             listGeneration++
             folderValidity = folderValidity + pages.associate { (folder, page) -> folder to page.uidValidity }
             _state.update { it.copy(messages = rowsOf(selection, pages), cursors = cursorsOf(pages), loadState = LoadState.Loaded) }
-            firstPageAt = clock.now()
+            lookedAt = clock.now()
+            staleFolders.removeAll(targets.toSet())
             // Was "only for Inbox itself"; All mail shows the inbox's own mail too, so it must
             // move the notification seen marker exactly as viewing Inbox always did.
             if (_state.value.inboxInView) {
@@ -909,6 +986,8 @@ class SchoolMailListViewModel @Inject constructor(
                 repository.status(folder) { stillCurrent(selection, generation) }
                 dated(folder, generation)
             }
+            // Every folder on screen answered: a look as good as a page, for the next return.
+            lookedAt = clock.now()
         } catch (e: MailError) {
             if (dropped(e, generation)) return
             // A rejected password still has to reach the account (spec §7.4) -- both paths below
@@ -1023,6 +1102,11 @@ class SchoolMailListViewModel @Inject constructor(
             messages = st.messages.map { if (it.key == key) it.copy(summary = transform(it.summary)) else it },
             searchResults = st.searchResults?.map { if (it.key == key) it.copy(summary = transform(it.summary)) else it },
         )
+    }
+
+    /** The row [key] names is gone from the list and from the search results alike; see [apply]. */
+    private fun removeMessage(key: String) = _state.update { st ->
+        st.copy(messages = st.messages.filterNot { it.key == key }, searchResults = st.searchResults?.filterNot { it.key == key })
     }
 
     private fun rowsOf(selection: FolderSelection, pages: List<Pair<String, MailPage>>): List<MailRow> =

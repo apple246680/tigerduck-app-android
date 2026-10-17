@@ -2,6 +2,7 @@
 
 package org.ntust.app.tigerduck.mail
 
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -535,6 +536,46 @@ class MailRepositoryTest {
         val uid = server.folders.getValue("草稿匣").single().summary.uid
         repo.discardDraft(uid)
         assertTrue(server.subjects("草稿匣").isEmpty())
+    }
+
+    @Test
+    fun `a mail read, moved or deleted is told to whoever keeps a list of its folder`() = runTest {
+        val uid = server.deliver("a")
+        val repo = TestSetup(backgroundScope).signedIn()
+        val changes = mutableListOf<MailChange>()
+        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { repo.changes.collect { changes += it } }
+        repo.loadPage("INBOX", null)
+        repo.setSeen("INBOX", uid, true)
+        repo.delete("INBOX", uid)
+        val trashUid = server.folders.getValue("回收筒").single().summary.uid
+        repo.delete("回收筒", trashUid)
+        runCurrent()
+        assertEquals(
+            listOf(
+                MailChange.Seen("INBOX", uid, true),
+                MailChange.Removed("INBOX", uid),
+                MailChange.Changed("回收筒"),
+                MailChange.Removed("回收筒", trashUid),
+            ),
+            changes,
+        )
+    }
+
+    @Test
+    fun `a sent copy and a saved or discarded draft are told the same way`() = runTest {
+        val repo = TestSetup(backgroundScope).signedIn()
+        val changes = mutableListOf<MailChange>()
+        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { repo.changes.collect { changes += it } }
+        repo.send(OutgoingMail(repo.selfAddress(), listOf(MailAddress(null, "a@x.tw")), emptyList(), emptyList(), "s", "hi"), answered = null)
+        val draft = OutgoingMail(repo.selfAddress(), emptyList(), emptyList(), emptyList(), "draft", "x")
+        repo.saveDraft(draft, replacingUid = null)
+        val uid = server.folders.getValue("草稿匣").single().summary.uid
+        repo.discardDraft(uid)
+        runCurrent()
+        assertEquals(
+            listOf(MailChange.Changed("寄件備份匣"), MailChange.Changed("草稿匣"), MailChange.Removed("草稿匣", uid)),
+            changes,
+        )
     }
 
     @Test

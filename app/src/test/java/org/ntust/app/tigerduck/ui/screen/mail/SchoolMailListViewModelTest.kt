@@ -32,11 +32,13 @@ import org.ntust.app.tigerduck.mail.MainDispatcherRule
 import org.ntust.app.tigerduck.mail.RecordingNotifier
 import org.ntust.app.tigerduck.mail.RecordingScheduler
 import org.ntust.app.tigerduck.mail.cancelAndJoinBlocking
+import org.ntust.app.tigerduck.mail.compose.OutgoingMail
 import org.ntust.app.tigerduck.mail.imap.FolderSelection
 import org.ntust.app.tigerduck.mail.imap.ResolvedFolders
 import org.ntust.app.tigerduck.mail.imap.SpecialFolder
 import org.ntust.app.tigerduck.mail.mailSummary
 import org.ntust.app.tigerduck.mail.model.FolderStatus
+import org.ntust.app.tigerduck.mail.model.MailAddress
 import org.ntust.app.tigerduck.mail.model.MailBody
 import org.ntust.app.tigerduck.mail.model.MailPage
 import org.ntust.app.tigerduck.mail.store.MailCache
@@ -881,19 +883,102 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
-    fun `load shows the fresh server page after the repository dropped the folder's cache`() {
-        // A move/delete on the message screen that hit MailError.FolderChanged drops the
-        // folder's cache in the (shared, singleton) repository; load() -- which the screen
-        // always reruns on returning to the list, since LaunchedEffect restarts whenever the
-        // composable re-enters composition -- must not need that cache to show the current page.
+    fun `the page appearing again keeps the list it loaded and fetches nothing`() {
+        // The list screen is composed again on the way back from every mail, and used to load
+        // as it appeared: one IMAP round trip per mail opened, against a server that caps
+        // connections. The list it left behind is still here, as on the iPhone.
         repo.add("INBOX", mailSummary(1))
-        vm.load()
+        vm.loadIfNeeded()
+        assertEquals(listOf(1L), vm.state.value.displayed.map { it.uid })
+        val loads = repo.loadsSent.size
+        val lists = repo.foldersCalls
+        vm.loadIfNeeded()
+        assertEquals(loads, repo.loadsSent.size)
+        assertEquals(lists, repo.foldersCalls)
+        assertEquals(listOf(1L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `a folder the repository found recreated is fetched again as the page appears`() {
+        // A move/delete on the message screen that hit MailError.FolderChanged drops the
+        // folder's cache in the (shared, singleton) repository and says so. The list no longer
+        // reloads on every return, so this is what keeps it from showing rows of a mailbox the
+        // server has replaced.
+        repo.add("INBOX", mailSummary(1))
+        vm.loadIfNeeded()
         assertEquals(listOf(1L), vm.state.value.displayed.map { it.uid })
 
         repo.dropCache("INBOX")
         repo.add("INBOX", mailSummary(2))
-        vm.load()
+        vm.loadIfNeeded()
         assertEquals(listOf(2L, 1L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `another student signing in over this one gets their own load when the page appears`() {
+        repo.add("INBOX", mailSummary(1))
+        vm.loadIfNeeded()
+        val lists = repo.foldersCalls
+        signInAnotherOverThisOne()
+        vm.loadIfNeeded()
+        assertEquals(lists + 1, repo.foldersCalls)
+    }
+
+    @Test
+    fun `a list that failed with nothing to show is tried again as the page appears`() {
+        repo.add("INBOX", mailSummary(1))
+        repo.loadError = MailError.Network()
+        vm.loadIfNeeded()
+        assertTrue(vm.state.value.loadState is SchoolMailListViewModel.LoadState.Failed)
+        repo.loadError = null
+        vm.loadIfNeeded()
+        assertEquals(listOf(1L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `a mail marked read on its own screen is read on the list it comes back to, with no fetch`() {
+        repo.add("INBOX", mailSummary(1))
+        vm.loadIfNeeded()
+        val loads = repo.loadsSent.size
+        // As SchoolMailMessageViewModel does when the mail opens.
+        runBlocking { repo.setSeen("INBOX", 1, true) }
+        main.dispatcher.scheduler.runCurrent()
+        assertTrue(vm.state.value.displayed.single().summary.flags.seen)
+        vm.loadIfNeeded()
+        assertEquals(loads, repo.loadsSent.size)
+    }
+
+    @Test
+    fun `a mail moved or deleted on its own screen leaves the list, and a folder off screen is not fetched for it`() {
+        repo.add("INBOX", mailSummary(1), mailSummary(2))
+        vm.loadIfNeeded()
+        val loads = repo.loadsSent.size
+        runBlocking { repo.move("INBOX", 2, repo.resolved.nameOf(SpecialFolder.TRASH)!!) }
+        main.dispatcher.scheduler.runCurrent()
+        assertEquals(listOf(1L), vm.state.value.displayed.map { it.uid })
+        vm.loadIfNeeded()
+        assertEquals(loads, repo.loadsSent.size)
+    }
+
+    @Test
+    fun `a mail sent from compose has its copy fetched into All mail on the way back, and into nothing off screen`() {
+        repo.add("INBOX", mailSummary(1))
+        vm.loadIfNeeded()
+        assertEquals(FolderSelection.AllMail, vm.state.value.selected)
+        val sentFolder = repo.resolved.nameOf(SpecialFolder.SENT)!!
+        val mail = OutgoingMail(repo.self, listOf(MailAddress(null, "a@x.tw")), emptyList(), emptyList(), "s", "b")
+        var loads = repo.loadsSent.size
+        runBlocking { repo.send(mail, null) }
+        main.dispatcher.scheduler.runCurrent()
+        vm.loadIfNeeded()
+        assertTrue(sentFolder in repo.loadsSent.drop(loads))
+
+        vm.selectFolder(FolderSelection.Real("INBOX"))
+        loads = repo.loadsSent.size
+        runBlocking { repo.send(mail, null) }
+        main.dispatcher.scheduler.runCurrent()
+        vm.loadIfNeeded()
+        assertEquals(loads, repo.loadsSent.size)
     }
 
     @Test
@@ -919,11 +1004,11 @@ class SchoolMailListViewModelTest {
         vm.load()
         vm.startPolling()
         vm.stopPolling()
-        // Away for ten minutes, and mail arrived meanwhile.
+        // The app away for ten minutes, and mail arrived meanwhile.
         main.dispatcher.scheduler.advanceTimeBy(10 * 60_000L)
         repo.add("INBOX", mailSummary(2))
         repo.status = FolderStatus(server.uidValidity, 3, 2, 2)
-        vm.startPolling()
+        vm.startPolling(fromBackground = true)
         main.dispatcher.scheduler.advanceTimeBy(SchoolMailListViewModel.RESUME_POLL_GRACE_MS + 1)
         main.dispatcher.scheduler.runCurrent()
         assertEquals(listOf(2L, 1L), vm.state.value.displayed.map { it.uid })
@@ -931,20 +1016,59 @@ class SchoolMailListViewModelTest {
     }
 
     @Test
-    fun `coming back from a mail, which reloads the list, does not check the inbox as well`() {
+    fun `coming back from a mail does not look at the inbox, and coming back from the background does`() {
+        repo.add("INBOX", mailSummary(1))
+        vm.load()
+        vm.startPolling()
+        vm.stopPolling()
+        // Half a minute reading a mail, then back to the list: the one it left, kept (see
+        // loadIfNeeded), and not due for the poll's next look yet. A look on every return
+        // would be the round trip per mail opened that keeping the list is there to save.
+        main.dispatcher.scheduler.advanceTimeBy(SchoolMailListViewModel.POLL_MS / 2)
+        val calls = repo.statusCalls
+        vm.startPolling()
+        main.dispatcher.scheduler.advanceTimeBy(SchoolMailListViewModel.RESUME_POLL_GRACE_MS + 1)
+        main.dispatcher.scheduler.runCurrent()
+        assertEquals(calls, repo.statusCalls)
+        vm.stopPolling()
+        // The app itself away for as long: mail may have arrived, its notification perhaps
+        // already in the shade, and the list should show it as soon as the app is back.
+        vm.startPolling(fromBackground = true)
+        main.dispatcher.scheduler.advanceTimeBy(SchoolMailListViewModel.RESUME_POLL_GRACE_MS + 1)
+        main.dispatcher.scheduler.runCurrent()
+        assertEquals(calls + 1, repo.statusCalls)
+        vm.stopPolling()
+    }
+
+    @Test
+    fun `coming back from a mail after the poll missed a tick takes the look it owes`() {
         repo.add("INBOX", mailSummary(1))
         vm.load()
         vm.startPolling()
         vm.stopPolling()
         main.dispatcher.scheduler.advanceTimeBy(10 * 60_000L)
         val calls = repo.statusCalls
-        // The list screen is composed again on the way back, and loads as it appears.
         vm.startPolling()
-        vm.load()
         main.dispatcher.scheduler.advanceTimeBy(SchoolMailListViewModel.RESUME_POLL_GRACE_MS + 1)
         main.dispatcher.scheduler.runCurrent()
-        // The load's own status read for the seen marker, and no second look.
         assertEquals(calls + 1, repo.statusCalls)
+        vm.stopPolling()
+    }
+
+    @Test
+    fun `a look the poll took counts, so a return within a minute of it asks nothing`() {
+        repo.add("INBOX", mailSummary(1))
+        vm.load()
+        vm.startPolling()
+        // The poll's first tick, finding nothing new.
+        pollOnce()
+        vm.stopPolling()
+        main.dispatcher.scheduler.advanceTimeBy(SchoolMailListViewModel.POLL_MS / 2)
+        val calls = repo.statusCalls
+        vm.startPolling()
+        main.dispatcher.scheduler.advanceTimeBy(SchoolMailListViewModel.RESUME_POLL_GRACE_MS + 1)
+        main.dispatcher.scheduler.runCurrent()
+        assertEquals(calls, repo.statusCalls)
         vm.stopPolling()
     }
 

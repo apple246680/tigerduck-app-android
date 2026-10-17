@@ -1,6 +1,9 @@
 package org.ntust.app.tigerduck.mail
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import org.ntust.app.tigerduck.mail.compose.OutgoingMail
 import org.ntust.app.tigerduck.mail.imap.ResolvedFolders
 import org.ntust.app.tigerduck.mail.imap.SpecialFolder
@@ -15,6 +18,9 @@ import java.io.OutputStream
 
 /** Synchronous, in-memory [SchoolMailRepository] for ViewModel tests. `beforeSeq` is an offset token here. */
 class FakeSchoolMailRepository : SchoolMailRepository {
+    private val _changes = MutableSharedFlow<MailChange>(extraBufferCapacity = 64)
+    override val changes: SharedFlow<MailChange> = _changes.asSharedFlow()
+
     var resolved = ResolvedFolders(SpecialFolder.entries.associateWith { it.decodedName }, listOf("Moodle 課程討論區"))
     val mail = mutableMapOf<String, MutableList<MailSummary>>()
     var pageSize = 50
@@ -206,9 +212,10 @@ class FakeSchoolMailRepository : SchoolMailRepository {
     }
     override suspend fun cachedPage(folder: String): MailPage? = touching(folder) { cachedPages[folder] }
 
-    /** Simulates the repository dropping a folder's cache once [MailError.FolderChanged] fires for it. */
+    /** Simulates the repository dropping a folder's cache once [MailError.FolderChanged] fires for it, and saying so. */
     fun dropCache(folder: String) {
         cachedPages.remove(folder)
+        _changes.tryEmit(MailChange.Changed(folder))
     }
 
     /** Every `(folder, obsolete validity)` handed to [dropCachedPage], in order. */
@@ -303,6 +310,7 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         foldersTouched += folder
         seenCalls += Triple(folder, uid, seen)
         update(folder, uid) { it.copy(flags = it.flags.copy(seen = seen)) }
+        _changes.emit(MailChange.Seen(folder, uid, seen))
     }
 
     override suspend fun move(folder: String, uid: Long, target: String) {
@@ -311,6 +319,8 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         moveError?.let { throw it }
         moved += Triple(folder, uid, target)
         mail[folder]?.removeAll { it.uid == uid }
+        _changes.emit(MailChange.Removed(folder, uid))
+        _changes.emit(MailChange.Changed(target))
     }
 
     /** Mirrors the real repository: permanent inside the trash, and permanent everywhere when the account has no trash folder and none could be created. */
@@ -322,6 +332,7 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         deleteError?.let { throw it }
         deleted += folder to uid
         mail[folder]?.removeAll { it.uid == uid }
+        _changes.emit(MailChange.Removed(folder, uid))
     }
 
     /** Thrown by [search] for a folder, after it is recorded as touched and sent. */
@@ -409,16 +420,22 @@ class FakeSchoolMailRepository : SchoolMailRepository {
         sendError?.let { throw it }
         sentAttachments += mail.attachments.map { it.fileName to it.open().use { s -> s.readBytes().decodeToString() } }
         sent += mail to answered
+        if (sentCopy == SentCopy.Filed) resolved.nameOf(SpecialFolder.SENT)?.let { _changes.emit(MailChange.Changed(it)) }
         return sentCopy
     }
 
     override suspend fun saveDraft(mail: OutgoingMail, replacingUid: Long?) {
         drafts += mail to replacingUid
+        resolved.nameOf(SpecialFolder.DRAFTS)?.let { folder ->
+            _changes.emit(MailChange.Changed(folder))
+            if (replacingUid != null) _changes.emit(MailChange.Removed(folder, replacingUid))
+        }
     }
 
     override suspend fun discardDraft(uid: Long) {
         discardDraftError?.let { throw it }
         discardedDrafts += uid
+        resolved.nameOf(SpecialFolder.DRAFTS)?.let { _changes.emit(MailChange.Removed(it, uid)) }
     }
 
     override fun selfAddress() = self

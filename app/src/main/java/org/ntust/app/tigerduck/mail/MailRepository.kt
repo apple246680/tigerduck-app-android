@@ -5,6 +5,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.ntust.app.tigerduck.di.ApplicationScope
@@ -63,6 +66,29 @@ sealed interface SearchOutcome {
  * recreated and the UIDs name other mail. Null where unknown.
  */
 data class SearchPage(val uidValidity: Long?, val messages: List<MailSummary>)
+
+/**
+ * What a write through the repository did to a folder, for a screen that keeps a list of that
+ * folder while the write is made on another: the mail list stays as it was on the way back from
+ * a mail rather than fetching its page again, so this is how a mail read, moved or deleted there
+ * reaches it (see [SchoolMailRepository.changes]).
+ */
+sealed interface MailChange {
+    val folder: String
+
+    /** The mail's read flag is now [seen]. */
+    data class Seen(override val folder: String, val uid: Long, val seen: Boolean) : MailChange
+
+    /** The mail left [folder]: moved elsewhere, deleted, or a draft discarded. */
+    data class Removed(override val folder: String, val uid: Long) : MailChange
+
+    /**
+     * [folder] holds mail the repository cannot describe without a fetch -- one moved in, a sent
+     * copy filed, a draft saved -- or was found recreated on the server and its cache dropped.
+     * A list of it has to show the server's page again.
+     */
+    data class Changed(override val folder: String) : MailChange
+}
 
 /**
  * How a search reads mail that is already loaded, where the server's own SEARCH is not available:
@@ -149,6 +175,14 @@ interface SchoolMailRepository {
 
     /** The mail screen became active again: cancels a pending idle close so the connection isn't dropped mid-visit. No-op in demo mode. */
     fun acquire()
+
+    /**
+     * Every write made through the repository, as it lands: what the message and compose screens
+     * do to a mail reaches the list that stays behind them, the way the iPhone's list is told
+     * (`markSeenLocally` / `removeLocally` there). Only for a write that succeeded, and only to
+     * whoever is collecting at the time -- nothing is replayed to a list that loads afresh anyway.
+     */
+    val changes: SharedFlow<MailChange>
 }
 
 @Singleton
@@ -169,6 +203,12 @@ class MailRepository @Inject constructor(
 
     @Volatile private var resolved: Resolved? = null
     private val demoFolders = mutableMapOf<String, MutableList<DemoMail>>()
+
+    // Buffered so a write never waits on the list applying what it did. The list applies each
+    // change in one step on the main thread, so the buffer stays all but empty and nothing is
+    // ever dropped to make room.
+    private val _changes = MutableSharedFlow<MailChange>(extraBufferCapacity = 64)
+    override val changes: SharedFlow<MailChange> = _changes.asSharedFlow()
 
     /** Next UID handed to a demo message composed in this session (draft save, or a sent copy) --
      *  guarded by [demoFolders]'s monitor alongside every other demo mutation. Well above the
@@ -377,9 +417,13 @@ class MailRepository @Inject constructor(
     // --- actions -----------------------------------------------------------------------
 
     override suspend fun setSeen(folder: String, uid: Long, seen: Boolean) {
-        if (account.isDemo) return demoUpdate(folder, uid) { it.copy(flags = it.flags.copy(seen = seen)) }
-        withSession { it.setSeen(folder, listOf(uid), seen) }
-        updateCached(folder) { s -> if (s.uid == uid) s.copy(flags = s.flags.copy(seen = seen)) else s }
+        if (account.isDemo) {
+            demoUpdate(folder, uid) { it.copy(flags = it.flags.copy(seen = seen)) }
+        } else {
+            withSession { it.setSeen(folder, listOf(uid), seen) }
+            updateCached(folder) { s -> if (s.uid == uid) s.copy(flags = s.flags.copy(seen = seen)) else s }
+        }
+        _changes.emit(MailChange.Seen(folder, uid, seen))
     }
 
     override suspend fun move(folder: String, uid: Long, target: String) {
@@ -392,10 +436,14 @@ class MailRepository @Inject constructor(
                     demoFolders.getOrPut(target) { mutableListOf() }.add(0, it)
                 }
             }
-            return
+        } else {
+            runExpunging(folder, uid) { session, owned -> session.move(folder, uid, target, owned) }
+            removeCached(folder, uid)
         }
-        runExpunging(folder, uid) { session, owned -> session.move(folder, uid, target, owned) }
-        removeCached(folder, uid)
+        _changes.emit(MailChange.Removed(folder, uid))
+        // The mail's UID in [target] is the server's to give (COPYUID is not read), so a list of
+        // the target can only fetch it.
+        _changes.emit(MailChange.Changed(target))
     }
 
     /**
@@ -433,10 +481,11 @@ class MailRepository @Inject constructor(
         trashFor(folder)?.let { return move(folder, uid, it) }
         if (account.isDemo) {
             demoMutate(folder) { it.removeAll { m -> m.summary.uid == uid } }
-            return
+        } else {
+            runExpunging(folder, uid) { session, owned -> session.deletePermanently(folder, uid, owned) }
+            removeCached(folder, uid)
         }
-        runExpunging(folder, uid) { session, owned -> session.deletePermanently(folder, uid, owned) }
-        removeCached(folder, uid)
+        _changes.emit(MailChange.Removed(folder, uid))
     }
 
     override suspend fun search(folder: String, query: String, stillWanted: () -> Boolean): SearchOutcome {
@@ -510,6 +559,7 @@ class MailRepository @Inject constructor(
             val demoSent = folders().nameOf(SpecialFolder.SENT)
             demoSent?.let { sent -> demoMutate(sent) { it.add(0, demoOutgoingMail(mail, draft = false)) } }
             answered?.let { (folder, uid) -> demoUpdate(folder, uid) { s -> s.copy(flags = s.flags.copy(answered = true)) } }
+            demoSent?.let { _changes.emit(MailChange.Changed(it)) }
             return if (demoSent != null) SentCopy.Filed else SentCopy.NotAttempted
         }
         // The SMTP login uses the same rejected password, so §7.4 covers it too --
@@ -536,6 +586,11 @@ class MailRepository @Inject constructor(
             }
             if (marked) updateCached(folder) { s -> if (s.uid == uid) s.copy(flags = s.flags.copy(answered = true)) else s }
         }
+        // A copy in the sent folder, filed by the app or found there already, is mail a list of
+        // that folder has not got.
+        if (sent != null && (result.sentCopy == SentCopy.Filed || result.sentCopy == SentCopy.ServerFiledItself)) {
+            _changes.emit(MailChange.Changed(sent))
+        }
         return result.sentCopy
     }
 
@@ -549,6 +604,8 @@ class MailRepository @Inject constructor(
                 if (replacingUid != null) list.removeAll { it.summary.uid == replacingUid }
                 list.add(0, entry)
             }
+            _changes.emit(MailChange.Changed(drafts))
+            if (replacingUid != null) _changes.emit(MailChange.Removed(drafts, replacingUid))
             return
         }
         // Unlike the sent copy, a draft that is not kept is the whole operation failing, so a
@@ -557,8 +614,12 @@ class MailRepository @Inject constructor(
         val drafts = ensureFolder(SpecialFolder.DRAFTS) ?: throw MailError.Protocol("no drafts folder")
         val bytes = withContext(Dispatchers.IO) { builder.build(mail).toBytes() }
         withSession { it.append(drafts, bytes, setOf(AppendFlag.SEEN, AppendFlag.DRAFT)) }
+        // Told now rather than once the old draft is gone: the new one is on the server from here
+        // on, whatever becomes of the delete below.
+        _changes.emit(MailChange.Changed(drafts))
         if (replacingUid != null) {
             runExpunging(drafts, replacingUid) { session, owned -> session.deletePermanently(drafts, replacingUid, owned) }
+            _changes.emit(MailChange.Removed(drafts, replacingUid))
         }
     }
 
@@ -566,6 +627,7 @@ class MailRepository @Inject constructor(
         if (account.isDemo) {
             val drafts = folders().nameOf(SpecialFolder.DRAFTS) ?: return
             demoMutate(drafts) { it.removeAll { m -> m.summary.uid == uid } }
+            _changes.emit(MailChange.Removed(drafts, uid))
             return
         }
         // Deliberately resolves without creating, unlike [saveDraft]: no drafts folder means
@@ -573,6 +635,7 @@ class MailRepository @Inject constructor(
         // student's real account for an operation that cannot do anything once it has one.
         val drafts = folders().nameOf(SpecialFolder.DRAFTS) ?: return
         runExpunging(drafts, uid) { session, owned -> session.deletePermanently(drafts, uid, owned) }
+        _changes.emit(MailChange.Removed(drafts, uid))
     }
 
     override fun selfAddress(): MailAddress = MailAddress(state.displayName, credentials().address)
@@ -709,6 +772,8 @@ class MailRepository @Inject constructor(
         } catch (e: MailError) {
             if (!attempted && e is MailError.FolderChanged) {
                 withContext(Dispatchers.IO) { cache.deleteFolder(folder) }
+                // A list of the folder holds rows of the mailbox the server has replaced.
+                _changes.emit(MailChange.Changed(folder))
             } else if (attempted && !alreadyDeleted && e !is MailError.AuthFailed && e !is MailError.Certificate) {
                 recordIfDeletedOnServer(folder, uid, validity)
             }
