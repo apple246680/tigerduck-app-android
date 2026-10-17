@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">রিসেট</string>
     <string name="app_reset_required_message">আপনার সাইন-ইন অবস্থা ও পছন্দ আর পড়া যাচ্ছে না, সম্ভবত OS আপগ্রেড, ব্যাকআপ পুনরুদ্ধার বা স্টোরেজ সমস্যার কারণে।\n\nপুরনো ডেটা মুছতে \"রিসেট\" ট্যাপ করুন, তারপর সাইন ইন করে পছন্দ পুনরায় সেট করুন।</string>
     <string name="app_reset_required_title">রিসেট প্রয়োজন</string>
+    <string name="assignment_detail_comments">জমার মন্তব্য</string>
+    <string name="assignment_detail_description">বিবরণ</string>
+    <string name="assignment_detail_due">জমার শেষ সময়</string>
+    <string name="assignment_detail_group">গ্রুপ</string>
+    <string name="assignment_detail_not_submitted">এখনো জমা দেওয়া হয়নি</string>
+    <string name="assignment_detail_submission">আপনার জমা</string>
+    <string name="assignment_detail_submit_on_moodle">Moodle-এ জমা দিন</string>
+    <string name="assignment_detail_submitted_at">জমা দেওয়ার সময়</string>
     <string name="assignment_filter_all">সব</string>
     <string name="assignment_filter_ignored">উপেক্ষিত</string>
     <string name="assignment_filter_incomplete">অসম্পূর্ণ</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">কাস্টম রঙ</string>
     <string name="course_color_picker_title">রঙ সম্পাদনা</string>
     <string name="course_credits_value">ক্রেডিট: %1$s</string>
+    <string name="course_detail_assignments_label">অ্যাসাইনমেন্টসমূহ</string>
     <string name="course_detail_classroom_label">শ্রেণীকক্ষ</string>
     <string name="course_detail_code_copied">কোড কপি হয়েছে</string>
     <string name="course_detail_code_label">কোড</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">TigerDuck ব্যবহার শুরু করুন</string>
     <string name="onboarding_sync_description">TigerSync আপনার সব ডিভাইসে আপনার কোর্স, অ্যাসাইনমেন্ট এবং সেটিংস সিঙ্ক রাখে। TigerSync সেটিংসে আপনি ঠিক কী সিঙ্ক করতে চান তা বেছে নিতে পারেন।</string>
     <string name="onboarding_sync_not_shared_password">পাসওয়ার্ড কখনো আপলোড করা হয় না</string>
-    <string name="onboarding_sync_note">সিঙ্ক বন্ধ থাকলে সব ডেটা শুধুমাত্র এই ডিভাইসে থাকে। হোমওয়ার্ক রিমাইন্ডারের জন্য পুশ নোটিফিকেশন TigerSync ছাড়াই স্থানীয়ভাবে কাজ করে।</string>
+    <string name="onboarding_sync_note">সিঙ্ক বন্ধ থাকলেও, অ্যাসাইনমেন্টের রিমাইন্ডার পাঠাতে TigerDuck সার্ভার আপনার ছাত্র আইডি, Moodle টোকেন এবং এই ডিভাইসের পুশ শংসাপত্র পায়</string>
     <string name="onboarding_sync_shared_assignments">অ্যাসাইনমেন্ট ডেটা</string>
     <string name="onboarding_sync_shared_courses">কোর্স ডেটা</string>
     <string name="onboarding_sync_shared_device_id">ডিভাইস ID</string>
@@ -768,6 +777,7 @@
     <string name="school_mail_send">পাঠান</string>
     <string name="school_mail_send_confirm_title">এই মেইলটি পাঠাবেন?</string>
     <string name="school_mail_send_failed">মেইল পাঠানো যায়নি</string>
+    <string name="school_mail_send_unconfirmed">মেইল পাঠানো হয়েছে কি না নিশ্চিত করা যায়নি; আবার চেষ্টা করলে এটি দুবার পৌঁছাতে পারে</string>
     <string name="school_mail_sent_copy_failed">মেইল পাঠানো হয়েছে, কিন্তু কপিটি প্রেরিতে সংরক্ষণ করা যায়নি।</string>
     <string name="school_mail_sent_copy_no_folder">মেইল পাঠানো হয়েছে, কিন্তু কপি রাখার জন্য কোনো প্রেরিত ফোল্ডার নেই।</string>
     <string name="school_mail_sent_copy_not_saved">মেইল পাঠানো হয়েছে, কিন্তু এর কপি প্রেরিতে সংরক্ষিত হয়নি</string>
@@ -953,7 +963,7 @@
     <string name="settings_show_classroom_on_class_table">রুটিনে শ্রেণিকক্ষ দেখান</string>
     <string name="settings_sign_out_imported_tables">আমদানি করা ক্লাস তালিকাগুলোও মুছে ফেলা হবে।</string>
     <string name="settings_sync_brief_description">TigerSync আপনাকে আপনার সমস্ত ডিভাইসে তথ্য সিঙ্ক করতে দেয়। সিঙ্কের জন্য সক্ষম নয় এমন তথ্য শুধুমাত্র এই ডিভাইসে থাকে।</string>
-    <string name="settings_sync_disabled_note">সিঙ্ক বন্ধ থাকলে সব ডেটা শুধুমাত্র এই ডিভাইসে থাকে।</string>
+    <string name="settings_sync_disabled_note">সিঙ্ক বন্ধ থাকলেও, অ্যাসাইনমেন্টের রিমাইন্ডার পাঠাতে TigerDuck সার্ভার আপনার ছাত্র আইডি, Moodle টোকেন এবং এই ডিভাইসের পুশ শংসাপত্র পায়</string>
     <string name="settings_sync_status_off">বন্ধ</string>
     <string name="settings_sync_status_on">চালু</string>
     <string name="settings_system_language">সিস্টেম ভাষা</string>
@@ -1008,10 +1018,12 @@
     <string name="sync_status_hours_ago_short">%1$d ঘন্টা আগে</string>
     <string name="sync_status_just_now">এই মাত্র</string>
     <string name="sync_status_last_synced">সর্বশেষ সিঙ্ক</string>
+    <string name="sync_status_last_updated">সর্বশেষ আপডেট</string>
     <string name="sync_status_minimal">সীমিত</string>
     <string name="sync_status_minutes_ago_short">%1$d মিনিট আগে</string>
     <string name="sync_status_nav_label">TigerSync অবস্থা</string>
     <string name="sync_status_never_synced">কখনো সিঙ্ক হয়নি</string>
+    <string name="sync_status_never_updated">কখনো আপডেট হয়নি</string>
     <string name="sync_status_ok">ঠিক আছে</string>
     <string name="sync_status_syncing">সিঙ্ক হচ্ছে…</string>
     <string name="sync_status_title">সিঙ্ক অবস্থা</string>

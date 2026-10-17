@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">રીસેટ કરો</string>
     <string name="app_reset_required_message">તમારી સાઇન-ઇન સ્થિતિ અને પ્રેફરન્સ હવે વાંચી શકાતી નથી, કદાચ OS અપગ્રેડ, બૅકઅપ રિસ્ટોર અથવા સ્ટોરેજ સમસ્યાને કારણે.\n\nજૂનો ડેટા ક્લિયર કરવા \"રીસેટ કરો\" ટૅપ કરો, પછી સાઇન ઇન કરો અને પ્રેફરન્સ ફરી ગોઠવો.</string>
     <string name="app_reset_required_title">રીસેટ જરૂરી</string>
+    <string name="assignment_detail_comments">સબમિશન ટિપ્પણીઓ</string>
+    <string name="assignment_detail_description">વર્ણન</string>
+    <string name="assignment_detail_due">નિયત સમય</string>
+    <string name="assignment_detail_group">જૂથ</string>
+    <string name="assignment_detail_not_submitted">હજુ સબમિટ કર્યું નથી</string>
+    <string name="assignment_detail_submission">તમારું સબમિશન</string>
+    <string name="assignment_detail_submit_on_moodle">Moodle પર સબમિટ કરો</string>
+    <string name="assignment_detail_submitted_at">સબમિટ કર્યાનો સમય</string>
     <string name="assignment_filter_all">બધું</string>
     <string name="assignment_filter_ignored">અવગણ્યું</string>
     <string name="assignment_filter_incomplete">અધૂરું</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">કસ્ટમ રંગ</string>
     <string name="course_color_picker_title">રંગ સંપાદિત કરો</string>
     <string name="course_credits_value">ક્રેડિટ: %1$s</string>
+    <string name="course_detail_assignments_label">અસાઇનમેન્ટ</string>
     <string name="course_detail_classroom_label">વર્ગખંડ</string>
     <string name="course_detail_code_copied">કોડ કૉપિ થયો</string>
     <string name="course_detail_code_label">કોડ</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">TigerDuck વાપરવાનું શરૂ કરો</string>
     <string name="onboarding_sync_description">TigerSync તમારા કોર્સ, અસાઇનમેન્ટ અને સેટિંગ્સને તમારા બધા ઉપકરણો પર સિંક રાખે છે. TigerSync સેટિંગ્સમાં તમે બરાબર શું સિંક કરવું તે પસંદ કરી શકો છો.</string>
     <string name="onboarding_sync_not_shared_password">પાસવર્ડ ક્યારેય અપલોડ થતો નથી</string>
-    <string name="onboarding_sync_note">જ્યારે સિંક બંધ હોય, ત્યારે બધો ડેટા ફક્ત આ ડિવાઇસ પર જ રહે છે. હોમવર્ક રિમાઇન્ડર માટે પુશ નોટિફિકેશન TigerSync વિના સ્થાનિક રીતે કામ કરે છે.</string>
+    <string name="onboarding_sync_note">સિંક બંધ હોય ત્યારે પણ, અસાઇનમેન્ટ રિમાઇન્ડર મોકલવા માટે TigerDuck સર્વરને તમારો વિદ્યાર્થી ID, Moodle ટોકન અને આ ડિવાઇસના પુશ ક્રેડેન્શિયલ્સ મળે છે</string>
     <string name="onboarding_sync_shared_assignments">એસાઇનમેન્ટ ડેટા</string>
     <string name="onboarding_sync_shared_courses">કોર્સ ડેટા</string>
     <string name="onboarding_sync_shared_device_id">ડિવાઇસ ID</string>
@@ -768,6 +777,7 @@
     <string name="school_mail_send">મોકલો</string>
     <string name="school_mail_send_confirm_title">આ મેઇલ મોકલવો છે?</string>
     <string name="school_mail_send_failed">મેઇલ મોકલી શકાયો નહીં</string>
+    <string name="school_mail_send_unconfirmed">મેઇલ મોકલાયો કે નહીં તેની પુષ્ટિ થઈ શકી નહીં; ફરી પ્રયાસ કરવાથી તે બે વાર પહોંચી શકે છે</string>
     <string name="school_mail_sent_copy_failed">મેઇલ મોકલાયો, પણ કૉપિ મોકલેલમાં સેવ થઈ શકી નહીં.</string>
     <string name="school_mail_sent_copy_no_folder">મેઇલ મોકલાયો, પણ કૉપિ રાખવા માટે કોઈ મોકલેલ ફોલ્ડર નથી.</string>
     <string name="school_mail_sent_copy_not_saved">મેઇલ મોકલાયો, પણ તેની કૉપિ મોકલેલમાં સેવ ન થઈ</string>
@@ -953,7 +963,7 @@
     <string name="settings_show_classroom_on_class_table">સમયપત્રકમાં વર્ગખંડ બતાવો</string>
     <string name="settings_sign_out_imported_tables">આયાત કરેલા ક્લાસ ટાઇમટેબલ પણ ડિલીટ થઈ જશે.</string>
     <string name="settings_sync_brief_description">TigerSync તમને તમારા બધા ઉપકરણો પર માહિતી સિંક કરવા દે છે. સિંક માટે સક્ષમ ન હોય તેવી માહિતી ફક્ત આ ઉપકરણ પર રહે છે.</string>
-    <string name="settings_sync_disabled_note">જ્યારે સિંક બંધ હોય, ત્યારે બધો ડેટા ફક્ત આ ડિવાઇસ પર જ રહે છે.</string>
+    <string name="settings_sync_disabled_note">સિંક બંધ હોય ત્યારે પણ, અસાઇનમેન્ટ રિમાઇન્ડર મોકલવા માટે TigerDuck સર્વરને તમારો વિદ્યાર્થી ID, Moodle ટોકન અને આ ડિવાઇસના પુશ ક્રેડેન્શિયલ્સ મળે છે</string>
     <string name="settings_sync_status_off">બંધ</string>
     <string name="settings_sync_status_on">ચાલુ</string>
     <string name="settings_system_language">સિસ્ટમ ભાષા</string>
@@ -1008,10 +1018,12 @@
     <string name="sync_status_hours_ago_short">%1$d કલ પહેલા</string>
     <string name="sync_status_just_now">હમણાં જ</string>
     <string name="sync_status_last_synced">છેલ્લે સમન્વયિત</string>
+    <string name="sync_status_last_updated">છેલ્લે અપડેટ થયું</string>
     <string name="sync_status_minimal">મર્યાદિત</string>
     <string name="sync_status_minutes_ago_short">%1$d મિ પહેલા</string>
     <string name="sync_status_nav_label">TigerSync સ્થિતિ</string>
     <string name="sync_status_never_synced">ક્યારેય સિંક થયું નથી</string>
+    <string name="sync_status_never_updated">ક્યારેય અપડેટ થયું નથી</string>
     <string name="sync_status_ok">બરાબર</string>
     <string name="sync_status_syncing">સિંક થઈ રહ્યું છે…</string>
     <string name="sync_status_title">સિંક સ્થિતિ</string>
