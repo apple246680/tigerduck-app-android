@@ -1,0 +1,127 @@
+package org.ntust.app.tigerduck.push
+
+import android.app.Application
+import android.content.Context
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.ntust.app.tigerduck.auth.AuthTokenManager
+import org.ntust.app.tigerduck.auth.ScriptedBackend
+import org.ntust.app.tigerduck.data.preferences.AppPreferences
+import org.ntust.app.tigerduck.data.preferences.V3TokenStore
+import org.ntust.app.tigerduck.network.resolveAnnouncementEndpoint
+import org.ntust.app.tigerduck.shared.Course
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.Config
+
+/**
+ * Every course fetch, class table edit and sync posted the term's whole list, unchanged or not
+ * (tigerduck-app-android#120). A list the server accepted goes again only once it changes, or six
+ * hours on, as assignments do ([UploadLedger]) and as the iPhone app's
+ * `PushCoordinator.uploadCoursesIfChanged`.
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class)
+class CourseUploadGateTest {
+
+    private val backend = ScriptedBackend()
+    private lateinit var prefs: AppPreferences
+    private lateinit var api: PushApiClient
+
+    @Before
+    fun setUp() {
+        val context = RuntimeEnvironment.getApplication()
+        prefs = AppPreferences(context).apply { announcementApiBaseUrlOverride = "http://127.0.0.1:9/v3" }
+        // Never the real backend, even past the scripted one.
+        assertTrue(resolveAnnouncementEndpoint(prefs).overrideApplied)
+        val tokens = V3TokenStore(context.getSharedPreferences("v3-tokens-course-upload-gate-test", Context.MODE_PRIVATE))
+        tokens.save("access", "refresh", Long.MAX_VALUE)
+        api = PushApiClient(backend.client, prefs, AuthTokenManager(tokens, backend.client, prefs, "device-1"))
+    }
+
+    private fun roster(vararg courseNos: String) = courseNos.map { Course(courseNo = it, courseName = it) }
+
+    private fun uploads() = backend.received(UPLOAD).size
+
+    @Test
+    fun `an unchanged term list is not sent again`() = runTest {
+        api.uploadCourses(roster("CS1", "CS2"), "1151")
+        api.uploadCourses(roster("CS1", "CS2"), "1151")
+
+        assertEquals(1, uploads())
+    }
+
+    @Test
+    fun `the same courses in another order are one list`() = runTest {
+        api.uploadCourses(roster("CS1", "CS2"), "1151")
+        api.uploadCourses(roster("CS2", "CS1"), "1151")
+
+        assertEquals(1, uploads())
+    }
+
+    @Test
+    fun `a changed list goes at once, and so does the same list in another term`() = runTest {
+        api.uploadCourses(roster("CS1", "CS2"), "1151")
+        api.uploadCourses(roster("CS1", "CS2", "CS3"), "1151")
+        assertEquals(2, uploads())
+
+        api.uploadCourses(roster("CS1", "CS2"), "1142")
+        assertEquals(3, uploads())
+    }
+
+    @Test
+    fun `a refused upload is not recorded, so the next one goes`() = runTest {
+        backend.answer(UPLOAD, 500)
+        assertTrue(runCatching { api.uploadCourses(roster("CS1"), "1151") }.isFailure)
+
+        api.uploadCourses(roster("CS1"), "1151")
+
+        assertEquals(2, uploads())
+    }
+
+    @Test
+    fun `an add forced past a tombstone goes whatever the ledger holds`() = runTest {
+        api.uploadCourses(roster("CS1", "CS2"), "1151")
+        api.uploadCourses(roster("CS1", "CS2"), "1151", forceKeys = listOf("client:1151:CS2"))
+
+        assertEquals(2, uploads())
+    }
+
+    @Test
+    fun `a term the server has emptied gets its list again on resend`() = runTest {
+        api.uploadCourses(roster("CS1"), "1151")
+        api.uploadCourses(roster("CS1"), "1151", resend = true)
+
+        assertEquals(2, uploads())
+    }
+
+    @Test
+    fun `a term reset forgets the term's list, so the upload after it goes`() = runTest {
+        api.uploadCourses(roster("CS1"), "1151")
+        api.uploadCourses(roster("CS1"), "1142")
+
+        api.deleteAllCourses("1151")
+        api.uploadCourses(roster("CS1"), "1151")
+        api.uploadCourses(roster("CS1"), "1142")
+
+        assertEquals(3, uploads())
+    }
+
+    @Test
+    fun `sign-out forgets every list, so the next account's upload goes`() = runTest {
+        api.uploadCourses(roster("CS1"), "1151")
+
+        prefs.clearSyncStamps()
+        api.uploadCourses(roster("CS1"), "1151")
+
+        assertEquals(2, uploads())
+    }
+
+    private companion object {
+        const val UPLOAD = "POST /sync/courses/upload"
+    }
+}

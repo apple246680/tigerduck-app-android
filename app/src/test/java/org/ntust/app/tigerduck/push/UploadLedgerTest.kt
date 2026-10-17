@@ -1,11 +1,15 @@
 package org.ntust.app.tigerduck.push
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.ntust.app.tigerduck.shared.Course
 import java.io.IOException
 
 /**
@@ -64,6 +68,49 @@ class UploadLedgerTest {
         upload("[a]", current = false)
 
         assertTrue(upload("[a]"))
+    }
+
+    @Test
+    fun `a forced upload goes whatever the ledger holds, and is recorded like any other`() = runTest {
+        upload("[a]")
+
+        assertTrue(ledger.sendIfDue(uploadFingerprint("[a]"), { true }, always = true) { sends++ })
+
+        assertEquals(2, sends)
+        assertFalse(upload("[a]"))
+    }
+
+    @Test
+    fun `a term reset waits for the upload in flight, so the list it records is forgotten too`() = runTest {
+        val answer = CompletableDeferred<Unit>()
+        val inFlight = launch { ledger.sendIfDue(uploadFingerprint("[a]"), { true }) { answer.await() } }
+        runCurrent()
+        val reset = launch {
+            ledger.holdingUploads {
+                store.fingerprint = null
+                store.acceptedAtMs = 0L
+            }
+        }
+        runCurrent()
+        assertFalse(reset.isCompleted)
+
+        answer.complete(Unit)
+        inFlight.join()
+        reset.join()
+
+        assertTrue(upload("[a]"))
+    }
+
+    @Test
+    fun `the same courses in another order are one list, a changed course another`() {
+        val cs1 = Course(courseNo = "CS1", courseName = "CS1")
+        val cs2 = Course(courseNo = "CS2", courseName = "CS2")
+
+        assertEquals(courseUploadFingerprint(listOf(cs1, cs2), "1151"), courseUploadFingerprint(listOf(cs2, cs1), "1151"))
+        assertNotEquals(
+            courseUploadFingerprint(listOf(cs1, cs2), "1151"),
+            courseUploadFingerprint(listOf(cs1.copy(courseName = "Calculus"), cs2), "1151"),
+        )
     }
 
     @Test
