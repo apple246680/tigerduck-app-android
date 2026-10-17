@@ -121,6 +121,24 @@ class ClassTableWiringTest {
         assertCalls("fetchTermCourses", "withPendingEdits = tombstoneEdits::over")
     }
 
+    /**
+     * An edit made while a commit reads the term's cache may reach the cache after the read, with
+     * the list on screen gone to another term by then; the commit counts the term's edits and
+     * reads again — see ClassTableTermFetch.foldLatest, whose coroutine tests cover the retry.
+     */
+    @Test
+    fun `every in-place edit of a term's list is counted at the tap, for a commit to read again`() {
+        for (name in listOf(
+            "addCourse", "deleteCourse", "setCustomCourseName", "revertCourseName", "updateCourseColor", "lookUpMissingRooms",
+        )) {
+            val body = body(name)
+            val edit = body.indexOf("_courses.value = updated")
+            val noted = body.indexOf("noteTermEdit(")
+            assertTrue("$name no longer counts its edit right after making it", edit in 0 until noted)
+        }
+        assertCalls("fetchTermCourses", "editGeneration = { termEdits[semester] ?: 0 }")
+    }
+
     /** A warm's older rows must not land over a reset of the term, or a fetch the user asked for. */
     @Test
     fun `a warm result superseded by a pick, a fetch or a reset is discarded, its upload included`() {

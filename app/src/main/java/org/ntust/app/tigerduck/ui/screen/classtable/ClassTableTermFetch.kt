@@ -83,7 +83,7 @@ internal class ClassTableTermFetch(
      */
     /**
      * [fold] over a snapshot of the term taken in the one order that cannot
-     * miss a delete made meanwhile. Every read that suspends comes first:
+     * miss an edit made meanwhile. Every read that suspends comes first:
      * [cachedCourses], and [storedTombstones] after it, so a tombstone whose
      * write landed during the cache read — retiring its pending edit, which
      * leaves the file as the only record of it — is in what is read. Then,
@@ -92,21 +92,41 @@ internal class ClassTableTermFetch(
      * read; the edits still on their way are laid over the file
      * ([withPendingEdits]); and the fold is made. The term can come on screen
      * during the reads, which is why the list is chosen after them.
+     *
+     * [editGeneration] counts the term's in-place edits, bumped at the tap.
+     * Read before the reads and again after them: an edit in between may have
+     * reached the cache only after it was read, and the list on screen may
+     * have left for another term since, leaving that stale read as the only
+     * source — a course added then would be written back out, and its own
+     * upload, queued behind this commit, would find it gone. The snapshot is
+     * taken again then, [SNAPSHOT_ATTEMPTS] times; null when the term was
+     * edited throughout, to be left as it is for the next fetch.
      */
     suspend fun foldLatest(
         answers: Answers,
         semester: String,
+        editGeneration: () -> Int,
         cachedCourses: suspend () -> List<Course>,
         storedTombstones: suspend () -> Set<String>,
         shownCourses: () -> List<Course>?,
         withPendingEdits: (Set<String>) -> Set<String>,
         names: () -> CustomNameMap,
         locale: String,
-    ): List<Course> {
-        val cached = cachedCourses()
-        val stored = storedTombstones()
-        val latest = shownCourses() ?: cached
-        return fold(answers, latest, names(), locale, CourseTombstoneKeys.hiddenIn(semester, withPendingEdits(stored)))
+    ): List<Course>? {
+        repeat(SNAPSHOT_ATTEMPTS) {
+            val generation = editGeneration()
+            val cached = cachedCourses()
+            val stored = storedTombstones()
+            if (editGeneration() != generation) return@repeat
+            val latest = shownCourses() ?: cached
+            return fold(answers, latest, names(), locale, CourseTombstoneKeys.hiddenIn(semester, withPendingEdits(stored)))
+        }
+        return null
+    }
+
+    private companion object {
+        /** Snapshots a commit tries before leaving a term edited throughout them to the next fetch. */
+        const val SNAPSHOT_ATTEMPTS = 3
     }
 
     fun fold(

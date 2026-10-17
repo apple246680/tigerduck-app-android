@@ -126,31 +126,102 @@ class ClassTableTermFetchTest {
         var file = emptySet<String>()
         /** The list on screen while it is this term's, else null. */
         var shown: List<Course>? = null
+        /** Bumped at every edit of the term's list, as the view model's per-term count is. */
+        var generation = 0
+        var cacheReads = 0
 
         /** A delete as the view model makes one: off the list at once, the tombstone's write after. */
         fun delete(courseNo: String, written: Boolean) {
             shown = shown?.filter { it.courseNo != courseNo }
+            generation++
             val id = edits.edit { CourseTombstoneKeys.hide(courseNo, "1151", it) }
             if (!written) return
             file = CourseTombstoneKeys.hide(courseNo, "1151", file)
             edits.saved(id)
         }
+
+        /** An add as the view model makes one: on the list at once, and its save of the list landed. */
+        fun add(course: Course) {
+            shown = shown?.plus(course)
+            generation++
+            cached = cached + course
+        }
+
+        /** The user picks another term: the list on screen is that term's now. */
+        fun switchAway() {
+            shown = null
+        }
     }
 
-    private fun TestScope.foldLatest(answers: ClassTableTermFetch.Answers, snapshot: Snapshot): () -> List<Course> {
+    private fun TestScope.foldLatest(answers: ClassTableTermFetch.Answers, snapshot: Snapshot): () -> List<Course>? {
         var out: List<Course>? = null
+        var done = false
         launch {
             out = fetch.foldLatest(
                 answers, "1151",
-                cachedCourses = { snapshot.cacheGate.await(); snapshot.cached },
+                editGeneration = { snapshot.generation },
+                // The file is read as the read begins, as DataCache reads it, and the answer comes back after the gate.
+                cachedCourses = { snapshot.cacheReads++; val read = snapshot.cached; snapshot.cacheGate.await(); read },
                 storedTombstones = { snapshot.fileGate.await(); snapshot.file },
                 shownCourses = { snapshot.shown },
                 withPendingEdits = snapshot.edits::over,
                 names = { emptyMap() },
                 locale = "zh",
             )
+            done = true
         }
-        return { out!! }
+        return { check(done) { "foldLatest has not returned" }; out }
+    }
+
+    @Test
+    fun `a course added while the term's cache is read survives a switch to another term`() = runTest {
+        // The cache was read before X was added and saved, and by the time the tombstones are in
+        // the list on screen is another term's, so the cache read is all the fold has: it must
+        // be read again, or the commit writes the term back without X and X's own upload, queued
+        // behind the commit, finds it gone.
+        gate.complete(Unit)
+        val answers = lookUp(listOf("A"), before = listOf(course("A")))
+        val snapshot = Snapshot().apply {
+            cached = listOf(course("A"))
+            shown = listOf(course("A"))
+            fileGate.complete(Unit)
+        }
+        val out = foldLatest(answers, snapshot)
+        advanceUntilIdle()
+        snapshot.add(manual("X"))
+        snapshot.switchAway()
+        snapshot.cacheGate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(listOf("A", "X"), out()!!.map { it.courseNo })
+    }
+
+    @Test
+    fun `a term edited throughout its reads is left to the next fetch, after three attempts`() = runTest {
+        gate.complete(Unit)
+        val answers = lookUp(listOf("A"), before = listOf(course("A")))
+        val snapshot = Snapshot().apply {
+            cached = listOf(course("A"))
+            cacheGate.complete(Unit)
+            fileGate.complete(Unit)
+        }
+        var out: List<Course>? = null
+        var reads = 0
+        launch {
+            out = fetch.foldLatest(
+                answers, "1151",
+                editGeneration = { snapshot.generation },
+                // An edit lands during every read.
+                cachedCourses = { reads++; snapshot.generation++; snapshot.cached },
+                storedTombstones = { snapshot.file },
+                shownCourses = { null },
+                withPendingEdits = snapshot.edits::over,
+                names = { emptyMap() },
+                locale = "zh",
+            )
+        }
+        advanceUntilIdle()
+        assertEquals(3, reads)
+        assertEquals(null, out)
     }
 
     @Test
@@ -172,7 +243,7 @@ class ClassTableTermFetchTest {
         snapshot.delete("GONE", written = true)
         snapshot.cacheGate.complete(Unit)
         advanceUntilIdle()
-        assertEquals(listOf("A"), out().map { it.courseNo })
+        assertEquals(listOf("A"), out()!!.map { it.courseNo })
     }
 
     @Test
@@ -189,6 +260,6 @@ class ClassTableTermFetchTest {
         snapshot.delete("GONE", written = false)
         snapshot.fileGate.complete(Unit)
         advanceUntilIdle()
-        assertEquals(listOf("A"), out().map { it.courseNo })
+        assertEquals(listOf("A"), out()!!.map { it.courseNo })
     }
 }
