@@ -11,17 +11,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -39,8 +38,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -62,12 +59,14 @@ import org.ntust.app.tigerduck.data.moodle.name
 import org.ntust.app.tigerduck.data.moodle.studentId
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMember
 import org.ntust.app.tigerduck.ui.component.EmptyStateView
+import org.ntust.app.tigerduck.ui.component.searchClearIcon
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
 import java.text.NumberFormat
 
 /**
- * The people of a course the account can see, in sections by role. The search, behind the bar's
- * search button, matches on the device and asks Moodle nothing.
+ * The people of a course the account can see, in sections by role. The search is a row of the
+ * list above its top, which a pull on the list brings down, as on iOS; it matches on the device
+ * and asks Moodle nothing.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -78,7 +77,6 @@ fun MoodleMembersScreen(
 ) {
     val store by viewModel.store.collectAsStateWithLifecycle()
     MoodleSignedOutEffect(viewModel, onBack)
-    var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     val current = store
     Scaffold(
@@ -87,17 +85,6 @@ fun MoodleMembersScreen(
                 title = stringResource(R.string.course_detail_members_label),
                 onBack = onBack,
                 moodlePath = current?.let { MoodlePage.participants(it.courseId) },
-                actions = {
-                    IconButton(onClick = {
-                        searching = !searching
-                        if (!searching) query = ""
-                    }) {
-                        Icon(
-                            if (searching) Icons.Filled.SearchOff else Icons.Filled.Search,
-                            contentDescription = stringResource(R.string.action_search),
-                        )
-                    }
-                },
             )
         },
         containerColor = MaterialTheme.colorScheme.background,
@@ -112,7 +99,6 @@ fun MoodleMembersScreen(
             } else {
                 MembersList(
                     store = current,
-                    searching = searching,
                     query = query,
                     onQueryChange = { query = it },
                     onOpen = { onOpenRoute(MoodleRoutes.member(current.courseId, it.id)) },
@@ -126,7 +112,6 @@ fun MoodleMembersScreen(
 @Composable
 internal fun MembersList(
     store: MoodleCourseStore,
-    searching: Boolean,
     query: String,
     onQueryChange: (String) -> Unit,
     onOpen: (MoodleMember) -> Unit,
@@ -142,14 +127,29 @@ internal fun MembersList(
     val list = state.value
     val sections = remember(list, query) { list?.let { MoodleMembers.sections(it.members, query) }.orEmpty() }
 
+    // The search row is the list's first item and the list opens on its second, so the row waits
+    // above the top: a short pull scrolls it into view, a longer one goes on to the refresh, and
+    // the next scroll up puts it away -- iOS's pull-to-reveal, as Material's list has it. Opening
+    // on the second item holds only while there is one: a first fetch composes the spinner alone,
+    // which puts the position back on the first, so the row is put away once the list arrives.
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = 1)
+    var searchPutAway by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(list != null) {
+        if (list != null && !searchPutAway) {
+            searchPutAway = true
+            listState.scrollToItem(1)
+        }
+    }
+
     PullToRefreshBox(
         isRefreshing = pulling,
         onRefresh = { pulling = true; refresher { pulling = false } },
         modifier = Modifier.fillMaxSize(),
     ) {
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = MembersListVerticalPadding),
         ) {
             if (list == null) {
                 item {
@@ -160,6 +160,9 @@ internal fun MembersList(
                 }
                 return@LazyColumn
             }
+            // Before everything the query decides, so a query that empties the list keeps the
+            // field, and the keyboard with it.
+            item(key = "search") { SearchRow(query, onQueryChange) }
             state.failureBesideCopy?.let { failure ->
                 item(key = "failure") {
                     MoodleRefreshFailure(
@@ -168,9 +171,6 @@ internal fun MembersList(
                         modifier = Modifier.padding(bottom = 12.dp),
                     )
                 }
-            }
-            if (searching || query.isNotEmpty()) {
-                item(key = "search") { SearchField(query, onQueryChange) }
             }
             if (sections.isEmpty() && query.isNotBlank()) {
                 item(key = "none") {
@@ -200,28 +200,29 @@ internal fun MembersList(
     }
 }
 
+/** The list's padding above its first item and below its last, and the search row's below the field. */
+private val MembersListVerticalPadding = 12.dp
+
+/**
+ * The search row. It asks for no focus of its own: it comes into view by a scroll, and a keyboard
+ * rising on every pull would cover the list the pull was for.
+ */
 @Composable
-private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+private fun SearchRow(query: String, onQueryChange: (String) -> Unit) {
     OutlinedTextField(
         value = query,
         onValueChange = onQueryChange,
         singleLine = true,
         placeholder = { Text(stringResource(R.string.action_search)) },
         leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-        trailingIcon = {
-            if (query.isNotEmpty()) {
-                IconButton(onClick = { onQueryChange("") }) {
-                    Icon(Icons.Filled.Cancel, contentDescription = stringResource(R.string.action_clear_text))
-                }
-            }
-        },
+        trailingIcon = searchClearIcon(query) { onQueryChange("") },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         shape = RoundedCornerShape(28.dp),
+        // As much room below the field as the list keeps above its first item: the list draws
+        // under that padding, and with less the field's bottom edge would show through it at rest.
         modifier = Modifier
             .fillMaxWidth()
-            .focusRequester(focus),
+            .padding(bottom = MembersListVerticalPadding),
     )
 }
 

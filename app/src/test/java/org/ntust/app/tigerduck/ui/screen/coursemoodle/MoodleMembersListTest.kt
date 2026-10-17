@@ -2,7 +2,19 @@ package org.ntust.app.tigerduck.ui.screen.coursemoodle
 
 import android.app.Application
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertIsNotFocused
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollToIndex
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -12,6 +24,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.ntust.app.tigerduck.R
 import org.ntust.app.tigerduck.data.moodle.MoodleCacheContext
 import org.ntust.app.tigerduck.data.moodle.MoodleCachePort
 import org.ntust.app.tigerduck.data.moodle.MoodleCourseStore
@@ -23,10 +36,14 @@ import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberList
 import org.ntust.app.tigerduck.network.model.moodle.MoodleMemberRole
 import org.ntust.app.tigerduck.network.moodle.MoodleCourseApi
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import java.lang.reflect.Type
 
-/** A large class: the list draws the rows on screen, and fetches only their pictures. */
+/**
+ * A large class: the list draws the rows on screen, and fetches only their pictures. The search
+ * is a row of the list above its top, as on iOS, where a pull on the list reveals it.
+ */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
 class MoodleMembersListTest {
@@ -70,15 +87,48 @@ class MoodleMembersListTest {
         override suspend fun save(value: Any, fetchedAtMs: Long, name: String) = Unit
     }
 
-    @Test
-    fun `only the rows on screen fetch their pictures`() {
+    private val search get() = RuntimeEnvironment.getApplication().getString(R.string.action_search)
+
+    /** The list, with its 120 students fetched and on screen. */
+    private fun showLoadedList() {
         val store = MoodleCourseStore(5, emptyList(), emptyList(), api, MoodleCacheContext("B1", cache, { true }), scope)
         composeRule.setContent {
-            MembersList(store = store, searching = false, query = "", onQueryChange = {}, onOpen = {})
+            var query by remember { mutableStateOf("") }
+            MembersList(store = store, query = query, onQueryChange = { query = it }, onOpen = {})
         }
         composeRule.waitUntil(5_000) { store.members.value?.members?.size == 120 }
         composeRule.waitForIdle()
+    }
+
+    @Test
+    fun `only the rows on screen fetch their pictures`() {
+        showLoadedList()
 
         assertTrue("fetched $pictures pictures", pictures in 1..40)
+    }
+
+    /** Off screen whether the list left the field uncomposed or composed and clipped above its top. */
+    private fun assertSearchFieldOffScreen() {
+        val fields = composeRule.onAllNodesWithText(search)
+        if (fields.fetchSemanticsNodes().isNotEmpty()) fields.onFirst().assertIsNotDisplayed()
+    }
+
+    @Test
+    fun `the search field waits above the list's top until the list is pulled down`() {
+        showLoadedList()
+        assertSearchFieldOffScreen()
+
+        composeRule.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
+
+        composeRule.onNodeWithText(search).assertIsDisplayed()
+    }
+
+    @Test
+    fun `the revealed field does not take the keyboard by itself`() {
+        showLoadedList()
+
+        composeRule.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
+
+        composeRule.onNodeWithText(search).assertIsNotFocused()
     }
 }
