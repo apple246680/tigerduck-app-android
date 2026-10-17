@@ -7,6 +7,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentGrade
 
 /**
  * What an assignment's page reads from Moodle: the submission, its comments and the group's
@@ -60,6 +61,66 @@ class MoodleSubmissionJsonTest {
         assertTrue(submission.takesComments)
         assertNull(submission.groupId)
         assertNull("the group's name and the comments come from other calls", submission.comments)
+        assertNull("not graded yet", submission.grade)
+    }
+
+    @Test
+    fun `a graded submission brings the grade as Moodle writes it for the student, when it was graded and the feedback`() {
+        val submission = MoodleJson.submission(
+            json(
+                """
+                {"lastattempt": {"submission": {"id": 5501, "timemodified": 1790500000, "status": "submitted", "plugins": []},
+                  "graded": true, "gradingstatus": "graded"},
+                 "feedback": {
+                   "grade": {"id": 801, "assignment": 701, "userid": 42, "attemptnumber": 0, "timecreated": 1790600000,
+                     "timemodified": 1790700000, "grader": 7, "grade": "85.00000"},
+                   "gradefordisplay": "85.00&nbsp;/&nbsp;100.00", "gradeddate": 1790700000,
+                   "plugins": [
+                     {"type": "comments", "name": "Feedback comments",
+                      "fileareas": [{"area": "feedback", "files": [
+                        ${file("case7.png", "assignfeedback_comments/feedback", 801, 2048, "image/png", 1790700000)}]}],
+                      "editorfields": [{"name": "comments", "description": "Feedback comments", "format": 1,
+                        "text": "<p>Case 7 misses the empty tree.</p><p><img src=\"@@PLUGINFILE@@/case7.png\" alt=\"case 7\"> <img src=\"@@PLUGINFILE@@/gone.png\" alt=\"gone\"></p>"}]},
+                     {"type": "file", "name": "File feedback", "fileareas": [{"area": "feedback_files", "files": []}]}
+                   ]},
+                 "warnings": []}
+                """,
+            ),
+        )
+
+        val grade = submission.grade!!
+        assertEquals("85.00 / 100.00", grade.grade)
+        assertEquals(1_790_700_000L, grade.gradedAt)
+        val feedback = grade.feedback!!
+        assertTrue(feedback.contains("Case 7 misses the empty tree."))
+        assertTrue(feedback.contains("assignfeedback_comments/feedback/801/case7.png"))
+        assertFalse(feedback.contains("@@PLUGINFILE@@"))
+        assertFalse(feedback.contains("gone"))
+    }
+
+    @Test
+    fun `feedback without a grade keeps the feedback, and a grade of - with empty feedback is no grade`() {
+        val feedbackOnly = MoodleJson.submission(
+            json(
+                """
+                {"lastattempt": {"submission": {"id": 5501, "timemodified": 1790500000, "status": "submitted", "plugins": []}},
+                 "feedback": {"gradefordisplay": null, "gradeddate": null, "plugins": [
+                   {"type": "comments", "editorfields": [{"name": "comments", "text": "<p>See me after class.</p>", "format": 1}]}]}}
+                """,
+            ),
+        )
+        assertEquals(MoodleAssignmentGrade(grade = null, gradedAt = null, feedback = "<p>See me after class.</p>"), feedbackOnly.grade)
+
+        val nothing = MoodleJson.submission(
+            json(
+                """
+                {"lastattempt": {"submission": {"id": 5501, "timemodified": 1790500000, "status": "submitted", "plugins": []}},
+                 "feedback": {"gradefordisplay": "-", "gradeddate": 0, "plugins": [
+                   {"type": "comments", "editorfields": [{"name": "comments", "text": "<p></p>", "format": 1}]}]}}
+                """,
+            ),
+        )
+        assertNull(nothing.grade)
     }
 
     @Test
@@ -196,6 +257,8 @@ class MoodleSubmissionJsonTest {
             ),
         )
         assertNotNull(imageOnly.onlineText)
+        assertFalse("a text that is one image still points it at its file (iOS #728)", imageOnly.onlineText!!.contains("@@PLUGINFILE@@"))
+        assertTrue(imageOnly.onlineText!!.contains("submissions_onlinetext/5703/chart.png"))
     }
 
     @Test

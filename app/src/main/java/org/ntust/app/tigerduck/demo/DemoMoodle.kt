@@ -6,6 +6,7 @@ import com.google.gson.JsonObject
 import org.ntust.app.tigerduck.network.moodle.MoodleCourseApi
 import org.ntust.app.tigerduck.network.moodle.MoodleHtmlText
 import org.ntust.app.tigerduck.data.model.Assignment
+import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentGrade
 import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentRecord
 import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentSubmission
 import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseSummary
@@ -131,6 +132,13 @@ object DemoMoodleFixture {
             groupId = group?.int("id"),
             groupName = group?.let { localized(it, "name", lang) }?.ifEmpty { null },
             comments = comments,
+            grade = (o.get("grade") as? JsonObject)?.let { g ->
+                MoodleAssignmentGrade(
+                    grade = g.str("grade"),
+                    gradedAt = time(g.str("gradedAt")),
+                    feedback = localized(g, "feedback", lang).ifEmpty { null },
+                )
+            }?.takeIf { it.grade != null || it.feedback != null },
         )
     }
 
@@ -347,7 +355,7 @@ class DemoMoodleCourseApi(
         assignment(assignId)?.submission?.copy(comments = null, groupName = null)
             ?: MoodleAssignmentSubmission(
                 status = null, modified = null, files = emptyList(), onlineText = null, id = null,
-                takesComments = false, groupId = null, groupName = null, comments = null,
+                takesComments = false, groupId = null, groupName = null, comments = null, grade = null,
             )
 
     override suspend fun comments(cmid: Int, submissionId: Int): List<MoodleSubmissionComment> =

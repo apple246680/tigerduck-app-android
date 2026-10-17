@@ -746,7 +746,15 @@
                     "en": "<p>Recomputed; page 2 is the corrected version.</p>"
                   }
                 }
-              ]
+              ],
+              "grade": {
+                "grade": "92.00 / 100.00",
+                "gradedAt": "2026-09-14T10:00",
+                "feedback": {
+                  "zh": "<p>第 7 題更正後正確，整體很完整。</p>",
+                  "en": "<p>Exercise 7 is right after the correction; thorough work overall.</p>"
+                }
+              }
             }
           }
         ],

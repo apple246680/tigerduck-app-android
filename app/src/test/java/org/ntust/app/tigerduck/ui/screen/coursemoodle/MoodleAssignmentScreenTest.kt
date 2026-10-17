@@ -23,6 +23,7 @@ import org.ntust.app.tigerduck.data.model.AssignmentStatus
 import org.ntust.app.tigerduck.data.moodle.MoodleAssignmentEntry
 import org.ntust.app.tigerduck.data.moodle.MoodleAssignmentLists
 import org.ntust.app.tigerduck.data.moodle.MoodleFeed
+import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentGrade
 import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentRecord
 import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentSubmission
 import org.ntust.app.tigerduck.network.model.moodle.MoodleFile
@@ -64,7 +65,7 @@ class MoodleAssignmentScreenTest {
 
     private val notSubmitted = MoodleAssignmentSubmission(
         status = "new", modified = null, files = emptyList(), onlineText = null, id = null,
-        takesComments = false, groupId = null, groupName = null, comments = null,
+        takesComments = false, groupId = null, groupName = null, comments = null, grade = null,
     )
 
     private val submitted = MoodleAssignmentSubmission(
@@ -72,6 +73,7 @@ class MoodleAssignmentScreenTest {
         files = listOf(MoodleFile("hw2.pdf", 870_400, "https://moodle2.ntust.edu.tw/webservice/pluginfile.php/123/assignsubmission_file/submission_files/5501/hw2.pdf", "application/pdf", 1L, "/")),
         onlineText = "<p>See the attached report.</p>", id = 5501, takesComments = true, groupId = 31, groupName = "Group 3",
         comments = listOf(MoodleSubmissionComment(901, "T00001 @ Duck Teacher", 1_788_950_000L, "<p>Please check page 2.</p>")),
+        grade = null,
     )
 
     @Test
@@ -96,7 +98,7 @@ class MoodleAssignmentScreenTest {
         composeRule.onNodeWithText("HW 2: Linked lists").assertIsDisplayed()
         composeRule.onNodeWithText("Data Structures").assertIsDisplayed()
         composeRule.onNodeWithText(string(R.string.assignment_detail_due)).assertIsDisplayed()
-        composeRule.onNodeWithText(MoodleDates.minute(1_789_000_740L)).assertIsDisplayed()
+        composeRule.onNodeWithText(MoodleDates.weekdayTime(1_789_000_740L)).assertIsDisplayed()
         composeRule.onNodeWithText(string(R.string.assignment_detail_description)).performScrollTo().assertIsDisplayed()
         markdownNode("singly linked list").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("spec.pdf").performScrollTo().assertIsDisplayed()
@@ -117,15 +119,64 @@ class MoodleAssignmentScreenTest {
             )
         }
 
-        composeRule.onNodeWithText(string(R.string.assignment_detail_submitted_at)).assertIsDisplayed()
-        composeRule.onNodeWithText(MoodleDates.minute(1_788_900_000L)).assertIsDisplayed()
         composeRule.onNodeWithText("Group 3").assertIsDisplayed()
+        // Handed in 100,740 s before the due time.
+        val early = string(R.string.assignment_detail_submitted_early).format(AssignmentPageStatus.durationText(100_740L))
+        composeRule.onNodeWithText(early).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText(string(R.string.assignment_detail_submitted_at)).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText(MoodleDates.dayTime(1_788_900_000L)).performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("hw2.pdf").performScrollTo().assertIsDisplayed()
         markdownNode("See the attached report.").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText(string(R.string.assignment_detail_comments)).performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Duck Teacher", substring = true).performScrollTo().assertIsDisplayed()
         markdownNode("Please check page 2.").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText(string(R.string.assignment_detail_not_submitted)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `a graded submission shows the score, when it was graded and the feedback`() {
+        val graded = submitted.copy(
+            grade = MoodleAssignmentGrade("85.00 / 100.00", 1_789_100_000L, "<p>Case 7 misses the <strong>empty</strong> tree.</p>"),
+        )
+        composeRule.setContent {
+            AssignmentPageBody(
+                entry = MoodleAssignmentEntry(record(), listed(completed = true)),
+                courseName = "Data Structures",
+                submission = MoodleFeed.State(value = graded, fetchedAtMs = 1L, cacheLoaded = true),
+                store = null,
+                browserPreference = "system",
+                onRetry = {},
+            )
+        }
+
+        composeRule.onNodeWithText(string(R.string.assignment_detail_grade)).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("85").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("/ 100").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText(string(R.string.assignment_detail_graded_at)).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText(MoodleDates.dayTime(1_789_100_000L)).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText(string(R.string.assignment_detail_feedback)).performScrollTo().assertIsDisplayed()
+        markdownNode("Case 7 misses the").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `a draft shows its time as a draft's, under a not-submitted badge`() {
+        val draft = notSubmitted.copy(status = "draft", modified = 1_788_800_000L, onlineText = "<p>Half done</p>")
+        composeRule.setContent {
+            AssignmentPageBody(
+                entry = MoodleAssignmentEntry(record(), listed()),
+                courseName = "Data Structures",
+                submission = MoodleFeed.State(value = draft, fetchedAtMs = 1L, cacheLoaded = true),
+                store = null,
+                browserPreference = "system",
+                onRetry = {},
+            )
+        }
+
+        composeRule.onNodeWithText(string(R.string.assignment_detail_not_submitted)).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText(string(R.string.assignment_detail_draft)).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText(MoodleDates.dayTime(1_788_800_000L)).performScrollTo().assertIsDisplayed()
+        markdownNode("Half done").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText(string(R.string.assignment_detail_submitted_at)).assertDoesNotExist()
     }
 
     @Test

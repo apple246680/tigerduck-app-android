@@ -2,6 +2,7 @@ package org.ntust.app.tigerduck.data.cache
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentGrade
 import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentRecord
 import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentSubmission
 import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseGrades
@@ -27,7 +28,7 @@ import java.lang.reflect.Modifier
 class MoodleCacheSchemaTest {
 
     private val persisted = listOf(
-        MoodleAssignmentRecord::class, MoodleAssignmentSubmission::class, MoodleCourseGrades::class, MoodleCourseSummary::class, MoodleDiscussion::class,
+        MoodleAssignmentGrade::class, MoodleAssignmentRecord::class, MoodleAssignmentSubmission::class, MoodleCourseGrades::class, MoodleCourseSummary::class, MoodleDiscussion::class,
         MoodleDiscussionList::class, MoodleFile::class, MoodleForum::class, MoodleGradeItem::class,
         MoodleMember::class, MoodleMemberField::class, MoodleMemberList::class, MoodleMemberRole::class,
         MoodleSubmissionComment::class, MoodleTermForums::class,
@@ -51,8 +52,9 @@ class MoodleCacheSchemaTest {
         val PACKAGE = Regex("""\b(?:[a-z]\w*\.)+""")
 
         val SHAPE_AT_SCHEMA_1 = """
+            MoodleAssignmentGrade(feedback: String, grade: String, gradedAt: Long)
             MoodleAssignmentRecord(allowSubmissionsFrom: long, assignId: int, cmid: int, courseId: int, cutoffDate: long, dueDate: long, intro: String, introAttachments: List<MoodleFile>, name: String, noSubmissions: boolean, teamSubmission: boolean)
-            MoodleAssignmentSubmission(comments: List<MoodleSubmissionComment>, files: List<MoodleFile>, groupId: Integer, groupName: String, id: Integer, modified: Long, onlineText: String, status: String, takesComments: boolean)
+            MoodleAssignmentSubmission(comments: List<MoodleSubmissionComment>, files: List<MoodleFile>, grade: MoodleAssignmentGrade, groupId: Integer, groupName: String, id: Integer, modified: Long, onlineText: String, status: String, takesComments: boolean)
             MoodleCourseGrades(items: List<MoodleGradeItem>)
             MoodleCourseSummary(html: String, names: List<String>, text: String)
             MoodleDiscussion(attachments: List<MoodleFile>, authorId: Integer, authorName: String, created: long, id: int, isPinned: boolean, message: String, modified: long, postId: int, preview: String, replyCount: int, title: String, unreadCount: int)

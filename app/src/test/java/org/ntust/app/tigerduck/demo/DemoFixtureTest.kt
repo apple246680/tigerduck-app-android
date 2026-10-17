@@ -172,7 +172,8 @@ class DemoFixtureTest {
                   "submission": {"status": "submitted", "time": "2026-09-17T20:10",
                     "files": [{"name": "lab2.zip", "size": 2048, "mime": "application/zip"}],
                     "text": {"en": "<p>See the zip.</p>"}, "group": {"id": 31, "name": {"en": "Group 3"}},
-                    "comments": [{"author": "T0001 @ Teacher", "time": "2026-09-18T09:00", "content": {"en": "<p>Thanks</p>"}}]}},
+                    "comments": [{"author": "T0001 @ Teacher", "time": "2026-09-18T09:00", "content": {"en": "<p>Thanks</p>"}}],
+                    "grade": {"grade": "92.00 / 100.00", "gradedAt": "2026-09-19T10:30", "feedback": {"en": "<p>Neat.</p>"}}}},
                  {"id": 900009, "cmid": 950009, "noSubmissions": true},
                  {"cmid": 1}]}
             ]}}
@@ -203,6 +204,11 @@ class DemoFixtureTest {
         assertEquals("T0001 @ Teacher", comment.authorName)
         assertEquals("<p>Thanks</p>", comment.content)
         assertEquals(Instant.parse("2026-09-18T01:00:00Z").epochSecond, comment.created)
+        val grade = submission.grade!!
+        assertEquals("92.00 / 100.00", grade.grade)
+        assertEquals(Instant.parse("2026-09-19T02:30:00Z").epochSecond, grade.gradedAt)
+        assertEquals("<p>Neat.</p>", grade.feedback)
+        assertNull("a submission without a grade has none", hw3.submission?.grade)
         assertTrue(assignments[2].noSubmissions)
 
         val records = DemoMoodleFixture.records(fixture.moodle, fixture.assignments!!)
@@ -248,6 +254,7 @@ class DemoFixtureTest {
             )
             assertTrue("each page has a description", pages.all { it.intro.isNotBlank() })
             assertTrue("one of them was handed in, with a comment", pages.any { it.submission?.isSubmitted == true && !it.submission.comments.isNullOrEmpty() })
+            assertTrue("and graded, with feedback", pages.any { it.submission?.grade?.grade != null && it.submission.grade?.feedback != null })
             assertTrue("one of them was not", pages.any { it.submission?.isSubmitted != true })
             assertTrue(moodle.courses.all { c -> c.announcements.all { it.title.isNotBlank() && it.created > 0 } })
             assertTrue("the student is among each course's members",

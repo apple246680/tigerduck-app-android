@@ -221,12 +221,24 @@ data class MoodleAssignmentSubmission(
     val groupName: String?,
     /** Null where the site does not let the app read them. */
     val comments: List<MoodleSubmissionComment>?,
+    /** Null until Moodle shows the student a grade or feedback. */
+    val grade: MoodleAssignmentGrade?,
 ) {
     val isSubmitted: Boolean get() = status == "submitted"
 
     /** Unix seconds, for a submission handed in; a draft's time is not one. */
     val submittedAt: Long? get() = if (isSubmitted) modified else null
 }
+
+/** The grade and the grader's feedback on the last attempt, as Moodle shows them to the student. */
+data class MoodleAssignmentGrade(
+    /** As Moodle writes it, such as "85.00 / 100.00", a letter or a scale's word; null with only feedback. */
+    val grade: String?,
+    /** Unix seconds; null while Moodle gives none. */
+    val gradedAt: Long?,
+    /** HTML, with its own files' links resolved; null without any. */
+    val feedback: String?,
+)
 
 data class MoodleSubmissionComment(
     val id: Int,

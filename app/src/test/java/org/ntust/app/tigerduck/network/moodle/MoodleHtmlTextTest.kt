@@ -86,4 +86,18 @@ class MoodleHtmlTextTest {
         )
         assertEquals("text without the placeholder is left as it is", "<p>x</p>", MoodleHtmlText.resolvingPluginFiles("<p>x</p>", emptyList()))
     }
+
+    @Test
+    fun `a text that is one image and nothing else still points the image at its file`() {
+        // iOS #728: its HTML library left the placeholder in place when nothing else in the text changed.
+        val chart = org.ntust.app.tigerduck.network.model.moodle.MoodleFile(
+            name = "chart.png", size = 1, mimeType = "image/png", modified = null, path = "/",
+            url = "https://moodle2.ntust.edu.tw/webservice/pluginfile.php/1/assignsubmission_onlinetext/submissions_onlinetext/5/chart.png",
+        )
+
+        val resolved = MoodleHtmlText.resolvingPluginFiles("<img src=\"@@PLUGINFILE@@/chart.png\" alt=\"chart\">", listOf(chart))
+
+        assertEquals("<img src=\"${chart.url}\" alt=\"chart\">", resolved)
+        assertEquals("[chart](${chart.url})", MoodleHtmlText.markdown(resolved))
+    }
 }

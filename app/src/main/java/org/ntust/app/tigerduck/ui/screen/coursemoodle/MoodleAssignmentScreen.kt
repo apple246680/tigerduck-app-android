@@ -1,20 +1,30 @@
 package org.ntust.app.tigerduck.ui.screen.coursemoodle
 
+import android.icu.text.MeasureFormat
+import android.icu.util.Measure
+import android.icu.util.MeasureUnit
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -29,8 +39,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -46,10 +58,14 @@ import org.ntust.app.tigerduck.data.moodle.MoodleAssignmentLookup
 import org.ntust.app.tigerduck.data.moodle.MoodleCourseStore
 import org.ntust.app.tigerduck.data.moodle.MoodleFeed
 import org.ntust.app.tigerduck.data.moodle.MoodlePersonName
+import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentGrade
 import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentSubmission
 import org.ntust.app.tigerduck.network.model.moodle.MoodleSubmissionComment
 import org.ntust.app.tigerduck.network.moodle.MoodleWebservice
+import org.ntust.app.tigerduck.shared.clock.AppClock
+import org.ntust.app.tigerduck.ui.component.rememberAppClockVersion
 import org.ntust.app.tigerduck.ui.theme.ContentAlpha
+import java.util.Locale
 
 /** What the page shows of an assignment, apart from what is on screen. */
 internal object AssignmentPageRules {
@@ -96,11 +112,101 @@ internal object AssignmentPageRules {
     }
 }
 
+/** The badge beside the submission's heading. */
+internal sealed interface SubmissionBadge {
+    data object NotSubmitted : SubmissionBadge
+
+    /** Handed in, with no due date or no time to measure against it. */
+    data object Submitted : SubmissionBadge
+    data class Early(val seconds: Long) : SubmissionBadge
+    data class Late(val seconds: Long) : SubmissionBadge
+}
+
+/** The line under the due time. */
+internal sealed interface DeadlineLine {
+    /** [urgent] while the account has not handed it in. */
+    data class Left(val seconds: Long, val urgent: Boolean) : DeadlineLine
+
+    /** Passed, with the assignment handed in or not one Moodle takes online. */
+    data object Passed : DeadlineLine
+
+    /** Passed without the account handing it in. */
+    data class Overdue(val seconds: Long) : DeadlineLine
+}
+
+/** A grade split for the grade card: the points, over the most they could be where Moodle writes them so. */
+internal data class Score(val value: String, val max: String?)
+
+/** The rules behind the page's deadline, badge and grade; ported from iOS `MoodleAssignmentView+Status`. */
+internal object AssignmentPageStatus {
+    /**
+     * Whether the account handed it in: the fetched submission says, else Home's row. Null while
+     * neither has answered, and for an assignment Moodle takes nothing online for.
+     */
+    fun isSubmitted(entry: MoodleAssignmentEntry, submission: MoodleAssignmentSubmission?): Boolean? {
+        if (entry.record.noSubmissions) return null
+        return submission?.isSubmitted ?: entry.listed?.isCompleted
+    }
+
+    /** Null while nothing says whether it is handed in. */
+    fun badge(isSubmitted: Boolean?, submittedAtSeconds: Long?, dueSeconds: Long?): SubmissionBadge? {
+        isSubmitted ?: return null
+        if (!isSubmitted) return SubmissionBadge.NotSubmitted
+        if (dueSeconds == null || submittedAtSeconds == null) return SubmissionBadge.Submitted
+        return if (submittedAtSeconds > dueSeconds) {
+            SubmissionBadge.Late(submittedAtSeconds - dueSeconds)
+        } else {
+            SubmissionBadge.Early(dueSeconds - submittedAtSeconds)
+        }
+    }
+
+    fun deadline(dueSeconds: Long, isSubmitted: Boolean?, nowSeconds: Long): DeadlineLine {
+        if (dueSeconds >= nowSeconds) return DeadlineLine.Left(dueSeconds - nowSeconds, urgent = isSubmitted == false)
+        return if (isSubmitted == false) DeadlineLine.Overdue(nowSeconds - dueSeconds) else DeadlineLine.Passed
+    }
+
+    /** The card shows what was handed in, or a draft's files and text, under its time. */
+    fun showsCard(submission: MoodleAssignmentSubmission): Boolean =
+        submission.files.isNotEmpty() || submission.onlineText != null || submission.submittedAt != null
+
+    private val NUMBER = Regex("-?[0-9]+([.,][0-9]+)?")
+
+    /**
+     * A grade of points over a maximum, as Moodle writes "85.00 / 100.00", splits into the two,
+     * each without the zeros ending its decimals. Any other grade, such as a letter, a percentage
+     * or a scale's word, stays whole.
+     */
+    fun score(grade: String): Score {
+        val parts = grade.split("/").map { it.trim() }
+        if (parts.size != 2 || !parts.all { NUMBER.matches(it) }) return Score(grade, null)
+        return Score(withoutTrailingZeros(parts[0]), withoutTrailingZeros(parts[1]))
+    }
+
+    private fun withoutTrailingZeros(number: String): String {
+        if (number.none { it == '.' || it == ',' }) return number
+        return number.trimEnd('0').trimEnd('.', ',')
+    }
+
+    /**
+     * [seconds] in at most two of days, hours and minutes, rounded down so the time left never
+     * reads longer than it is; under a minute reads as one minute. "1 day, 4 hr" in English.
+     */
+    fun durationText(seconds: Long, locale: Locale = Locale.getDefault()): String {
+        val total = maxOf(seconds, 60L)
+        val units = listOf(
+            MeasureUnit.DAY to total / 86_400,
+            MeasureUnit.HOUR to total % 86_400 / 3_600,
+            MeasureUnit.MINUTE to total % 3_600 / 60,
+        ).filter { it.second > 0 }.take(2).map { (unit, amount) -> Measure(amount, unit) }
+        return MeasureFormat.getInstance(locale, MeasureFormat.FormatWidth.SHORT).formatMeasures(*units.toTypedArray())
+    }
+}
+
 /**
- * One assignment, laid out as an announcement is: its course and title, its times, then its
- * description, attachments, what the account handed in and the comments on it. The app submits
- * nothing, so the button at the foot opens the assignment on Moodle. The page fetches the
- * submission when it opens and on each return to the app, and shows the last copy meanwhile.
+ * One assignment: its course and title, a card with the due time and the group, its description
+ * and attachments, then what the account handed in with the comments on it, and the grade. The
+ * app submits nothing, so the button at the foot opens the assignment on Moodle. The page fetches
+ * the submission when it opens and on each return to the app, and shows the last copy meanwhile.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -164,6 +270,7 @@ internal fun AssignmentPageBody(
     val record = entry.record
     val value = submission.value
     val moodlePath = AssignmentPageRules.moodlePath(entry)
+    val isSubmitted = AssignmentPageStatus.isSubmitted(entry, value)
     val scroll = rememberScrollState()
     Column(
         modifier = Modifier
@@ -171,7 +278,7 @@ internal fun AssignmentPageBody(
             .verticalScroll(scroll)
             .padding(horizontal = 16.dp)
             .padding(top = 8.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (courseName.isNotEmpty()) {
@@ -189,16 +296,7 @@ internal fun AssignmentPageBody(
                 modifier = Modifier.semantics { heading() },
             )
         }
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            AssignmentPageRules.dueSeconds(entry)?.let {
-                TimeRow(stringResource(R.string.assignment_detail_due), MoodleDates.minute(it))
-            }
-            AssignmentPageRules.submittedSeconds(entry, value)?.let {
-                TimeRow(stringResource(R.string.assignment_detail_submitted_at), MoodleDates.minute(it))
-            }
-            value?.groupName?.let { TimeRow(stringResource(R.string.assignment_detail_group), it) }
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        SummaryCard(entry, isSubmitted, value?.groupName)
         submission.failureBesideCopy?.let { MoodleRefreshFailure(it, onRetry) }
         val description = rememberMoodleMarkdown(record.intro)
         if (!description.isNullOrBlank()) {
@@ -212,76 +310,259 @@ internal fun AssignmentPageBody(
             }
         }
         if (!record.noSubmissions) {
-            PageSection(stringResource(R.string.assignment_detail_submission)) {
-                if (value == null) {
-                    MoodleFirstLoad(failure = if (submission.isRefreshing) null else submission.failure, onRetry = onRetry)
-                } else {
-                    if (value.files.isNotEmpty()) {
-                        MoodleAttachmentCard(store, value.files, browserPreference, moodlePath)
-                    }
-                    value.onlineText?.let { html ->
-                        rememberMoodleMarkdown(html)?.let { MoodleMarkdown(it, browserPreference, Modifier.fillMaxWidth()) }
-                    }
-                    // For anything not handed in, a draft's files and text included.
-                    if (!value.isSubmitted) {
-                        Text(
-                            text = stringResource(R.string.assignment_detail_not_submitted),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY),
-                        )
-                    }
-                }
-            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            SubmissionSection(
+                entry = entry,
+                submission = submission,
+                badge = AssignmentPageStatus.badge(
+                    isSubmitted,
+                    AssignmentPageRules.submittedSeconds(entry, value),
+                    AssignmentPageRules.dueSeconds(entry),
+                ),
+                store = store,
+                browserPreference = browserPreference,
+                moodlePath = moodlePath,
+                onRetry = onRetry,
+            )
         }
-        val comments = value?.comments.orEmpty()
-        if (comments.isNotEmpty()) {
-            PageSection(stringResource(R.string.assignment_detail_comments)) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    comments.forEach { CommentItem(it, browserPreference) }
+        value?.grade?.let { GradeSection(it, browserPreference) }
+    }
+}
+
+// --- Due time and group ---
+
+/** The due date as a tile with the time and what is left of it, and the group for a team assignment. */
+@Composable
+private fun SummaryCard(entry: MoodleAssignmentEntry, isSubmitted: Boolean?, group: String?) {
+    val due = AssignmentPageRules.dueSeconds(entry)
+    if (due == null && group == null) return
+    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (due != null) {
+                // The time left moves on while the page stays open, on the app's clock.
+                val clockVersion by rememberAppClockVersion()
+                val deadline = remember(due, isSubmitted, clockVersion) {
+                    AssignmentPageStatus.deadline(due, isSubmitted, AppClock.nowMillis() / 1000)
                 }
+                DeadlineRow(due, deadline)
+            }
+            if (group != null) {
+                if (due != null) HorizontalDivider(color = cardDividerColor())
+                GroupRow(group)
             }
         }
     }
 }
 
 @Composable
-private fun PageSection(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+private fun DeadlineRow(dueSeconds: Long, deadline: DeadlineLine) {
+    val overdue = deadline is DeadlineLine.Overdue
+    val text = when (deadline) {
+        is DeadlineLine.Left -> stringResource(R.string.assignment_detail_time_left, AssignmentPageStatus.durationText(deadline.seconds))
+        DeadlineLine.Passed -> stringResource(R.string.assignment_detail_due_passed)
+        is DeadlineLine.Overdue -> stringResource(R.string.assignment_detail_overdue_by, AssignmentPageStatus.durationText(deadline.seconds))
+    }
+    val tint = when (deadline) {
+        is DeadlineLine.Left -> if (deadline.urgent) MoodleOrange else MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY)
+        DeadlineLine.Passed -> MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY)
+        is DeadlineLine.Overdue -> BadgeRed
+    }
+    val emphasized = overdue || (deadline as? DeadlineLine.Left)?.urgent == true
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        CalendarTile(dueSeconds, overdue)
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = stringResource(R.string.assignment_detail_due),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY),
+            )
+            Text(
+                text = MoodleDates.weekdayTime(dueSeconds),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (emphasized) FontWeight.SemiBold else FontWeight.Normal,
+                color = tint,
+            )
+        }
+    }
+}
+
+/** The month over the day, washed red once the deadline is missed. */
+@Composable
+private fun CalendarTile(dueSeconds: Long, overdue: Boolean) {
+    Column(
+        modifier = Modifier
+            .background(
+                if (overdue) BadgeRed.copy(alpha = 0.16f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f),
+                RoundedCornerShape(12.dp),
+            )
+            .defaultMinSize(minWidth = 56.dp, minHeight = 60.dp)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
         Text(
-            text = title,
+            text = MoodleDates.month(dueSeconds),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = if (overdue) BadgeRed else MaterialTheme.colorScheme.primary,
+        )
+        Text(
+            text = MoodleDates.dayOfMonth(dueSeconds).toString(),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+@Composable
+private fun GroupRow(group: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(
+                Icons.Outlined.Groups,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY),
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                text = stringResource(R.string.assignment_detail_group),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY),
+            )
+        }
+        Text(
+            text = group,
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.semantics { heading() },
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f),
         )
-        content()
     }
 }
 
-/** A label with its value on the right, as the course detail's info rows. */
+// --- Submission ---
+
 @Composable
-private fun TimeRow(label: String, value: String) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+private fun SubmissionSection(
+    entry: MoodleAssignmentEntry,
+    submission: MoodleFeed.State<MoodleAssignmentSubmission>,
+    badge: SubmissionBadge?,
+    store: MoodleCourseStore?,
+    browserPreference: String,
+    moodlePath: String?,
+    onRetry: () -> Unit,
+) {
+    val value = submission.value
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            SectionTitle(stringResource(R.string.assignment_detail_submission), Modifier.weight(1f))
+            badge?.let { BadgeChip(it) }
+        }
+        if (value == null) {
+            MoodleFirstLoad(failure = if (submission.isRefreshing) null else submission.failure, onRetry = onRetry)
+        } else {
+            if (AssignmentPageStatus.showsCard(value)) {
+                SubmissionCard(value, store, browserPreference, moodlePath)
+            }
+            value.comments?.takeIf { it.isNotEmpty() }?.let { CommentList(it, browserPreference) }
+        }
+    }
+}
+
+/** A pill with the badge's word and mark: a tick for a hand-in, an empty circle for none. */
+@Composable
+private fun BadgeChip(badge: SubmissionBadge) {
+    val text = when (badge) {
+        SubmissionBadge.NotSubmitted -> stringResource(R.string.assignment_detail_not_submitted)
+        SubmissionBadge.Submitted -> stringResource(R.string.assignment_status_submitted)
+        is SubmissionBadge.Early -> stringResource(R.string.assignment_detail_submitted_early, AssignmentPageStatus.durationText(badge.seconds))
+        is SubmissionBadge.Late -> stringResource(R.string.assignment_detail_submitted_late_by, AssignmentPageStatus.durationText(badge.seconds))
+    }
+    val tint = when (badge) {
+        SubmissionBadge.NotSubmitted -> MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY)
+        SubmissionBadge.Submitted, is SubmissionBadge.Early -> BadgeGreen
+        is SubmissionBadge.Late -> BadgeRed
+    }
+    Surface(shape = CircleShape, color = tint.copy(alpha = 0.16f)) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(
+                imageVector = if (badge == SubmissionBadge.NotSubmitted) Icons.Outlined.RadioButtonUnchecked else Icons.Filled.Check,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(14.dp),
+            )
+            Text(text = text, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = tint)
+        }
+    }
+}
+
+/** The time it was handed in, or a draft's, over the files and the text. */
+@Composable
+private fun SubmissionCard(
+    submission: MoodleAssignmentSubmission,
+    store: MoodleCourseStore?,
+    browserPreference: String,
+    moodlePath: String?,
+) {
+    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
+        Column {
+            TimeRow(
+                label = stringResource(
+                    if (submission.isSubmitted) R.string.assignment_detail_submitted_at else R.string.assignment_detail_draft,
+                ),
+                time = submission.modified?.let { MoodleDates.dayTime(it) },
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            )
+            submission.files.forEachIndexed { index, file ->
+                HorizontalDivider(modifier = Modifier.padding(start = if (index > 0) 56.dp else 0.dp), color = cardDividerColor())
+                MoodleAttachmentRow(store, file, browserPreference, moodlePath)
+            }
+            submission.onlineText?.let { html ->
+                HorizontalDivider(color = cardDividerColor())
+                rememberMoodleMarkdown(html)?.let {
+                    MoodleMarkdown(it, browserPreference, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CommentList(comments: List<MoodleSubmissionComment>, browserPreference: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
+            text = stringResource(R.string.assignment_detail_comments),
+            style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY),
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.semantics { heading() },
         )
-        Spacer(Modifier.width(16.dp))
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            textAlign = TextAlign.End,
-        )
+        Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
+            Column {
+                comments.forEachIndexed { index, comment ->
+                    if (index > 0) HorizontalDivider(modifier = Modifier.padding(start = 16.dp), color = cardDividerColor())
+                    CommentItem(comment, browserPreference)
+                }
+            }
+        }
     }
 }
 
 @Composable
 private fun CommentItem(comment: MoodleSubmissionComment, browserPreference: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
-            text = listOf(MoodlePersonName.displayName(comment.authorName), MoodleDates.dateTime(comment.created))
+            text = listOf(MoodlePersonName.displayName(comment.authorName), MoodleDates.dayTime(comment.created))
                 .filter { it.isNotEmpty() }
                 .joinToString(" · "),
             style = MaterialTheme.typography.labelMedium,
@@ -289,6 +570,99 @@ private fun CommentItem(comment: MoodleSubmissionComment, browserPreference: Str
         )
         rememberMoodleMarkdown(comment.content)?.let {
             MoodleMarkdown(it, browserPreference, Modifier.fillMaxWidth(), compact = true)
+        }
+    }
+}
+
+// --- Grade ---
+
+@Composable
+private fun GradeSection(grade: MoodleAssignmentGrade, browserPreference: String) {
+    PageSection(stringResource(R.string.assignment_detail_grade)) {
+        Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                grade.grade?.let { ScoreRow(AssignmentPageStatus.score(it)) }
+                grade.gradedAt?.let { TimeRow(stringResource(R.string.assignment_detail_graded_at), MoodleDates.dayTime(it)) }
+                grade.feedback?.let { html ->
+                    if (grade.grade != null || grade.gradedAt != null) HorizontalDivider(color = cardDividerColor())
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = stringResource(R.string.assignment_detail_feedback),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY),
+                        )
+                        rememberMoodleMarkdown(html)?.let { MoodleMarkdown(it, browserPreference, Modifier.fillMaxWidth()) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScoreRow(score: Score) {
+    val spoken = score.max?.let { "${score.value}, " + stringResource(R.string.course_moodle_grade_out_of, it) } ?: score.value
+    Row(
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        // One element to TalkBack, read as "85, out of 100".
+        modifier = Modifier.semantics(mergeDescendants = true) { contentDescription = spoken },
+    ) {
+        Text(
+            text = score.value,
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        score.max?.let {
+            Text(
+                text = "/ $it",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY),
+                modifier = Modifier.padding(bottom = 6.dp),
+            )
+        }
+    }
+}
+
+// --- Shared pieces ---
+
+@Composable
+private fun PageSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionTitle(title)
+        content()
+    }
+}
+
+@Composable
+private fun SectionTitle(title: String, modifier: Modifier = Modifier) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = modifier.semantics { heading() },
+    )
+}
+
+/** A label with its time on the right, in small grey type. */
+@Composable
+private fun TimeRow(label: String, time: String?, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY),
+            modifier = Modifier.weight(1f),
+        )
+        if (time != null) {
+            Spacer(Modifier.width(16.dp))
+            Text(
+                text = time,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY),
+                textAlign = TextAlign.End,
+            )
         }
     }
 }
@@ -317,3 +691,7 @@ internal fun AssignmentSubmitButton(entry: MoodleAssignmentEntry, onOpen: () -> 
         }
     }
 }
+
+/** Home's badge tints for a hand-in and a missed deadline; see `AssignmentItem`. */
+private val BadgeGreen = Color(0xFF34C759)
+private val BadgeRed = Color(0xFFFF3B30)

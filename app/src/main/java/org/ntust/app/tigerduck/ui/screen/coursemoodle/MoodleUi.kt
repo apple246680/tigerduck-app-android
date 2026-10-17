@@ -418,4 +418,21 @@ internal object MoodleDates {
 
     /** `M/d HH:mm`, as the course detail writes an assignment's due time; never seconds. */
     fun minute(epochSeconds: Long): String = format("M/d HH:mm").format(Date(epochSeconds * 1000))
+
+    /** "Thu, Oct 15 at 20:03" in the device's language: the weekday, month, day and time, for the page's times. */
+    fun dayTime(epochSeconds: Long, locale: Locale = Locale.getDefault()): String =
+        localized(android.text.format.DateFormat.getBestDateTimePattern(locale, "MMMdEEEHHmm"), locale).format(Date(epochSeconds * 1000))
+
+    /** "Tue 23:59": the weekday and time, for the due time's headline. */
+    fun weekdayTime(epochSeconds: Long, locale: Locale = Locale.getDefault()): String =
+        localized(android.text.format.DateFormat.getBestDateTimePattern(locale, "EEEHHmm"), locale).format(Date(epochSeconds * 1000))
+
+    /** "Oct", for the due date's tile. */
+    fun month(epochSeconds: Long, locale: Locale = Locale.getDefault()): String =
+        localized("MMM", locale).format(Date(epochSeconds * 1000))
+
+    fun dayOfMonth(epochSeconds: Long): Int = calendar(epochSeconds * 1000).get(Calendar.DAY_OF_MONTH)
+
+    private fun localized(pattern: String, locale: Locale) =
+        SimpleDateFormat(pattern, locale).apply { timeZone = AppConstants.TAIPEI_TZ }
 }

@@ -4,6 +4,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import org.ntust.app.tigerduck.network.MoodleWebserviceError
+import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentGrade
 import org.ntust.app.tigerduck.network.model.moodle.MoodleAssignmentSubmission
 import org.ntust.app.tigerduck.network.model.moodle.MoodleCourseSummary
 import org.ntust.app.tigerduck.network.model.moodle.MoodleDiscussion
@@ -205,21 +206,45 @@ object MoodleJson {
         val team = attempt?.get("teamsubmission")?.objOrNull()
         val record = if (team?.str("status") == SUBMITTED || own?.str("status") == null) team ?: own else own
         val plugins = record?.array("plugins").orEmpty().mapNotNull { it.objOrNull() }
-        val textPlugin = plugins.firstOrNull { it.str("type") == "onlinetext" }
-        val rawText = textPlugin?.array("editorfields").orEmpty().firstOrNull()?.objOrNull()?.str("text")
-        val text = rawText?.let { MoodleHtmlText.resolvingPluginFiles(it, pluginFiles(listOfNotNull(textPlugin))) }
         return MoodleAssignmentSubmission(
             status = record?.str("status"),
             modified = record?.long("timemodified")?.takeIf { it > 0 },
             files = pluginFiles(plugins.filter { it.str("type") == "file" }),
-            // Text with nothing to read, such as an emptied editor's `<p></p>`, counts as none.
-            onlineText = text?.takeIf { MoodleHtmlText.markdown(it).isNotBlank() },
+            onlineText = pluginText(plugins.firstOrNull { it.str("type") == "onlinetext" }),
             id = record?.int("id"),
             takesComments = plugins.any { it.str("type") == "comments" },
             groupId = attempt?.int("submissiongroup")?.takeIf { it > 0 },
             groupName = null,
             comments = null,
+            grade = grade(json.objOrNull()?.get("feedback")?.objOrNull()),
         )
+    }
+
+    /**
+     * The grade and feedback of the answer's `feedback`, which Moodle sends only once the student
+     * may see them, with `gradefordisplay` and `gradeddate` null before a grade and "-" for none.
+     * Null with neither a grade nor feedback to show.
+     */
+    private fun grade(feedback: JsonObject?): MoodleAssignmentGrade? {
+        feedback ?: return null
+        val shown = MoodleHtmlText.plainText(feedback.str("gradefordisplay").orEmpty())
+        val grade = shown.takeUnless { it.isEmpty() || it == "-" }
+        val comments = pluginText(
+            feedback.array("plugins").orEmpty().mapNotNull { it.objOrNull() }.firstOrNull { it.str("type") == "comments" },
+        )
+        if (grade == null && comments == null) return null
+        return MoodleAssignmentGrade(grade, feedback.long("gradeddate")?.takeIf { it > 0 }, comments)
+    }
+
+    /**
+     * A plugin's editor text with its links pointed at the plugin's own files; null for text with
+     * nothing to read, such as an emptied editor's `<p></p>`.
+     */
+    private fun pluginText(plugin: JsonObject?): String? {
+        plugin ?: return null
+        val raw = plugin.array("editorfields").orEmpty().firstOrNull()?.objOrNull()?.str("text") ?: return null
+        val html = MoodleHtmlText.resolvingPluginFiles(raw, pluginFiles(listOf(plugin)))
+        return html.takeIf { MoodleHtmlText.markdown(it).isNotBlank() }
     }
 
     private fun pluginFiles(plugins: List<JsonObject>): List<MoodleFile> =
