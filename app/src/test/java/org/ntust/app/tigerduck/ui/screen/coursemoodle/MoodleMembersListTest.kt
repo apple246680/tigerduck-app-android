@@ -8,11 +8,10 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollToIndex
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -90,8 +89,6 @@ class MoodleMembersListTest {
         override suspend fun save(value: Any, fetchedAtMs: Long, name: String) = Unit
     }
 
-    private val search get() = RuntimeEnvironment.getApplication().getString(R.string.action_search)
-
     /** The search's text, as the screen would hold it; a test types by setting it. */
     private val query = mutableStateOf("")
 
@@ -123,11 +120,19 @@ class MoodleMembersListTest {
         assertTrue("fetched $pictures pictures", pictures in 1..40)
     }
 
+    /**
+     * The search field, by its editable text, which it has whatever it holds; its placeholder
+     * goes with the first letter typed, so a test that types cannot find it by that.
+     */
+    private fun searchField() = composeRule.onAllNodes(hasSetTextAction())
+
     /** Off screen whether the list left the field uncomposed or composed and clipped above its top. */
     private fun assertSearchFieldOffScreen() {
-        val fields = composeRule.onAllNodesWithText(search)
+        val fields = searchField()
         if (fields.fetchSemanticsNodes().isNotEmpty()) fields.onFirst().assertIsNotDisplayed()
     }
+
+    private fun assertSearchFieldShown() = searchField().onFirst().assertIsDisplayed()
 
     @Test
     fun `the search field waits above the list's top until the list is pulled down`() {
@@ -136,7 +141,7 @@ class MoodleMembersListTest {
 
         composeRule.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
 
-        composeRule.onNodeWithText(search).assertIsDisplayed()
+        assertSearchFieldShown()
     }
 
     @Test
@@ -147,7 +152,7 @@ class MoodleMembersListTest {
 
         composeRule.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
 
-        composeRule.onNodeWithText(search).assertIsDisplayed()
+        assertSearchFieldShown()
     }
 
     @Test
@@ -158,7 +163,7 @@ class MoodleMembersListTest {
 
         composeRule.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
 
-        composeRule.onNodeWithText(search).assertIsDisplayed()
+        assertSearchFieldShown()
     }
 
     @Test
@@ -195,6 +200,6 @@ class MoodleMembersListTest {
 
         composeRule.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
 
-        composeRule.onNodeWithText(search).assertIsNotFocused()
+        searchField().onFirst().assertIsNotFocused()
     }
 }

@@ -19,6 +19,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 /**
@@ -31,6 +32,18 @@ import kotlin.concurrent.thread
 @Config(application = Application::class)
 class UploadRecordLockTest {
 
+    /** Whether [thread] reaches [state] within [timeoutMs]; false at once should it end instead. */
+    private fun reaches(thread: Thread, state: Thread.State, timeoutMs: Long = 5_000): Boolean {
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs)
+        while (true) {
+            when (thread.state) {
+                state -> return true
+                Thread.State.TERMINATED -> return false
+                else -> if (System.nanoTime() >= deadline) return false else Thread.sleep(2)
+            }
+        }
+    }
+
     @Test
     fun `a sign-out waits for a record under way, and its clear then takes the record with it`() {
         val context = RuntimeEnvironment.getApplication()
@@ -40,37 +53,47 @@ class UploadRecordLockTest {
         val tokenManager = AuthTokenManager(tokens, OkHttpClient(), prefs, "device-1")
         val recordUnderWay = CountDownLatch(1)
         val recordMayEnd = CountDownLatch(1)
+        val recordTimedOut = AtomicBoolean(false)
         // The courses ledger's store as PushApiClient wires it, with a pause inside the record.
         val store = object : UploadLedgerStore {
             override val fingerprint: String? get() = prefs.coursesUploadFingerprint("1151")
             override val acceptedAtMs: Long get() = prefs.coursesUploadedAtMs("1151")
             override fun record(fingerprint: String, atMs: Long) {
                 recordUnderWay.countDown()
-                recordMayEnd.await(10, TimeUnit.SECONDS)
+                // Bounded, so a failed test cannot hang on it; the test lets it go well before.
+                if (!recordMayEnd.await(10, TimeUnit.SECONDS)) recordTimedOut.set(true)
                 prefs.recordCoursesUpload("1151", fingerprint, atMs)
             }
         }
         val ledger = UploadLedger(store, System::currentTimeMillis)
+        // Read before the record holds the sign-in lock: the read takes that lock too, and under
+        // the pause it would wait the record's bound out.
         val signIn = tokenManager.signInGeneration
-        val upload = thread {
+        val upload = thread(name = "upload") {
             runBlocking {
                 ledger.sendIfDue("list-a", ifCurrent = { record -> tokenManager.runIfSignedIn(signIn, record) }) {}
             }
         }
-        assertTrue(recordUnderWay.await(10, TimeUnit.SECONDS))
-
-        // AuthService.logout: the generation moves, then the stamps are cleared.
-        val signedOut = CountDownLatch(1)
-        thread { tokenManager.logout(); signedOut.countDown() }
-        assertFalse("the sign-out moved the generation while the record was under way", signedOut.await(300, TimeUnit.MILLISECONDS))
-        assertEquals(signIn, tokenManager.signInGeneration)
-
-        recordMayEnd.countDown()
+        val signOut = thread(start = false, name = "sign-out") { tokenManager.logout() }
+        try {
+            assertTrue("the record never began", recordUnderWay.await(10, TimeUnit.SECONDS))
+            signOut.start()
+            // The sign-out reaches the sign-in lock and waits on it, held by the record under way.
+            // With the record made outside the lock, as before, it runs through and ends instead.
+            assertTrue("the sign-out did not wait on the sign-in lock", reaches(signOut, Thread.State.BLOCKED))
+        } finally {
+            recordMayEnd.countDown()
+        }
         upload.join(10_000)
-        assertTrue(signedOut.await(10, TimeUnit.SECONDS))
+        signOut.join(10_000)
+        assertFalse("the upload did not end", upload.isAlive)
+        assertFalse("the sign-out did not end", signOut.isAlive)
+        assertFalse("the record waited its bound out", recordTimedOut.get())
+
+        // AuthService.logout: the generation moved, after the record had landed...
         assertNotEquals(signIn, tokenManager.signInGeneration)
         assertEquals("list-a", prefs.coursesUploadFingerprint("1151"))
-
+        // ...and its clearing of the stamps, which follows, takes the record with it.
         prefs.clearSyncStamps()
 
         assertNull(prefs.coursesUploadFingerprint("1151"))
