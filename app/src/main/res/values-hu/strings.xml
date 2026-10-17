@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">Visszaállítás</string>
     <string name="app_reset_required_message">A bejelentkezési állapot és a beállítások nem olvashatók, valószínűleg operációs rendszer frissítés, biztonsági mentés visszaállítása vagy tárolási hiba miatt.\n\nKoppintson a \"Visszaállítás\" gombra a régi adatok törléséhez, majd jelentkezzen be újra és konfigurálja újra a beállításokat.</string>
     <string name="app_reset_required_title">Visszaállítás szükséges</string>
+    <string name="assignment_detail_comments">Beadási megjegyzések</string>
+    <string name="assignment_detail_description">Leírás</string>
+    <string name="assignment_detail_due">Határidő</string>
+    <string name="assignment_detail_group">Csoport</string>
+    <string name="assignment_detail_not_submitted">Még nincs beadva</string>
+    <string name="assignment_detail_submission">Beadott munka</string>
+    <string name="assignment_detail_submit_on_moodle">Beadás Moodle-ban</string>
+    <string name="assignment_detail_submitted_at">Beadva</string>
     <string name="assignment_filter_all">Mind</string>
     <string name="assignment_filter_ignored">Figyelmen kívül hagyott</string>
     <string name="assignment_filter_incomplete">Befejezetlen</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">Egyéni szín</string>
     <string name="course_color_picker_title">Szín szerkesztése</string>
     <string name="course_credits_value">Kreditek: %1$s</string>
+    <string name="course_detail_assignments_label">Házi feladatok</string>
     <string name="course_detail_classroom_label">Tanterem</string>
     <string name="course_detail_code_copied">Kód másolva</string>
     <string name="course_detail_code_label">Kód</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">TigerDuck használatának megkezdése</string>
     <string name="onboarding_sync_description">A TigerSync szinkronban tartja kurzusait, feladatait és beállításait minden eszközén. A TigerSync beállításaiban pontosan kiválaszthatja, mit szeretne szinkronizálni.</string>
     <string name="onboarding_sync_not_shared_password">A jelszó soha nem kerül feltöltésre</string>
-    <string name="onboarding_sync_note">Ha a szinkronizálás ki van kapcsolva, minden adat csak ezen az eszközön marad. A házi feladat emlékeztetők push értesítései TigerSync nélkül is helyben működnek.</string>
+    <string name="onboarding_sync_note">Kikapcsolt szinkronizálás mellett is megkapja a TigerDuck szerver a hallgatói azonosítódat, a Moodle tokenedet és az eszköz push hitelesítő adatait, hogy feladatemlékeztetőket küldhessen</string>
     <string name="onboarding_sync_shared_assignments">Feladatadatok</string>
     <string name="onboarding_sync_shared_courses">Kurzusadatok</string>
     <string name="onboarding_sync_shared_device_id">Eszközazonosító</string>
@@ -768,6 +777,7 @@
     <string name="school_mail_send">Küldés</string>
     <string name="school_mail_send_confirm_title">Elküldi ezt az üzenetet?</string>
     <string name="school_mail_send_failed">Nem sikerült elküldeni az üzenetet</string>
+    <string name="school_mail_send_unconfirmed">Nem sikerült megerősíteni, hogy elment-e az üzenet; az újrapróbálkozás kétszer is kézbesítheti</string>
     <string name="school_mail_sent_copy_failed">Az üzenet elküldve, de a másolatot nem sikerült elmenteni az Elküldött üzenetek mappába.</string>
     <string name="school_mail_sent_copy_no_folder">Az üzenet elküldve, de nincs Elküldött üzenetek mappa, amelybe el lehetne menteni a másolatot.</string>
     <string name="school_mail_sent_copy_not_saved">Elküldve, de a másolat nem mentődött el az Elküldött üzenetek mappába</string>
@@ -953,7 +963,7 @@
     <string name="settings_show_classroom_on_class_table">Tantermek megjelenítése az órarendben</string>
     <string name="settings_sign_out_imported_tables">Az importált órarendek is törlődnek.</string>
     <string name="settings_sync_brief_description">A TigerSync lehetővé teszi a kiválasztott adatok szinkronizálását az összes eszközön. A nem engedélyezett adatok csak ezen az eszközön maradnak.</string>
-    <string name="settings_sync_disabled_note">Ha a szinkronizálás ki van kapcsolva, minden adat csak ezen az eszközön marad.</string>
+    <string name="settings_sync_disabled_note">Kikapcsolt szinkronizálás mellett is megkapja a TigerDuck szerver a hallgatói azonosítódat, a Moodle tokenedet és az eszköz push hitelesítő adatait, hogy feladatemlékeztetőket küldhessen</string>
     <string name="settings_sync_status_off">Ki</string>
     <string name="settings_sync_status_on">Be</string>
     <string name="settings_system_language">Rendszer nyelve</string>
@@ -1008,10 +1018,12 @@
     <string name="sync_status_hours_ago_short">%1$d ó ezelőtt</string>
     <string name="sync_status_just_now">Épp most</string>
     <string name="sync_status_last_synced">Utolsó szinkronizálás</string>
+    <string name="sync_status_last_updated">Utolsó frissítés</string>
     <string name="sync_status_minimal">Korlátozott</string>
     <string name="sync_status_minutes_ago_short">%1$d p ezelőtt</string>
     <string name="sync_status_nav_label">TigerSync állapota</string>
     <string name="sync_status_never_synced">Még soha nem szinkronizálva</string>
+    <string name="sync_status_never_updated">Még soha nem frissítve</string>
     <string name="sync_status_ok">Rendben</string>
     <string name="sync_status_syncing">Szinkronizálás…</string>
     <string name="sync_status_title">Szinkronizálás állapota</string>
