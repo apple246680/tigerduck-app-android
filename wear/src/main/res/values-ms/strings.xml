@@ -63,6 +63,14 @@
     <string name="app_reset_required_action">Tetapkan semula</string>
     <string name="app_reset_required_message">Status log masuk dan keutamaan anda tidak dapat dibaca, mungkin disebabkan naik taraf OS, pemulihan sandaran, atau masalah storan.\n\nKetik \"Tetapkan semula\" untuk mengosongkan data lama, kemudian log masuk dan konfigurasi semula keutamaan anda.</string>
     <string name="app_reset_required_title">Tetapan semula diperlukan</string>
+    <string name="assignment_detail_comments">Ulasan serahan</string>
+    <string name="assignment_detail_description">Penerangan</string>
+    <string name="assignment_detail_due">Tarikh akhir</string>
+    <string name="assignment_detail_group">Kumpulan</string>
+    <string name="assignment_detail_not_submitted">Belum dihantar</string>
+    <string name="assignment_detail_submission">Serahan anda</string>
+    <string name="assignment_detail_submit_on_moodle">Hantar di Moodle</string>
+    <string name="assignment_detail_submitted_at">Dihantar</string>
     <string name="assignment_filter_all">Semua</string>
     <string name="assignment_filter_ignored">Diabaikan</string>
     <string name="assignment_filter_incomplete">Belum selesai</string>
@@ -276,6 +284,7 @@
     <string name="course_color_picker_custom_label">Warna khusus</string>
     <string name="course_color_picker_title">Edit warna</string>
     <string name="course_credits_value">Kredit: %1$s</string>
+    <string name="course_detail_assignments_label">Tugasan</string>
     <string name="course_detail_classroom_label">Bilik darjah</string>
     <string name="course_detail_code_copied">Kod disalin</string>
     <string name="course_detail_code_label">Kod</string>
@@ -626,7 +635,7 @@
     <string name="onboarding_start_button">Mula menggunakan TigerDuck</string>
     <string name="onboarding_sync_description">TigerSync memastikan kursus, tugasan dan tetapan anda sentiasa disegerakkan merentas semua peranti anda. Anda boleh memilih dengan tepat apa yang hendak disegerakkan dalam tetapan TigerSync.</string>
     <string name="onboarding_sync_not_shared_password">Kata laluan tidak pernah dimuat naik</string>
-    <string name="onboarding_sync_note">Apabila segerak dimatikan, semua data kekal pada peranti ini sahaja. Pemberitahuan tolak untuk peringatan kerja rumah berfungsi secara tempatan tanpa TigerSync.</string>
+    <string name="onboarding_sync_note">Apabila penyegerakan dimatikan, pelayan TigerDuck masih menerima ID Pelajar, token Moodle dan kelayakan push peranti ini untuk menghantar peringatan tugasan</string>
     <string name="onboarding_sync_shared_assignments">Data tugasan</string>
     <string name="onboarding_sync_shared_courses">Data kursus</string>
     <string name="onboarding_sync_shared_device_id">ID peranti</string>
@@ -768,6 +777,7 @@
     <string name="school_mail_send">Hantar</string>
     <string name="school_mail_send_confirm_title">Hantar e-mel ini?</string>
     <string name="school_mail_send_failed">Tidak dapat menghantar e-mel</string>
+    <string name="school_mail_send_unconfirmed">Tidak dapat mengesahkan sama ada e-mel telah dihantar; mencuba semula mungkin menghantarnya dua kali</string>
     <string name="school_mail_sent_copy_failed">E-mel telah dihantar, tetapi salinan tidak dapat disimpan ke Dihantar.</string>
     <string name="school_mail_sent_copy_no_folder">E-mel telah dihantar, tetapi tiada folder Dihantar untuk menyimpan salinan.</string>
     <string name="school_mail_sent_copy_not_saved">E-mel telah dihantar, tetapi salinan tidak disimpan ke Dihantar</string>
@@ -953,7 +963,7 @@
     <string name="settings_show_classroom_on_class_table">Tunjukkan bilik darjah dalam jadual</string>
     <string name="settings_sign_out_imported_tables">Jadual kelas yang diimport juga akan dipadam.</string>
     <string name="settings_sync_brief_description">TigerSync membolehkan anda menyegerakkan maklumat pilihan anda di semua peranti. Maklumat yang tidak didayakan kekal pada peranti ini sahaja.</string>
-    <string name="settings_sync_disabled_note">Apabila segerak dimatikan, semua data kekal pada peranti ini sahaja.</string>
+    <string name="settings_sync_disabled_note">Apabila penyegerakan dimatikan, pelayan TigerDuck masih menerima ID Pelajar, token Moodle dan kelayakan push peranti ini untuk menghantar peringatan tugasan</string>
     <string name="settings_sync_status_off">Mati</string>
     <string name="settings_sync_status_on">Hidup</string>
     <string name="settings_system_language">Bahasa sistem</string>
@@ -1008,10 +1018,12 @@
     <string name="sync_status_hours_ago_short">%1$d j lalu</string>
     <string name="sync_status_just_now">Baru sahaja</string>
     <string name="sync_status_last_synced">Disegerakkan kali terakhir</string>
+    <string name="sync_status_last_updated">Dikemas kini kali terakhir</string>
     <string name="sync_status_minimal">Terhad</string>
     <string name="sync_status_minutes_ago_short">%1$d min lalu</string>
     <string name="sync_status_nav_label">Status TigerSync</string>
     <string name="sync_status_never_synced">Belum pernah disegerak</string>
+    <string name="sync_status_never_updated">Belum pernah dikemas kini</string>
     <string name="sync_status_ok">OK</string>
     <string name="sync_status_syncing">Menyegerakkan…</string>
     <string name="sync_status_title">Status penyegerakan</string>

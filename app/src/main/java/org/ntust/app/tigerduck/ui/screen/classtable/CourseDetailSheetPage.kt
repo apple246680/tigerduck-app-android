@@ -324,7 +324,16 @@ internal fun CourseDetailContent(
                                 color = cardDividerColor(),
                             )
                         }
-                        AssignmentRow(assignment) { openAssignmentInMoodle(context, assignment) }
+                        // Nothing opens for one Moodle gave no address, so its
+                        // row offers no tap; see Assignment.moodleDeepLink.
+                        AssignmentRow(
+                            assignment,
+                            onClick = if (assignment.moodleDeepLink != null) {
+                                { openAssignmentInMoodle(context, assignment) }
+                            } else {
+                                null
+                            },
+                        )
                     }
                 }
             }
@@ -332,15 +341,19 @@ internal fun CourseDetailContent(
     }
 }
 
-/** An outstanding assignment: its title and due time, opening it in Moodle. */
+/**
+ * An outstanding assignment: its title and due time, opening it in Moodle. A
+ * null [onClick] makes the row plain, with no open-in glyph, as [InfoRow] is
+ * without a copy.
+ */
 @Composable
-private fun AssignmentRow(assignment: Assignment, onClick: () -> Unit) {
+private fun AssignmentRow(assignment: Assignment, onClick: (() -> Unit)?) {
     val due = remember(assignment.dueDate) {
         SimpleDateFormat("M/d HH:mm", Locale.getDefault()).apply { timeZone = org.ntust.app.tigerduck.AppConstants.TAIPEI_TZ }
             .format(assignment.dueDate)
     }
     ListItem(
-        modifier = Modifier.clickable(role = Role.Button, onClick = onClick),
+        modifier = if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier,
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
         leadingContent = {
             Icon(Icons.Outlined.Description, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -352,13 +365,17 @@ private fun AssignmentRow(assignment: Assignment, onClick: () -> Unit) {
                 color = if (assignment.isOverdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
-        trailingContent = {
-            Icon(
-                Icons.AutoMirrored.Filled.OpenInNew,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY),
-                modifier = Modifier.size(18.dp),
-            )
+        trailingContent = if (onClick == null) {
+            null
+        } else {
+            {
+                Icon(
+                    Icons.AutoMirrored.Filled.OpenInNew,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.SECONDARY),
+                    modifier = Modifier.size(18.dp),
+                )
+            }
         },
     )
 }
