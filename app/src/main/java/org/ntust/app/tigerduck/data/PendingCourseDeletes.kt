@@ -81,8 +81,7 @@ class PendingCourseDeletes internal constructor(
     private val lastStamp = AtomicLong(0)
 
     // Whether [lastStamp] has been raised above every stamp the file held when
-    // this process first needed one; read without the lock on the fast path.
-    @Volatile
+    // this process first needed one; read and set under [mutex].
     private var seeded = false
 
     /**
@@ -91,12 +90,18 @@ class PendingCourseDeletes internal constructor(
      * still queued from before this process included. Take it as the user
      * acts, before the work that follows suspends, so a re-add and a removal
      * compare by the order they were asked in, not by when each reached the
-     * lock behind a slow request. Suspends only the first time, to read the
-     * stamps already kept, and behind a write to the file.
+     * lock behind a slow request. Waits for the file's lock, the first time
+     * to read the stamps already kept, and is taken before that lock goes:
+     * the lock hands over in the order asked, so a second stamp asked while
+     * the first reads gets the later one, even when it resumes inline as the
+     * lock goes, as on the main thread's immediate dispatcher.
      */
-    suspend fun stamp(): Long {
-        if (!seeded) mutex.withLock { if (!seeded) noteStamps(waiting()).also { seeded = true } }
-        return lastStamp.updateAndGet { last -> maxOf(last + 1, clock()) }
+    suspend fun stamp(): Long = mutex.withLock {
+        if (!seeded) {
+            noteStamps(waiting())
+            seeded = true
+        }
+        lastStamp.updateAndGet { last -> maxOf(last + 1, clock()) }
     }
 
     /** [send] with the delete asked now. */

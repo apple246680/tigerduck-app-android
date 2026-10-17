@@ -1,8 +1,12 @@
 package org.ntust.app.tigerduck.data
 
 import android.app.Application
+import android.os.Looper
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -21,6 +25,7 @@ import org.ntust.app.tigerduck.push.PushApiException
 import org.ntust.app.tigerduck.shared.Course
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.io.IOException
 
@@ -292,6 +297,30 @@ class PendingCourseDeletesTest {
         answer = {}
         restarted.retry()
         assertEquals(1, sent.size)
+    }
+
+    /**
+     * A process's first stamp reads the ones kept, and a second asked meanwhile waits for it.
+     * On the main thread's immediate dispatcher the lock going resumed the second one inline,
+     * which took its stamp before the first: a re-add asked after a removal then ranked below
+     * it, and its forget kept the delete that takes the restored course off.
+     */
+    @Test
+    fun `two first stamps of a process rank in the order they were asked`() {
+        runBlocking { cache.savePendingCourseDeletes(mapOf(term to mapOf(typed to 1_000L))) }
+        val stamps = mutableMapOf<String, Long>()
+        val scope = CoroutineScope(Dispatchers.Main.immediate)
+        val first = scope.launch { stamps["first"] = deletes.stamp() }
+        val second = scope.launch { stamps["second"] = deletes.stamp() }
+        // The first one's read of the file resumes on the main looper.
+        val deadline = System.currentTimeMillis() + 5_000
+        while (!(first.isCompleted && second.isCompleted) && System.currentTimeMillis() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(2)
+        }
+        assertTrue("both stamps taken", first.isCompleted && second.isCompleted)
+        assertTrue("the first asked has the earlier stamp: $stamps", stamps.getValue("first") < stamps.getValue("second"))
+        assertTrue("both above the delete kept", stamps.values.all { it > 1_000 })
     }
 
     /**
