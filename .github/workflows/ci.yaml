@@ -19,9 +19,11 @@ jobs:
   build-and-test:
     # One runner per leg. The three used to run back to back in a single job
     # (~7 min), yet none of them needs another's output, so the gate now takes
-    # as long as its slowest leg. Every leg restores the same dependency and
-    # transform caches the release workflow writes on main, so the split does
-    # not mean downloading the world three times.
+    # as long as its slowest leg. The phone's two release builds are a leg each
+    # for the same reason: together, R8 over both flavors took ~13 min, twice
+    # any other leg. Every leg restores the same dependency and transform
+    # caches the release workflow writes on main, so the split does not mean
+    # downloading the world once per leg.
     name: build-and-test (${{ matrix.leg }})
     runs-on: ubuntu-latest
     strategy:
@@ -51,8 +53,10 @@ jobs:
           # the same reason, and built without google-services.json, which only
           # the release workflow decodes; app/build.gradle.kts skips the plugin
           # without it, as for the debug legs.
-          - leg: phone release
-            tasks: :app:assemblePlayRelease :app:assembleFdroidRelease
+          - leg: play release
+            tasks: :app:assemblePlayRelease
+          - leg: fdroid release
+            tasks: :app:assembleFdroidRelease
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
