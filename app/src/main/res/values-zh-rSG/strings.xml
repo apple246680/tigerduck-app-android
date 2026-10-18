@@ -1017,6 +1017,7 @@
     <string name="settings_view_source_code">查看原代码</string>
     <string name="settings_visual_preset_label">界面风格</string>
     <string name="settings_whats_new">新功能说明</string>
+    <string name="share_code_needs_update_message">这个分享码需要较新版本的 App。</string>
     <string name="sign_in_password">密码</string>
     <string name="sign_in_student_id">学号</string>
     <string name="source_code_picker_current_app_badge">当前应用</string>

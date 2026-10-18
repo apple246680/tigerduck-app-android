@@ -1017,6 +1017,7 @@
     <string name="settings_view_source_code">ਸੋਰਸ ਕੋਡ ਦੇਖੋ</string>
     <string name="settings_visual_preset_label">ਇੰਟਰਫੇਸ ਸ਼ੈਲੀ</string>
     <string name="settings_whats_new">ਕੀ ਨਵਾਂ ਹੈ</string>
+    <string name="share_code_needs_update_message">ਇਸ ਸ਼ੇਅਰ ਕੋਡ ਲਈ ਐਪ ਦਾ ਨਵਾਂ ਸੰਸਕਰਣ ਲੋੜੀਂਦਾ ਹੈ।</string>
     <string name="sign_in_password">ਪਾਸਵਰਡ</string>
     <string name="sign_in_student_id">ਵਿਦਿਆਰਥੀ ID</string>
     <string name="source_code_picker_current_app_badge">ਮੌਜੂਦਾ ਐਪ</string>

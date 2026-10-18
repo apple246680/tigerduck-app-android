@@ -1017,6 +1017,7 @@
     <string name="settings_view_source_code">Broncode bekijken</string>
     <string name="settings_visual_preset_label">Interfacestijl</string>
     <string name="settings_whats_new">Wat is er nieuw</string>
+    <string name="share_code_needs_update_message">Voor deze deelcode is een nieuwere versie van de app nodig.</string>
     <string name="sign_in_password">Wachtwoord</string>
     <string name="sign_in_student_id">Studentnummer</string>
     <string name="source_code_picker_current_app_badge">Deze app</string>

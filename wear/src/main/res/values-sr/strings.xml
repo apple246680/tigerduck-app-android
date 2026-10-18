@@ -1017,6 +1017,7 @@
     <string name="settings_view_source_code">Погледај изворни код</string>
     <string name="settings_visual_preset_label">Стил интерфејса</string>
     <string name="settings_whats_new">Шта је ново</string>
+    <string name="share_code_needs_update_message">Овај код за дељење захтева новију верзију апликације.</string>
     <string name="sign_in_password">Лозинка</string>
     <string name="sign_in_student_id">Број индекса</string>
     <string name="source_code_picker_current_app_badge">Тренутна апликација</string>
