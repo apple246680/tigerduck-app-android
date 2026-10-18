@@ -12,7 +12,10 @@ import javax.inject.Inject
  * of the confirmation the sign-out asks first with. With none, it signs out at once.
  */
 enum class SignOutLoss(@param:StringRes val message: Int) {
-    /** The user's own edits that TigerSync does not keep: it is off, or that kind's switch is. */
+    /**
+     * The user's own edits that TigerSync does not keep: it is off, that kind's switch is, or no
+     * full sync has taken that kind on this phone yet.
+     */
     UNSYNCED_DATA(R.string.settings_sign_out_unsynced_data),
 
     /** The class tables imported from share codes, which only this phone has. Last: "…too". */
@@ -25,15 +28,18 @@ data class LocalEdits(
     val courses: Boolean = false,
     val courseNames: Boolean = false,
     val courseColours: Boolean = false,
-    /** Assignments ignored or marked done, and courses whose assignments are ignored. */
+    /** Assignments ignored or marked done. */
     val assignmentMarks: Boolean = false,
+    /** Courses whose assignments are ignored, which sync only with assignments and courses both. */
+    val ignoredCourses: Boolean = false,
 )
 
 /**
  * Edits the server has not confirmed, which a sign-out deletes even with their kind synced: a
- * course added by hand that has not been uploaded, an ignore not yet confirmed, a done or ignored
- * mark still waiting to be sent (UnsentMarks), and edits whose upload the re-enable check holds
- * back (the sign-out drops the hold).
+ * course added by hand that has not been uploaded, a removal whose DELETE still waits
+ * (PendingCourseDeletes), a colour or name still waiting to go up (PendingCourseOverrides), an
+ * ignore not yet confirmed, a done or ignored mark still waiting to be sent (UnsentMarks), and
+ * edits whose upload the re-enable check holds back (the sign-out drops the hold).
  */
 data class Unconfirmed(
     val courses: Boolean = false,
@@ -49,6 +55,12 @@ data class SyncedKinds(
     val courseNames: Boolean,
     val courseColours: Boolean,
     val assignments: Boolean,
+    /**
+     * The kinds, by their re-enable check names ([REENABLE_CATEGORIES]), whose server data a full
+     * sync has taken on this phone for the account: [AppPreferences.syncedCategories]. Before that,
+     * as after a sign-in, the server may hold none of what the phone has.
+     */
+    val syncedOnce: Set<String>,
 )
 
 fun signOutLosses(
@@ -57,11 +69,17 @@ fun signOutLosses(
     hasImportedClassTables: Boolean,
     unconfirmed: Unconfirmed = Unconfirmed(),
 ): Set<SignOutLoss> {
-    fun kept(kind: Boolean) = synced.enabled && kind
-    val unsynced = (edits.courses && !kept(synced.courses)) ||
-        (edits.courseNames && !kept(synced.courseNames)) ||
-        (edits.courseColours && !kept(synced.courseColours)) ||
-        (edits.assignmentMarks && !kept(synced.assignments)) ||
+    // As the iPhone's signOutDeletesUnsyncedData: TigerSync on, the kind's switch on, and its data
+    // taken by a full sync here.
+    fun kept(switchedOn: Boolean, category: String) = synced.enabled && switchedOn && category in synced.syncedOnce
+    val keepsAssignments = kept(synced.assignments, "assignments")
+    val keepsCourses = kept(synced.courses, "courses")
+    val unsynced = (edits.courses && !keepsCourses) ||
+        (edits.courseNames && !kept(synced.courseNames, "course_names")) ||
+        (edits.courseColours && !kept(synced.courseColours, "course_colors")) ||
+        (edits.assignmentMarks && !keepsAssignments) ||
+        // CourseIgnoreSync.syncsCourseIgnores: both switches.
+        (edits.ignoredCourses && !(keepsAssignments && keepsCourses)) ||
         unconfirmed.courses || unconfirmed.courseNames || unconfirmed.courseColours || unconfirmed.assignments
     return buildSet {
         if (unsynced) add(SignOutLoss.UNSYNCED_DATA)
@@ -87,8 +105,8 @@ class SignOutLossCheck @Inject constructor(
                 dataCache.loadCourseCustomNames().values.any { it.isNotEmpty() },
             courseColours = courses.any { it.customColorHex != null },
             assignmentMarks = dataCache.loadIgnoredAssignments().isNotEmpty() ||
-                dataCache.loadMarkedCompletedAssignments().isNotEmpty() ||
-                dataCache.loadIgnoredCourses().isNotEmpty(),
+                dataCache.loadMarkedCompletedAssignments().isNotEmpty(),
+            ignoredCourses = dataCache.loadIgnoredCourses().isNotEmpty(),
         )
         val synced = SyncedKinds(
             enabled = prefs.cloudSyncEnabled,
@@ -96,17 +114,19 @@ class SignOutLossCheck @Inject constructor(
             courseNames = prefs.syncCourseNames,
             courseColours = prefs.syncCourseColors,
             assignments = prefs.syncAssignments,
+            syncedOnce = prefs.syncedCategories,
         )
         // Held back for the re-enable check, by its category names (REENABLE_CATEGORIES).
         val held = prefs.pendingConflictCategories
         val serverKnown = dataCache.loadServerKnownNos()
+        val overrides = dataCache.loadPendingCourseOverrides()
         val unconfirmed = Unconfirmed(
             courses = (edits.courses && "courses" in held) || terms.any { (semester, termCourses) ->
                 termCourses.any { it.isManual && it.courseNo !in serverKnown[semester].orEmpty() }
-            },
-            courseNames = edits.courseNames && "course_names" in held,
-            courseColours = edits.courseColours && "course_colors" in held,
-            assignments = (edits.assignmentMarks && "assignments" in held) ||
+            } || dataCache.loadPendingCourseDeletes().values.any { it.isNotEmpty() },
+            courseNames = (edits.courseNames && "course_names" in held) || overrides.any { it.customName != null },
+            courseColours = (edits.courseColours && "course_colors" in held) || overrides.any { it.colorHex != null },
+            assignments = ((edits.assignmentMarks || edits.ignoredCourses) && "assignments" in held) ||
                 dataCache.loadPendingCourseIgnores().isNotEmpty() ||
                 // A mark tapped offline waits in unsent_marks.json for the next sync.
                 dataCache.loadUnsentMarks().isNotEmpty(),
