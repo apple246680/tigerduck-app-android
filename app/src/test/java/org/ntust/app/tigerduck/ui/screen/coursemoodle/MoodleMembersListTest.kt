@@ -59,7 +59,7 @@ class MoodleMembersListTest {
 
     private val students = (1..120).map { i ->
         MoodleMember(
-            id = i, fullName = "B1130%04d @ Student %d".format(i, i), idNumber = null, department = null, email = null,
+            id = i, fullName = "B1130%04d @ Student %d".format(i, i), idNumber = null, email = null,
             groups = emptyList(), roles = listOf(MoodleMemberRole("student", "", 0)),
             pictureUrl = "https://moodle2.ntust.edu.tw/pluginfile.php/$i/user/icon/f1?rev=1",
             description = "", interests = emptyList(), fields = emptyList(),

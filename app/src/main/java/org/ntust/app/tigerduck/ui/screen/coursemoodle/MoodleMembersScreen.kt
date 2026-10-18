@@ -395,11 +395,8 @@ private fun MemberRow(member: MoodleMember, picture: androidx.compose.ui.graphic
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
         leadingContent = { MoodleAvatar(member.name, picture, 40.dp) },
         headlineContent = { Text(member.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        supportingContent = if (subline.isNotEmpty()) {
-            { Text(subline, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-        } else {
-            null
-        },
+        // The department comes from the ID, so there is none without one.
+        supportingContent = member.studentId?.let { studentId -> { MemberSubline(studentId, department) } },
         trailingContent = {
             Icon(
                 Icons.Filled.ChevronRight,
@@ -408,6 +405,18 @@ private fun MemberRow(member: MoodleMember, picture: androidx.compose.ui.graphic
             )
         },
     )
+}
+
+/**
+ * The line under a name in the list: the student ID, whole, then the department's short name, which
+ * is the one cut short when the line runs out of room, as on the iPhone.
+ */
+@Composable
+internal fun MemberSubline(studentId: String, department: String?) {
+    Row {
+        Text(studentId, maxLines = 1, softWrap = false)
+        if (department != null) Text(" · $department", maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
 }
 
 @Composable

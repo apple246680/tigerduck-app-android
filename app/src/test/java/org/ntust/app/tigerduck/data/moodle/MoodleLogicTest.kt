@@ -25,7 +25,7 @@ class MoodleLogicTest {
         MoodleGradeItem(id, "Item $id", type, "assign", 30 + id, grade, max, hidden, "")
 
     private fun member(id: Int, fullName: String, vararg roles: String, idNumber: String? = null) = MoodleMember(
-        id = id, fullName = fullName, idNumber = idNumber, department = null, email = null,
+        id = id, fullName = fullName, idNumber = idNumber, email = null,
         groups = emptyList(), roles = roles.map { MoodleMemberRole(it, "", 0) }, pictureUrl = null,
         description = "", interests = emptyList(), fields = emptyList(),
     )
@@ -141,7 +141,7 @@ class MoodleLogicTest {
         val members = listOf(
             member(1, "B00015001 @ Amy", "student"),
             // Moodle's own field: the degree level, which the row no longer shows.
-            member(2, "B00000002 @ Bob", "student").copy(department = "大學部"),
+            member(2, "B00000002 @ Bob", "student"),
         )
         val names = mapOf("cs" to "Computer Science and Information Engineering")
         fun found(query: String) = MoodleMembers.sections(members, query, departmentNames = names).flatMap { it.members }.map { it.id }
@@ -149,7 +149,6 @@ class MoodleLogicTest {
         assertEquals(listOf(2), found("bob"))
         assertEquals(listOf(1), found("15001"))
         assertEquals("the name shown beside the ID", listOf(1), found("computer science"))
-        assertTrue("Moodle's department field is not searched", found("大學部").isEmpty())
         assertTrue(found("zzz").isEmpty())
     }
 
@@ -169,13 +168,19 @@ class MoodleLogicTest {
 
     @Test
     fun `only a bachelor's ID has a department code`() {
-        for (id in listOf("M00015999", "D00015999", "T00015999", "b00015999")) {
+        for (id in listOf("M00015999", "D00015999", "T00015999")) {
             assertNull(id, MoodleDepartment.code(id))
             assertNull(id, MoodleDepartment.key(id))
         }
         assertNull(MoodleDepartment.key(null))
         assertNull(MoodleDepartment.key(""))
         assertNull("too short to carry a code", MoodleDepartment.key("B000"))
+    }
+
+    @Test
+    fun `a lowercase b is a bachelor's ID too, as on the iPhone`() {
+        assertEquals("15", MoodleDepartment.code("b00015999"))
+        assertEquals("cs", MoodleDepartment.key("b00015999"))
     }
 
     @Test

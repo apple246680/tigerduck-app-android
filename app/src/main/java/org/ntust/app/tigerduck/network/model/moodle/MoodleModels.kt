@@ -78,7 +78,6 @@ data class MoodleMember(
     /** As Moodle spells it, which at NTUST is "student ID @ name". */
     val fullName: String,
     val idNumber: String?,
-    val department: String?,
     val email: String?,
     val groups: List<String>,
     val roles: List<MoodleMemberRole>,
