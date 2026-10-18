@@ -1017,6 +1017,7 @@
     <string name="settings_view_source_code">Бастапқы кодты қарау</string>
     <string name="settings_visual_preset_label">Интерфейс стилі</string>
     <string name="settings_whats_new">Жаңалықтар</string>
+    <string name="share_code_needs_update_message">Бұл бөлісу кодына қолданбаның жаңарақ нұсқасы қажет.</string>
     <string name="sign_in_password">Құпия сөз</string>
     <string name="sign_in_student_id">Студент ID</string>
     <string name="source_code_picker_current_app_badge">Ағымдағы қосымша</string>
