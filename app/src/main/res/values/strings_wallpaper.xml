@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Accent wallpaper swatch description (Android 12+ Material You) -->
+    <string name="color_name_wallpaper">Wallpaper</string>
+</resources>
