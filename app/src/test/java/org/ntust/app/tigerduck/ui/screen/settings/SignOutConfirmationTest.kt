@@ -228,6 +228,19 @@ class SignOutConfirmationTest {
     }
 
     @Test
+    fun `marks a background sync has taken are kept, before any sync from Home`() = runTest {
+        syncOn()
+        prefs.syncedCategories = emptySet()
+        dataCache.saveMarkedCompletedAssignments(setOf("a1"))
+        assertEquals(setOf(UNSYNCED_DATA), check.losses())
+
+        // BackgroundSyncWorker took the account's marks, which records only this.
+        prefs.assignmentMarksSyncedOnce = true
+
+        assertEquals(emptySet<SignOutLoss>(), check.losses())
+    }
+
+    @Test
     fun `an ignored course is asked about while courses do not sync`() = runTest {
         syncOn()
         dataCache.saveIgnoredCourses(setOf("1141CS1001301"))

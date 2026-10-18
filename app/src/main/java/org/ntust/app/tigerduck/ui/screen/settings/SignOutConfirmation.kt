@@ -114,7 +114,8 @@ class SignOutLossCheck @Inject constructor(
             courseNames = prefs.syncCourseNames,
             courseColours = prefs.syncCourseColors,
             assignments = prefs.syncAssignments,
-            syncedOnce = prefs.syncedCategories,
+            // The background worker's full sync records only that it took the marks.
+            syncedOnce = prefs.syncedCategories + if (prefs.assignmentMarksSyncedOnce) setOf("assignments") else emptySet(),
         )
         // Held back for the re-enable check, by its category names (REENABLE_CATEGORIES).
         val held = prefs.pendingConflictCategories
