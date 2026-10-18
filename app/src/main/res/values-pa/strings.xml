@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">ਅਵੈਧ ਸਰਵਰ ਪ੍ਰਤੀਕਿਰਿਆ</string>
     <string name="error_library_credentials_not_found">ਲਾਇਬ੍ਰੇਰੀ ਖਾਤੇ ਦੀ ਜਾਣਕਾਰੀ ਨਹੀਂ ਮਿਲੀ</string>
     <string name="error_library_sign_in_failed_format">ਲਾਇਬ੍ਰੇਰੀ ਸਾਈਨ ਇਨ ਅਸਫਲ ਰਿਹਾ: %1$@</string>
+    <string name="error_link_no_app">ਇਹ ਲਿੰਕ ਖੋਲ੍ਹ ਸਕਣ ਵਾਲੀ ਕੋਈ ਐਪ ਨਹੀਂ ਹੈ</string>
     <string name="error_moodle_http_status_format">Moodle ਨੇ ਅਣਚਾਹਿਆ HTTP ਸਟੇਟਸ ਵਾਪਸ ਕੀਤਾ: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle ਨੇ ਮੌਜੂਦਾ ਜਾਣਕਾਰੀ ਰੱਦ ਕਰ ਦਿੱਤੀ।</string>
     <string name="error_moodle_invalid_token">Moodle ਟੋਕਨ ਹੁਣ ਵੈਧ ਨਹੀਂ; ਮੁੜ-ਅਧਿਕਾਰ ਲੋੜੀਂਦਾ ਹੈ।</string>

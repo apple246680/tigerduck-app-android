@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Nieprawidłowa odpowiedź serwera</string>
     <string name="error_library_credentials_not_found">Nie znaleziono danych logowania do biblioteki</string>
     <string name="error_library_sign_in_failed_format">Logowanie do biblioteki nie powiodło się: %1$@</string>
+    <string name="error_link_no_app">Żadna aplikacja nie może otworzyć tego linku</string>
     <string name="error_moodle_http_status_format">Moodle zwrócił nieoczekiwany status HTTP: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle odrzucił bieżące dane logowania.</string>
     <string name="error_moodle_invalid_token">Token Moodle nie jest już ważny; wymagana jest ponowna autoryzacja.</string>

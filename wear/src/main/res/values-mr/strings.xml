@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">अवैध सर्व्हर प्रतिसाद</string>
     <string name="error_library_credentials_not_found">ग्रंथालय खाते क्रेडेन्शियल्स सापडले नाहीत</string>
     <string name="error_library_sign_in_failed_format">ग्रंथालय साइन इन अयशस्वी: %1$@</string>
+    <string name="error_link_no_app">ही लिंक उघडू शकेल असे कोणतेही ॲप नाही</string>
     <string name="error_moodle_http_status_format">Moodle ने अनपेक्षित HTTP स्थिती परत केली: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle ने सध्याची क्रेडेन्शियल्स नाकारली.</string>
     <string name="error_moodle_invalid_token">Moodle टोकन यापुढे वैध नाही; पुन्हा अधिकृतीकरण आवश्यक.</string>

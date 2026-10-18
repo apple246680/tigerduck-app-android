@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">ಸರ್ವರ್ ಪ್ರತಿಕ್ರಿಯೆ ಅಮಾನ್ಯವಾಗಿದೆ</string>
     <string name="error_library_credentials_not_found">ಗ್ರಂಥಾಲಯ ಖಾತೆಯ ರುಜುವಾತುಗಳು ಸಿಗಲಿಲ್ಲ</string>
     <string name="error_library_sign_in_failed_format">ಗ್ರಂಥಾಲಯಕ್ಕೆ ಸೈನ್-ಇನ್ ವಿಫಲ: %1$@</string>
+    <string name="error_link_no_app">ಈ ಲಿಂಕ್ ತೆರೆಯಬಲ್ಲ ಯಾವುದೇ ಆ್ಯಪ್ ಇಲ್ಲ</string>
     <string name="error_moodle_http_status_format">Moodle ಅನಿರೀಕ್ಷಿತ HTTP ಸ್ಥಿತಿಯನ್ನು ಹಿಂತಿರುಗಿಸಿದೆ: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle ಪ್ರಸ್ತುತ ರುಜುವಾತುಗಳನ್ನು ತಿರಸ್ಕರಿಸಿತು.</string>
     <string name="error_moodle_invalid_token">Moodle ಟೋಕನ್ ಇನ್ನು ಮುಂದೆ ಮಾನ್ಯವಾಗಿಲ್ಲ; ಮರು ಅಧಿಕಾರವಿಧಾನ ಬೇಕಿದೆ.</string>

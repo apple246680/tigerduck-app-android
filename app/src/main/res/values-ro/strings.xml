@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Răspuns invalid de la server</string>
     <string name="error_library_credentials_not_found">Acreditările contului de bibliotecă nu au fost găsite</string>
     <string name="error_library_sign_in_failed_format">Autentificarea la bibliotecă a eșuat: %1$@</string>
+    <string name="error_link_no_app">Nicio aplicație nu poate deschide acest link</string>
     <string name="error_moodle_http_status_format">Moodle a returnat un cod HTTP neașteptat: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle a respins acreditările curente.</string>
     <string name="error_moodle_invalid_token">Tokenul Moodle nu mai este valid; este necesară reautorizarea.</string>

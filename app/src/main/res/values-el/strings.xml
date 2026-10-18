@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Μη έγκυρη απόκριση διακομιστή</string>
     <string name="error_library_credentials_not_found">Δεν βρέθηκαν διαπιστευτήρια λογαριασμού βιβλιοθήκης</string>
     <string name="error_library_sign_in_failed_format">Αποτυχία σύνδεσης βιβλιοθήκης: %1$@</string>
+    <string name="error_link_no_app">Καμία εφαρμογή δεν μπορεί να ανοίξει αυτόν τον σύνδεσμο</string>
     <string name="error_moodle_http_status_format">Το Moodle επέστρεψε μη αναμενόμενη κατάσταση HTTP: %1$d</string>
     <string name="error_moodle_invalid_credentials">Το Moodle απέρριψε τα τρέχοντα διαπιστευτήρια.</string>
     <string name="error_moodle_invalid_token">Το token του Moodle δεν είναι πλέον έγκυρο· απαιτείται νέα εξουσιοδότηση.</string>

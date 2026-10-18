@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Ugyldigt serversvar</string>
     <string name="error_library_credentials_not_found">Bibliotekskontooplysninger blev ikke fundet</string>
     <string name="error_library_sign_in_failed_format">Login til biblioteket mislykkedes: %1$@</string>
+    <string name="error_link_no_app">Ingen app kan åbne dette link</string>
     <string name="error_moodle_http_status_format">Moodle returnerede en uventet HTTP-status: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle afviste de aktuelle legitimationsoplysninger.</string>
     <string name="error_moodle_invalid_token">Moodle-tokenet er ikke længere gyldigt; geninstallation kræves.</string>

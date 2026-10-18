@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Geçersiz sunucu yanıtı</string>
     <string name="error_library_credentials_not_found">Kütüphane hesabı kimlik bilgileri bulunamadı</string>
     <string name="error_library_sign_in_failed_format">Kütüphane girişi başarısız: %1$@</string>
+    <string name="error_link_no_app">Bu bağlantıyı açabilecek bir uygulama yok</string>
     <string name="error_moodle_http_status_format">Moodle beklenmedik bir HTTP durumu döndürdü: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle mevcut kimlik bilgilerini reddetti.</string>
     <string name="error_moodle_invalid_token">Moodle token’ı artık geçerli değil; yeniden yetkilendirme gerekli.</string>

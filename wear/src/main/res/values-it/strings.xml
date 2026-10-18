@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Risposta del server non valida</string>
     <string name="error_library_credentials_not_found">Credenziali dell’account della biblioteca non trovate</string>
     <string name="error_library_sign_in_failed_format">Accesso alla biblioteca non riuscito: %1$@</string>
+    <string name="error_link_no_app">Nessuna app può aprire questo link</string>
     <string name="error_moodle_http_status_format">Moodle ha restituito uno stato HTTP imprevisto: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle ha rifiutato le credenziali attuali.</string>
     <string name="error_moodle_invalid_token">Il token Moodle non è più valido; è richiesta una nuova autorizzazione.</string>

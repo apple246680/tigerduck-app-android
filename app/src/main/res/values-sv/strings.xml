@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Ogiltigt serversvar</string>
     <string name="error_library_credentials_not_found">Inloggningsuppgifter för biblioteket hittades inte</string>
     <string name="error_library_sign_in_failed_format">Inloggning till biblioteket misslyckades: %1$@</string>
+    <string name="error_link_no_app">Ingen app kan öppna den här länken</string>
     <string name="error_moodle_http_status_format">Moodle returnerade en oväntad HTTP-status: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle avvisade de aktuella inloggningsuppgifterna.</string>
     <string name="error_moodle_invalid_token">Moodle-token är inte längre giltig; ny auktorisering krävs.</string>

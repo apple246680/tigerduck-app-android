@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Неважећи одговор сервера</string>
     <string name="error_library_credentials_not_found">Подаци за пријаву на библиотеку нису пронађени</string>
     <string name="error_library_sign_in_failed_format">Пријава на библиотеку није успела: %1$@</string>
+    <string name="error_link_no_app">Ниједна апликација не може да отвори овај линк</string>
     <string name="error_moodle_http_status_format">Moodle је вратио неочекивани HTTP статус: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle је одбио тренутне податке за пријаву.</string>
     <string name="error_moodle_invalid_token">Moodle токен више није важећи; потребна је поновна ауторизација.</string>

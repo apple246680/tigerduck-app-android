@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Hindi valid na tugon ng server</string>
     <string name="error_library_credentials_not_found">Walang nakitang credentials ng library account</string>
     <string name="error_library_sign_in_failed_format">Nabigong mag-sign in sa aklatan: %1$@</string>
+    <string name="error_link_no_app">Walang app na makakapagbukas ng link na ito</string>
     <string name="error_moodle_http_status_format">Nagbalik ang Moodle ng hindi inaasahang HTTP status: %1$d</string>
     <string name="error_moodle_invalid_credentials">Tinanggihan ng Moodle ang kasalukuyang credentials.</string>
     <string name="error_moodle_invalid_token">Hindi na valid ang Moodle token; kailangan ng muling pag-authorize.</string>
