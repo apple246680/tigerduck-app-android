@@ -214,7 +214,6 @@ object MoodleJson {
                 id = o.int("id") ?: return@mapNotNull null,
                 fullName = o.str("fullname").orEmpty(),
                 idNumber = nonEmpty(o.str("idnumber")),
-                department = nonEmpty(o.str("department")),
                 email = nonEmpty(o.str("email")),
                 groups = o.array("groups").orEmpty().mapNotNull { g ->
                     nonEmpty(g.objOrNull()?.str("name")?.let(MoodleHtmlText::plainText))

@@ -326,7 +326,7 @@ class MoodleCourseStoreTest {
     fun `a member opened with nothing cached fetches the members, once`() = runTest(UnconfinedTestDispatcher()) {
         api.membersAnswer = {
             MoodleMemberList(1, listOf(org.ntust.app.tigerduck.network.model.moodle.MoodleMember(
-                7, "B1 @ Amy", null, null, null, emptyList(), emptyList(), null, "", emptyList(), emptyList(),
+                7, "B1 @ Amy", null, null, emptyList(), emptyList(), null, "", emptyList(), emptyList(),
             )))
         }
         val store = store()
@@ -393,7 +393,7 @@ class MoodleCourseStoreTest {
             background = background,
         )
         val member = org.ntust.app.tigerduck.network.model.moodle.MoodleMember(
-            7, "B1 @ Amy", null, null, null, emptyList(), emptyList(),
+            7, "B1 @ Amy", null, null, emptyList(), emptyList(),
             "https://moodle2.ntust.edu.tw/pluginfile.php/9/user/icon/f1?rev=3", "", emptyList(), emptyList(),
         )
 

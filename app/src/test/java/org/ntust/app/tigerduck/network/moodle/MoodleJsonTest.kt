@@ -99,7 +99,6 @@ class MoodleJsonTest {
         )
         val amy = members[0]
         assertEquals("B11300001", amy.idNumber)
-        assertNull("a blank department reads as none", amy.department)
         assertEquals(listOf("Team A"), amy.groups)
         assertEquals("student", amy.roles.single().shortName)
         assertEquals(listOf("tea", "cats"), amy.interests)
