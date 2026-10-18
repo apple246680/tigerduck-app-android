@@ -3,6 +3,9 @@ package org.ntust.app.tigerduck.data.preferences
 import android.content.Context
 import android.content.SharedPreferences
 import com.google.gson.Gson
+import com.google.gson.JsonArray
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.BufferOverflow
@@ -49,6 +52,57 @@ import javax.inject.Singleton
  */
 fun effectiveCloudSyncEnabled(storedValue: Boolean, flavor: String = BuildConfig.FLAVOR): Boolean =
     storedValue && !flavor.equals("fdroid", ignoreCase = true)
+
+/**
+ * The stored Home layout, made safe to show: the read side of
+ * [AppPreferences.homeSections], a pure function for the same reason as
+ * [effectiveCloudSyncEnabled].
+ *
+ * Gson builds [HomeSection] without running its constructor (CLAUDE.md,
+ * "Upgrade-safe persistence"), so whatever an older build wrote differently
+ * arrives as a null behind a non-null Kotlin type, which cannot be tested
+ * for once the object exists. The repairs are therefore made on the JSON
+ * tree, before the types are built:
+ *
+ * - a section whose `type`, or a shortcut whose `feature`, names a constant
+ *   this build does not have is dropped rather than left to NPE in the
+ *   grid — the one rename so far, GPA to SCORE, is instead mapped by the
+ *   `@SerializedName` alternate on [AppFeature.SCORE], which `gson` applies
+ *   here too;
+ * - a section without `widgets` reads back with none, where the Kotlin
+ *   default would not have applied.
+ *
+ * QUICK_WIDGETS sections are kept: builds before 2.5 filtered them out of
+ * what they read ("feature temporarily disabled") but left them stored, so
+ * the layout a user saved comes back now that the grid ships. The
+ * renumbering remains for a layout such a build re-saved with the gap that
+ * left, as HomeSectionLayout.add would otherwise hand out a duplicate.
+ */
+internal fun restoreHomeSections(json: String?, gson: Gson): List<HomeSection> {
+    json ?: return HomeSection.defaults()
+    return try {
+        val repaired = JsonArray()
+        JsonParser.parseString(json).asJsonArray
+            .filterIsInstance<JsonObject>()
+            .filter { gson.fromJson(it.get("type"), HomeSection.HomeSectionType::class.java) != null }
+            .forEach { section ->
+                val kept = JsonArray()
+                section.get("widgets")?.takeIf { it.isJsonArray }?.asJsonArray
+                    ?.filterIsInstance<JsonObject>()
+                    ?.filter { gson.fromJson(it.get("feature"), AppFeature::class.java) != null }
+                    ?.forEach(kept::add)
+                section.add("widgets", kept)
+                repaired.add(section)
+            }
+        val type = object : TypeToken<List<HomeSection>>() {}.type
+        gson.fromJson<List<HomeSection>>(repaired, type)
+            ?.mapIndexed { i, s -> s.copy(sortOrder = i) }
+            ?.ifEmpty { HomeSection.defaults() }
+            ?: HomeSection.defaults()
+    } catch (e: Exception) {
+        HomeSection.defaults()
+    }
+}
 
 @Singleton
 class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
@@ -403,7 +457,7 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
         }
 
     private val _showClassroomInClassTable =
-        MutableStateFlow(prefs.getBoolean("showClassroomInClassTable", false))
+        MutableStateFlow(prefs.getBoolean("showClassroomInClassTable", true))
 
     /**
      * Observable form of [showClassroomInClassTable], for the class table,
@@ -413,17 +467,55 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
         _showClassroomInClassTable.asStateFlow()
 
     /**
-     * Print each course's room in the corner of its class-table cell. Off by
-     * default: the grid's job is which course, not where, and the cell is
-     * narrow enough that a second line is a deliberate trade. Device-local,
-     * like every display preference; the settings document the backend
-     * syncs does not carry it.
+     * Print each course's room in the corner of its class-table cell. On by
+     * default, as on the iPhone: where a class meets is what students look up
+     * next to which course it is. It defaulted off until 2.6, and a default
+     * is nothing stored, so the flip alone upgrades everyone who never
+     * touched the switch; whoever turned it off stored a false and keeps it.
+     * Device-local, like every display preference; the settings document the
+     * backend syncs does not carry it.
      */
     var showClassroomInClassTable: Boolean
         get() = _showClassroomInClassTable.value
         set(value) {
             prefs.edit().putBoolean("showClassroomInClassTable", value).apply()
             _showClassroomInClassTable.value = value
+        }
+
+    private val _pinTodayCoursesOnClassTable =
+        MutableStateFlow(prefs.getBoolean(PIN_TODAY_COURSES_ON_CLASS_TABLE, false))
+
+    /** Observable form of [pinTodayCoursesOnClassTable], for the class table. */
+    val pinTodayCoursesOnClassTableFlow: StateFlow<Boolean> =
+        _pinTodayCoursesOnClassTable.asStateFlow()
+
+    /**
+     * Show today's courses above the class table's grid. Off by default, as
+     * on the iPhone: Home already lists them, and without them the grid
+     * starts at the top of the page. Device-local.
+     */
+    var pinTodayCoursesOnClassTable: Boolean
+        get() = _pinTodayCoursesOnClassTable.value
+        set(value) {
+            prefs.edit().putBoolean(PIN_TODAY_COURSES_ON_CLASS_TABLE, value).apply()
+            _pinTodayCoursesOnClassTable.value = value
+        }
+
+    private val _outlineRequiredCourses =
+        MutableStateFlow(prefs.getBoolean(OUTLINE_REQUIRED_COURSES, false))
+
+    /** Observable form of [outlineRequiredCourses], for the class table. */
+    val outlineRequiredCoursesFlow: StateFlow<Boolean> = _outlineRequiredCourses.asStateFlow()
+
+    /**
+     * Outline each required course's class-table cell. Off by default, as on
+     * the iPhone, where it is a mark the user asks for. Device-local.
+     */
+    var outlineRequiredCourses: Boolean
+        get() = _outlineRequiredCourses.value
+        set(value) {
+            prefs.edit().putBoolean(OUTLINE_REQUIRED_COURSES, value).apply()
+            _outlineRequiredCourses.value = value
         }
 
     /**
@@ -707,23 +799,7 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
         set(value) = prefs.edit().putBoolean("classReminderSettingsMigrated", value).apply()
 
     var homeSections: List<HomeSection>
-        get() {
-            val json = prefs.getString("homeSections", null) ?: return HomeSection.defaults()
-            return try {
-                val type = object : TypeToken<List<HomeSection>>() {}.type
-                @Suppress("DEPRECATION")
-                gson.fromJson<List<HomeSection>>(json, type)
-                    ?.filter { it.type != HomeSection.HomeSectionType.QUICK_WIDGETS }
-                    // Renumber after the filter: dropping a section out of the
-                    // middle leaves a gap, and HomeSectionLayout.add derives the
-                    // next value from list size, so the gap becomes a duplicate.
-                    ?.mapIndexed { i, s -> s.copy(sortOrder = i) }
-                    ?.ifEmpty { HomeSection.defaults() }
-                    ?: HomeSection.defaults()
-            } catch (e: Exception) {
-                HomeSection.defaults()
-            }
-        }
+        get() = restoreHomeSections(prefs.getString("homeSections", null), gson)
         set(value) {
             prefs.edit().putString("homeSections", gson.toJson(value)).apply()
         }
@@ -779,7 +855,7 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
     /**
      * On sign-out, this stamp, the background worker's two below,
      * [syncedCategories], [assignmentMarksSyncedOnce],
-     * [lastSeenCoursesResetAt] and the assignment upload ledger: what they record
+     * [lastSeenCoursesResetAt] and the upload ledgers: what they record
      * belonged to the account that left, and the next account's worker must
      * not wait out the old one's hour before its first sync.
      */
@@ -794,6 +870,7 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
             .remove("lastSeenCoursesResetAt")
             .remove("assignmentsUploadFingerprint")
             .remove("assignmentsUploadedAtMs")
+            .removeCourseUploads(null)
             .apply()
         forgetLegacyLastCourseSyncAt()
         _schoolDataSyncedAtMs.value = 0L
@@ -814,14 +891,57 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
         set(value) = prefs.edit().putLong("assignmentsUploadedAtMs", value).apply()
 
     /**
-     * Forgets the list the backend last accepted, so the next upload goes
-     * whatever it holds: the backend may have dropped it while a sync switch
-     * was off on every device.
+     * The course list of [semester] the backend last accepted from this
+     * phone, as a fingerprint, and when; see `push.UploadLedger`. A slot per
+     * term, unlike the assignments': a sync uploads every term it holds, and
+     * in one slot each term's list would read as a change from the last
+     * term's. Forgotten with the assignment list at sign-out
+     * ([clearSyncStamps]) and when a sync switch comes back on
+     * ([forgetUploads]), and for one term by [forgetCourseUploads] when this
+     * phone resets it.
+     */
+    fun coursesUploadFingerprint(semester: String): String? =
+        prefs.getString(COURSES_UPLOAD_FINGERPRINT + semester, null)
+
+    fun coursesUploadedAtMs(semester: String): Long = prefs.getLong(COURSES_UPLOADED_AT + semester, 0L)
+
+    fun recordCoursesUpload(semester: String, fingerprint: String, atMs: Long) {
+        prefs.edit()
+            .putString(COURSES_UPLOAD_FINGERPRINT + semester, fingerprint)
+            .putLong(COURSES_UPLOADED_AT + semester, atMs)
+            .apply()
+    }
+
+    /**
+     * Forgets the course list the backend last accepted for [semester], or
+     * for every term when null: a reset took it off the server, and the
+     * upload after the reset, usually that same list, has to go.
+     */
+    fun forgetCourseUploads(semester: String?) {
+        prefs.edit().removeCourseUploads(semester).apply()
+    }
+
+    private fun SharedPreferences.Editor.removeCourseUploads(semester: String?): SharedPreferences.Editor {
+        if (semester != null) {
+            return remove(COURSES_UPLOAD_FINGERPRINT + semester).remove(COURSES_UPLOADED_AT + semester)
+        }
+        // The terms are not listed anywhere else; the keys are the list.
+        prefs.all.keys
+            .filter { it.startsWith(COURSES_UPLOAD_FINGERPRINT) || it.startsWith(COURSES_UPLOADED_AT) }
+            .forEach { remove(it) }
+        return this
+    }
+
+    /**
+     * Forgets the lists the backend last accepted, so the next upload of
+     * each goes whatever it holds: the backend may have dropped them while a
+     * sync switch was off on every device.
      */
     fun forgetUploads() {
         prefs.edit()
             .remove("assignmentsUploadFingerprint")
             .remove("assignmentsUploadedAtMs")
+            .removeCourseUploads(null)
             .apply()
     }
 
@@ -904,12 +1024,14 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
     fun clearAllPrefs() {
         prefs.edit().clear().apply()
         forgetLegacyLastCourseSyncAt()
-        // `alwaysShowAllPeriods` and `showClassroomInClassTable` are read from
-        // in-memory mirrors rather than the file, so clearing the file alone
-        // leaves the class table pinned — and the Settings rows reading "on" —
-        // until the next process start.
+        // `alwaysShowAllPeriods` and the class table's display switches are
+        // read from in-memory mirrors rather than the file, so clearing the
+        // file alone leaves the class table pinned — and the Settings rows
+        // reading "on" — until the next process start.
         _alwaysShowAllPeriods.value = false
-        _showClassroomInClassTable.value = false
+        _showClassroomInClassTable.value = true
+        _pinTodayCoursesOnClassTable.value = false
+        _outlineRequiredCourses.value = false
         _schoolDataSyncedAtMs.value = 0L
         _librarySyncedAtMs.value = 0L
     }
@@ -1043,6 +1165,13 @@ class AppPreferences @Inject constructor(@ApplicationContext context: Context) :
     companion object {
         /** The same key the iPhone app stores its interface style under. */
         private const val VISUAL_PRESET_KEY = "visualPreset"
+        // The iPhone's UserDefaults key names, for whoever reads both apps.
+        private const val PIN_TODAY_COURSES_ON_CLASS_TABLE = "pinTodayCoursesOnClassTable"
+        private const val OUTLINE_REQUIRED_COURSES = "outlineRequiredCourses"
+
+        /** The course upload ledger's keys, one pair per term, the term after the colon; see [coursesUploadFingerprint]. */
+        private const val COURSES_UPLOAD_FINGERPRINT = "coursesUploadFingerprint:"
+        private const val COURSES_UPLOADED_AT = "coursesUploadedAtMs:"
 
         const val WHATS_NEW_UNSET = -1
         const val WHATS_NEW_REPLAY = 0
