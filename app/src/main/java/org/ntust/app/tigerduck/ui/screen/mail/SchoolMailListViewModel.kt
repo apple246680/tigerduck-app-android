@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import org.ntust.app.tigerduck.mail.MailAccount
 import org.ntust.app.tigerduck.mail.MailChange
 import org.ntust.app.tigerduck.mail.MailError
+import org.ntust.app.tigerduck.mail.MailErrors
 import org.ntust.app.tigerduck.mail.MailRepository
 import org.ntust.app.tigerduck.mail.MailSite
 import org.ntust.app.tigerduck.mail.SchoolMailRepository
@@ -27,6 +28,7 @@ import org.ntust.app.tigerduck.mail.SentCopyNotices
 import org.ntust.app.tigerduck.mail.SentCopyOrigin
 import org.ntust.app.tigerduck.mail.matchesLoadedMail
 import org.ntust.app.tigerduck.mail.imap.FolderSelection
+import org.ntust.app.tigerduck.mail.imap.ResolvedFolders
 import org.ntust.app.tigerduck.mail.imap.SpecialFolder
 import org.ntust.app.tigerduck.mail.model.MailPage
 import org.ntust.app.tigerduck.mail.model.MailRow
@@ -106,6 +108,11 @@ class SchoolMailListViewModel @Inject constructor(
          * see [MailChecker.fetchedAt].
          */
         val fetchedAt: Long = 0L,
+        val folders: ResolvedFolders? = null,
+        val pendingDeleteRow: MailRow? = null,
+        val confirmDelete: Boolean = false,
+        val confirmDeleteForever: Boolean = false,
+        val pendingMoveRow: MailRow? = null,
     ) {
         val displayed: List<MailRow>
             get() = (searchResults ?: messages).let { list -> if (unreadOnly) list.filter { !it.summary.flags.seen } else list }
@@ -435,7 +442,7 @@ class SchoolMailListViewModel @Inject constructor(
                     current is FolderSelection.Real && current.name in folders.others -> current
                     else -> inbox
                 }
-                _state.update { it.copy(chips = chips, others = folders.others, selected = keep, mergedFolders = merged) }
+                _state.update { it.copy(chips = chips, others = folders.others, selected = keep, mergedFolders = merged, folders = folders) }
                 // The folders on screen are known now, and so is their date.
                 showFetchedAt()
             } catch (e: MailError) {
@@ -547,6 +554,83 @@ class SchoolMailListViewModel @Inject constructor(
                 // One swipe that didn't stick is not the page failing: the list on screen is
                 // exactly as good as it was a moment ago.
                 actionFail(e)
+            }
+        }
+    }
+
+    fun delete(row: MailRow) {
+        viewModelScope.launch {
+            try {
+                if (repository.deletesPermanently(row.folder)) {
+                    _state.update { it.copy(pendingDeleteRow = row, confirmDeleteForever = true) }
+                } else {
+                    _state.update { it.copy(pendingDeleteRow = row, confirmDelete = true) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                actionFail(MailErrors.classify(e))
+            }
+        }
+    }
+
+    fun confirmDelete(confirm: Boolean) {
+        val row = _state.value.pendingDeleteRow
+        _state.update { it.copy(confirmDelete = false, pendingDeleteRow = null) }
+        if (confirm && row != null) {
+            viewModelScope.launch {
+                try {
+                    repository.delete(row.folder, row.uid)
+                    removeMessage(row.key)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    actionFail(MailErrors.classify(e))
+                }
+            }
+        }
+    }
+
+    fun confirmDeleteForever(confirm: Boolean) {
+        val row = _state.value.pendingDeleteRow
+        _state.update { it.copy(confirmDeleteForever = false, pendingDeleteRow = null) }
+        if (confirm && row != null) {
+            viewModelScope.launch {
+                try {
+                    repository.delete(row.folder, row.uid)
+                    removeMessage(row.key)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    actionFail(MailErrors.classify(e))
+                }
+            }
+        }
+    }
+
+    fun moveTargets(row: MailRow): List<String> {
+        val folders = _state.value.folders ?: return emptyList()
+        return (SpecialFolder.entries.mapNotNull { folders.nameOf(it) } + folders.others).filter { it != row.folder }
+    }
+
+    fun requestMove(row: MailRow) {
+        _state.update { it.copy(pendingMoveRow = row) }
+    }
+
+    fun dismissMove() {
+        _state.update { it.copy(pendingMoveRow = null) }
+    }
+
+    fun moveTo(row: MailRow, target: String) {
+        _state.update { it.copy(pendingMoveRow = null) }
+        viewModelScope.launch {
+            try {
+                repository.move(row.folder, row.uid, target)
+                removeMessage(row.key)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                actionFail(MailErrors.classify(e))
             }
         }
     }

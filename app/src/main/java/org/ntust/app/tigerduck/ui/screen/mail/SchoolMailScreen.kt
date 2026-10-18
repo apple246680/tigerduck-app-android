@@ -5,6 +5,8 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,18 +35,21 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.FilterAltOff
 import androidx.compose.material.icons.filled.Mail
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -115,6 +120,7 @@ import org.ntust.app.tigerduck.ui.component.SearchDrawer
 import org.ntust.app.tigerduck.ui.component.SecureScreen
 import org.ntust.app.tigerduck.ui.component.ServerStatus
 import org.ntust.app.tigerduck.ui.component.SyncStatusDot
+import org.ntust.app.tigerduck.ui.component.TigerDuckDialog
 import org.ntust.app.tigerduck.ui.component.TigerPullToRefresh
 import org.ntust.app.tigerduck.ui.component.listTopAnchor
 import org.ntust.app.tigerduck.ui.component.readToggleIcon
@@ -326,6 +332,8 @@ fun SchoolMailScreen(
                                     else onOpenMessage(row.folder, row.uid)
                                 },
                                 onToggleRead = { viewModel.toggleRead(row) },
+                                onMove = { viewModel.requestMove(row) },
+                                onDelete = { viewModel.delete(row) },
                                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
                             )
                         }
@@ -442,6 +450,46 @@ fun SchoolMailScreen(
             footer = { ForgotMailPasswordLink(browserPreference) },
         )
     }
+
+    if (state.confirmDelete) {
+        TigerDuckDialog(
+            onDismissRequest = { viewModel.confirmDelete(false) },
+            title = stringResource(R.string.school_mail_delete_confirm_title),
+            message = stringResource(R.string.school_mail_delete_confirm_message),
+            confirmText = stringResource(R.string.school_mail_delete),
+            onConfirm = { viewModel.confirmDelete(true) },
+            dismissText = stringResource(R.string.action_cancel),
+        )
+    }
+    if (state.confirmDeleteForever) {
+        TigerDuckDialog(
+            onDismissRequest = { viewModel.confirmDeleteForever(false) },
+            title = stringResource(R.string.school_mail_delete_forever_title),
+            message = stringResource(R.string.school_mail_delete_forever_message),
+            confirmText = stringResource(R.string.school_mail_delete),
+            onConfirm = { viewModel.confirmDeleteForever(true) },
+            dismissText = stringResource(R.string.action_cancel),
+            confirmColors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.error,
+                contentColor = MaterialTheme.colorScheme.onError,
+            ),
+        )
+    }
+    state.pendingMoveRow?.let { row ->
+        val folders = state.folders
+        TigerDuckDialog(
+            onDismissRequest = { viewModel.dismissMove() },
+            title = stringResource(R.string.school_mail_move_to),
+            dismissText = stringResource(R.string.action_cancel),
+        ) {
+            viewModel.moveTargets(row).forEach { name ->
+                val kind = folders?.kindOf(name)
+                TextButton(onClick = { viewModel.moveTo(row, name) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (kind != null) stringResource(kind.labelRes()) else name)
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -501,13 +549,35 @@ fun SpecialFolder.labelRes(): Int = when (this) {
 }
 
 /** Mirrors Announcements' BulletinCard: 12dp surfaceVariant card, 7dp unread dot, SemiBold when unread. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun MailCard(message: MailSummary, mailDomain: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun MailCard(
+    message: MailSummary,
+    mailDomain: String,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
     val cs = MaterialTheme.colorScheme
     val unread = !message.flags.seen
     // [modifier] lands on the same layout node as Surface's own clickable, so semantics set on
     // it merge into the single card node an accessibility service focuses.
-    Surface(onClick = onClick, shape = RoundedCornerShape(12.dp), color = cs.surfaceVariant, modifier = modifier.fillMaxWidth()) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = cs.surfaceVariant,
+        modifier = modifier
+            .fillMaxWidth()
+            .then(
+                if (onLongClick != null) {
+                    Modifier.combinedClickable(
+                        onClick = onClick,
+                        onLongClick = onLongClick,
+                    )
+                } else {
+                    Modifier.combinedClickable(onClick = onClick)
+                }
+            ),
+    ) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (unread) {
@@ -561,10 +631,11 @@ internal fun MailCard(message: MailSummary, mailDomain: String, onClick: () -> U
 }
 
 /**
- * Same gesture as SwipeableBulletinCard: either direction toggles read (100dp threshold, 0.6×
- * damping) -- plus a custom accessibility action carrying the same label, because an
- * accessibility service cannot perform a drag and read state is functional, not decorative.
- * Without it the card's only reachable action was opening the mail.
+ * Swipe actions matching iOS parity:
+ * - Leading swipe (drag right in LTR): toggle read/unread (green icon).
+ * - Trailing swipe (drag left in LTR): delete mail (red trash icon).
+ * - Long-press: context menu with Toggle Read/Unread, Move to..., and Delete.
+ * - Custom accessibility actions for both read toggle and delete.
  */
 @Composable
 private fun SwipeableMailCard(
@@ -572,31 +643,57 @@ private fun SwipeableMailCard(
     mailDomain: String,
     onClick: () -> Unit,
     onToggleRead: () -> Unit,
+    onMove: () -> Unit,
+    onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val message = row.summary
     val latestToggle by rememberUpdatedState(onToggleRead)
+    val latestDelete by rememberUpdatedState(onDelete)
+    val latestMove by rememberUpdatedState(onMove)
     val thresholdPx = with(LocalDensity.current) { 100.dp.toPx() }
     // Keyed on (folder, uid): two folders can hand out the same UID, and a swipe in progress
     // must not carry over to the other mail when the list re-merges.
     val offset = remember(row.key) { Animatable(0f) }
     val scope = rememberCoroutineScope()
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-    val icon = readToggleIcon(isRead = message.flags.seen)
-    val iconDescription = stringResource(if (message.flags.seen) R.string.school_mail_mark_unread else R.string.school_mail_mark_read)
-    // The same localized label the swipe icon announces: what the toggle is about to do.
-    val readActions = remember(iconDescription) {
-        listOf(CustomAccessibilityAction(iconDescription) { latestToggle(); true })
+    val isRead = message.flags.seen
+    val readIcon = readToggleIcon(isRead = isRead)
+    val readDescription = stringResource(if (isRead) R.string.school_mail_mark_unread else R.string.school_mail_mark_read)
+    val deleteDescription = stringResource(R.string.school_mail_delete)
+
+    val accessibilityActions = remember(readDescription, deleteDescription) {
+        listOf(
+            CustomAccessibilityAction(readDescription) { latestToggle(); true },
+            CustomAccessibilityAction(deleteDescription) { latestDelete(); true },
+        )
     }
+
+    var menuOpen by remember { mutableStateOf(false) }
 
     Box(modifier.fillMaxWidth()) {
         val progress = (abs(offset.value) / thresholdPx).coerceIn(0f, 1f)
         if (offset.value != 0f) {
+            val isLeading = offset.value > 0f
             Box(
                 Modifier.matchParentSize().padding(horizontal = 20.dp),
-                contentAlignment = if (offset.value > 0f) Alignment.CenterStart else Alignment.CenterEnd,
+                contentAlignment = if (isLeading) Alignment.CenterStart else Alignment.CenterEnd,
             ) {
-                Icon(icon, iconDescription, tint = Color(0xFF34C759), modifier = Modifier.size(26.dp).alpha(progress).scale(0.5f + 0.5f * progress))
+                if (isLeading) {
+                    Icon(
+                        readIcon,
+                        readDescription,
+                        tint = Color(0xFF34C759),
+                        modifier = Modifier.size(26.dp).alpha(progress).scale(0.5f + 0.5f * progress),
+                    )
+                } else {
+                    Icon(
+                        Icons.Filled.Delete,
+                        deleteDescription,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(26.dp).alpha(progress).scale(0.5f + 0.5f * progress),
+                    )
+                }
             }
         }
         Box(
@@ -608,8 +705,9 @@ private fun SwipeableMailCard(
                         onDragEnd = {
                             scope.launch {
                                 if (abs(offset.value) >= thresholdPx) {
-                                    offset.animateTo(if (offset.value > 0) 2000f else -2000f, tween(200))
-                                    latestToggle()
+                                    val isLeading = offset.value > 0f
+                                    offset.animateTo(if (isLeading) 2000f else -2000f, tween(200))
+                                    if (isLeading) latestToggle() else latestDelete()
                                     offset.snapTo(0f)
                                 } else {
                                     offset.animateTo(0f, spring())
@@ -627,9 +725,43 @@ private fun SwipeableMailCard(
             MailCard(
                 message,
                 mailDomain,
-                onClick,
-                modifier = Modifier.semantics { customActions = readActions },
+                onClick = onClick,
+                onLongClick = { menuOpen = true },
+                modifier = Modifier.semantics { customActions = accessibilityActions },
             )
+            DropdownMenu(
+                expanded = menuOpen,
+                onDismissRequest = { menuOpen = false },
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(if (isRead) R.string.school_mail_mark_unread else R.string.school_mail_mark_read)) },
+                    onClick = {
+                        menuOpen = false
+                        latestToggle()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.school_mail_move_to)) },
+                    onClick = {
+                        menuOpen = false
+                        latestMove()
+                    },
+                )
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            stringResource(R.string.school_mail_delete),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    },
+                    onClick = {
+                        menuOpen = false
+                        latestDelete()
+                    },
+                )
+            }
         }
     }
 }

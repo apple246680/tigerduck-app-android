@@ -2325,4 +2325,102 @@ class SchoolMailListViewModelTest {
         assertEquals(3, warm().size)
         vm.stopPolling()
     }
+
+    // --- delete and move -------------------------------------------------------------------
+
+    @Test
+    fun `delete in normal folder asks for confirmation and moves mail on confirm`() {
+        repo.add("INBOX", mailSummary(1), mailSummary(2))
+        vm.load()
+        val row = vm.state.value.displayed.first { it.uid == 2L }
+        vm.delete(row)
+        assertTrue(vm.state.value.confirmDelete)
+        assertFalse(vm.state.value.confirmDeleteForever)
+        assertEquals(row, vm.state.value.pendingDeleteRow)
+
+        vm.confirmDelete(false)
+        assertFalse(vm.state.value.confirmDelete)
+        assertNull(vm.state.value.pendingDeleteRow)
+        assertEquals(2, vm.state.value.displayed.size)
+        assertTrue(repo.deleted.isEmpty())
+
+        vm.delete(row)
+        vm.confirmDelete(true)
+        assertFalse(vm.state.value.confirmDelete)
+        assertNull(vm.state.value.pendingDeleteRow)
+        assertEquals(listOf("INBOX" to 2L), repo.deleted)
+        assertEquals(listOf(1L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `delete in trash asks for permanent confirmation and deletes permanently on confirm`() {
+        val trash = repo.resolved.nameOf(SpecialFolder.TRASH)!!
+        repo.add(trash, mailSummary(7), mailSummary(8))
+        vm.load()
+        vm.selectFolder(FolderSelection.Real(trash))
+        val row = vm.state.value.displayed.first { it.uid == 8L }
+        vm.delete(row)
+        assertFalse(vm.state.value.confirmDelete)
+        assertTrue(vm.state.value.confirmDeleteForever)
+        assertEquals(row, vm.state.value.pendingDeleteRow)
+
+        vm.confirmDeleteForever(false)
+        assertFalse(vm.state.value.confirmDeleteForever)
+        assertNull(vm.state.value.pendingDeleteRow)
+        assertEquals(2, vm.state.value.displayed.size)
+        assertTrue(repo.deleted.isEmpty())
+
+        vm.delete(row)
+        vm.confirmDeleteForever(true)
+        assertFalse(vm.state.value.confirmDeleteForever)
+        assertNull(vm.state.value.pendingDeleteRow)
+        assertEquals(listOf(trash to 8L), repo.deleted)
+        assertEquals(listOf(7L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `delete failure surfaces action error and leaves the list intact`() {
+        repo.add("INBOX", mailSummary(1))
+        vm.load()
+        val row = vm.state.value.displayed.single()
+        repo.deleteError = MailError.Network()
+        vm.delete(row)
+        vm.confirmDelete(true)
+
+        assertTrue(vm.state.value.actionError is MailError.Network)
+        assertEquals(listOf(1L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `moveTo moves mail to target folder and removes row from list`() {
+        repo.add("INBOX", mailSummary(1), mailSummary(2))
+        vm.load()
+        val row = vm.state.value.displayed.first { it.uid == 2L }
+        val targets = vm.moveTargets(row)
+        assertFalse("target folders cannot include own folder", targets.contains(row.folder))
+        val target = repo.resolved.nameOf(SpecialFolder.TRASH)!!
+        assertTrue(targets.contains(target))
+
+        vm.requestMove(row)
+        assertEquals(row, vm.state.value.pendingMoveRow)
+        vm.dismissMove()
+        assertNull(vm.state.value.pendingMoveRow)
+
+        vm.moveTo(row, target)
+        assertEquals(listOf(Triple("INBOX", 2L, target)), repo.moved)
+        assertEquals(listOf(1L), vm.state.value.displayed.map { it.uid })
+    }
+
+    @Test
+    fun `move failure surfaces action error and leaves list intact`() {
+        repo.add("INBOX", mailSummary(1))
+        vm.load()
+        val row = vm.state.value.displayed.single()
+        repo.moveError = MailError.ServerBusy()
+        val target = repo.resolved.nameOf(SpecialFolder.TRASH)!!
+        vm.moveTo(row, target)
+
+        assertTrue(vm.state.value.actionError is MailError.ServerBusy)
+        assertEquals(listOf(1L), vm.state.value.displayed.map { it.uid })
+    }
 }
