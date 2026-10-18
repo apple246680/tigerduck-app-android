@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Nevažeći odgovor poslužitelja</string>
     <string name="error_library_credentials_not_found">Pristupni podaci za knjižnicu nisu pronađeni</string>
     <string name="error_library_sign_in_failed_format">Prijava u knjižnicu nije uspjela: %1$@</string>
+    <string name="error_link_no_app">Nijedna aplikacija ne može otvoriti ovu poveznicu</string>
     <string name="error_moodle_http_status_format">Moodle je vratio neočekivani HTTP status: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle je odbio trenutne pristupne podatke.</string>
     <string name="error_moodle_invalid_token">Moodle token više nije valjan; potrebna je ponovna autorizacija.</string>

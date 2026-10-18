@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Ugyldig serversvar</string>
     <string name="error_library_credentials_not_found">Fant ingen påloggingsdetaljer for bibliotekkonto</string>
     <string name="error_library_sign_in_failed_format">Bibliotekpålogging mislyktes: %1$@</string>
+    <string name="error_link_no_app">Ingen app kan åpne denne lenken</string>
     <string name="error_moodle_http_status_format">Moodle returnerte en uventet HTTP-status: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle avviste de gjeldende påloggingsdetaljene.</string>
     <string name="error_moodle_invalid_token">Moodle-tokenet er ikke lenger gyldig; ny autorisering kreves.</string>

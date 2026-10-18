@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">پاسخ نامعتبر از سرور</string>
     <string name="error_library_credentials_not_found">اطلاعات حساب کتابخانه یافت نشد</string>
     <string name="error_library_sign_in_failed_format">ورود به کتابخانه ناموفق بود: %1$@</string>
+    <string name="error_link_no_app">هیچ برنامه‌ای نمی‌تواند این لینک را باز کند</string>
     <string name="error_moodle_http_status_format">Moodle یک وضعیت HTTP غیرمنتظره برگرداند: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle اطلاعات ورود فعلی را رد کرد.</string>
     <string name="error_moodle_invalid_token">توکن Moodle دیگر معتبر نیست؛ مجوزدهی مجدد لازم است.</string>

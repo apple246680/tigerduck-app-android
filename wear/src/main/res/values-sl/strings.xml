@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Neveljaven odziv strežnika</string>
     <string name="error_library_credentials_not_found">Poverilnice za knjižnico niso najdene</string>
     <string name="error_library_sign_in_failed_format">Prijava v knjižnico ni uspela: %1$@</string>
+    <string name="error_link_no_app">Nobena aplikacija ne more odpreti te povezave</string>
     <string name="error_moodle_http_status_format">Moodle je vrnil nepričakovan status HTTP: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle je zavrnil trenutne poverilnice.</string>
     <string name="error_moodle_invalid_token">Žeton Moodle ni več veljaven; zahtevana je ponovna avtorizacija.</string>

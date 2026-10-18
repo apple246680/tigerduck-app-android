@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Неверный ответ сервера</string>
     <string name="error_library_credentials_not_found">Учётные данные библиотеки не найдены</string>
     <string name="error_library_sign_in_failed_format">Не удалось войти в библиотеку: %1$@</string>
+    <string name="error_link_no_app">Нет приложения, которое может открыть эту ссылку</string>
     <string name="error_moodle_http_status_format">Moodle вернул неожиданный HTTP-статус: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle отклонил текущие учётные данные.</string>
     <string name="error_moodle_invalid_token">Токен Moodle больше недействителен; требуется повторная авторизация.</string>

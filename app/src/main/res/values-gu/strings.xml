@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">સર્વર તરફથી અમાન્ય પ્રતિસાદ</string>
     <string name="error_library_credentials_not_found">લાઇબ્રેરી એકાઉન્ટ ઓળખપત્ર મળ્યું નહીં</string>
     <string name="error_library_sign_in_failed_format">લાઇબ્રેરી સાઇન-ઇન નિષ્ફળ: %1$@</string>
+    <string name="error_link_no_app">આ લિંક ખોલી શકે એવી કોઈ એપ નથી</string>
     <string name="error_moodle_http_status_format">Moodle એ અણધારો HTTP સ્ટેટ્સ આપ્યો: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle એ વર્તમાન ઓળખપત્ર અસ્વીકૃત કર્યા.</string>
     <string name="error_moodle_invalid_token">Moodle ટોકન હવે માન્ય નથી; ફરીથી ઓથોરાઇઝ કરવું જરૂરી છે.</string>

@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Ógilt svar frá þjóni</string>
     <string name="error_library_credentials_not_found">Aðgangsupplýsingar fyrir bókasafn fundust ekki</string>
     <string name="error_library_sign_in_failed_format">Innskráning á bókasafn mistókst: %1$@</string>
+    <string name="error_link_no_app">Ekkert forrit getur opnað þennan tengil</string>
     <string name="error_moodle_http_status_format">Moodle skilaði óvæntri HTTP-stöðu: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle hafnaði núverandi aðgangsupplýsingum.</string>
     <string name="error_moodle_invalid_token">Moodle-tóki er ekki lengur gildur; endurheimild krafist.</string>

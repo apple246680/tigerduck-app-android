@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">অবৈধ সার্ভার রেসপন্স</string>
     <string name="error_library_credentials_not_found">লাইব্রেরি অ্যাকাউন্টের ক্রেডেনশিয়াল পাওয়া যায়নি</string>
     <string name="error_library_sign_in_failed_format">লাইব্রেরিতে সাইন-ইন ব্যর্থ: %1$@</string>
+    <string name="error_link_no_app">এই লিঙ্কটি খোলার মতো কোনো অ্যাপ নেই</string>
     <string name="error_moodle_http_status_format">Moodle অপ্রত্যাশিত HTTP স্ট্যাটাস ফেরত দিয়েছে: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle বর্তমান ক্রেডেনশিয়াল প্রত্যাখ্যান করেছে।</string>
     <string name="error_moodle_invalid_token">Moodle টোকেন আর বৈধ নয়; পুনঃঅনুমোদন প্রয়োজন।</string>

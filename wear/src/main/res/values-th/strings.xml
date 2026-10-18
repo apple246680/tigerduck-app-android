@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">การตอบสนองของเซิร์ฟเวอร์ไม่ถูกต้อง</string>
     <string name="error_library_credentials_not_found">ไม่พบข้อมูลรับรองบัญชีห้องสมุด</string>
     <string name="error_library_sign_in_failed_format">เข้าสู่ระบบห้องสมุดล้มเหลว: %1$@</string>
+    <string name="error_link_no_app">ไม่มีแอปที่เปิดลิงก์นี้ได้</string>
     <string name="error_moodle_http_status_format">Moodle ส่งสถานะ HTTP ที่ไม่คาดคิด: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle ปฏิเสธข้อมูลรับรองปัจจุบัน</string>
     <string name="error_moodle_invalid_token">โทเคน Moodle หมดอายุแล้ว กรุณาขอสิทธิ์ใหม่</string>

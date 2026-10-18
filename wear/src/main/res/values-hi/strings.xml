@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">अमान्य सर्वर प्रतिक्रिया</string>
     <string name="error_library_credentials_not_found">पुस्तकालय खाते की क्रेडेंशियल नहीं मिलीं</string>
     <string name="error_library_sign_in_failed_format">पुस्तकालय साइन-इन विफल: %1$@</string>
+    <string name="error_link_no_app">कोई भी ऐप यह लिंक नहीं खोल सकता</string>
     <string name="error_moodle_http_status_format">Moodle ने अनपेक्षित HTTP स्टेटस लौटाया: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle ने वर्तमान क्रेडेंशियल अस्वीकार कर दिए।</string>
     <string name="error_moodle_invalid_token">Moodle टोकन अब वैध नहीं है; पुनः प्राधिकरण आवश्यक है।</string>

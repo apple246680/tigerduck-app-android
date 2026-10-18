@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">서버 응답이 올바르지 않습니다</string>
     <string name="error_library_credentials_not_found">도서관 계정 정보를 찾을 수 없습니다</string>
     <string name="error_library_sign_in_failed_format">도서관 로그인에 실패했습니다: %1$@</string>
+    <string name="error_link_no_app">이 링크를 열 수 있는 앱이 없습니다</string>
     <string name="error_moodle_http_status_format">Moodle이 예기치 않은 HTTP 상태를 반환했습니다: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle이 현재 자격 증명을 거부했습니다.</string>
     <string name="error_moodle_invalid_token">Moodle 토큰이 더 이상 유효하지 않습니다. 재인증이 필요합니다.</string>

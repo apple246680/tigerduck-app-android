@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Vigane serveri vastus</string>
     <string name="error_library_credentials_not_found">Raamatukogu konto andmeid ei leitud</string>
     <string name="error_library_sign_in_failed_format">Raamatukogu sisselogimine ebaõnnestus: %1$@</string>
+    <string name="error_link_no_app">Ükski rakendus ei saa seda linki avada</string>
     <string name="error_moodle_http_status_format">Moodle tagastas ootamatu HTTP-staatuse: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle lükkas praegused mandaadid tagasi.</string>
     <string name="error_moodle_invalid_token">Moodle’i token ei kehti enam; vajalik on uus autoriseerimine.</string>

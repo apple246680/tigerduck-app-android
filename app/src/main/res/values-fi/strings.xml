@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Virheellinen palvelimen vastaus</string>
     <string name="error_library_credentials_not_found">Kirjastotilin tunnuksia ei löytynyt</string>
     <string name="error_library_sign_in_failed_format">Kirjastoon kirjautuminen epäonnistui: %1$@</string>
+    <string name="error_link_no_app">Mikään sovellus ei voi avata tätä linkkiä</string>
     <string name="error_moodle_http_status_format">Moodle palautti odottamattoman HTTP-tilan: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle hylkäsi nykyiset tunnukset.</string>
     <string name="error_moodle_invalid_token">Moodle-token ei ole enää voimassa; uusi valtuutus vaaditaan.</string>

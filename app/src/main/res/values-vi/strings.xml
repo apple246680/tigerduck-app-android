@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Phản hồi máy chủ không hợp lệ</string>
     <string name="error_library_credentials_not_found">Không tìm thấy thông tin đăng nhập thư viện</string>
     <string name="error_library_sign_in_failed_format">Đăng nhập thư viện thất bại: %1$@</string>
+    <string name="error_link_no_app">Không có ứng dụng nào mở được liên kết này</string>
     <string name="error_moodle_http_status_format">Moodle trả về trạng thái HTTP không mong đợi: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle từ chối thông tin đăng nhập hiện tại.</string>
     <string name="error_moodle_invalid_token">Token Moodle không còn hiệu lực; cần cấp quyền lại.</string>

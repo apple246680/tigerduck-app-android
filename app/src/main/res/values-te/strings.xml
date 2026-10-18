@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">చెల్లని సర్వర్ స్పందన</string>
     <string name="error_library_credentials_not_found">లైబ్రరీ ఖాతా వివరాలు కనుగొనబడలేదు</string>
     <string name="error_library_sign_in_failed_format">లైబ్రరీ సైన్-ఇన్ విఫలమైంది: %1$@</string>
+    <string name="error_link_no_app">ఈ లింక్‌ను తెరవగల యాప్ ఏదీ లేదు</string>
     <string name="error_moodle_http_status_format">Moodle అనుకోని HTTP స్థితిని తిరిగి ఇచ్చింది: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle ప్రస్తుత వివరాలను తిరస్కరించింది.</string>
     <string name="error_moodle_invalid_token">Moodle టోకెన్ ఇకపై చెల్లదు; పున:అధికారం అవసరం.</string>

@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">தவறான சர்வர் பதில்</string>
     <string name="error_library_credentials_not_found">நூலக கணக்கு சான்றுகள் காணப்படவில்லை</string>
     <string name="error_library_sign_in_failed_format">நூலக உள்நுழைவு தோல்வியடைந்தது: %1$@</string>
+    <string name="error_link_no_app">இந்தத் தொடுப்பைத் திறக்கக்கூடிய ஆப் எதுவும் இல்லை</string>
     <string name="error_moodle_http_status_format">Moodle எதிர்பாராத HTTP நிலையைத் திருப்பியது: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle தற்போதைய சான்றுகளை நிராகரித்தது.</string>
     <string name="error_moodle_invalid_token">Moodle டோக்கன் இனி செல்லுபடியாகாது; மீண்டும் அங்கீகாரம் தேவை.</string>

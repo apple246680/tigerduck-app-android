@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Respons pelayan tidak sah</string>
     <string name="error_library_credentials_not_found">Kelayakan akaun perpustakaan tidak ditemui</string>
     <string name="error_library_sign_in_failed_format">Daftar masuk perpustakaan gagal: %1$@</string>
+    <string name="error_link_no_app">Tiada aplikasi yang dapat membuka pautan ini</string>
     <string name="error_moodle_http_status_format">Moodle mengembalikan status HTTP yang tidak dijangka: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle menolak kelayakan semasa.</string>
     <string name="error_moodle_invalid_token">Token Moodle tidak lagi sah; pengesahan semula diperlukan.</string>

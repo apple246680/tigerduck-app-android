@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Сервер жауабы жарамсыз</string>
     <string name="error_library_credentials_not_found">Кітапхана тіркелгісінің деректері табылмады</string>
     <string name="error_library_sign_in_failed_format">Кітапханаға кіру сәтсіз: %1$@</string>
+    <string name="error_link_no_app">Бұл сілтемені ашатын қолданба жоқ</string>
     <string name="error_moodle_http_status_format">Moodle күтпеген HTTP күйін қайтарды: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle ағымдағы тіркелгі деректерін қабылдамады.</string>
     <string name="error_moodle_invalid_token">Moodle токені енді жарамсыз; қайта авторизация қажет.</string>
