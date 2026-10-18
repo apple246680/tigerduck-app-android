@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Ungültige Serverantwort</string>
     <string name="error_library_credentials_not_found">Anmeldedaten für Bibliothekskonto nicht gefunden</string>
     <string name="error_library_sign_in_failed_format">Bibliotheks-Anmeldung fehlgeschlagen: %1$@</string>
+    <string name="error_link_no_app">Keine App kann diesen Link öffnen</string>
     <string name="error_moodle_http_status_format">Moodle lieferte einen unerwarteten HTTP-Status: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle hat die aktuellen Anmeldedaten abgelehnt.</string>
     <string name="error_moodle_invalid_token">Das Moodle-Token ist nicht mehr gültig; eine erneute Autorisierung ist erforderlich.</string>

@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">അസാധുവായ സെർവർ പ്രതികരണം</string>
     <string name="error_library_credentials_not_found">ഗ്രന്ഥശാല അക്കൗണ്ട് ക്രെഡൻഷ്യൽ കണ്ടെത്തിയില്ല</string>
     <string name="error_library_sign_in_failed_format">ഗ്രന്ഥശാല സൈൻ ഇൻ പരാജയപ്പെട്ടു: %1$@</string>
+    <string name="error_link_no_app">ഈ ലിങ്ക് തുറക്കാൻ കഴിയുന്ന ആപ്പ് ഒന്നുമില്ല</string>
     <string name="error_moodle_http_status_format">Moodle അപ്രതീക്ഷിത HTTP സ്റ്റാറ്റസ് തിരിച്ചു നൽകി: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle നിലവിലെ ക്രെഡൻഷ്യൽ നിരസിച്ചു.</string>
     <string name="error_moodle_invalid_token">Moodle ടോക്കൺ ഇനി സാധുവല്ല; പുനഃ-അംഗീകാരം ആവശ്യമാണ്.</string>

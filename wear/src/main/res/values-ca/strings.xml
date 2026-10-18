@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Resposta del servidor no vàlida</string>
     <string name="error_library_credentials_not_found">No s’han trobat les credencials del compte de la biblioteca</string>
     <string name="error_library_sign_in_failed_format">Inici de sessió a la biblioteca fallit: %1$@</string>
+    <string name="error_link_no_app">Cap aplicació no pot obrir aquest enllaç</string>
     <string name="error_moodle_http_status_format">Moodle ha retornat un estat HTTP inesperat: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle ha rebutjat les credencials actuals.</string>
     <string name="error_moodle_invalid_token">El testimoni de Moodle ja no és vàlid; cal tornar a autoritzar-lo.</string>

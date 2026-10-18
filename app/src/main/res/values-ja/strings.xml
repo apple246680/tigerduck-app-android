@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">サーバーの応答が無効です</string>
     <string name="error_library_credentials_not_found">図書館アカウントの認証情報が見つかりません</string>
     <string name="error_library_sign_in_failed_format">図書館のサインインに失敗しました：%1$@</string>
+    <string name="error_link_no_app">このリンクを開けるアプリがありません</string>
     <string name="error_moodle_http_status_format">Moodle が予期しない HTTP ステータスを返しました：%1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle が現在の認証情報を拒否しました。</string>
     <string name="error_moodle_invalid_token">Moodle のトークンは有効ではなくなりました。再認証が必要です。</string>

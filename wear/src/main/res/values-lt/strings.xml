@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Netinkamas serverio atsakas</string>
     <string name="error_library_credentials_not_found">Bibliotekos paskyros prisijungimo duomenų nerasta</string>
     <string name="error_library_sign_in_failed_format">Nepavyko prisijungti prie bibliotekos: %1$@</string>
+    <string name="error_link_no_app">Nėra programėlės, galinčios atidaryti šią nuorodą</string>
     <string name="error_moodle_http_status_format">Moodle grąžino netikėtą HTTP būseną: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle atmetė dabartinius prisijungimo duomenis.</string>
     <string name="error_moodle_invalid_token">Moodle prieigos raktas nebegalioja; reikia iš naujo autorizuoti.</string>

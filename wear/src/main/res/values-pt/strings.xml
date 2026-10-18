@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Resposta do servidor inválida</string>
     <string name="error_library_credentials_not_found">Credenciais da conta da biblioteca não encontradas</string>
     <string name="error_library_sign_in_failed_format">Falha ao iniciar sessão na biblioteca: %1$@</string>
+    <string name="error_link_no_app">Nenhuma aplicação consegue abrir esta ligação</string>
     <string name="error_moodle_http_status_format">O Moodle devolveu um estado HTTP inesperado: %1$d</string>
     <string name="error_moodle_invalid_credentials">O Moodle rejeitou as credenciais atuais.</string>
     <string name="error_moodle_invalid_token">O token do Moodle já não é válido; é necessária nova autorização.</string>

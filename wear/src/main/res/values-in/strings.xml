@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Respons server tidak valid</string>
     <string name="error_library_credentials_not_found">Kredensial akun perpustakaan tidak ditemukan</string>
     <string name="error_library_sign_in_failed_format">Masuk ke perpustakaan gagal: %1$@</string>
+    <string name="error_link_no_app">Tidak ada aplikasi yang dapat membuka tautan ini</string>
     <string name="error_moodle_http_status_format">Moodle mengembalikan status HTTP yang tidak terduga: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle menolak kredensial saat ini.</string>
     <string name="error_moodle_invalid_token">Token Moodle tidak lagi valid; perlu otorisasi ulang.</string>

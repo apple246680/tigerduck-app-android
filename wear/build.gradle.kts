@@ -26,8 +26,8 @@ android {
         // android.hardware.type.watch. It separates the ranges only while the
         // phone stays under 10000, which version-bumped.yaml asserts rather
         // than leaves to chance. versionName still tracks the phone exactly.
-        versionCode = 10029
-        versionName = "2.3.1"
+        versionCode = 10030
+        versionName = "2.3.2"
     }
 
     // Mirrors :app. The watch APK/AAB carries the same applicationId as the

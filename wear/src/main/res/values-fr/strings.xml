@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Réponse du serveur invalide</string>
     <string name="error_library_credentials_not_found">Identifiants de la bibliothèque introuvables</string>
     <string name="error_library_sign_in_failed_format">Échec de la connexion à la bibliothèque : %1$@</string>
+    <string name="error_link_no_app">Aucune application ne peut ouvrir ce lien</string>
     <string name="error_moodle_http_status_format">Moodle a renvoyé un statut HTTP inattendu : %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle a rejeté les identifiants actuels.</string>
     <string name="error_moodle_invalid_token">Le jeton Moodle n\'est plus valide ; une nouvelle autorisation est requise.</string>

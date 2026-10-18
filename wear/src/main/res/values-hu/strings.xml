@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">Érvénytelen szerverválasz</string>
     <string name="error_library_credentials_not_found">Nem található könyvtári fiók hitelesítési adat</string>
     <string name="error_library_sign_in_failed_format">A könyvtári bejelentkezés sikertelen: %1$@</string>
+    <string name="error_link_no_app">Nincs olyan alkalmazás, amely meg tudná nyitni ezt a hivatkozást</string>
     <string name="error_moodle_http_status_format">A Moodle váratlan HTTP-állapotot adott vissza: %1$d</string>
     <string name="error_moodle_invalid_credentials">A Moodle elutasította a jelenlegi hitelesítő adatokat.</string>
     <string name="error_moodle_invalid_token">A Moodle token már nem érvényes; újraengedélyezés szükséges.</string>

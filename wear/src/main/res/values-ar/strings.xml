@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">استجابة الخادم غير صالحة</string>
     <string name="error_library_credentials_not_found">لم يتم العثور على بيانات اعتماد حساب المكتبة</string>
     <string name="error_library_sign_in_failed_format">فشل تسجيل الدخول إلى المكتبة: %1$@</string>
+    <string name="error_link_no_app">لا يوجد تطبيق يمكنه فتح هذا الرابط</string>
     <string name="error_moodle_http_status_format">أعاد Moodle حالة HTTP غير متوقعة: %1$d</string>
     <string name="error_moodle_invalid_credentials">رفض Moodle بيانات الاعتماد الحالية.</string>
     <string name="error_moodle_invalid_token">لم يعد رمز Moodle صالحًا؛ يلزم إعادة التفويض.</string>

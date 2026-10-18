@@ -442,6 +442,7 @@
     <string name="error_invalid_server_response">תגובת שרת אינה תקינה</string>
     <string name="error_library_credentials_not_found">פרטי חשבון ספרייה לא נמצאו</string>
     <string name="error_library_sign_in_failed_format">כניסה לספרייה נכשלה: %1$@</string>
+    <string name="error_link_no_app">אין אפליקציה שיכולה לפתוח את הקישור הזה</string>
     <string name="error_moodle_http_status_format">Moodle החזיר סטטוס HTTP בלתי צפוי: %1$d</string>
     <string name="error_moodle_invalid_credentials">Moodle דחה את פרטי הכניסה הנוכחיים.</string>
     <string name="error_moodle_invalid_token">טוקן Moodle אינו תקף עוד; נדרש אישור מחודש.</string>
