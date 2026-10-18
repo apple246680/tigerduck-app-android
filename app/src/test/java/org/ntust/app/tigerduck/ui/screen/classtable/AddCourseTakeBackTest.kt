@@ -57,11 +57,17 @@ class AddCourseTakeBackTest {
         val delete = body(lines, "deleteCourse")
 
         assertTrue("deleteCourse defaults to a tombstone", delete.first().contains("tombstone: Boolean = true"))
-        val hide = delete.indexOfFirst { "CourseTombstoneKeys.hide(" in it }
-        assertTrue("deleteCourse still tombstones a regular delete", hide >= 0)
+        // Twice: the edit a fetch reads until the write lands (see ClassTableTombstoneEdits), then the write.
+        val hides = delete.indices.filter { "CourseTombstoneKeys.hide(" in delete[it] }
+        assertTrue("deleteCourse still tombstones a regular delete", hides.size == 2)
+        val (edit, write) = hides
         assertTrue(
-            "the tombstone is written under `if (tombstone)`",
-            delete.subList(0, hide).any { it.trim().startsWith("if (tombstone)") },
+            "the edit a fetch reads is made under `if (tombstone)`",
+            delete.subList(0, edit + 1).any { "if (tombstone)" in it },
+        )
+        assertTrue(
+            "the tombstone is written only with that edit",
+            delete.subList(edit + 1, write).any { it.trim().startsWith("if (tombstoneEdit != null)") },
         )
     }
 }
