@@ -1017,6 +1017,7 @@
     <string name="settings_view_source_code">Näytä lähdekoodi</string>
     <string name="settings_visual_preset_label">Käyttöliittymän tyyli</string>
     <string name="settings_whats_new">Mitä uutta</string>
+    <string name="share_code_needs_update_message">Tämä jakokoodi vaatii sovelluksen uudemman version.</string>
     <string name="sign_in_password">Salasana</string>
     <string name="sign_in_student_id">Opiskelijanumero</string>
     <string name="source_code_picker_current_app_badge">Tämä sovellus</string>

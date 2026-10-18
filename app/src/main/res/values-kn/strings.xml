@@ -1017,6 +1017,7 @@
     <string name="settings_view_source_code">ಮೂಲ ಕೋಡ್ ವೀಕ್ಷಿಸಿ</string>
     <string name="settings_visual_preset_label">ಇಂಟರ್‌ಫೇಸ್ ಶೈಲಿ</string>
     <string name="settings_whats_new">ಹೊಸತೇನಿದೆ</string>
+    <string name="share_code_needs_update_message">ಈ ಹಂಚಿಕೆ ಕೋಡ್‌ಗೆ ಆ್ಯಪ್‌ನ ಹೊಸ ಆವೃತ್ತಿ ಬೇಕು.</string>
     <string name="sign_in_password">ಪಾಸ್‌ವರ್ಡ್</string>
     <string name="sign_in_student_id">ವಿದ್ಯಾರ್ಥಿ ID</string>
     <string name="source_code_picker_current_app_badge">ಪ್ರಸ್ತುತ ಅಪ್ಲಿಕೇಶನ್</string>

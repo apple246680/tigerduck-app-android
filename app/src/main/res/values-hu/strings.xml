@@ -1017,6 +1017,7 @@
     <string name="settings_view_source_code">Forráskód megtekintése</string>
     <string name="settings_visual_preset_label">Felület stílusa</string>
     <string name="settings_whats_new">Újdonságok</string>
+    <string name="share_code_needs_update_message">Ehhez a megosztási kódhoz az alkalmazás újabb verziója szükséges.</string>
     <string name="sign_in_password">Jelszó</string>
     <string name="sign_in_student_id">Hallgatói azonosító</string>
     <string name="source_code_picker_current_app_badge">Jelenlegi app</string>
