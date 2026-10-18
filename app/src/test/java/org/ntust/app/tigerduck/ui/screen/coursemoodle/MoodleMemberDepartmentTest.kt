@@ -133,7 +133,7 @@ class MoodleMemberDepartmentTest {
         val store = MoodleCourseStore(5, emptyList(), emptyList(), api(members), MoodleCacheContext("B1", cache, { true }), scope)
         var query by mutableStateOf("")
         composeRule.setContent {
-            MembersList(store = store, searching = query.isNotEmpty(), query = query, onQueryChange = { query = it }, onOpen = {})
+            MembersList(store = store, query = query, onQueryChange = { query = it }, onOpen = {})
         }
         composeRule.waitUntil(5_000) { store.members.value?.members?.size == 2 }
         composeRule.waitForIdle()
