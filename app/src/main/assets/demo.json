@@ -761,10 +761,6 @@
               "en": "Wang Hsiao-Ming"
             },
             "role": "editingteacher",
-            "department": {
-              "zh": "資訊工程系",
-              "en": "Computer Science and Information Engineering"
-            },
             "email": "wang.hm@mail.ntust.example",
             "description": {
               "zh": "研究興趣為演算法與資料庫系統。",
@@ -783,10 +779,6 @@
             },
             "role": "teacher",
             "idNumber": "M11415001",
-            "department": {
-              "zh": "資訊工程系",
-              "en": "Computer Science and Information Engineering"
-            },
             "email": "m11415001@mail.ntust.example"
           },
           {
@@ -797,10 +789,6 @@
             },
             "role": "student",
             "idNumber": "B11308964",
-            "department": {
-              "zh": "資訊工程系",
-              "en": "Computer Science and Information Engineering"
-            },
             "email": "b11308964@mail.ntust.example"
           },
           {
@@ -811,10 +799,6 @@
             },
             "role": "student",
             "idNumber": "B11308901",
-            "department": {
-              "zh": "資訊工程系",
-              "en": "Computer Science and Information Engineering"
-            },
             "email": "b11308901@mail.ntust.example"
           },
           {
@@ -825,10 +809,6 @@
             },
             "role": "student",
             "idNumber": "B11308977",
-            "department": {
-              "zh": "資訊工程系",
-              "en": "Computer Science and Information Engineering"
-            },
             "email": "b11308977@mail.ntust.example"
           },
           {
@@ -839,10 +819,6 @@
             },
             "role": "student",
             "idNumber": "B11202033",
-            "department": {
-              "zh": "電機工程系",
-              "en": "Electrical Engineering"
-            },
             "email": "b11202033@mail.ntust.example"
           },
           {
@@ -852,11 +828,7 @@
               "en": "B11309015 @ Lee Cheng-En"
             },
             "role": "auditor_student",
-            "idNumber": "B11309015",
-            "department": {
-              "zh": "資訊管理系",
-              "en": "Information Management"
-            }
+            "idNumber": "B11309015"
           }
         ]
       },
@@ -946,10 +918,6 @@
               "en": "Li Mei-Hua"
             },
             "role": "editingteacher",
-            "department": {
-              "zh": "資訊工程系",
-              "en": "Computer Science and Information Engineering"
-            },
             "email": "li.mh@mail.ntust.example"
           },
           {
@@ -959,11 +927,7 @@
               "en": "B11308964 @ Demo Student"
             },
             "role": "student",
-            "idNumber": "B11308964",
-            "department": {
-              "zh": "資訊工程系",
-              "en": "Computer Science and Information Engineering"
-            }
+            "idNumber": "B11308964"
           },
           {
             "id": 9003,
@@ -972,11 +936,7 @@
               "en": "B11308901 @ Chen Yi-Chun"
             },
             "role": "student",
-            "idNumber": "B11308901",
-            "department": {
-              "zh": "資訊工程系",
-              "en": "Computer Science and Information Engineering"
-            }
+            "idNumber": "B11308901"
           }
         ]
       },
@@ -1020,10 +980,6 @@
               "en": "Chang Chih-Hao"
             },
             "role": "editingteacher",
-            "department": {
-              "zh": "電機工程系",
-              "en": "Electrical Engineering"
-            },
             "email": "chang.ch@mail.ntust.example"
           },
           {

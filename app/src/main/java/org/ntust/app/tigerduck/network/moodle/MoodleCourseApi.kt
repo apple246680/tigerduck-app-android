@@ -96,10 +96,12 @@ interface MoodleCourseApi {
 
         /**
          * Only what the members screens show, so Moodle sends no other personal data, such as
-         * last access times or other courses.
+         * last access times or other courses. Not `department`, which NTUST fills for the
+         * signed-in student alone and with the degree level: the department comes from the
+         * student ID (MoodleDepartment), as on the iPhone.
          */
         const val MEMBER_FIELDS =
-            "id,fullname,idnumber,department,email,groups,roles,profileimageurl,description,interests,customfields"
+            "id,fullname,idnumber,email,groups,roles,profileimageurl,description,interests,customfields"
     }
 }
 

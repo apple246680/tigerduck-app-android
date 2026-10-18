@@ -16,6 +16,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
@@ -54,8 +55,8 @@ class MoodleMemberDepartmentTest {
     @After
     fun tearDown() = scope.cancel()
 
-    private fun student(id: Int, fullName: String, department: String? = null) = MoodleMember(
-        id = id, fullName = fullName, idNumber = null, department = department, email = null,
+    private fun student(id: Int, fullName: String) = MoodleMember(
+        id = id, fullName = fullName, idNumber = null, email = null,
         groups = emptyList(), roles = listOf(MoodleMemberRole("student", "", 0)), pictureUrl = null,
         description = "", interests = emptyList(), fields = emptyList(),
     )
@@ -78,6 +79,11 @@ class MoodleMemberDepartmentTest {
     }
 
     private fun stateDescription(value: String) = SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, value)
+
+    @Test
+    fun `the members request does not ask Moodle for its department field`() {
+        assertFalse(MoodleCourseApi.MEMBER_FIELDS, "department" in MoodleCourseApi.MEMBER_FIELDS.split(","))
+    }
 
     @Test
     fun `every department the app knows has a name for the page and one for the list`() {
@@ -104,10 +110,10 @@ class MoodleMemberDepartmentTest {
     }
 
     @Test
-    fun `the page names the department in full from the ID, and never from Moodle's field`() {
+    fun `the page names the department in full from the ID`() {
         val members = listOf(
             student(1, "B00015001 @ Amy"),
-            student(2, "M00015002 @ Max", department = "大學部"),
+            student(2, "M00015002 @ Max"),
             student(3, "B00009003 @ Uma"),
         )
         var rows: Map<Int, List<MemberRow>> = emptyMap()
@@ -123,13 +129,13 @@ class MoodleMemberDepartmentTest {
             ),
             rows[1],
         )
-        assertEquals("a master's ID has no code, and Moodle's field is not shown", listOf(MemberRow(studentId, "M00015002")), rows[2])
+        assertEquals("a master's ID has no code", listOf(MemberRow(studentId, "M00015002")), rows[2])
         assertEquals("a code the app does not know", listOf(MemberRow(studentId, "B00009003")), rows[3])
     }
 
     @Test
     fun `the list shows the short name beside the ID, and the search matches it`() {
-        val members = listOf(student(1, "B00015001 @ Amy"), student(2, "B00000002 @ Bob", department = "大學部"))
+        val members = listOf(student(1, "B00015001 @ Amy"), student(2, "B00000002 @ Bob"))
         val store = MoodleCourseStore(5, emptyList(), emptyList(), api(members), MoodleCacheContext("B1", cache, { true }), scope)
         var query by mutableStateOf("")
         composeRule.setContent {
@@ -145,10 +151,6 @@ class MoodleMemberDepartmentTest {
         query = "computer science"
         composeRule.waitForIdle()
         composeRule.onNode(hasContentDescription("Amy")).assertExists()
-        composeRule.onNode(hasContentDescription("Bob")).assertDoesNotExist()
-
-        query = "大學部"
-        composeRule.waitForIdle()
         composeRule.onNode(hasContentDescription("Bob")).assertDoesNotExist()
     }
 }

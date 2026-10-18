@@ -46,14 +46,14 @@ class MoodleCacheSchemaTest {
 
     @Test
     fun `the cache schema moves with the shape of what it keeps`() {
-        assertEquals(2, DataCache.MOODLE_CACHE_SCHEMA)
-        assertEquals(SHAPE_AT_SCHEMA_2, shape())
+        assertEquals(3, DataCache.MOODLE_CACHE_SCHEMA)
+        assertEquals(SHAPE_AT_SCHEMA_3, shape())
     }
 
     private companion object {
         val PACKAGE = Regex("""\b(?:[a-z]\w*\.)+""")
 
-        val SHAPE_AT_SCHEMA_2 = """
+        val SHAPE_AT_SCHEMA_3 = """
             MoodleCourseGrades(items: List<MoodleGradeItem>)
             MoodleCourseMaterials(sections: List<MoodleMaterialSection>)
             MoodleCourseSummary(html: String, names: List<String>, text: String)
@@ -65,7 +65,7 @@ class MoodleCacheSchemaTest {
             MoodleGradeItem(cmid: Integer, feedback: String, grade: String, id: int, isHidden: boolean, maxGrade: Double, module: String, name: String, type: String)
             MoodleMaterial(files: List<MoodleFile>, id: int, instance: int, link: String, module: String, name: String)
             MoodleMaterialSection(id: int, materials: List<MoodleMaterial>, name: String)
-            MoodleMember(department: String, description: String, email: String, fields: List<MoodleMemberField>, fullName: String, groups: List<String>, id: int, idNumber: String, interests: List<String>, pictureUrl: String, roles: List<MoodleMemberRole>)
+            MoodleMember(description: String, email: String, fields: List<MoodleMemberField>, fullName: String, groups: List<String>, id: int, idNumber: String, interests: List<String>, pictureUrl: String, roles: List<MoodleMemberRole>)
             MoodleMemberField(name: String, value: String)
             MoodleMemberList(members: List<MoodleMember>, ownId: Integer)
             MoodleMemberRole(name: String, shortName: String, sortOrder: int)

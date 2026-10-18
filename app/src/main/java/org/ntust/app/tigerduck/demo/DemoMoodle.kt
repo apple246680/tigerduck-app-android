@@ -243,7 +243,6 @@ object DemoMoodleFixture {
             id = id,
             fullName = localized(o, "name", lang),
             idNumber = o.str("idNumber"),
-            department = localized(o, "department", lang).ifEmpty { null },
             email = o.str("email"),
             groups = emptyList(),
             roles = listOf(MoodleMemberRole(shortName = role, name = "", sortOrder = 0)),
